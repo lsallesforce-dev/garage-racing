@@ -5,7 +5,7 @@ const genAI = new GoogleGenerativeAI(apiKey);
 
 export const geminiPro = genAI.getGenerativeModel(
   {
-    model: "gemini-1.5-flash", 
+    model: "gemini-2.0-flash-001", // Versão estável do 2.0 para contas pagas
     generationConfig: {
       temperature: 0.2,
       responseMimeType: "application/json",
@@ -39,7 +39,7 @@ export async function generateEmbedding(text: string) {
 
 export const geminiFlashSales = genAI.getGenerativeModel(
   {
-    model: "gemini-1.5-flash",
+    model: "gemini-2.0-flash-001",
     generationConfig: {
       temperature: 0.7,
     },
@@ -54,5 +54,6 @@ Diretrizes de Resposta:
   },
   { apiVersion: "v1" }
 );
+
 
 
