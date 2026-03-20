@@ -5,7 +5,7 @@ const genAI = new GoogleGenerativeAI(apiKey);
 
 export const geminiPro = genAI.getGenerativeModel(
   {
-    model: "gemini-1.5-flash-latest", 
+    model: "gemini-1.5-flash", 
     generationConfig: {
       temperature: 0.2,
       responseMimeType: "application/json",
@@ -24,12 +24,12 @@ Siga estas diretrizes:
 
 O retorno deve ser estritamente em JSON seguindo o schema da tabela 'veiculos'.`,
   },
-  { apiVersion: "v1" }
+  { apiVersion: "v1beta" }
 );
 
 export const embedModel = genAI.getGenerativeModel(
   { model: "text-embedding-004" },
-  { apiVersion: "v1" }
+  { apiVersion: "v1beta" }
 );
 
 export async function generateEmbedding(text: string) {
@@ -39,7 +39,7 @@ export async function generateEmbedding(text: string) {
 
 export const geminiFlashSales = genAI.getGenerativeModel(
   {
-    model: "gemini-1.5-flash-latest",
+    model: "gemini-1.5-flash",
     generationConfig: {
       temperature: 0.7,
     },
@@ -52,8 +52,9 @@ Diretrizes de Resposta:
 4. **Limitação**: Nunca invente opcionais. Baseie-se apenas nos dados extraídos pela inspeção técnica (Gemini Pro). Se não foi mencionado (ex: teto solar), não afirme que o veículo possui.
 5. **Linguagem**: Use termos técnicos (torque, cavalaria, diferencial, suspensão) com autoridade, mas mantenha a exclusividade de uma boutique automotiva.`,
   },
-  { apiVersion: "v1" }
+  { apiVersion: "v1beta" }
 );
+
 
 
 
