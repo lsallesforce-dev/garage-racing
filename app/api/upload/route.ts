@@ -7,12 +7,10 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-// ⚡ Configuração de limite de tamanho (Pages Router fallback)
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
+// ⚡ Configurações de Segmento (App Router)
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60; // Aumenta o tempo limite se necessário
+
 
 export async function POST(req: NextRequest) {
   try {
