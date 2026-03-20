@@ -1,8 +1,20 @@
-import { supabaseAdmin } from "@/lib/supabase-admin";
+import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
   try {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    console.log("Upload Attempt - URL:", url);
+    console.log("Upload Attempt - Key exists:", !!key);
+
+    if (!url || !key) {
+      return NextResponse.json({ error: "Missing Supabase configuration on server" }, { status: 500 });
+    }
+
+    const supabaseAdmin = createClient(url, key);
+
     const formData = await req.formData();
     const file = formData.get("file") as File;
 
