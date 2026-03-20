@@ -5,7 +5,7 @@ const genAI = new GoogleGenerativeAI(apiKey);
 
 // Modelo de Visão (Pro/Flash) para análise de vídeo - v1 estável
 export const geminiPro = genAI.getGenerativeModel({
-  model: "gemini-2.0-flash", 
+  model: "gemini-2.5-flash", 
 });
 
 // Modelo de Embedding para o RAG (1536 dimensões)
@@ -25,8 +25,9 @@ export async function generateEmbedding(text: string) {
 
 // Modelo de Vendas (Flash) para o WhatsApp
 export const geminiFlashSales = genAI.getGenerativeModel({
-  model: "gemini-2.0-flash", 
+  model: "gemini-2.5-flash", 
 });
+
 
 
 
