@@ -13,14 +13,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 1. Fetch video from URL (Assuming it's accessible or from Supabase Storage)
+    // 1. Fetch video from URL
     const videoResp = await fetch(videoUrl);
     if (!videoResp.ok) {
       throw new Error(`Failed to fetch video: ${videoResp.statusText}`);
     }
     const videoBuffer = await videoResp.arrayBuffer();
 
-    // 2. Prompt de Engenharia (Ajustado para Tipagem de Dados)
+    // 2. Prompt de Engenharia
     const promptSistema = `Você é um Engenheiro Automotivo sênior. Analise este vídeo de inspeção veicular. 
     Retorne estritamente um JSON puro (sem markdown) com os seguintes campos:
     marca (string), modelo (string), versao (string), ano_fabricacao (number), ano_modelo (number), cor (string), 
@@ -42,10 +42,20 @@ export async function POST(req: NextRequest) {
 
     // 3. Limpeza e Parse do JSON
     const text = result.response.text();
-    const cleanJson = text.replace(/```json|```/g, "").trim();
+
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error("IA não retornou um JSON válido: " + text);
+    }
+
+    const cleanJson = jsonMatch[0]
+      .replace(/```json|```/g, "")
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, " ")
+      .trim();
+
     const carData = JSON.parse(cleanJson);
 
-    // 4. Coerção de Dados (Garante que strings da IA virem números para o Supabase)
+    // 4. Coerção de Dados
     const parsedData = {
       ...carData,
       ano_fabricacao: parseInt(String(carData.ano_fabricacao).replace(/\D/g, "")) || null,
@@ -54,13 +64,12 @@ export async function POST(req: NextRequest) {
       preco_sugerido: parseFloat(String(carData.preco_sugerido).replace(/[^\d.]/g, "")) || 0,
     };
 
-    // 5. Gerar Embedding para busca no WhatsApp (RAG)
+    // 5. Gerar Embedding para RAG
     const summaryForEmbedding = `${parsedData.marca} ${parsedData.modelo} ${parsedData.versao} ${parsedData.detalhes_inspecao} ${parsedData.tags_busca}`;
     const embedding = await generateEmbedding(summaryForEmbedding);
     console.log("Final Embedding Length to Supabase:", embedding.length);
 
-    // 6. Prepare data for Supabase
-
+    // 6. Inserir no Supabase
     const vehicleToInsert = {
       ...parsedData,
       video_url: videoUrl,
@@ -68,19 +77,17 @@ export async function POST(req: NextRequest) {
       embedding: embedding
     };
 
-    // 7. Insert into Supabase
     const { data, error } = await supabaseAdmin
       .from("veiculos")
       .insert([vehicleToInsert])
       .select();
-
 
     if (error) {
       console.error("Supabase Error:", error);
       throw error;
     }
 
-    // 7. Gerar URL assinada para o retorno (Toque Premium)
+    // 7. Gerar URL assinada para o retorno
     const fileName = videoUrl.split('/').pop();
     const { data: signedData } = await supabaseAdmin.storage
       .from('videos-estoque')
