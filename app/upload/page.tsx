@@ -56,15 +56,20 @@ export default function UploadPage() {
         return;
       }
 
+      // 2. Pegar o usuário logado real para a Foreign Key (Zequinha Logic)
+      const { data: { user } } = await supabase.auth.getUser();
+      const vendedorId = user?.id || "00000000-0000-0000-0000-000000000000";
+
       // 3. Chamar sua API de análise com a nova URL que o backend devolveu
       const response = await fetch('/api/analyze', {
         method: 'POST',
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
           videoUrl: videoUrl, 
-          vendedorId: "00000000-0000-0000-0000-000000000000" // Fake UID para teste
+          vendedorId: vendedorId
         })
       });
+
 
       const data = await response.json();
       if (data.success) {
