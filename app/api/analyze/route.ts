@@ -57,8 +57,10 @@ export async function POST(req: NextRequest) {
     // 5. Gerar Embedding para busca no WhatsApp (RAG)
     const summaryForEmbedding = `${parsedData.marca} ${parsedData.modelo} ${parsedData.versao} ${parsedData.detalhes_inspecao} ${parsedData.tags_busca}`;
     const embedding = await generateEmbedding(summaryForEmbedding);
+    console.log("Final Embedding Length to Supabase:", embedding.length);
 
     // 6. Prepare data for Supabase
+
     const vehicleToInsert = {
       ...parsedData,
       video_url: videoUrl,
