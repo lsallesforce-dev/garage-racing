@@ -4,7 +4,7 @@ const apiKey = process.env.GEMINI_API_KEY!;
 const genAI = new GoogleGenerativeAI(apiKey);
 
 export const geminiPro = genAI.getGenerativeModel({
-  model: "gemini-2.5-flash",
+  model: "gemini-1.5-flash",
   generationConfig: {
     temperature: 0.2,
     responseMimeType: "application/json",
@@ -24,7 +24,7 @@ Siga estas diretrizes:
 O retorno deve ser estritamente em JSON seguindo o schema da tabela 'veiculos'.`,
 });
 
-export const embedModel = genAI.getGenerativeModel({ model: "text-embedding-004" });
+export const embedModel = genAI.getGenerativeModel({ model: "embedding-001" });
 
 export async function generateEmbedding(text: string) {
   const result = await embedModel.embedContent(text);
@@ -32,7 +32,7 @@ export async function generateEmbedding(text: string) {
 }
 
 export const geminiFlashSales = genAI.getGenerativeModel({
-  model: "gemini-2.5-flash",
+  model: "gemini-1.5-flash",
   generationConfig: {
     temperature: 0.7,
   },
