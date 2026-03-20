@@ -24,7 +24,7 @@ Siga estas diretrizes:
 O retorno deve ser estritamente em JSON seguindo o schema da tabela 'veiculos'.`,
 });
 
-export const embedModel = genAI.getGenerativeModel({ model: "text-embedding-004" }); // Tentando novamente sem o v1beta se possível, ou fallback se falhar
+export const embedModel = genAI.getGenerativeModel({ model: "gemini-embedding-2-preview" });
 
 export async function generateEmbedding(text: string) {
   const result = await embedModel.embedContent(text);
