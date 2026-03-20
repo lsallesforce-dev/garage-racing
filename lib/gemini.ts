@@ -5,7 +5,7 @@ const genAI = new GoogleGenerativeAI(apiKey);
 
 export const geminiPro = genAI.getGenerativeModel(
   {
-    model: "gemini-2.0-flash-001", // Versão estável do 2.0 para contas pagas
+    model: "gemini-1.5-flash-latest", 
     generationConfig: {
       temperature: 0.2,
       responseMimeType: "application/json",
@@ -28,8 +28,8 @@ O retorno deve ser estritamente em JSON seguindo o schema da tabela 'veiculos'.`
 );
 
 export const embedModel = genAI.getGenerativeModel(
-  { model: "gemini-embedding-2-preview" },
-  { apiVersion: "v1beta" }
+  { model: "text-embedding-004" },
+  { apiVersion: "v1" }
 );
 
 export async function generateEmbedding(text: string) {
@@ -39,7 +39,7 @@ export async function generateEmbedding(text: string) {
 
 export const geminiFlashSales = genAI.getGenerativeModel(
   {
-    model: "gemini-2.0-flash-001",
+    model: "gemini-1.5-flash-latest",
     generationConfig: {
       temperature: 0.7,
     },
@@ -54,6 +54,7 @@ Diretrizes de Resposta:
   },
   { apiVersion: "v1" }
 );
+
 
 
 
