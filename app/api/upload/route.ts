@@ -27,16 +27,20 @@ export async function POST(req: NextRequest) {
     const baseName = file.name.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9]/g, '_');
     const fileName = `${Date.now()}-${baseName}.${extension}`;
 
+    // Convert File to Buffer for reliable backend upload
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
     // 2. Upload seguro via Backend (Bypass total de RLS/Signature no Servidor)
     const { data, error } = await supabaseAdmin.storage
       .from('videos-estoque')
-      .upload(fileName, file, {
+      .upload(fileName, buffer, {
         contentType: file.type,
         upsert: true
       });
 
     if (error) {
-      console.error("Storage Error:", error);
+      console.error("Storage Error detail:", error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
