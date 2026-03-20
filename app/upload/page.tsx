@@ -38,29 +38,30 @@ export default function UploadPage() {
     setResultadoAnalise(null);
 
     try {
-      // 1. Subir para o Supabase Storage (Bucket: videos-estoque)
-      const fileName = `${Date.now()}-${file.name}`;
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('videos-estoque')
-        .upload(fileName, file);
+      // 1. Subir para o nosso Proxy de Upload (Bypass de Signature/RLS)
+      const formData = new FormData();
+      formData.append("file", file);
 
-      if (uploadError) {
-        console.error("Upload error:", uploadError);
-        alert("Erro no upload: " + uploadError.message);
+      const uploadResponse = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData
+      });
+
+      const uploadData = await uploadResponse.json();
+      const videoUrl = uploadData.videoUrl;
+
+      if (!uploadResponse.ok || !videoUrl) {
+        console.error("Upload error:", uploadData.error);
+        alert("Erro no upload: " + (uploadData.error || "Erro desconhecido"));
         return;
       }
 
-      // 2. Pegar a URL pública do arquivo
-      const { data: { publicUrl } } = supabase.storage
-        .from('videos-estoque')
-        .getPublicUrl(fileName);
-
-      // 3. Chamar sua API de análise com a nova URL
+      // 3. Chamar sua API de análise com a nova URL que o backend devolveu
       const response = await fetch('/api/analyze', {
         method: 'POST',
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
-          videoUrl: publicUrl, 
+          videoUrl: videoUrl, 
           vendedorId: "00000000-0000-0000-0000-000000000000" // Fake UID para teste
         })
       });
