@@ -18,4 +18,7 @@ export interface Vehicle {
   embedding?: number[];
   created_at?: string;
   vendedor_id: string;
+  condicao?: string;
+  local?: string;
+  parcelas?: string;
 }

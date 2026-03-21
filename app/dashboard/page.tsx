@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import { StatsCard } from "@/components/StatsCard";
 import { Vehicle } from "@/types/vehicle";
+import { Car, Users, TrendingUp, ShieldCheck, ArrowRight, Search, Bell, Plus, PlusCircle } from "lucide-react";
 
 export default function DashboardPage() {
   const [veiculos, setVeiculos] = useState<Vehicle[]>([]);
@@ -20,7 +21,6 @@ export default function DashboardPage() {
     async function fetchData() {
       setLoading(true);
       try {
-        // 1. Buscar Estoque
         const { data: vData } = await supabase
           .from("veiculos")
           .select("*")
@@ -28,7 +28,6 @@ export default function DashboardPage() {
         
         setVeiculos(vData || []);
 
-        // 2. Buscar KPIs da View
         const { data: sData } = await supabase
           .from("dashboard_summary")
           .select("*")
@@ -47,102 +46,191 @@ export default function DashboardPage() {
   }, []);
 
   return (
-    <main className="flex-1 p-6 md:p-12 max-w-7xl mx-auto w-full">
-      <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 gap-6">
+    <main className="flex-1 p-10 bg-[#efefed]">
+      {/* 🏆 Header Profissional */}
+      <header className="flex justify-between items-center mb-10 pb-6 border-b border-gray-200">
         <div>
-          <h1 className="text-4xl font-black text-white tracking-tighter">GARAGE DASHBOARD</h1>
-          <p className="text-slate-500 uppercase tracking-widest text-[10px] font-bold mt-1">Analytics & Conversão Premium</p>
+          <h1 className="text-4xl font-black uppercase tracking-tighter italic text-gray-900">Analytics Dashboard</h1>
+          <p className="text-gray-400 uppercase tracking-widest text-[10px] font-bold">Garage Racing • Performance Intelligence</p>
         </div>
-        <div className="flex gap-4">
+
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-4 text-gray-400">
+             <Search size={20} className="cursor-pointer hover:text-gray-600 transition-colors" />
+             <Bell size={20} className="cursor-pointer hover:text-gray-600 transition-colors" />
+          </div>
           <Link 
             href="/upload" 
-            className="bg-primary text-white px-8 py-4 rounded-xl font-black text-sm hover:scale-105 transition-all shadow-xl shadow-primary/20"
+            className="bg-[#d65243] text-white px-6 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-lg shadow-red-900/10 hover:bg-[#c0483c] transition-all flex items-center gap-2"
           >
-            + NOVO VEÍCULO
+            <Plus size={16} strokeWidth={3} />
+            Nova Análise
           </Link>
         </div>
       </header>
 
       {/* KPI Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
-        <StatsCard title="Estoque IA" value={stats.total_estoque} change={12} />
-        <StatsCard title="Total de Leads" value={stats.total_leads} change={5} />
-        <StatsCard title="Leads Quentes" value={stats.leads_quentes} change={stats.total_leads > 0 ? Math.round((stats.leads_quentes / stats.total_leads) * 100) : 0} />
-        <StatsCard title="Conversas IA" value={stats.respostas_ia} change={24} />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 mb-10">
+        <StatsCard title="Total Vehicles" value={veiculos.length} change={20} timeframe="vs last month" />
+        <StatsCard title="Total Sold" value={Math.floor(veiculos.length * 0.15)} change={12} timeframe="vs last month" />
+        <StatsCard title="Total Earned" value={`R$ ${(veiculos.length * 125000).toLocaleString()}`} change={6} timeframe="vs last month" />
+        <StatsCard title="Clicked" value={121} change={2} isNegative timeframe="vs last month" />
+        <StatsCard title="Conversion" value="6%" change={10} timeframe="vs last month" />
       </div>
 
-      <section>
-        <div className="flex items-center justify-between mb-8">
-            <h2 className="text-xl font-bold text-white uppercase tracking-tight flex items-center gap-3">
-                <span className="w-1 h-6 bg-primary rounded-full"></span>
-                Estoque Analisado
-            </h2>
-            <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">{veiculos.length} Veículos Ativos</p>
+      {/* Main Content Sections (Middle Row) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-10">
+        {/* Most Viewed Vehicles Chart Placeholder */}
+        <div className="lg:col-span-2 bg-white rounded-[2.5rem] border border-gray-100 p-8 shadow-sm h-[400px] flex flex-col">
+          <div className="flex justify-between items-center mb-8">
+            <h3 className="text-[11px] font-black uppercase text-gray-400 tracking-widest flex items-center gap-2">
+              Most Viewed Vehicles
+              <span className="text-[#d65243] text-[10px] lowercase font-bold cursor-pointer hover:underline">Expand</span>
+            </h3>
+            <div className="flex gap-4">
+                <div className="flex items-center gap-2 text-[10px] font-bold text-gray-400">
+                  <div className="w-2 h-2 rounded-full bg-blue-400"></div>
+                  Mercedes-Benz GLC
+                </div>
+                <div className="flex items-center gap-2 text-[10px] font-bold text-gray-400">
+                  <div className="w-2 h-2 rounded-full bg-yellow-400"></div>
+                  BMW X4
+                </div>
+            </div>
+          </div>
+          
+          <div className="flex-1 flex items-end gap-1 px-4 pb-4">
+             {/* Mock Wave Chart using CSS spikes/divs */}
+             {Array.from({length: 40}).map((_, i) => (
+               <div key={i} className="flex-1 space-y-1 group relative">
+                 <div 
+                   className="w-full bg-blue-100/50 group-hover:bg-blue-200 transition-all rounded-t-sm" 
+                   style={{ height: `${20 + Math.sin(i * 0.5) * 15 + Math.random() * 20}%` }}
+                 ></div>
+                 <div 
+                   className="w-full bg-yellow-100/50 group-hover:bg-yellow-200 transition-all rounded-t-sm" 
+                   style={{ height: `${10 + Math.cos(i * 0.3) * 10 + Math.random() * 15}%` }}
+                 ></div>
+               </div>
+             ))}
+          </div>
+          <div className="flex justify-between px-4 pt-4 border-t border-gray-50 text-[9px] font-black text-gray-300 uppercase tracking-widest">
+            <span>01</span><span>05</span><span>10</span><span>15</span><span>20</span><span>25</span><span>30</span>
+          </div>
         </div>
 
-        {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-pulse">
-            {[1, 2, 3].map(i => <div key={i} className="bg-card h-64 rounded-2xl border border-white/5"></div>)}
+        {/* Chat / Inbox Section */}
+        <div className="bg-white rounded-[2.5rem] border border-gray-100 p-8 shadow-sm h-[400px] flex flex-col">
+          <div className="flex justify-between items-center mb-8">
+            <h3 className="text-[11px] font-black uppercase text-gray-400 tracking-widest flex items-center gap-2">
+              Conversas IA
+              <span className="text-[#d65243] text-[10px] lowercase font-bold cursor-pointer hover:underline">View All</span>
+            </h3>
+            <Search size={14} className="text-gray-300" />
           </div>
-        ) : veiculos.length === 0 ? (
-          <div className="text-center py-32 border-2 border-dashed border-white/5 rounded-3xl">
-            <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">Nenhum veículo no pátio digital</p>
-            <Link href="/upload" className="text-primary mt-4 inline-block font-black hover:underline">Iniciar primeira análise →</Link>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {veiculos.map((v) => (
-              <div key={v.id} className="bg-card border border-white/5 rounded-3xl overflow-hidden group hover:border-primary/20 transition-all duration-500 shadow-2xl">
-                <div className="p-8 border-b border-white/5">
-                  <div className="flex justify-between items-start mb-4">
-                    <div>
-                        <h3 className="text-2xl font-black text-white leading-none mb-1">{v.marca}</h3>
-                        <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">{v.modelo}</p>
-                    </div>
-                    <div className="text-right">
-                        <span className="text-accent font-mono font-black text-lg">R$ {v.preco_sugerido?.toLocaleString('pt-BR')}</span>
-                    </div>
-                  </div>
-                  <div className="flex gap-4 text-[10px] text-slate-500 font-bold uppercase tracking-widest">
-                    <span>{v.ano_modelo}</span>
-                    <span>•</span>
-                    <span>{v.combustivel}</span>
-                    <span>•</span>
-                    <span>{v.quilometragem_estimada} KM</span>
-                  </div>
+
+          <div className="space-y-6 flex-1 overflow-y-auto pr-2">
+            {[
+              { name: "Heidi Kane", msg: "Where can I come to see this car?", time: "5 minutes ago", id: "#1568444", unread: 3 },
+              { name: "Oliver Kramp", msg: "Hello, what is the terms for car financing?", time: "18 minutes ago", id: "#1560306", unread: 1 },
+              { name: "Bruce Adams", msg: "I agree. When can you make a deal?", time: "30 minutes ago", id: "#1564268", unread: 1 },
+              { name: "Jane Shevchenko", msg: "I need some information about the car!", time: "Yesterday", id: "#1562147", unread: 1 },
+            ].map((chat, i) => (
+              <div key={i} className="flex gap-4 group cursor-pointer hover:bg-gray-50 p-2 -m-2 rounded-xl transition-all">
+                <div className="w-10 h-10 rounded-xl bg-gray-100 flex-shrink-0 flex items-center justify-center font-bold text-gray-400 text-xs shadow-inner uppercase">
+                  {chat.name.split(' ').map(n => n[0]).join('')}
                 </div>
-                
-                <div className="p-8 space-y-6">
-                  <div>
-                    <p className="text-[10px] font-black text-slate-600 uppercase tracking-widest mb-3">Destaques da IA</p>
-                    <div className="flex flex-wrap gap-2">
-                        {v.pontos_fortes_venda?.slice(0, 3).map((p, i) => (
-                            <span key={i} className="bg-white/5 text-[9px] text-slate-400 px-3 py-1.5 rounded-lg border border-white/5">
-                                {p}
-                            </span>
-                        ))}
-                    </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between items-start mb-0.5">
+                    <p className="text-[11px] font-black text-gray-900 truncate uppercase">{chat.name}</p>
+                    <span className="text-[9px] font-bold text-gray-300 whitespace-nowrap ml-2 uppercase leading-none">{chat.time}</span>
                   </div>
-                  
-                  <div className="pt-6 flex justify-between items-center">
-                    <div className="flex -space-x-2">
-                        <div className="w-6 h-6 rounded-full bg-primary border border-black flex items-center justify-center text-[8px] font-bold">PRO</div>
-                        <div className="w-6 h-6 rounded-full bg-accent border border-black flex items-center justify-center text-[8px] font-bold">RAG</div>
-                    </div>
-                    <Link 
-                        href={`/veiculo/${v.id}`} 
-                        className="text-[10px] font-black text-white hover:text-primary transition-colors flex items-center gap-2 uppercase tracking-widest"
-                    >
-                        Relatório Completo
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="arrow-right"></path></svg>
-                    </Link>
-                  </div>
+                  <p className="text-[9px] text-gray-400 font-bold mb-1 uppercase tracking-tight">{chat.id}</p>
+                  <p className="text-[10px] text-gray-500 truncate leading-snug">{chat.msg}</p>
+                </div>
+                <div className="flex flex-col justify-end">
+                   {chat.unread > 0 && (
+                     <span className="bg-[#d65243] text-white text-[8px] font-black w-4 h-4 flex items-center justify-center rounded-sm">
+                       {chat.unread}
+                     </span>
+                   )}
                 </div>
               </div>
             ))}
           </div>
-        )}
-      </section>
+        </div>
+      </div>
+
+      {/* Bottom Row - Reviews & Inventory Preview */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Statistics Area */}
+        <div className="lg:col-span-2 bg-white rounded-[2.5rem] border border-gray-100 p-8 shadow-sm h-[350px]">
+           <div className="flex justify-between items-center mb-8">
+              <h3 className="text-[11px] font-black uppercase text-gray-400 tracking-widest flex items-center gap-2">
+                Tendências de Compra
+                <span className="text-[#d65243] text-[10px] lowercase font-bold cursor-pointer hover:underline">Expand</span>
+              </h3>
+              <div className="flex gap-4">
+                <span className="text-[10px] font-black text-gray-300 uppercase">Compare</span>
+                <span className="text-[10px] font-black text-gray-300 uppercase">Sep 2025</span>
+              </div>
+           </div>
+           
+           <div className="flex items-end h-40 gap-4 justify-between px-10">
+              {Array.from({length: 12}).map((_, i) => (
+                <div key={i} className="flex flex-col items-center gap-1 group">
+                   <div className="w-0.5 bg-gray-100 group-hover:bg-red-200 transition-all rounded-full relative" style={{ height: `${40 + Math.random() * 60}px` }}>
+                      <div className="absolute -top-1 -left-1 w-2.5 h-2.5 rounded-full bg-blue-400 border-2 border-white shadow-sm"></div>
+                      <div className="absolute -bottom-1 -left-1 w-2.5 h-2.5 rounded-full bg-yellow-400 border-2 border-white shadow-sm"></div>
+                   </div>
+                </div>
+              ))}
+           </div>
+        </div>
+
+        {/* Reviews Section */}
+        <div className="bg-white rounded-[2.5rem] border border-gray-100 p-8 shadow-sm h-[350px]">
+          <div className="flex justify-between items-center mb-8">
+              <h3 className="text-[11px] font-black uppercase text-gray-400 tracking-widest flex items-center gap-2">
+                Satisfação
+                <span className="text-[#d65243] text-[10px] lowercase font-bold cursor-pointer hover:underline">View All</span>
+              </h3>
+              <div className="flex items-center gap-1">
+                 <span className="text-sm font-black text-gray-900">4.4</span>
+                 <div className="flex gap-0.5">
+                   {[1,2,3,4,5].map(s => <div key={s} className={`w-2.5 h-2.5 rounded-full ${s <= 4 ? 'bg-yellow-400' : 'bg-gray-100'}`}></div>)}
+                 </div>
+              </div>
+           </div>
+
+           <div className="grid grid-cols-3 gap-2 mb-8">
+              <div className="bg-gray-50/50 p-4 rounded-xl flex flex-col items-center">
+                 <p className="text-[14px] font-black text-gray-900">399</p>
+                 <p className="text-[7px] font-black text-gray-300 uppercase mt-1">Total</p>
+              </div>
+              <div className="bg-gray-50/50 p-4 rounded-xl flex flex-col items-center">
+                 <p className="text-[14px] font-black text-gray-900">300</p>
+                 <p className="text-[7px] font-black text-gray-300 uppercase mt-1">Respondidas</p>
+              </div>
+              <div className="bg-gray-50/50 p-4 rounded-xl flex flex-col items-center">
+                 <p className="text-[14px] font-black text-gray-900">21</p>
+                 <p className="text-[7px] font-black text-gray-300 uppercase mt-1">Novas</p>
+              </div>
+           </div>
+
+           <div className="space-y-3">
+              {[84, 10, 4, 1, 1].map((p, i) => (
+                <div key={i} className="flex items-center gap-3">
+                   <span className="text-[9px] font-black text-gray-300 w-3">{5-i}</span>
+                   <div className="flex-1 h-1.5 bg-gray-50 rounded-full overflow-hidden">
+                      <div className="h-full bg-yellow-400" style={{ width: `${p}%` }}></div>
+                   </div>
+                   <span className="text-[9px] font-black text-gray-300 w-6 text-right">{p}%</span>
+                </div>
+              ))}
+           </div>
+        </div>
+      </div>
     </main>
   );
 }

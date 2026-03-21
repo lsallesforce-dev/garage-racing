@@ -1,37 +1,46 @@
-import React from 'react';
+"use client";
+
+import { ArrowUpRight, ArrowDownRight } from "lucide-react";
 
 interface StatsCardProps {
   title: string;
   value: string | number;
-  change?: number;
+  change: number;
   icon?: React.ReactNode;
+  timeframe?: string;
+  isNegative?: boolean;
 }
 
-export const StatsCard = ({ title, value, change, icon }: StatsCardProps) => (
-  <div className="bg-[#161616] border border-white/5 p-6 rounded-2xl shadow-2xl relative overflow-hidden group hover:border-white/10 transition-all duration-500">
-    <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-      {icon}
-    </div>
-    
-    <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.2em] mb-2">{title}</p>
-    
-    <div className="flex items-end justify-between">
-      <h3 className="text-3xl font-black text-white tracking-tighter">{value}</h3>
-      {change !== undefined && (
-        <div className={`flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full ${
-          change >= 0 ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'
-        }`}>
-          <span>{change >= 0 ? '↑' : '↓'}</span>
-          <span>{Math.abs(change)}%</span>
-        </div>
-      )}
-    </div>
+export const StatsCard = ({ 
+  title, 
+  value, 
+  change, 
+  icon, 
+  timeframe = "vs last month", 
+  isNegative = false 
+}: StatsCardProps) => {
+  return (
+    <div className="bg-white p-6 rounded-sm shadow-sm border border-gray-100 flex flex-col justify-between h-44">
+      <div className="flex justify-between items-start">
+        <h3 className="text-[11px] font-bold text-gray-400 uppercase tracking-widest leading-none">
+          {title}
+        </h3>
+        {icon && <div className="text-gray-200">{icon}</div>}
+      </div>
+      
+      <div className="mt-4">
+        <p className="text-4xl font-black text-gray-900 tracking-tight leading-none">
+          {value}
+        </p>
+      </div>
 
-    <div className="mt-4 h-1 w-full bg-white/5 rounded-full overflow-hidden">
-        <div 
-            className={`h-full rounded-full transition-all duration-1000 ${change && change > 0 ? 'bg-primary' : 'bg-accent'}`} 
-            style={{ width: '65%' }}
-        ></div>
+      <div className="mt-auto flex items-center gap-2">
+        <div className={`flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${isNegative ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
+          {isNegative ? <ArrowDownRight size={10} /> : <ArrowUpRight size={10} />}
+          {change}%
+        </div>
+        <span className="text-[9px] font-bold text-gray-300 uppercase tracking-widest">{timeframe}</span>
+      </div>
     </div>
-  </div>
-);
+  );
+};

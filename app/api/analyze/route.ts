@@ -20,15 +20,32 @@ export async function POST(req: NextRequest) {
     }
     const videoBuffer = await videoResp.arrayBuffer();
 
-    // 2. Prompt de Engenharia
-    const promptSistema = `Você é um Engenheiro Automotivo sênior. Analise este vídeo de inspeção veicular. 
-    Retorne estritamente um JSON puro (sem markdown) com os seguintes campos:
-    marca (string), modelo (string), versao (string), ano_fabricacao (number), ano_modelo (number), cor (string), 
-    quilometragem_estimada (number ou 0 se não souber), combustivel (string), preco_sugerido (number ou 0 se não souber), 
-    opcionais (array de strings), pontos_fortes_venda (array de strings), detalhes_inspecao (string), 
-    transcricao_vendedor (string), tags_busca (string).
+    // 2. PROMPT DE ENGENHARIA "SUPER AVALIADOR MULTIMODAL"
+    const promptSistema = `Você é o Avaliador Chefe da Garage Racing. Analise o VÍDEO e o ÁUDIO.
+    
+    CRITÉRIOS DE ELITE:
+    1. AMBIENTE: Identifique se é "CONCESSIONÁRIA" (Showroom, luz forte, banners) ou "PÁTIO/RUA".
+    2. CONDIÇÃO: Identifique se é "0KM" (fala do vendedor, pneus novos, sem placa) ou "USADO".
+    3. ESCUTA ATIVA: O vendedor citou valores? (Ex: R$ 488,00 de parcela, consórcio, bônus). Extraia exatamente o que foi dito no áudio.
+    4. TÉCNICO: Se for Moto, cite cilindrada, torque, estilo (Naked, Sport). Se for Carro, cite tração, acessórios e opcionais.
+    5. MARKETING: Não diga "não tem riscos". Diga "Pintura com brilho original de fábrica", "Ciclística agressiva", "Oportunidade única".
 
-    IMPORTANTE: Para campos numéricos (ano, quilometragem, preço), retorne APENAS o número. Se não souber, retorne 0.`;
+    RETORNE APENAS JSON PURO:
+    {
+      "marca": "string",
+      "modelo": "string",
+      "versao": "string",
+      "ano_modelo": number,
+      "condicao": "0KM ou USADO",
+      "local": "CONCESSIONÁRIA ou PÁTIO",
+      "preco_sugerido": number,
+      "parcelas": "string (ex: A partir de R$ 488 no consórcio)",
+      "quilometragem_estimada": number,
+      "pontos_fortes_venda": ["string", "string", "string"],
+      "detalhes_inspecao": "Relatório técnico-comercial rico e persuasivo.",
+      "transcricao_vendedor": "string",
+      "tags_busca": "string"
+    }`;
 
     const result = await geminiPro.generateContent([
       promptSistema,
@@ -58,10 +75,12 @@ export async function POST(req: NextRequest) {
     // 4. Coerção de Dados
     const parsedData = {
       ...carData,
-      ano_fabricacao: parseInt(String(carData.ano_fabricacao).replace(/\D/g, "")) || null,
       ano_modelo: parseInt(String(carData.ano_modelo).replace(/\D/g, "")) || null,
       quilometragem_estimada: parseInt(String(carData.quilometragem_estimada).replace(/\D/g, "")) || 0,
       preco_sugerido: parseFloat(String(carData.preco_sugerido).replace(/[^\d.]/g, "")) || 0,
+      condicao: String(carData.condicao || "USADO"),
+      local: String(carData.local || "PÁTIO"),
+      parcelas: String(carData.parcelas || ""),
     };
 
     // 5. Gerar Embedding para RAG
