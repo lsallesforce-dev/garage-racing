@@ -1,158 +1,215 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { PlusSquare, Search, Users, Car, ArrowRight, CheckCircle, Edit, Trash2 } from "lucide-react";
-import Link from "next/link";
+import { Flame, TrendingUp, Users, Car, Zap, Brain, LayoutDashboard } from "lucide-react";
 import { useRouter } from "next/navigation";
 
-export default function HomePage() {
-  const router = useRouter(); // 🏎️ Navegação profissional do Next.js
-  const [veiculos, setVeiculos] = useState<any[]>([]);
+export default function Dashboard() {
+  const router = useRouter();
+  const [stats, setStats] = useState({
+    faturamento: 0,
+    leadsTotais: 0,
+    eficienciaIA: 0,
+    carrosPatio: 0,
+    frios: 0,
+    mornos: 0,
+    quentes: 0
+  });
+  const [atividades, setAtividades] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const carregarEstoque = async () => {
-      const { data } = await supabase
-        .from('veiculos')
-        .select('*')
-        .order('created_at', { ascending: false });
+  // Flash: Função que puxa a realidade do banco de dados
+  const carregarDashboard = async () => {
+    setLoading(true);
+    try {
+        // 1. Faturamento (Soma de carros VENDIDOS)
+        // Usando preco_sugerido conforme schema do banco
+        const { data: vendidos } = await supabase.from('veiculos').select('preco_sugerido').eq('status_venda', 'VENDIDO');
+        const totalFaturado = vendidos?.reduce((acc, curr) => acc + Number(curr.preco_sugerido || 0), 0) || 0;
 
-      if (data) setVeiculos(data);
-      setLoading(false);
-    };
-    carregarEstoque();
-  }, []);
+        // 2. Leads e Temperaturas
+        const { data: leads } = await supabase.from('leads').select('status');
+        const contagem = {
+        total: leads?.length || 0,
+        frios: leads?.filter(l => l.status === 'FRIO').length || 0,
+        mornos: leads?.filter(l => l.status === 'MORNO').length || 0,
+        quentes: leads?.filter(l => l.status === 'QUENTE').length || 0,
+        };
 
-  // 🗑️ Função para deletar o veículo do pátio
-  const handleExcluirVeiculo = async (id: string) => {
-    if (confirm("⚠️ Tem certeza que deseja remover este veículo do estoque? Esta ação é permanente.")) {
-      const { error } = await supabase.from('veiculos').delete().eq('id', id);
-      if (!error) {
-        // Atualiza a lista na tela na hora
-        setVeiculos(prev => prev.filter(v => v.id !== id));
-      } else {
-        alert("Erro ao remover veículo.");
-      }
+        // 3. Carros no Pátio (DISPONÍVEIS)
+        const { count: totalPatio } = await supabase
+            .from('veiculos')
+            .select('*', { count: 'exact', head: true })
+            .or('status_venda.eq.DISPONIVEL,status_venda.is.null');
+
+        // 4. Atividades Recentes (Movimentação)
+        const { data: recents } = await supabase
+        .from('leads')
+        .select('*, veiculos(modelo)')
+        .order('updated_at', { ascending: false })
+        .limit(5);
+
+        setStats({
+        faturamento: totalFaturado,
+        leadsTotais: contagem.total,
+        eficienciaIA: contagem.total > 0 ? Math.round((contagem.quentes / contagem.total) * 100) : 0,
+        carrosPatio: totalPatio || 0,
+        frios: contagem.frios,
+        mornos: contagem.mornos,
+        quentes: contagem.quentes
+        });
+        if (recents) setAtividades(recents);
+    } catch (error) {
+        console.error("Flash Error:", error);
+    } finally {
+        setLoading(false);
     }
   };
 
-  // ✍️ Função para editar o veículo
-  const handleEditarVeiculo = (carro: any) => {
-    // Agora ele redireciona direto para a página do veículo usando o ID do pátio
-    router.push(`/veiculo/${carro.id}`);
-  };
+  useEffect(() => {
+    carregarDashboard();
+  }, []);
 
   return (
-    <main className="flex-1 p-10 bg-[#efefed]">
-      {/* 🏆 Header Enxuto */}
-      <header className="flex justify-between items-center mb-10">
-        <div>
-          <h1 className="text-4xl font-black uppercase tracking-tighter italic text-gray-900">Pátio Digital</h1>
-          <p className="text-gray-400 uppercase tracking-widest text-[9px] font-bold italic">Gestão de Estoque e Leads em Tempo Real</p>
+    <div className="p-8 bg-[#f4f4f2] min-h-screen font-sans overflow-y-auto w-full">
+      <div className="max-w-7xl mx-auto">
+        {/* Flash: Header com Título e Botões de Ação */}
+        <div className="flex justify-between items-end mb-12">
+            <div>
+            <h1 className="text-6xl font-black italic uppercase text-gray-300/80 leading-none mb-2 tracking-tighter">Radar do Pátio</h1>
+            <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-gray-400">Bem-vindo à Garage Racing, Comandante.</p>
+            </div>
+            <div className="flex gap-4">
+            <button className="px-6 py-4 bg-white rounded-3xl text-[10px] font-black uppercase border border-gray-100 shadow-sm hover:bg-gray-50 transition-all">Exportar Relatórios</button>
+            <button className="px-6 py-4 bg-slate-900 text-white rounded-3xl text-[10px] font-black uppercase shadow-xl shadow-slate-200 hover:bg-red-600 transition-all">Configurações</button>
+            </div>
         </div>
-        
-        <Link href="/upload" className="flex items-center gap-2 px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-black uppercase text-[10px] tracking-widest rounded-xl transition-all shadow-lg shadow-red-600/20">
-          <PlusSquare size={16} /> Adicionar Veículo
-        </Link>
-      </header>
 
-      {/* 📊 Cards de Foco Operacional */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-        <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm">
-          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 font-black">Veículos no Pátio</p>
-          <h3 className="text-5xl font-black tracking-tighter text-gray-900">{veiculos.length}</h3>
+        {/* Flash: Cards de Performance (Telemetria) */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <div className="bg-slate-900 p-8 rounded-[2.5rem] text-white shadow-2xl relative overflow-hidden group">
+            <div className="absolute -right-4 -top-4 text-white/5 group-hover:text-white/10 transition-colors">
+                <TrendingUp size={120} />
+            </div>
+            <p className="text-[9px] font-black uppercase tracking-widest text-gray-500 mb-1">Faturamento (Pátio)</p>
+            <h4 className="text-3xl font-black italic tracking-tighter">
+                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', notation: 'compact' }).format(stats.faturamento)}
+            </h4>
+            <p className="text-[9px] text-green-400 font-bold uppercase mt-2 italic">↑ Performance Estável</p>
+            </div>
+            
+            <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm hover:shadow-lg transition-all">
+            <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Eficiencia IA (Lucas)</p>
+            <h4 className="text-4xl font-black italic tracking-tighter">{stats.eficienciaIA}%</h4>
+            <p className="text-[9px] text-slate-900 font-bold uppercase mt-2 italic">Conversão p/ Quente</p>
+            </div>
+
+            <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm hover:shadow-lg transition-all">
+            <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Total de Leads</p>
+            <h4 className="text-4xl font-black italic tracking-tighter">{stats.leadsTotais}</h4>
+            <p className="text-[9px] text-blue-500 font-bold uppercase mt-2 italic">Novas Oportunidades</p>
+            </div>
+
+            <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm hover:shadow-lg transition-all">
+            <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Carros em Pátio</p>
+            <h4 className="text-4xl font-black italic tracking-tighter">{stats.carrosPatio}</h4>
+            <p className="text-[9px] text-orange-500 font-bold uppercase mt-2 italic">Giro de Estoque</p>
+            </div>
         </div>
-        <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm">
-          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 font-black">Leads Quentes (WhatsApp)</p>
-          <h3 className="text-5xl font-black tracking-tighter text-red-600">4</h3>
+
+        {/* Flash: Termômetro de Leads */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+            <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 hover:shadow-md transition-all">
+            <p className="text-[10px] font-black uppercase text-blue-500 mb-1 tracking-widest">Leads Frios</p>
+            <h4 className="text-3xl font-black italic tracking-tighter">{stats.frios}</h4>
+            <p className="text-[9px] text-gray-400 font-bold uppercase mt-2">Apenas Curiosos</p>
+            </div>
+            <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 hover:shadow-md transition-all">
+            <p className="text-[10px] font-black uppercase text-amber-500 mb-1 tracking-widest">Interesse Real</p>
+            <h4 className="text-3xl font-black italic tracking-tighter">{stats.mornos}</h4>
+            <p className="text-[9px] text-gray-400 font-bold uppercase mt-2">Simulando Troca</p>
+            </div>
+            <div className="bg-white p-8 rounded-[2.5rem] border-2 border-red-100 bg-red-50/20 hover:scale-[1.02] transition-all">
+            <p className="text-[10px] font-black uppercase text-red-600 mb-1 tracking-widest text-left">🔥 Oportunidade</p>
+            <h4 className="text-3xl font-black italic text-red-600 tracking-tighter">{stats.quentes}</h4>
+            <p className="text-[9px] text-red-600/60 font-bold uppercase mt-2">Visita Agendada</p>
+            </div>
         </div>
-        <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm">
-          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 font-black">Vendedores Ativos</p>
-          <h3 className="text-5xl font-black tracking-tighter text-red-600">12</h3>
+
+        {/* Flash: Movimentação ao Vivo */}
+        <div className="bg-white p-10 rounded-[3rem] border border-gray-100 shadow-sm">
+            <div className="flex justify-between items-center mb-8">
+            <h3 className="text-2xl font-black uppercase italic text-gray-300">Movimentação no Pátio</h3>
+            <span className="flex items-center gap-2 text-[10px] font-black text-red-600 uppercase tracking-widest">
+                <span className="w-2 h-2 bg-red-600 rounded-full animate-ping"></span> Ao Vivo
+            </span>
+            </div>
+
+            <div className="grid gap-3">
+            {!loading ? (
+                atividades.length > 0 ? atividades.map((lead) => (
+                    <div key={lead.id} className="flex flex-col md:flex-row md:items-center justify-between p-6 hover:bg-gray-50/50 rounded-3xl transition-all border border-transparent hover:border-gray-100 group">
+                    <div className="flex items-center gap-6 min-w-[200px]">
+                        <div className={`w-3 h-3 rounded-full ${lead.status === 'QUENTE' ? 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]' : 'bg-blue-400'}`}></div>
+                        <div>
+                        <p className="text-sm font-black uppercase tracking-tight">{lead.nome || "Lead Interessado"}</p>
+                        <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">De olho: <span className="text-red-600">{lead.veiculos?.modelo || "Maquinário"}</span></p>
+                        </div>
+                    </div>
+                    <p className="text-[11px] text-gray-500 italic flex-1 md:px-12 py-3 md:py-0 truncate max-w-[500px]">
+                        "{lead.resumo_negociacao || "O Lucas (IA) está qualificando o interesse..."}"
+                    </p>
+                    <button 
+                        onClick={() => router.push(`/veiculo/${lead.veiculo_id}`)}
+                        className="px-6 py-3 bg-slate-100 rounded-2xl text-[9px] font-black uppercase hover:bg-red-600 hover:text-white transition-all tracking-widest"
+                    >
+                        Detalhes
+                    </button>
+                    </div>
+                )) : (
+                    <div className="py-20 text-center bg-gray-50/50 rounded-3xl border-2 border-dashed border-gray-100 flex flex-col items-center">
+                        <Zap size={32} className="text-gray-200 mb-4" />
+                        <p className="text-[10px] text-gray-300 uppercase font-black tracking-[0.2em]">Aguardando as primeiras interações da IA hoje...</p>
+                    </div>
+                )
+            ) : (
+                <div className="py-20 text-center flex flex-col items-center">
+                    <div className="w-8 h-8 border-4 border-gray-100 border-t-red-600 rounded-full animate-spin mb-4"></div>
+                </div>
+            )}
+            </div>
+        </div>
+
+        {/* Shortcuts Section */}
+        <div className="mt-12 grid grid-cols-1 md:grid-cols-2 gap-6 pb-12">
+            <button 
+                onClick={() => router.push('/upload')}
+                className="p-8 bg-white rounded-[2.5rem] border border-gray-100 shadow-sm flex items-center justify-between group hover:border-red-600/30 transition-all"
+            >
+                <div>
+                   <h4 className="text-lg font-black uppercase italic tracking-tighter text-left">Cadastrar Veículo</h4>
+                   <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Analisar novo vídeo IA</p>
+                </div>
+                <div className="bg-gray-50 p-4 rounded-2xl group-hover:bg-red-600 group-hover:text-white transition-all">
+                    <Car size={24} />
+                </div>
+            </button>
+
+            <button 
+                onClick={() => router.push('/vitrine')}
+                className="p-8 bg-slate-900 text-white rounded-[2.5rem] shadow-2xl flex items-center justify-between group hover:bg-red-600 transition-all"
+            >
+                <div>
+                   <h4 className="text-lg font-black uppercase italic tracking-tighter text-left">Vitrine Pública</h4>
+                   <p className="text-[10px] text-white/40 font-bold uppercase tracking-widest mt-1">Ver pátio digital ativo</p>
+                </div>
+                <div className="bg-white/10 p-4 rounded-2xl group-hover:bg-white group-hover:text-red-600 transition-all">
+                    <LayoutDashboard size={24} />
+                </div>
+            </button>
         </div>
       </div>
-
-      {/* 🏎️ Listagem de Veículos Real */}
-      <section>
-        <div className="flex justify-between items-end mb-8">
-          <h2 className="text-xs font-black uppercase tracking-[0.3em] text-gray-400">Veículos Analisados Recentemente</h2>
-          <Link href="/dashboard" className="text-[10px] font-black text-red-600 uppercase border-b-2 border-red-600/20 hover:border-red-600 transition-all pb-1">Ver Dashboard Completo</Link>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {loading ? (
-            <div className="col-span-2 text-center py-20 text-gray-300 font-bold uppercase tracking-widest text-xs animate-pulse">Carregando Pátio...</div>
-          ) : veiculos.length > 0 ? (
-            veiculos.slice(0, 10).map((carro) => (
-              <Link
-                key={carro.id}
-                href={`/veiculo/${carro.id}`}
-                className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm hover:shadow-xl transition-all relative overflow-hidden group"
-              >
-                {/* 🛠️ Botões de Gestão (Afastados do preço) */}
-                <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-all transform translate-y-2 group-hover:translate-y-0 z-20">
-                  <button 
-                    onClick={(e) => { e.preventDefault(); handleEditarVeiculo(carro); }}
-                    className="p-2 bg-white/80 backdrop-blur-sm text-gray-400 hover:text-red-600 rounded-xl transition-all border border-gray-100 shadow-sm"
-                    title="Editar Veículo"
-                  >
-                    <Edit size={14} />
-                  </button>
-                  <button 
-                    onClick={(e) => { e.preventDefault(); handleExcluirVeiculo(carro.id); }}
-                    className="p-2 bg-white/80 backdrop-blur-sm text-gray-400 hover:text-red-600 rounded-xl transition-all border border-gray-100 shadow-sm"
-                    title="Excluir do Pátio"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-
-                {/* 🏎️ Conteúdo do Card (Ajustado para não bater nos botões) */}
-                <div className="flex justify-between items-start mb-6 pr-12">
-                  <div>
-                    <h3 className="text-3xl font-black uppercase tracking-tighter leading-none mb-1 text-gray-900 italic">
-                      {carro.marca} {carro.modelo}
-                    </h3>
-                    <p className="text-red-600 font-bold text-[10px] uppercase tracking-widest mt-1">
-                      {carro.versao} • {carro.ano_modelo}
-                    </p>
-                  </div>
-                  
-                  <div className="text-right">
-                    <p className="text-[9px] text-gray-400 font-black uppercase mb-0.5 italic tracking-widest">Preço de Pátio</p>
-                    <p className="text-2xl font-mono font-black text-gray-900 tracking-tighter">
-                      R$ {carro.preco_sugerido?.toLocaleString('pt-BR') || "0"}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap gap-2 mb-8">
-                  {carro.pontos_fortes_venda?.slice(0, 3).map((ponto: string, i: number) => (
-                    <span key={i} className="bg-gray-50 text-[9px] font-black text-gray-400 px-3 py-1.5 rounded-lg border border-gray-100 uppercase tracking-widest">
-                      {ponto}
-                    </span>
-                  ))}
-                </div>
-
-                <div className="flex items-center justify-between pt-6 border-t border-gray-50">
-                   <div className="flex items-center gap-2">
-                      <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
-                      <span className="text-[9px] font-black uppercase text-gray-400 tracking-widest">IA Verificada</span>
-                   </div>
-                   <ArrowRight className="w-4 h-4 text-gray-200 group-hover:text-red-600 group-hover:translate-x-2 transition-all" />
-                </div>
-              </Link>
-            ))
-          ) : (
-            <div className="col-span-2 bg-white/50 border-2 border-dashed border-gray-200 rounded-[2.5rem] p-20 text-center">
-               <Car size={40} className="mx-auto text-gray-200 mb-4" />
-               <p className="text-xs font-black text-gray-400 uppercase tracking-widest">Nenhum veículo no pátio.</p>
-               <Link href="/upload" className="text-red-600 text-[10px] font-black uppercase mt-4 block hover:underline">Fazer Primeira Análise</Link>
-            </div>
-          )}
-        </div>
-      </section>
-    </main>
+    </div>
   );
 }

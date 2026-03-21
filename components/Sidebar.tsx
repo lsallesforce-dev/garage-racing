@@ -1,13 +1,14 @@
 "use client";
 
-import { LayoutDashboard, PlusSquare, MessageSquare, DollarSign, Users, ShieldCheck } from "lucide-react";
+import { LayoutDashboard, PlusSquare, MessageSquare, DollarSign, Users, ShieldCheck, Car } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const menuItems = [
+const menuItems: { icon: any; label: string; href: string; badge?: number }[] = [
   { icon: LayoutDashboard, label: "Pátio Digital", href: "/" },
+  { icon: Car, label: "Estoque Inteligente", href: "/estoque" },
   { icon: PlusSquare, label: "Adicionar Estoque", href: "/upload" },
-  { icon: MessageSquare, label: "Chat IA", href: "/chat", badge: 4 },
+  { icon: MessageSquare, label: "Central de Chat", href: "/chat" },
   { icon: DollarSign, label: "Vendas", href: "/vendas" },
   { icon: Users, label: "Equipe de Vendas", href: "/vendedores" },
 ];

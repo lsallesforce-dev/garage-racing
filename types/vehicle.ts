@@ -5,6 +5,7 @@ export interface Vehicle {
   versao?: string;
   ano_fabricacao?: number;
   ano_modelo?: number;
+  ano?: number; // Alias para ano_modelo, comum em buscas
   cor?: string;
   quilometragem_estimada?: number;
   combustivel?: string;
@@ -21,4 +22,9 @@ export interface Vehicle {
   condicao?: string;
   local?: string;
   parcelas?: string;
+  vendedor_responsavel_id?: string;
+  vendedor_nome?: string;
+  status_venda?: 'DISPONIVEL' | 'VENDIDO';
+  roteiro_pitch?: string;
+  capa_marketing_url?: string;
 }

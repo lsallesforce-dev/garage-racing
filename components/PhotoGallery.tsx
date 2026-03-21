@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { Zap } from "lucide-react";
 
 interface PhotoGalleryProps {
   veiculoId: string;
@@ -92,13 +93,13 @@ export const PhotoGallery = ({ veiculoId, fotos = [], onPhotosUpdated }: PhotoGa
       
       {/* Foto Principal (Destaque) */}
       <div className="w-full h-80 rounded-2xl border-4 border-red-600/30 overflow-hidden mb-4 group cursor-zoom-in relative bg-[#0a0a0a]">
-        {fotos.length > 0 ? (
-          <img 
-            src={selectedPhoto} 
-            alt="Destaque Veículo" 
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-          />
-        ) : (
+      {fotos.length > 0 ? (
+        <img 
+          src={selectedPhoto} 
+          alt="Destaque Veículo" 
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+        />
+      ) : (
           <div className="w-full h-full flex flex-col items-center justify-center text-center p-8">
              <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mb-4 text-gray-700">
                 <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">

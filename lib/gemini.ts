@@ -3,39 +3,29 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 const apiKey = process.env.GEMINI_API_KEY!;
 const genAI = new GoogleGenerativeAI(apiKey);
 
-// Modelo de Visão para análise de vídeo
-export const geminiPro = genAI.getGenerativeModel(
-  { model: "gemini-2.5-flash" },
+// Modelo de Vendas para o WhatsApp
+export const geminiFlashSales = genAI.getGenerativeModel(
+  { model: "gemini-1.5-flash" }, // 1.5-flash é mais estável e garante o "IA OK"
   { apiVersion: "v1beta" }
 );
-
-// Modelo de Embedding para o RAG
-export const embedModel = genAI.getGenerativeModel(
-  { model: "text-embedding-004" } // ✅ suporta outputDimensionality customizado
-);
-
 
 export async function generateEmbedding(text: string) {
   try {
-    console.log("--- Gerando Embedding ---");
+    // Usando a configuração mais estável possível para o embedding de 1536 dimensões
+    const model = genAI.getGenerativeModel(
+      { model: "text-embedding-004" },
+      { apiVersion: 'v1' }
+    );
 
-    const result = await embedModel.embedContent({
-      content: { parts: [{ text }], role: "user" },
-      outputDimensionality: 1536, // ✅ força exatamente 1536 para bater com o Supabase
-    } as any);
+    const result = await model.embedContent({
+      content: { parts: [{ text }] },
+      outputDimensionality: 1536,
+    });
 
-    const values = result.embedding.values;
-    console.log(`Dimensão gerada: ${values.length}`); // deve logar 1536
-    return values;
-
+    return result.embedding.values;
   } catch (error) {
-    console.error("Erro no Embedding:", error);
+    console.error("Erro no embedding:", error);
+    // Fallback: Retorna um vetor de zeros se falhar, para evitar erro 500
     return new Array(1536).fill(0);
   }
 }
-
-// Modelo de Vendas para o WhatsApp
-export const geminiFlashSales = genAI.getGenerativeModel(
-  { model: "gemini-2.5-flash" },
-  { apiVersion: "v1beta" }
-);
