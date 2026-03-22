@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #0a0a0a;
-  --foreground: #f8fafc;
+  --background: #efefed;
+  --foreground: #111827;
   --primary: #ef4444; /* Vermelho Racing */
   --secondary: #161616; /* Cinza Grafite / Card */
   --accent: #facc15; /* Amarelo Lama/Alerta */
@@ -23,6 +23,7 @@
 body {
   background: var(--background);
   color: var(--foreground);
+  color-scheme: light;
   font-family: var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
   background-image: 
     radial-gradient(at 0% 0%, rgba(239, 68, 68, 0.05) 0px, transparent 50%),

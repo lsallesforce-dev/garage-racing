@@ -1,6 +1,8 @@
+"use client";
+
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { Zap } from "lucide-react";
+import { ImagePlus, Stamp } from "lucide-react";
 
 interface PhotoGalleryProps {
   veiculoId: string;
@@ -8,28 +10,91 @@ interface PhotoGalleryProps {
   onPhotosUpdated: (newPhotos: string[]) => void;
 }
 
-export const PhotoGallery = ({ veiculoId, fotos = [], onPhotosUpdated }: PhotoGalleryProps) => {
-  const [selectedPhoto, setSelectedPhoto] = useState(fotos[0] || "/placeholder-car.jpg");
+// Aplica o logo /logo.svg no canto inferior direito via Canvas API (client-side, zero custo)
+async function applyWatermark(file: File): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return reject(new Error("Canvas não suportado"));
+
+    const img = new Image();
+    const logo = new Image();
+
+    img.onload = () => {
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
+
+      logo.onload = () => {
+        const logoW = Math.round(canvas.width * 0.2);
+        const logoH = Math.round(logoW * (logo.height / (logo.width || 1)));
+        const margin = Math.round(canvas.width * 0.025);
+        ctx.globalAlpha = 0.82;
+        ctx.drawImage(
+          logo,
+          canvas.width - logoW - margin,
+          canvas.height - logoH - margin,
+          logoW,
+          logoH
+        );
+        ctx.globalAlpha = 1;
+        canvas.toBlob(
+          (blob) => (blob ? resolve(blob) : reject(new Error("Falha no canvas export"))),
+          "image/jpeg",
+          0.92
+        );
+      };
+
+      // Se o logo não existir, sobe a foto original sem marca
+      logo.onerror = () => {
+        canvas.toBlob(
+          (blob) => (blob ? resolve(blob) : reject(new Error("Falha no canvas export"))),
+          "image/jpeg",
+          0.92
+        );
+      };
+
+      logo.crossOrigin = "anonymous";
+      logo.src = "/logo.svg";
+    };
+
+    img.onerror = () => reject(new Error("Falha ao carregar imagem"));
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+export const PhotoGallery = ({
+  veiculoId,
+  fotos = [],
+  onPhotosUpdated,
+}: PhotoGalleryProps) => {
+  const [selectedPhoto, setSelectedPhoto] = useState(fotos[0] || "");
   const [isUploading, setIsUploading] = useState(false);
+  const [watermarkEnabled, setWatermarkEnabled] = useState(true);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    e.target.value = "";
 
     setIsUploading(true);
     try {
+      let uploadBlob: Blob = file;
+      const ext = watermarkEnabled ? "jpg" : (file.name.split(".").pop() || "jpg");
+      const fileName = `foto-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+
+      if (watermarkEnabled) {
+        uploadBlob = await applyWatermark(file);
+      }
+
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", new File([uploadBlob], fileName, { type: "image/jpeg" }));
 
-      const response = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
+      const res = await fetch("/api/upload", { method: "POST", body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Falha no upload");
 
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Upload failed");
-
-      const newPhotoUrl = data.videoUrl; // O proxy retorna videoUrl para qualquer upload
+      const newPhotoUrl: string = data.videoUrl;
       const newPhotos = [...fotos, newPhotoUrl];
 
       const { error: dbError } = await supabase
@@ -51,95 +116,142 @@ export const PhotoGallery = ({ veiculoId, fotos = [], onPhotosUpdated }: PhotoGa
 
   const handleDeletePhoto = async (e: React.MouseEvent, url: string) => {
     e.stopPropagation();
-    if (!confirm("Tem certeza que deseja excluir esta foto? 🗑️")) return;
+    if (!confirm("Excluir esta foto?")) return;
 
     try {
-      const newPhotos = fotos.filter(f => f !== url);
-      
-      const { error: dbError } = await supabase
+      const newPhotos = fotos.filter((f) => f !== url);
+      const { error } = await supabase
         .from("veiculos")
         .update({ fotos: newPhotos })
         .eq("id", veiculoId);
+      if (error) throw error;
 
-      if (dbError) throw dbError;
-
-      // Limpeza opcional do Storage (best effort)
-      const fileName = url.split('/').pop();
+      const fileName = url.split("/").pop();
       if (fileName) {
-        await supabase.storage.from('videos-estoque').remove([fileName]);
+        await supabase.storage.from("videos-estoque").remove([fileName]);
       }
 
       onPhotosUpdated(newPhotos);
-      if (selectedPhoto === url) {
-        setSelectedPhoto(newPhotos[0] || "/placeholder-car.jpg");
-      }
+      if (selectedPhoto === url) setSelectedPhoto(newPhotos[0] || "");
     } catch (error) {
-      console.error("Delete error:", error);
       alert("Erro ao excluir foto");
     }
   };
 
   return (
     <div className="bg-[#111] p-6 rounded-3xl border border-white/5 shadow-2xl">
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Galeria de Mídia</h3>
-        <label className={`cursor-pointer text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-full border transition-all ${
-          isUploading ? "border-slate-800 text-slate-600 cursor-wait" : "border-red-600/50 text-red-500 hover:bg-red-600/10"
-        }`}>
-          {isUploading ? "Subindo..." : "+ Adicionar Fotos"}
-          <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" disabled={isUploading} />
-        </label>
+      {/* Header */}
+      <div className="flex justify-between items-center mb-4 gap-3 flex-wrap">
+        <h3 className="text-[10px] font-black text-gray-500 uppercase tracking-widest">
+          Galeria de Mídia
+        </h3>
+
+        <div className="flex items-center gap-3">
+          {/* Toggle Marca d'água */}
+          <button
+            onClick={() => setWatermarkEnabled((v) => !v)}
+            title={watermarkEnabled ? "Marca d'água ativa" : "Marca d'água desativada"}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[9px] font-black uppercase tracking-widest transition-all ${
+              watermarkEnabled
+                ? "border-red-600/60 text-red-500 bg-red-600/10"
+                : "border-white/10 text-gray-600 hover:border-white/20"
+            }`}
+          >
+            <Stamp size={11} />
+            {watermarkEnabled ? "Marca Ativa" : "Sem Marca"}
+          </button>
+
+          {/* Botão upload */}
+          <label
+            className={`cursor-pointer flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-full border transition-all ${
+              isUploading
+                ? "border-slate-800 text-slate-600 cursor-wait"
+                : "border-red-600/50 text-red-500 hover:bg-red-600/10"
+            }`}
+          >
+            {isUploading ? (
+              <>
+                <div className="w-3 h-3 border-2 border-red-600/40 border-t-red-500 rounded-full animate-spin" />
+                Processando...
+              </>
+            ) : (
+              <>
+                <ImagePlus size={12} />
+                Adicionar Foto
+              </>
+            )}
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleFileUpload}
+              className="hidden"
+              disabled={isUploading}
+            />
+          </label>
+        </div>
       </div>
-      
-      {/* Foto Principal (Destaque) */}
-      <div className="w-full h-80 rounded-2xl border-4 border-red-600/30 overflow-hidden mb-4 group cursor-zoom-in relative bg-[#0a0a0a]">
-      {fotos.length > 0 ? (
-        <img 
-          src={selectedPhoto} 
-          alt="Destaque Veículo" 
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-        />
-      ) : (
+
+      {/* Foto principal */}
+      <div className="w-full h-80 rounded-2xl border-4 border-red-600/30 overflow-hidden mb-4 relative bg-[#0a0a0a]">
+        {fotos.length > 0 ? (
+          <img
+            src={selectedPhoto || fotos[0]}
+            alt="Destaque"
+            className="w-full h-full object-cover hover:scale-105 transition-transform duration-500 cursor-zoom-in"
+          />
+        ) : (
           <div className="w-full h-full flex flex-col items-center justify-center text-center p-8">
-             <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mb-4 text-gray-700">
-                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-             </div>
-             <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Sem Fotos no Pátio</p>
-             <p className="text-[9px] text-gray-700 uppercase font-bold max-w-[150px]">Toque em "Adicionar Fotos" para iniciar a vitrine</p>
+            <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mb-4 text-gray-700">
+              <ImagePlus size={28} />
+            </div>
+            <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">
+              Sem fotos no pátio
+            </p>
+            <p className="text-[9px] text-gray-700 uppercase font-bold max-w-[160px]">
+              Clique em "Adicionar Foto" para iniciar a vitrine
+            </p>
           </div>
         )}
-        
+
         {isUploading && (
-          <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-            <div className="w-8 h-8 border-2 border-red-600 border-t-transparent rounded-full animate-spin"></div>
+          <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center gap-3">
+            <div className="w-8 h-8 border-2 border-red-600 border-t-transparent rounded-full animate-spin" />
+            {watermarkEnabled && (
+              <p className="text-[9px] font-black text-red-500 uppercase tracking-widest">
+                Aplicando marca d'água...
+              </p>
+            )}
           </div>
         )}
       </div>
 
-      {/* Miniaturas (Thumbnails) */}
+      {/* Miniaturas */}
       <div className="grid grid-cols-5 gap-3">
         {fotos.map((foto, i) => (
           <div key={i} className="relative group/thumb">
-            <button 
+            <button
               onClick={() => setSelectedPhoto(foto)}
               className={`w-full h-16 rounded-xl overflow-hidden border-2 transition-all ${
-                selectedPhoto === foto ? 'border-red-600' : 'border-white/10'
-              } hover:border-red-600/50`}
+                selectedPhoto === foto
+                  ? "border-red-600"
+                  : "border-white/10 hover:border-red-600/50"
+              }`}
             >
-              <img src={foto} alt={`Miniatura ${i + 1}`} className="w-full h-full object-cover" />
+              <img
+                src={foto}
+                alt={`Miniatura ${i + 1}`}
+                className="w-full h-full object-cover"
+              />
             </button>
-            <button 
+            <button
               onClick={(e) => handleDeletePhoto(e, foto)}
-              className="absolute -top-1 -right-1 w-5 h-5 bg-red-600 text-white rounded-full flex items-center justify-center text-[10px] font-bold opacity-0 group-hover/thumb:opacity-100 transition-opacity hover:bg-red-700 shadow-lg z-10"
-              title="Excluir Foto"
+              className="absolute -top-1 -right-1 w-5 h-5 bg-red-600 text-white rounded-full flex items-center justify-center text-[9px] font-bold opacity-0 group-hover/thumb:opacity-100 transition-opacity hover:bg-red-700 shadow-lg z-10"
             >
               ✕
             </button>
           </div>
         ))}
-        {fotos.length === 0 && !isUploading && (
+        {fotos.length === 0 && (
           <div className="col-span-5 h-16 border-2 border-dashed border-white/5 rounded-xl flex items-center justify-center text-[10px] text-gray-600 font-bold uppercase tracking-widest">
             Nenhuma foto cadastrada
           </div>

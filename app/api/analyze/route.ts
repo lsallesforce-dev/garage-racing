@@ -1,4 +1,4 @@
-import { geminiPro, generateEmbedding } from "@/lib/gemini";
+import { geminiFlashSales, generateEmbedding } from "@/lib/gemini";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
       "tags_busca": "string"
     }`;
 
-    const result = await geminiPro.generateContent([
+    const result = await geminiFlashSales.generateContent([
       promptSistema,
       {
         inlineData: {

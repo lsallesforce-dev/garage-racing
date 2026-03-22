@@ -2,101 +2,129 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { Zap, MessageCircle } from "lucide-react";
+import Link from "next/link";
+import { Zap, MessageCircle, Play } from "lucide-react";
 
 export default function VitrinePublica() {
   const [estoque, setEstoque] = useState<any[]>([]);
-  // Flash: Busca apenas os carros prontos para venda no Pátio Virtual
+
   useEffect(() => {
-    const carregarVitrine = async () => {
-      const { data } = await supabase
-        .from('veiculos')
-        .select('id, marca, modelo, versao, ano_modelo, preco_sugerido, capa_marketing_url')
-        .eq('status_venda', 'DISPONIVEL') // SÓ O QUE TÁ NO PÁTIO
-        .order('created_at', { ascending: false });
-      
-      if (data) setEstoque(data);
-    };
-    carregarVitrine();
+    supabase
+      .from("veiculos")
+      .select("id, marca, modelo, versao, ano_modelo, preco_sugerido, capa_marketing_url, fotos, video_url")
+      .eq("status_venda", "DISPONIVEL")
+      .order("created_at", { ascending: false })
+      .then(({ data }) => { if (data) setEstoque(data); });
   }, []);
 
+  const WHATSAPP = process.env.NEXT_PUBLIC_ZAPI_PHONE ?? "5521999999999";
+
   return (
-    <div className="bg-[#0a0a0a] min-h-screen text-white p-6 font-sans">
-      {/* Flash: Header de Elite */}
-      <div className="flex justify-between items-center mb-12 pt-4">
-        <h1 className="text-2xl font-black uppercase italic tracking-tighter">Garage Racing</h1>
-        <div className="flex items-center gap-2 bg-red-600 px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg shadow-red-600/20">
-          <Zap size={14} /> Pátio Digital
+    <div className="bg-gray-50 min-h-screen text-gray-900 font-sans">
+
+      {/* ── Header ── */}
+      <header className="bg-white border-b border-gray-100 sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-xl font-black uppercase italic tracking-tighter text-gray-900">Garage</span>
+            <span className="text-xl font-black uppercase italic tracking-tighter text-red-600">Racing</span>
+          </div>
+        </div>
+      </header>
+
+      {/* ── Hero ── */}
+      <div className="py-12 px-6 border-b border-gray-100 bg-white">
+        <div className="max-w-7xl mx-auto text-center">
+          <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-3">
+            Encontre seu próximo <span className="text-red-600">veículo</span>
+          </h1>
+          <p className="text-gray-500 text-sm max-w-md mx-auto">
+            Cada veículo analisado e verificado. Vídeo completo, pontos fortes e atendimento imediato.
+          </p>
         </div>
       </div>
 
-      {/* Flash: Grid de Oportunidades (Carregamento Automático) */}
-      <div className="grid gap-8 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 max-w-7xl mx-auto">
-        {estoque.map((carro) => (
-          <div key={carro.id} className="bg-[#141414] rounded-[2.5rem] overflow-hidden border border-white/5 group transition-all hover:border-red-600/30 shadow-2xl shadow-black">
-            {/* Imagem Premium (Gerada pelo Design Studio) */}
-            <div className="relative aspect-video overflow-hidden">
-                <img 
-                src={carro.capa_marketing_url || 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?q=80&w=2070&auto=format&fit=crop'} 
-                alt={carro.modelo}
-                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
-                />
-                <div className="absolute top-4 left-4">
-                    <span className="bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest border border-white/10">Estoque Verificado</span>
-                </div>
-            </div>
-            
-            <div className="p-8">
-              <h2 className="text-3xl font-black uppercase italic tracking-tighter leading-none group-hover:text-red-500 transition-colors">{carro.marca} {carro.modelo}</h2>
-              <p className="text-[10px] text-gray-500 font-bold uppercase mt-2 tracking-widest">{carro.versao || "Pacote Esportivo"} • {carro.ano_modelo || "2024"}</p>
-              
-              <div className="flex justify-between items-center mt-10">
-                <div className="text-left">
-                    <p className="text-[9px] font-black uppercase tracking-widest text-gray-600 mb-1">Preço de Oportunidade</p>
-                    <p className="text-3xl font-black text-white leading-none tracking-tighter">
-                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(carro.preco_sugerido || 0)}
-                    </p>
-                </div>
-                
-                {/* O Ganhador de Lead: Link pro Zap com Contexto */}
-                <a 
-                  href={`https://wa.me/${process.env.NEXT_PUBLIC_ZAPI_PHONE || "5521999999999"}?text=Opa Lucas! Tenho interesse na ${carro.marca} ${carro.modelo} ${carro.versao || ""} que vi na vitrine!`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-5 bg-green-500 rounded-2xl text-black hover:scale-110 active:scale-95 transition-all shadow-xl shadow-green-900/20"
+      {/* ── Grid de carros ── */}
+      <div className="max-w-7xl mx-auto px-6 py-12">
+        {estoque.length > 0 ? (
+          <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+            {estoque.map((carro) => {
+              const img = carro.capa_marketing_url ?? carro.fotos?.[0];
+              const preco = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(carro.preco_sugerido ?? 0);
+              return (
+                <Link
+                  key={carro.id}
+                  href={`/vitrine/${carro.id}`}
+                  className="bg-white rounded-3xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group block"
                 >
-                  <MessageCircle size={24} strokeWidth={2.5} />
-                </a>
-              </div>
-            </div>
-          </div>
-        ))}
+                  {/* Imagem */}
+                  <div className="relative aspect-video overflow-hidden bg-gray-100">
+                    {img ? (
+                      <img
+                        src={img}
+                        alt={carro.modelo}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-gray-300">
+                        <Zap size={32} />
+                      </div>
+                    )}
+                    {carro.video_url && (
+                      <div className="absolute top-3 right-3 bg-red-600 text-white px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest flex items-center gap-1 shadow-lg">
+                        <Play size={8} className="fill-white" /> Vídeo IA
+                      </div>
+                    )}
+                    <div className="absolute top-3 left-3 bg-white/90 backdrop-blur-sm text-gray-700 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest">
+                      Verificado
+                    </div>
+                  </div>
 
-        {estoque.length === 0 && (
-            <div className="col-span-full py-32 text-center border-2 border-dashed border-white/5 rounded-[3rem] bg-[#141414]/50">
-                <Zap size={40} className="mx-auto text-gray-800 mb-4" />
-                <p className="text-xs font-black uppercase tracking-widest text-gray-500">O pátio está sendo reabastecido... <br/> Volte em instantes!</p>
-            </div>
+                  {/* Info */}
+                  <div className="p-6">
+                    <h2 className="text-xl font-black uppercase italic tracking-tight leading-none text-gray-900 group-hover:text-red-600 transition-colors">
+                      {carro.marca} {carro.modelo}
+                    </h2>
+                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1.5">
+                      {carro.versao ?? "—"} • {carro.ano_modelo ?? "—"}
+                    </p>
+
+                    <div className="mt-5 pt-5 border-t border-gray-50">
+                      <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-0.5">Preço</p>
+                      <p className="text-2xl font-black tracking-tighter text-gray-900">{preco}</p>
+                    </div>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="py-32 text-center border-2 border-dashed border-gray-200 rounded-3xl bg-white">
+            <Zap size={32} className="mx-auto text-gray-300 mb-4" />
+            <p className="text-xs font-black uppercase tracking-widest text-gray-400">
+              Pátio sendo reabastecido…
+            </p>
+          </div>
         )}
       </div>
 
-      <footer className="mt-20 pb-12 text-center border-t border-white/5 pt-12">
-         <p className="text-[9px] font-black uppercase tracking-widest text-gray-600">© 2026 Garage Racing • Pátio Digital de Elite</p>
-         <p className="text-[8px] text-gray-800 mt-2 uppercase tracking-tighter font-bold">Imagens meramente ilustrativas • Sujeito a disponibilidade</p>
+      {/* ── Footer ── */}
+      <footer className="border-t border-gray-100 py-8 text-center bg-white">
+        <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">
+          © 2026 Garage Racing • Pátio Digital de Elite
+        </p>
       </footer>
 
-      {/* Flash: Botão de Consultoria do Lucas (IA) */}
-      <div className="fixed bottom-8 right-8 z-50">
-        <a 
-          href={`https://wa.me/${process.env.NEXT_PUBLIC_ZAPI_PHONE || "5521999999999"}?text=Opa Lucas! Me ajuda a escolher um carro no pátio?`}
+      {/* ── FAB WhatsApp ── */}
+      <div className="fixed bottom-6 right-6 z-50">
+        <a
+          href={`https://wa.me/${WHATSAPP}?text=Oi! Me ajuda a escolher um carro no pátio?`}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-3 bg-red-600 hover:bg-black text-white p-4 rounded-full shadow-2xl shadow-red-900/40 transition-all hover:scale-105 active:scale-95 group"
+          className="flex items-center gap-3 bg-green-500 hover:bg-green-400 text-white pl-4 pr-5 py-3.5 rounded-full shadow-2xl transition-all hover:scale-105 active:scale-95"
         >
-          <div className="bg-white/20 p-2 rounded-full">
-            <Zap size={20} className="fill-white" />
-          </div>
-          <span className="font-black uppercase italic pr-4 text-[10px] tracking-widest">Falar com o Lucas</span>
+          <MessageCircle size={18} strokeWidth={2.5} />
+          <span className="font-black uppercase text-[9px] tracking-widest">Falar agora</span>
         </a>
       </div>
     </div>

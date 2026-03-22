@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx next:*)",
+      "Bash(cmd.exe /c \"C:\\\\Users\\\\lsaud\\\\AppData\\\\Roaming\\\\Python\\\\Python314\\\\Scripts\\\\yt-dlp.exe --version && echo OK\" 2>&1)",
+      "Bash(python:*)",
+      "Bash(cp -r \"app/veiculo\" \"app/\\(main\\)/veiculo\")",
+      "Bash(mv app/page.tsx \"app/\\(main\\)/page.tsx\")",
+      "Bash(ls:*)",
+      "Bash(cmd.exe /c \"rmdir /s /q \"\"C:\\\\Users\\\\lsaud\\\\Downloads\\\\garage-racing\\\\app\\\\veiculo\"\"\")",
+      "Bash(cmd.exe /c \"rd /s /q C:\\\\Users\\\\lsaud\\\\Downloads\\\\garage-racing\\\\app\\\\veiculo 2>&1 && echo DONE\")",
+      "Bash(powershell -Command \"Remove-Item -Path 'C:\\\\Users\\\\lsaud\\\\Downloads\\\\garage-racing\\\\app\\\\veiculo' -Recurse -Force -ErrorAction SilentlyContinue; if \\(Test-Path 'C:\\\\Users\\\\lsaud\\\\Downloads\\\\garage-racing\\\\app\\\\veiculo'\\) { 'STILL EXISTS' } else { 'REMOVED' }\")",
+      "Bash(powershell -Command \"Remove-Item -Path 'C:\\\\Users\\\\lsaud\\\\Downloads\\\\garage-racing\\\\.next' -Recurse -Force -ErrorAction SilentlyContinue; echo 'Cache limpo'\")"
+    ]
+  }
+}
