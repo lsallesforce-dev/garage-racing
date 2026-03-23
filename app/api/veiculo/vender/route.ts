@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { sendZapiMessage } from "@/lib/zapi";
+import { sendAvisaMessage } from "@/lib/avisa";
 import { buscarLeadsOrfaos } from "@/lib/leads";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
     const nomeCarro = `${veiculo.marca} ${veiculo.modelo}`;
     const notificationPromises = leads.map((lead: any) => {
       const message = `Olá ${lead.nome || "Cliente"}! Passando para avisar que a ${nomeCarro} que você estava de olho acabou de ser vendida. Mas não se preocupe, o Lucas (IA) já está buscando outras opções parecidas para você no nosso estoque!`;
-      return sendZapiMessage(lead.wa_id, message);
+      return sendAvisaMessage(lead.wa_id, message);
     });
 
     // Executa as notificações em paralelo

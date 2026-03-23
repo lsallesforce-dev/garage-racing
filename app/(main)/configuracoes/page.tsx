@@ -1,10 +1,13 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { supabase } from "@/lib/supabase";
-import { Upload, CheckCircle2, Loader2, ImageIcon, Trash2 } from "lucide-react";
+import { Upload, CheckCircle2, Loader2, ImageIcon, Trash2, Sparkles, FileImage } from "lucide-react";
+
+type Mode = "auto" | "manual";
 
 export default function ConfiguracoesPage() {
+  const [mode, setMode] = useState<Mode>("manual");
+  const [originalFile, setOriginalFile] = useState<File | null>(null);
   const [originalPreview, setOriginalPreview] = useState<string | null>(null);
   const [processedPreview, setProcessedPreview] = useState<string | null>(null);
   const [processedBlob, setProcessedBlob] = useState<Blob | null>(null);
@@ -16,27 +19,73 @@ export default function ConfiguracoesPage() {
   );
   const fileRef = useRef<HTMLInputElement>(null);
 
+  const reset = () => {
+    setOriginalFile(null);
+    setOriginalPreview(null);
+    setProcessedPreview(null);
+    setProcessedBlob(null);
+    setSaved(false);
+  };
+
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = "";
+    reset();
 
-    setOriginalPreview(URL.createObjectURL(file));
-    setProcessedPreview(null);
-    setProcessedBlob(null);
+    const previewUrl = URL.createObjectURL(file);
+    setOriginalFile(file);
+    setOriginalPreview(previewUrl);
     setSaved(false);
-    setProcessing(true);
 
+    if (mode === "manual") {
+      // Usa o arquivo original direto
+      const blob = new Blob([await file.arrayBuffer()], { type: file.type });
+      setProcessedPreview(previewUrl);
+      setProcessedBlob(blob);
+      return;
+    }
+
+    // mode === "auto": remove fundo
+    setProcessing(true);
     try {
       const { removeBackground } = await import("@imgly/background-removal");
-      const blob = await removeBackground(file);
-      const url = URL.createObjectURL(blob);
-      setProcessedPreview(url);
+      const blob = await removeBackground(file, { model: "medium" });
+      setProcessedPreview(URL.createObjectURL(blob));
       setProcessedBlob(blob);
     } catch (err) {
       console.error("Erro ao remover fundo:", err);
-      // fallback: usa a imagem original sem remoção de fundo
       const blob = new Blob([await file.arrayBuffer()], { type: file.type });
+      setProcessedPreview(previewUrl);
+      setProcessedBlob(blob);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleModeChange = async (newMode: Mode) => {
+    setMode(newMode);
+    if (!originalFile) return;
+
+    setSaved(false);
+    setProcessedPreview(null);
+    setProcessedBlob(null);
+
+    if (newMode === "manual") {
+      const blob = new Blob([await originalFile.arrayBuffer()], { type: originalFile.type });
+      setProcessedPreview(URL.createObjectURL(blob));
+      setProcessedBlob(blob);
+      return;
+    }
+
+    setProcessing(true);
+    try {
+      const { removeBackground } = await import("@imgly/background-removal");
+      const blob = await removeBackground(originalFile, { model: "medium" });
+      setProcessedPreview(URL.createObjectURL(blob));
+      setProcessedBlob(blob);
+    } catch (err) {
+      const blob = new Blob([await originalFile.arrayBuffer()], { type: originalFile.type });
       setProcessedPreview(URL.createObjectURL(blob));
       setProcessedBlob(blob);
     } finally {
@@ -48,15 +97,14 @@ export default function ConfiguracoesPage() {
     if (!processedBlob) return;
     setSaving(true);
     try {
-      const fileName = `logo.png`;
-      const { error } = await supabase.storage
-        .from("configuracoes")
-        .upload(fileName, processedBlob, { upsert: true, contentType: "image/png" });
+      const formData = new FormData();
+      formData.append("file", new File([processedBlob], "logo.png", { type: "image/png" }));
 
-      if (error) throw error;
+      const res = await fetch("/api/configuracoes/logo", { method: "POST", body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Falha no upload");
 
-      const { data } = supabase.storage.from("configuracoes").getPublicUrl(fileName);
-      const url = `${data.publicUrl}?t=${Date.now()}`;
+      const url = `${data.url}?t=${Date.now()}`;
       localStorage.setItem("garage_logo_url", url);
       setCurrentLogo(url);
       setSaved(true);
@@ -71,10 +119,7 @@ export default function ConfiguracoesPage() {
     if (!confirm("Remover logo atual? As próximas fotos serão enviadas sem marca.")) return;
     localStorage.removeItem("garage_logo_url");
     setCurrentLogo(null);
-    setOriginalPreview(null);
-    setProcessedPreview(null);
-    setProcessedBlob(null);
-    setSaved(false);
+    reset();
   };
 
   return (
@@ -89,14 +134,12 @@ export default function ConfiguracoesPage() {
       </header>
 
       <div className="max-w-2xl">
-        {/* Card Logo */}
         <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-8">
           <h2 className="text-[11px] font-black uppercase tracking-widest text-gray-400 mb-1">
             Logo da Garagem
           </h2>
           <p className="text-[11px] text-gray-500 mb-6">
-            Será aplicado automaticamente como marca d'água em todas as fotos do estoque.
-            O fundo é removido automaticamente.
+            Aplicada automaticamente como marca d'água em todas as fotos do estoque.
           </p>
 
           {/* Logo atual */}
@@ -112,10 +155,62 @@ export default function ConfiguracoesPage() {
               <button
                 onClick={handleRemoveLogo}
                 className="text-gray-400 hover:text-red-500 transition-colors p-2 rounded-xl hover:bg-red-50"
-                title="Remover logo"
               >
                 <Trash2 size={16} />
               </button>
+            </div>
+          )}
+
+          {/* Seletor de modo */}
+          <div className="flex gap-3 mb-6">
+            <button
+              type="button"
+              onClick={() => handleModeChange("manual")}
+              className={`flex-1 flex items-center gap-2 px-4 py-3 rounded-2xl border-2 text-left transition-all ${
+                mode === "manual"
+                  ? "border-gray-900 bg-gray-900 text-white"
+                  : "border-gray-200 text-gray-500 hover:border-gray-300"
+              }`}
+            >
+              <FileImage size={16} />
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest">PNG com fundo transparente</p>
+                <p className={`text-[9px] mt-0.5 ${mode === "manual" ? "text-gray-400" : "text-gray-400"}`}>
+                  Melhor qualidade — recomendado
+                </p>
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleModeChange("auto")}
+              className={`flex-1 flex items-center gap-2 px-4 py-3 rounded-2xl border-2 text-left transition-all ${
+                mode === "auto"
+                  ? "border-gray-900 bg-gray-900 text-white"
+                  : "border-gray-200 text-gray-500 hover:border-gray-300"
+              }`}
+            >
+              <Sparkles size={16} />
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest">Remover fundo automático</p>
+                <p className="text-[9px] text-gray-400 mt-0.5">
+                  Funciona com JPG/PNG — qualidade variável
+                </p>
+              </div>
+            </button>
+          </div>
+
+          {/* Dica de tamanho (modo manual) */}
+          {mode === "manual" && (
+            <div className="mb-5 px-4 py-3 bg-blue-50 border border-blue-100 rounded-2xl">
+              <p className="text-[10px] font-black text-blue-700 uppercase tracking-widest mb-1">
+                Especificações recomendadas
+              </p>
+              <ul className="text-[10px] text-blue-600 space-y-0.5">
+                <li>• Formato: <strong>PNG com fundo transparente</strong></li>
+                <li>• Tamanho: <strong>mínimo 600 × 300 px</strong> (proporcional horizontal)</li>
+                <li>• Resolução: <strong>72–150 dpi</strong> é suficiente</li>
+                <li>• Fundo branco vai aparecer sobre as fotos — use transparente</li>
+              </ul>
             </div>
           )}
 
@@ -129,7 +224,7 @@ export default function ConfiguracoesPage() {
                 {currentLogo ? "Trocar logo" : "Enviar logo"}
               </p>
               <p className="text-[10px] text-gray-400 text-center">
-                PNG, JPG ou SVG • Fundo removido automaticamente
+                {mode === "manual" ? "PNG com fundo transparente" : "PNG ou JPG • fundo removido automaticamente"}
               </p>
             </div>
             <input
@@ -141,22 +236,22 @@ export default function ConfiguracoesPage() {
             />
           </label>
 
-          {/* Preview antes/depois */}
+          {/* Preview */}
           {(originalPreview || processing) && (
             <div className="mt-6 grid grid-cols-2 gap-4">
               <div className="flex flex-col gap-2">
                 <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">Original</p>
                 <div className="h-36 bg-gray-50 rounded-xl border border-gray-100 flex items-center justify-center overflow-hidden">
-                  {originalPreview ? (
-                    <img src={originalPreview} alt="Original" className="max-w-full max-h-full object-contain p-2" />
-                  ) : (
-                    <ImageIcon size={24} className="text-gray-300" />
-                  )}
+                  {originalPreview
+                    ? <img src={originalPreview} alt="Original" className="max-w-full max-h-full object-contain p-2" />
+                    : <ImageIcon size={24} className="text-gray-300" />}
                 </div>
               </div>
 
               <div className="flex flex-col gap-2">
-                <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">Sem fundo</p>
+                <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">
+                  {mode === "auto" ? "Sem fundo" : "Logo final"}
+                </p>
                 <div className="h-36 bg-[repeating-conic-gradient(#e5e7eb_0%_25%,transparent_0%_50%)] bg-[length:16px_16px] rounded-xl border border-gray-100 flex items-center justify-center overflow-hidden">
                   {processing ? (
                     <div className="flex flex-col items-center gap-2">
@@ -164,19 +259,17 @@ export default function ConfiguracoesPage() {
                       <p className="text-[9px] font-black uppercase text-gray-400">Removendo fundo...</p>
                     </div>
                   ) : processedPreview ? (
-                    <img src={processedPreview} alt="Sem fundo" className="max-w-full max-h-full object-contain p-2" />
+                    <img src={processedPreview} alt="Resultado" className="max-w-full max-h-full object-contain p-2" />
                   ) : null}
                 </div>
               </div>
             </div>
           )}
 
-          {/* Prévia da marca d'água */}
+          {/* Prévia da marca d'água na foto */}
           {processedPreview && !processing && (
             <div className="mt-4">
-              <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">
-                Prévia na foto
-              </p>
+              <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">Prévia na foto</p>
               <div className="relative h-40 bg-gray-800 rounded-xl overflow-hidden border border-gray-200">
                 <div className="absolute inset-0 flex items-center justify-center text-gray-600 text-[10px] font-bold uppercase tracking-widest">
                   [foto do veículo]
@@ -197,9 +290,7 @@ export default function ConfiguracoesPage() {
               onClick={handleSave}
               disabled={saving || saved}
               className={`mt-6 w-full py-3 rounded-2xl font-black uppercase text-[11px] tracking-widest transition-all flex items-center justify-center gap-2 ${
-                saved
-                  ? "bg-green-500 text-white"
-                  : "bg-gray-900 text-white hover:bg-red-600"
+                saved ? "bg-green-500 text-white" : "bg-gray-900 text-white hover:bg-red-600"
               }`}
             >
               {saving ? (

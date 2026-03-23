@@ -14,7 +14,8 @@
       "Bash(ls \"C:\\\\Users\\\\lsaud\\\\Downloads\\\\garage-racing\\\\app\\\\\\(main\\)\")",
       "Bash(node -e \":*)",
       "Bash(supabase --version)",
-      "Bash(npx supabase:*)"
+      "Bash(npx supabase:*)",
+      "WebFetch(domain:www.postman.com)"
     ]
   }
 }

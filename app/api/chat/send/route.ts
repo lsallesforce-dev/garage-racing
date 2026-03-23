@@ -1,4 +1,4 @@
-import { sendZapiMessage } from "@/lib/zapi";
+import { sendAvisaMessage } from "@/lib/avisa";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    await sendZapiMessage(phone, message);
+    await sendAvisaMessage(phone, message);
 
     // Salva a mensagem e ativa o stand-by do Lucas simultaneamente
     await Promise.all([

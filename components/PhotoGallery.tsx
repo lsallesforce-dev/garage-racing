@@ -20,56 +20,55 @@ function getLogoSrc(): string {
   }
 }
 
-async function applyWatermark(file: File): Promise<Blob> {
+async function loadImageElement(src: string): Promise<HTMLImageElement> {
+  // Busca como blob para evitar bloqueio de CORS no Canvas
+  let objectUrl = src;
+  try {
+    const res = await fetch(src);
+    const blob = await res.blob();
+    objectUrl = URL.createObjectURL(blob);
+  } catch {
+    // fallback: tenta carregar diretamente
+  }
   return new Promise((resolve, reject) => {
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return reject(new Error("Canvas não suportado"));
-
     const img = new Image();
-    const logo = new Image();
-
-    img.onload = () => {
-      canvas.width = img.width;
-      canvas.height = img.height;
-      ctx.drawImage(img, 0, 0);
-
-      logo.onload = () => {
-        const logoW = Math.round(canvas.width * 0.2);
-        const logoH = Math.round(logoW * (logo.height / (logo.width || 1)));
-        const margin = Math.round(canvas.width * 0.025);
-        ctx.globalAlpha = 0.82;
-        ctx.drawImage(
-          logo,
-          canvas.width - logoW - margin,
-          canvas.height - logoH - margin,
-          logoW,
-          logoH
-        );
-        ctx.globalAlpha = 1;
-        canvas.toBlob(
-          (blob) => (blob ? resolve(blob) : reject(new Error("Falha no canvas export"))),
-          "image/jpeg",
-          0.92
-        );
-      };
-
-      // Se o logo não existir, sobe a foto original sem marca
-      logo.onerror = () => {
-        canvas.toBlob(
-          (blob) => (blob ? resolve(blob) : reject(new Error("Falha no canvas export"))),
-          "image/jpeg",
-          0.92
-        );
-      };
-
-      logo.crossOrigin = "anonymous";
-      logo.src = getLogoSrc();
-    };
-
-    img.onerror = () => reject(new Error("Falha ao carregar imagem"));
-    img.src = URL.createObjectURL(file);
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = objectUrl;
   });
+}
+
+async function applyWatermark(file: File): Promise<Blob> {
+  const logoSrc = getLogoSrc();
+  const img = await loadImageElement(URL.createObjectURL(file));
+
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas não suportado");
+
+  canvas.width = img.width;
+  canvas.height = img.height;
+  ctx.drawImage(img, 0, 0);
+
+  try {
+    const logo = await loadImageElement(logoSrc);
+    const logoW = Math.round(canvas.width * 0.2);
+    const logoH = Math.round(logoW * (logo.height / (logo.width || 1)));
+    const margin = Math.round(canvas.width * 0.025);
+    ctx.globalAlpha = 0.82;
+    ctx.drawImage(logo, canvas.width - logoW - margin, canvas.height - logoH - margin, logoW, logoH);
+    ctx.globalAlpha = 1;
+  } catch {
+    // logo falhou — sobe foto sem marca
+  }
+
+  return new Promise((resolve, reject) =>
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error("Falha no canvas export"))),
+      "image/jpeg",
+      0.92
+    )
+  );
 }
 
 export const PhotoGallery = ({
