@@ -10,7 +10,16 @@ interface PhotoGalleryProps {
   onPhotosUpdated: (newPhotos: string[]) => void;
 }
 
-// Aplica o logo /logo.svg no canto inferior direito via Canvas API (client-side, zero custo)
+// Aplica o logo no canto inferior direito via Canvas API (client-side, zero custo)
+// Usa o logo salvo em localStorage ("garage_logo_url"), senão fallback para /logo.svg
+function getLogoSrc(): string {
+  try {
+    return localStorage.getItem("garage_logo_url") || "/logo.svg";
+  } catch {
+    return "/logo.svg";
+  }
+}
+
 async function applyWatermark(file: File): Promise<Blob> {
   return new Promise((resolve, reject) => {
     const canvas = document.createElement("canvas");
@@ -55,7 +64,7 @@ async function applyWatermark(file: File): Promise<Blob> {
       };
 
       logo.crossOrigin = "anonymous";
-      logo.src = "/logo.svg";
+      logo.src = getLogoSrc();
     };
 
     img.onerror = () => reject(new Error("Falha ao carregar imagem"));
