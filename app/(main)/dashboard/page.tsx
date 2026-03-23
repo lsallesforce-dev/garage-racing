@@ -43,6 +43,15 @@ export default function DashboardPage() {
     }
 
     fetchData();
+
+    const channel = supabase
+      .channel("dashboard-vendas")
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "veiculos" }, () => {
+        fetchData();
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   return (
@@ -54,18 +63,9 @@ export default function DashboardPage() {
           <p className="text-gray-400 uppercase tracking-widest text-[10px] font-bold">Garage Racing • Performance Intelligence</p>
         </div>
 
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-4 text-gray-400">
-             <Search size={20} className="cursor-pointer hover:text-gray-600 transition-colors" />
-             <Bell size={20} className="cursor-pointer hover:text-gray-600 transition-colors" />
-          </div>
-          <Link 
-            href="/upload" 
-            className="bg-[#d65243] text-white px-6 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-lg shadow-red-900/10 hover:bg-[#c0483c] transition-all flex items-center gap-2"
-          >
-            <Plus size={16} strokeWidth={3} />
-            Nova Análise
-          </Link>
+        <div className="flex items-center gap-4 text-gray-400">
+          <Search size={20} className="cursor-pointer hover:text-gray-600 transition-colors" />
+          <Bell size={20} className="cursor-pointer hover:text-gray-600 transition-colors" />
         </div>
       </header>
 

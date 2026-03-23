@@ -181,34 +181,6 @@ export default function Dashboard() {
             </div>
         </div>
 
-        {/* Shortcuts Section */}
-        <div className="mt-12 grid grid-cols-1 md:grid-cols-2 gap-6 pb-12">
-            <button 
-                onClick={() => router.push('/upload')}
-                className="p-8 bg-white rounded-[2.5rem] border border-gray-100 shadow-sm flex items-center justify-between group hover:border-red-600/30 transition-all"
-            >
-                <div>
-                   <h4 className="text-lg font-black uppercase italic tracking-tighter text-left">Cadastrar Veículo</h4>
-                   <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Analisar novo vídeo IA</p>
-                </div>
-                <div className="bg-gray-50 p-4 rounded-2xl group-hover:bg-red-600 group-hover:text-white transition-all">
-                    <Car size={24} />
-                </div>
-            </button>
-
-            <button 
-                onClick={() => router.push('/vitrine')}
-                className="p-8 bg-slate-900 text-white rounded-[2.5rem] shadow-2xl flex items-center justify-between group hover:bg-red-600 transition-all"
-            >
-                <div>
-                   <h4 className="text-lg font-black uppercase italic tracking-tighter text-left">Vitrine Pública</h4>
-                   <p className="text-[10px] text-white/40 font-bold uppercase tracking-widest mt-1">Ver pátio digital ativo</p>
-                </div>
-                <div className="bg-white/10 p-4 rounded-2xl group-hover:bg-white group-hover:text-red-600 transition-all">
-                    <LayoutDashboard size={24} />
-                </div>
-            </button>
-        </div>
       </div>
     </div>
   );

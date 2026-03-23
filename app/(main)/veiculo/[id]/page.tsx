@@ -400,12 +400,6 @@ export default function DetalheVeiculo() {
             >
               {isSaving ? "Salvando..." : <><Save size={20} /> Salvar</>}
             </button>
-            <button
-              onClick={handleMarcarVendido}
-              className="px-8 py-4 bg-green-600 text-white font-black uppercase italic rounded-3xl hover:bg-black transition-all shadow-xl flex items-center gap-2"
-            >
-              <Check size={20} /> Marcar Vendido
-            </button>
           </div>
         </header>
 

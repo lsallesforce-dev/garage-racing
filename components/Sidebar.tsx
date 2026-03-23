@@ -1,6 +1,6 @@
 "use client";
 
-import { LayoutDashboard, PlusSquare, MessageSquare, DollarSign, Users, ShieldCheck, Car } from "lucide-react";
+import { LayoutDashboard, PlusSquare, MessageSquare, DollarSign, Users, ShieldCheck, Car, Store } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -9,8 +9,9 @@ const menuItems: { icon: any; label: string; href: string; badge?: number }[] = 
   { icon: Car, label: "Estoque Inteligente", href: "/estoque" },
   { icon: PlusSquare, label: "Adicionar Estoque", href: "/upload" },
   { icon: MessageSquare, label: "Central de Chat", href: "/chat" },
-  { icon: DollarSign, label: "Vendas", href: "/vendas" },
+  { icon: DollarSign, label: "Vendas / Financeiro", href: "/vendas" },
   { icon: Users, label: "Equipe de Vendas", href: "/vendedores" },
+  { icon: Store, label: "Vitrine Pública", href: "/vitrine" },
 ];
 
 export const Sidebar = () => {

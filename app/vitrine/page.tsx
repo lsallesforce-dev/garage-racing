@@ -72,7 +72,7 @@ export default function VitrinePublica() {
                     )}
                     {carro.video_url && (
                       <div className="absolute top-3 right-3 bg-red-600 text-white px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest flex items-center gap-1 shadow-lg">
-                        <Play size={8} className="fill-white" /> Vídeo IA
+                        <Play size={8} className="fill-white" /> Vídeo
                       </div>
                     )}
                     <div className="absolute top-3 left-3 bg-white/90 backdrop-blur-sm text-gray-700 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest">
