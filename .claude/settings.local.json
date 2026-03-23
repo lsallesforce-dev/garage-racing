@@ -10,7 +10,11 @@
       "Bash(cmd.exe /c \"rmdir /s /q \"\"C:\\\\Users\\\\lsaud\\\\Downloads\\\\garage-racing\\\\app\\\\veiculo\"\"\")",
       "Bash(cmd.exe /c \"rd /s /q C:\\\\Users\\\\lsaud\\\\Downloads\\\\garage-racing\\\\app\\\\veiculo 2>&1 && echo DONE\")",
       "Bash(powershell -Command \"Remove-Item -Path 'C:\\\\Users\\\\lsaud\\\\Downloads\\\\garage-racing\\\\app\\\\veiculo' -Recurse -Force -ErrorAction SilentlyContinue; if \\(Test-Path 'C:\\\\Users\\\\lsaud\\\\Downloads\\\\garage-racing\\\\app\\\\veiculo'\\) { 'STILL EXISTS' } else { 'REMOVED' }\")",
-      "Bash(powershell -Command \"Remove-Item -Path 'C:\\\\Users\\\\lsaud\\\\Downloads\\\\garage-racing\\\\.next' -Recurse -Force -ErrorAction SilentlyContinue; echo 'Cache limpo'\")"
+      "Bash(powershell -Command \"Remove-Item -Path 'C:\\\\Users\\\\lsaud\\\\Downloads\\\\garage-racing\\\\.next' -Recurse -Force -ErrorAction SilentlyContinue; echo 'Cache limpo'\")",
+      "Bash(ls \"C:\\\\Users\\\\lsaud\\\\Downloads\\\\garage-racing\\\\app\\\\\\(main\\)\")",
+      "Bash(node -e \":*)",
+      "Bash(supabase --version)",
+      "Bash(npx supabase:*)"
     ]
   }
 }
