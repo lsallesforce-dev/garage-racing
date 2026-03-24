@@ -35,14 +35,16 @@ export async function sendAvisaMessage(phone: string, message: string) {
       body: form,
     });
 
-    const data = await response.json();
-    if (!response.ok) {
-      console.error("Avisa API Error:", { status: response.status, data });
+    const text = await response.text();
+    try {
+      const data = JSON.parse(text);
+      if (!response.ok) console.error("Avisa API Error:", { status: response.status, data });
+      return data;
+    } catch {
+      console.error("Avisa API retornou HTML (URL errada?):", text.slice(0, 200));
     }
-    return data;
   } catch (error) {
     console.error("Error sending Avisa message:", error);
-    throw error;
   }
 }
 

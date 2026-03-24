@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
-import { Send, MessageSquare, Phone } from "lucide-react";
+import { Send, MessageSquare, Phone, Bot } from "lucide-react";
 
 type Lead = {
   id: string;
@@ -84,9 +84,10 @@ export default function CentralChat() {
     carregarMensagens(selectedLead.id);
   }, [selectedLead, carregarMensagens]);
 
-  // Realtime: novas mensagens do lead aberto aparecem em tempo real
+  // Realtime + polling: novas mensagens aparecem sem precisar de F5
   useEffect(() => {
     if (!selectedLead) return;
+
     const ch = supabase
       .channel(`msgs-${selectedLead.id}`)
       .on(
@@ -95,8 +96,26 @@ export default function CentralChat() {
         (payload) => setMensagens((prev) => [...prev, payload.new as Mensagem])
       )
       .subscribe();
-    return () => { supabase.removeChannel(ch); };
-  }, [selectedLead]);
+
+    // Polling silencioso: só atualiza se chegou mensagem nova (sem re-render desnecessário)
+    const interval = setInterval(async () => {
+      const { data } = await supabase
+        .from("mensagens")
+        .select("*")
+        .eq("lead_id", selectedLead.id)
+        .order("created_at", { ascending: true });
+      if (!data) return;
+      setMensagens((prev) => {
+        if (data.length === prev.length) return prev; // nada mudou, não re-renderiza
+        return data as Mensagem[];
+      });
+    }, 3000);
+
+    return () => {
+      supabase.removeChannel(ch);
+      clearInterval(interval);
+    };
+  }, [selectedLead, carregarMensagens]);
 
   // Auto-scroll para última mensagem
   useEffect(() => {
@@ -302,9 +321,22 @@ export default function CentralChat() {
                 }
               </button>
             </div>
-            <p className="text-[8px] text-gray-300 font-bold uppercase tracking-widest mt-2 ml-1">
-              Você está assumindo a conversa • A IA fica em stand-by enquanto você digita
-            </p>
+            <div className="flex items-center justify-between mt-2 ml-1">
+              <p className="text-[8px] text-gray-300 font-bold uppercase tracking-widest">
+                Você está assumindo a conversa • A IA fica em stand-by enquanto você digita
+              </p>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!selectedLead) return;
+                  await supabase.from("leads").update({ em_atendimento_humano: false }).eq("id", selectedLead.id);
+                  carregarLeads();
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 hover:bg-green-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all"
+              >
+                <Bot size={12} /> Devolver para IA
+              </button>
+            </div>
           </div>
         </div>
 
