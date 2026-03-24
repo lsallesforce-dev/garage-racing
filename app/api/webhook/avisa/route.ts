@@ -172,36 +172,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ status: "stand_by", lead_id: lead.id });
     }
 
-    // ── 5. Busca Semântica de Veículos ──────────────────────────────────────
+    // ── 5. Busca de Veículos ─────────────────────────────────────────────────
     let topVeiculos: Vehicle[] = [];
-    const queryEmbedding = await generateEmbedding(userMessage);
 
-    const { data: matchedVehicles, error: matchError } =
-      await supabaseAdmin.rpc("match_veiculos", {
-        query_embedding: queryEmbedding,
-        match_threshold: 0.2,
-        match_count: 5,
-      });
-
-    if (matchError || !matchedVehicles || (matchedVehicles as any[]).length === 0) {
-      const { data: estoqueGeral } = await supabaseAdmin
+    // Se o lead já tem um carro vinculado, busca ele primeiro como veículo principal
+    let veiculoPrincipal: Vehicle | null = null;
+    if (lead?.veiculo_id) {
+      const { data: vPrincipal } = await supabaseAdmin
         .from("veiculos")
         .select("*")
-        .eq("status_venda", "DISPONIVEL")
-        .limit(5);
-      if (estoqueGeral) topVeiculos = estoqueGeral as Vehicle[];
-    } else {
-      const ids = (matchedVehicles as any[]).map((v) => v.id);
-      const { data: veiculosCompletos } = await supabaseAdmin
-        .from("veiculos")
-        .select("*")
-        .in("id", ids)
-        .eq("status_venda", "DISPONIVEL");
-      if (veiculosCompletos) topVeiculos = veiculosCompletos as Vehicle[];
+        .eq("id", lead.veiculo_id)
+        .single();
+      if (vPrincipal) veiculoPrincipal = vPrincipal as Vehicle;
     }
 
-    // Busca textual por marca/modelo — sempre roda para garantir que carros específicos sejam encontrados
+    // Busca textual por marca/modelo — detecta se cliente pediu um carro diferente
     const palavras = userMessage.toLowerCase().split(/\s+/).filter((p: string) => p.length > 2);
+    let hitsTextuais: Vehicle[] = [];
     for (const palavra of palavras) {
       const { data: hits } = await supabaseAdmin
         .from("veiculos")
@@ -210,18 +197,70 @@ export async function POST(req: NextRequest) {
         .or(`marca.ilike.%${palavra}%,modelo.ilike.%${palavra}%`)
         .limit(3);
       if (hits && hits.length > 0) {
-        const idsExist = new Set(topVeiculos.map((v) => v.id));
-        // Coloca os hits textuais no início (prioridade maior)
-        topVeiculos = [...(hits as Vehicle[]).filter((h) => !idsExist.has(h.id)), ...topVeiculos];
+        const idsExist = new Set(hitsTextuais.map((v) => v.id));
+        hitsTextuais = [...hitsTextuais, ...(hits as Vehicle[]).filter((h) => !idsExist.has(h.id))];
       }
     }
-    topVeiculos = topVeiculos.slice(0, 5);
 
-    if (lead && topVeiculos[0]) {
-      await supabaseAdmin
-        .from("leads")
-        .update({ veiculo_id: topVeiculos[0].id })
-        .eq("id", lead.id);
+    // Verifica se o cliente mencionou um carro diferente do vinculado
+    const clientePediuCarroDiferente =
+      hitsTextuais.length > 0 &&
+      (!veiculoPrincipal || !hitsTextuais.some((h) => h.id === veiculoPrincipal!.id));
+
+    if (clientePediuCarroDiferente) {
+      // Cliente pediu outro carro — usa os hits textuais como principal e atualiza veiculo_id
+      topVeiculos = hitsTextuais.slice(0, 5);
+      if (lead && topVeiculos[0]) {
+        await supabaseAdmin
+          .from("leads")
+          .update({ veiculo_id: topVeiculos[0].id })
+          .eq("id", lead.id);
+      }
+    } else if (veiculoPrincipal) {
+      // Lead já tem carro vinculado — mantém ele no topo, busca semântica apenas para complementar
+      const queryEmbedding = await generateEmbedding(userMessage);
+      const { data: matchedVehicles } = await supabaseAdmin.rpc("match_veiculos", {
+        query_embedding: queryEmbedding,
+        match_threshold: 0.3,
+        match_count: 4,
+      });
+      let complementares: Vehicle[] = [];
+      if (matchedVehicles && (matchedVehicles as any[]).length > 0) {
+        const ids = (matchedVehicles as any[]).map((v) => v.id).filter((id: string) => id !== veiculoPrincipal!.id);
+        const { data: vc } = await supabaseAdmin.from("veiculos").select("*").in("id", ids).eq("status_venda", "DISPONIVEL");
+        if (vc) complementares = vc as Vehicle[];
+      }
+      topVeiculos = [veiculoPrincipal, ...complementares].slice(0, 5);
+    } else {
+      // Lead novo sem carro vinculado — busca semântica + textual normal
+      const queryEmbedding = await generateEmbedding(userMessage);
+      const { data: matchedVehicles, error: matchError } = await supabaseAdmin.rpc("match_veiculos", {
+        query_embedding: queryEmbedding,
+        match_threshold: 0.2,
+        match_count: 5,
+      });
+
+      if (matchError || !matchedVehicles || (matchedVehicles as any[]).length === 0) {
+        const { data: estoqueGeral } = await supabaseAdmin.from("veiculos").select("*").eq("status_venda", "DISPONIVEL").limit(5);
+        if (estoqueGeral) topVeiculos = estoqueGeral as Vehicle[];
+      } else {
+        const ids = (matchedVehicles as any[]).map((v) => v.id);
+        const { data: veiculosCompletos } = await supabaseAdmin.from("veiculos").select("*").in("id", ids).eq("status_venda", "DISPONIVEL");
+        if (veiculosCompletos) topVeiculos = veiculosCompletos as Vehicle[];
+      }
+
+      // Coloca hits textuais no topo
+      if (hitsTextuais.length > 0) {
+        const idsExist = new Set(topVeiculos.map((v) => v.id));
+        topVeiculos = [...hitsTextuais.filter((h) => !idsExist.has(h.id)), ...topVeiculos].slice(0, 5);
+      } else {
+        topVeiculos = topVeiculos.slice(0, 5);
+      }
+
+      // Vincula o primeiro carro encontrado ao lead
+      if (lead && topVeiculos[0]) {
+        await supabaseAdmin.from("leads").update({ veiculo_id: topVeiculos[0].id }).eq("id", lead.id);
+      }
     }
 
     // ── 6. Contexto do Estoque ──────────────────────────────────────────────
@@ -270,6 +309,8 @@ export async function POST(req: NextRequest) {
         .join("\n\n");
     }
 
+    console.log("🚗 CONTEXTO ENVIADO AO LUCAS:\n", context);
+
     // ── 7. Histórico da Conversa ─────────────────────────────────────────────
     let historico = "Nenhuma conversa anterior.";
     if (lead?.id) {
@@ -301,17 +342,17 @@ Seu objetivo é conduzir um atendimento natural, direto e focado em vendas, send
 
 [DIRETRIZES DE PERSONALIDADE E TOM]
 - Comporte-se como um vendedor profissional: ágil, educado e direto ao ponto.
-- LINGUAGEM: Use um tom natural e comercial ("Opa", "Consigo sim", "Com certeza"). NUNCA seja caricato. PROIBIDO usar gírias exageradas.
-- USO DO NOME DO CLIENTE (REGRA RÍGIDA): Se não souber com quem está falando, pergunte o nome UMA ÚNICA VEZ por educação. Depois que descobrir o nome, É PROIBIDO iniciar suas mensagens com ele (NUNCA diga "Opa, João!", "Certo, João!"). Fale de forma fluida. Se for usar o nome do cliente, faça isso no máximo UMA VEZ durante toda a conversa, de preferência no meio ou final da frase.
-- O SEU NOME: NUNCA repita o seu próprio nome (Lucas) se já tiver se apresentado no histórico.
-- ANTI-REPETIÇÃO: Leia o HISTÓRICO DA CONVERSA e nunca use a mesma frase ou adjetivo (ex: "impecável") repetidas vezes nas mensagens seguintes.
-- INTERPRETAÇÃO: Entenda abreviações comuns de WhatsApp (qto = quanto, km = quilometragem, doc = documento, fipe = tabela fipe).
-- Tamanho: Máximo de 2 a 3 linhas. Textos curtos.
+- LINGUAGEM: Use um tom natural e comercial. NUNCA seja caricato. PROIBIDO usar gírias exageradas.
+- USO DO NOME DO CLIENTE: Se não souber com quem está falando, pergunte o nome UMA ÚNICA VEZ. Depois, É PROIBIDO iniciar suas mensagens com ele. Se for usar o nome do cliente, faça isso no máximo UMA VEZ durante toda a conversa.
+- NOME DA LOJA E SEU NOME (TRAVA RIGOROSA): NUNCA repita o seu próprio nome (Lucas) nem o nome da loja (Amigo Racing) se já tiverem sido mencionados no histórico. Fale apenas uma vez na apresentação.
+- INTERJEIÇÕES E REPETIÇÕES: É PROIBIDO iniciar mensagens repetindo interjeições como "Opa", "Certo", "Maravilha". Varie o início das frases ou, de preferência, vá direto ao assunto.
+- REGRA DO CONTA-GOTAS (MIMETISMO): Espelhe o tamanho da mensagem do cliente. Se o cliente for curto ("Uma sw4"), seja curto e responda apenas o básico ("Sim, temos uma 2018 flex."). NUNCA despeje a ficha técnica inteira, cores ou opcionais de uma vez só. Entregue as informações aos poucos, apenas se o cliente perguntar.
+- Tamanho: Máximo de 1 a 2 linhas curtas.
 
 [ROTEIRO DE ATENDIMENTO E GATILHOS]
-1. SAUDAÇÃO INICIAL: Se for a primeira mensagem, responda: "[Saudação correspondente], me chamo Lucas vendedor aqui da Amigo Racing, tudo bem?".
-2. ESTADO DO CARRO: Se perguntarem sobre qualidade, EXALTE O VEÍCULO com termos profissionais ("excelente estado", "muito novo", "todo revisado", "carro extra"). Varie as palavras.
-3. DADOS FALTANTES (A Tática do Pátio): Se o cliente pedir um dado que NÃO ESTEJA no SEU ESTOQUE ATUAL, diga UMA VEZ: "Opa! Não tenho esse detalhe exato aqui na mão, mas vou pedir pra equipe confirmar rapidinho!". ATENÇÃO À INSISTÊNCIA: Se o cliente insistir nessa mesma informação, NÃO ignore. Diga: "Ainda tô aguardando o pessoal do pátio me passar essa ficha, mas já te falo. Enquanto isso, quer vir dar uma olhada de perto?".
+1. SAUDAÇÃO INICIAL: Se for a primeira mensagem da conversa, responda: "[Saudação correspondente], me chamo Lucas vendedor aqui da Amigo Racing, tudo bem?".
+2. ESTADO DO CARRO: Se perguntarem sobre qualidade, EXALTE O VEÍCULO com termos profissionais ("excelente estado", "muito novo", "todo revisado"). Varie as palavras.
+3. DADOS FALTANTES (A Tática do Pátio): ANTES de dizer que não sabe, PROCURE nos campos "Ficha:" do SEU ESTOQUE ATUAL. Lá estão: Motor, Combustível, Banco (tipo_banco), Pneus, Segundo dono e Final da placa. Se a informação estiver lá, RESPONDA com ela. Só use a desculpa do pátio se o dado realmente NÃO estiver em nenhum campo. ATENÇÃO À INSISTÊNCIA: Se o cliente insistir nessa mesma informação logo em seguida, NÃO ignore. Diga: "Ainda tô aguardando o pessoal do pátio me passar essa ficha, mas já te falo. Enquanto isso, quer vir dar uma olhada de perto?".
 4. CARRO NA TROCA: "Sim, pegamos seu carro na troca! Precisa trazer ele aqui para a gente avaliar."
 5. VALOR DA TROCA: "Somente após análise do nosso avaliador presencial para te dar essa informação." NUNCA estime valores.
 6. FINANCIAMENTO E TRAVA: "Sim, trabalhamos com os melhores bancos. Qual valor gostaria de financiar?". Se ele responder o valor, diga que vai ver com a gerência. NUNCA peça CPF ou dados pessoais.

@@ -218,6 +218,12 @@ export default function DetalheVeiculo() {
         quilometragem_estimada: veiculo.quilometragem_estimada,
         cor: veiculo.cor,
         parcelas: veiculo.parcelas,
+        motor: veiculo.motor,
+        combustivel: veiculo.combustivel,
+        tipo_banco: veiculo.tipo_banco,
+        estado_pneus: veiculo.estado_pneus,
+        segundo_dono: veiculo.segundo_dono,
+        final_placa: veiculo.final_placa,
       })
       .eq("id", id);
     if (!error) alert("Dados atualizados! 🚀");
