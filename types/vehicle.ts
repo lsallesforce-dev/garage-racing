@@ -27,4 +27,9 @@ export interface Vehicle {
   status_venda?: 'DISPONIVEL' | 'VENDIDO';
   roteiro_pitch?: string;
   capa_marketing_url?: string;
+  segundo_dono?: boolean;
+  final_placa?: string;
+  tipo_banco?: string;
+  motor?: string;
+  estado_pneus?: string;
 }

@@ -11,7 +11,7 @@ export const geminiFlashSales = genAI.getGenerativeModel(
 
 export async function generateEmbedding(text: string) {
   try {
-    const model = genAI.getGenerativeModel({ model: "text-embedding-004" });
+    const model = genAI.getGenerativeModel({ model: "text-embedding-004" }, { apiVersion: "v1" });
     const result = await model.embedContent(text);
     return result.embedding.values;
   } catch (error) {

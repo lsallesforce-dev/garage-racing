@@ -598,6 +598,44 @@ export default function DetalheVeiculo() {
               <p className="mt-3 text-[9px] text-gray-400 italic">
                 Dica: adicione acessórios, revisões ou detalhes que o vídeo não mostrou.
               </p>
+
+              {/* Campos estruturados da ficha */}
+              <div className="mt-6 grid grid-cols-2 gap-3">
+                {[
+                  { label: "Valor", field: "preco_sugerido", format: (v: any) => v ? `R$ ${Number(v/100).toLocaleString("pt-BR")}` : "" },
+                  { label: "Ano", field: "ano_modelo", format: (v: any) => v || "" },
+                  { label: "Modelo", field: "modelo", format: (v: any) => v || "" },
+                  { label: "Quilometragem", field: "quilometragem_estimada", format: (v: any) => v ? `${Number(v).toLocaleString("pt-BR")} km` : "" },
+                  { label: "Cor", field: "cor", format: (v: any) => v || "" },
+                  { label: "Combustível", field: "combustivel", format: (v: any) => v || "" },
+                  { label: "Motor", field: "motor", format: (v: any) => v || "" },
+                  { label: "Tipo de Banco", field: "tipo_banco", format: (v: any) => v || "" },
+                  { label: "Estado dos Pneus", field: "estado_pneus", format: (v: any) => v || "" },
+                  { label: "Final da Placa", field: "final_placa", format: (v: any) => v || "" },
+                  { label: "Segundo Dono", field: "segundo_dono", format: (v: any) => v === true ? "Sim" : v === false ? "Não" : "" },
+                ].map(({ label, field, format }) => (
+                  <div key={field}>
+                    <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-1">{label}</p>
+                    <input
+                      type="text"
+                      defaultValue={format(veiculo?.[field])}
+                      onBlur={(e) => {
+                        const val = e.target.value.trim();
+                        if (field === "segundo_dono") {
+                          patch({ segundo_dono: val.toLowerCase() === "sim" });
+                        } else if (field === "preco_sugerido") {
+                          // readonly, editado no campo dedicado
+                        } else {
+                          patch({ [field]: val || null });
+                        }
+                      }}
+                      readOnly={field === "preco_sugerido"}
+                      className={`w-full text-[11px] font-bold text-gray-700 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-red-500/10 focus:border-red-300 transition-all ${field === "preco_sugerido" ? "opacity-60 cursor-default" : ""}`}
+                      placeholder={`${label}...`}
+                    />
+                  </div>
+                ))}
+              </div>
             </SectionCard>
           </div>
 

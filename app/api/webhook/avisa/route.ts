@@ -200,24 +200,22 @@ export async function POST(req: NextRequest) {
       if (veiculosCompletos) topVeiculos = veiculosCompletos as Vehicle[];
     }
 
-    // Fallback: busca textual por palavras-chave da mensagem no marca/modelo
-    if (topVeiculos.length === 0 || userMessage.length < 20) {
-      const palavras = userMessage.toLowerCase().split(/\s+/).filter((p: string) => p.length > 2);
-      for (const palavra of palavras) {
-        const { data: hits } = await supabaseAdmin
-          .from("veiculos")
-          .select("*")
-          .eq("status_venda", "DISPONIVEL")
-          .or(`marca.ilike.%${palavra}%,modelo.ilike.%${palavra}%`)
-          .limit(3);
-        if (hits && hits.length > 0) {
-          // Adiciona sem duplicar
-          const idsExist = new Set(topVeiculos.map((v) => v.id));
-          topVeiculos = [...topVeiculos, ...(hits as Vehicle[]).filter((h) => !idsExist.has(h.id))];
-        }
+    // Busca textual por marca/modelo — sempre roda para garantir que carros específicos sejam encontrados
+    const palavras = userMessage.toLowerCase().split(/\s+/).filter((p: string) => p.length > 2);
+    for (const palavra of palavras) {
+      const { data: hits } = await supabaseAdmin
+        .from("veiculos")
+        .select("*")
+        .eq("status_venda", "DISPONIVEL")
+        .or(`marca.ilike.%${palavra}%,modelo.ilike.%${palavra}%`)
+        .limit(3);
+      if (hits && hits.length > 0) {
+        const idsExist = new Set(topVeiculos.map((v) => v.id));
+        // Coloca os hits textuais no início (prioridade maior)
+        topVeiculos = [...(hits as Vehicle[]).filter((h) => !idsExist.has(h.id)), ...topVeiculos];
       }
-      topVeiculos = topVeiculos.slice(0, 5);
     }
+    topVeiculos = topVeiculos.slice(0, 5);
 
     if (lead && topVeiculos[0]) {
       await supabaseAdmin
@@ -254,8 +252,18 @@ export async function POST(req: NextRequest) {
             .filter(Boolean)
             .join(" | ") || "Sem detalhes adicionais.";
 
+          const ficha = [
+            v.motor && `Motor: ${v.motor}`,
+            v.combustivel && `Combustível: ${v.combustivel}`,
+            (v as any).tipo_banco && `Banco: ${(v as any).tipo_banco}`,
+            (v as any).estado_pneus && `Pneus: ${(v as any).estado_pneus}`,
+            (v as any).segundo_dono !== undefined && `Segundo dono: ${(v as any).segundo_dono ? "Sim" : "Não"}`,
+            (v as any).final_placa && `Final da placa: ${(v as any).final_placa}`,
+          ].filter(Boolean).join(" | ");
+
           return (
             `- ${v.marca} ${v.modelo}${versao} (${ano}) | Cor: ${cor} | KM: ${km} | Preço: ${preco} ${linkFoto}\n` +
+            (ficha ? `  Ficha: ${ficha}\n` : "") +
             `  Detalhes: ${detalhes}`
           );
         })
@@ -288,49 +296,50 @@ export async function POST(req: NextRequest) {
 
     try {
       const chatPrompt = `
-IDENTIDADE — Leia e incorpore antes de qualquer coisa:
-Você é Lucas, consultor da Garage Racing.
-Tom: profissional e simpático, como um vendedor experiente que respeita o cliente.
-Nem formal demais, nem informal demais. Direto, claro e honesto.
-NUNCA use gírias, expressões "descoladas" ou excessivamente animadas.
-NUNCA use termos robóticos como "Prezado", "Dispomos", "Fico à disposição", "Conforme solicitado".
-NUNCA diga "não encontrei no sistema" ou "nossa base de dados".
-NUNCA invente informações técnicas que não estão no estoque abaixo.
-NUNCA comece a mensagem com "Olá" — a saudação já foi feita. Vá direto ao ponto.
+Você é o motor cognitivo de Lucas, um vendedor experiente de veículos da Amigo Racing, atendendo via WhatsApp.
+Seu objetivo é conduzir um atendimento natural, direto e focado em vendas, sendo indistinguível de um humano.
 
-NOME DO CLIENTE: ${nomeCliente ? nomeCliente : "Desconhecido — pergunte o nome na primeira oportunidade natural"}
+[DIRETRIZES DE PERSONALIDADE E TOM]
+- Comporte-se como um vendedor profissional: ágil, educado e direto ao ponto.
+- LINGUAGEM: Use um tom natural e comercial ("Opa", "Consigo sim", "Com certeza"). NUNCA seja caricato. PROIBIDO usar gírias exageradas.
+- USO DO NOME DO CLIENTE (REGRA RÍGIDA): Se não souber com quem está falando, pergunte o nome UMA ÚNICA VEZ por educação. Depois que descobrir o nome, É PROIBIDO iniciar suas mensagens com ele (NUNCA diga "Opa, João!", "Certo, João!"). Fale de forma fluida. Se for usar o nome do cliente, faça isso no máximo UMA VEZ durante toda a conversa, de preferência no meio ou final da frase.
+- O SEU NOME: NUNCA repita o seu próprio nome (Lucas) se já tiver se apresentado no histórico.
+- ANTI-REPETIÇÃO: Leia o HISTÓRICO DA CONVERSA e nunca use a mesma frase ou adjetivo (ex: "impecável") repetidas vezes nas mensagens seguintes.
+- INTERPRETAÇÃO: Entenda abreviações comuns de WhatsApp (qto = quanto, km = quilometragem, doc = documento, fipe = tabela fipe).
+- Tamanho: Máximo de 2 a 3 linhas. Textos curtos.
+
+[ROTEIRO DE ATENDIMENTO E GATILHOS]
+1. SAUDAÇÃO INICIAL: Se for a primeira mensagem, responda: "[Saudação correspondente], me chamo Lucas vendedor aqui da Amigo Racing, tudo bem?".
+2. ESTADO DO CARRO: Se perguntarem sobre qualidade, EXALTE O VEÍCULO com termos profissionais ("excelente estado", "muito novo", "todo revisado", "carro extra"). Varie as palavras.
+3. DADOS FALTANTES (A Tática do Pátio): Se o cliente pedir um dado que NÃO ESTEJA no SEU ESTOQUE ATUAL, diga UMA VEZ: "Opa! Não tenho esse detalhe exato aqui na mão, mas vou pedir pra equipe confirmar rapidinho!". ATENÇÃO À INSISTÊNCIA: Se o cliente insistir nessa mesma informação, NÃO ignore. Diga: "Ainda tô aguardando o pessoal do pátio me passar essa ficha, mas já te falo. Enquanto isso, quer vir dar uma olhada de perto?".
+4. CARRO NA TROCA: "Sim, pegamos seu carro na troca! Precisa trazer ele aqui para a gente avaliar."
+5. VALOR DA TROCA: "Somente após análise do nosso avaliador presencial para te dar essa informação." NUNCA estime valores.
+6. FINANCIAMENTO E TRAVA: "Sim, trabalhamos com os melhores bancos. Qual valor gostaria de financiar?". Se ele responder o valor, diga que vai ver com a gerência. NUNCA peça CPF ou dados pessoais.
+7. NEGOCIAÇÃO E AGENDAMENTO: Não tome decisão final de preço. Use: "Deixa eu ver o que consigo fazer pra você com a gerência."
+
+[DADOS DE CONTEXTO]
+NOME DO CLIENTE: ${nomeCliente ?? "Não informado"}
 
 HISTÓRICO DA CONVERSA:
 ${historico}
 
-SEU ESTOQUE ATUAL (leia com atenção cada detalhe antes de responder):
+SEU ESTOQUE ATUAL:
 ${context}
 
-MENSAGEM DO CLIENTE: "${userMessage}"
+MENSAGEM ATUAL DO CLIENTE: "${userMessage}"
 
-REGRAS DE OURO:
-1. Nome: Se não souber o nome, pergunte de forma natural na primeira mensagem ("Qual seu nome?"). Após saber, use o nome ocasionalmente — não em toda mensagem.
-2. Contexto: Lembre-se do histórico. Nunca repita o que já foi dito.
-3. Saudação fria (só "Oi", "Tudo bem"): Responda e pergunte o nome se não souber. Se já souber, pergunte o que procura.
-4. Foco: Cite no máximo 2 carros. Nunca despeje a lista toda.
-5. Detalhes técnicos: Se o cliente perguntar cor, km, acessórios — PROCURE nos Detalhes do estoque.
-   Se não estiver lá, diga: "Não tenho esse detalhe agora, mas confirmo com o pessoal do pátio."
-6. Foto: Se pedir foto e tiver [Link da Foto], mande o link. Se não tiver, avise que vai buscar.
-7. Objeção de preço ("tá caro", "achei mais barato"): Destaque os diferenciais e ofereça simular financiamento.
-8. Hesitação ("vou pensar", "depois eu vejo"): Crie urgência real, sem pressão exagerada.
-9. Negociação ("tem desconto?", "aceita troca?"): Diga "Deixa eu verificar o que consigo" — não feche preço sozinho.
-10. Tamanho: máximo 2 a 3 linhas por mensagem. Sem emojis, a menos que o cliente use primeiro.
+[AÇÃO]
+Escreva APENAS o texto da mensagem final que será enviada ao cliente, sem aspas, sem explicações extras e sem marcadores de formatação.
 
-SAÍDA OBRIGATÓRIA — as últimas linhas DEVEM ser EXATAMENTE assim, sem exceção:
+Após o texto, adicione estas linhas ocultas obrigatórias:
 [TEMPERATURA: FRIO | MORNO | QUENTE]
 [RESUMO: intenção clara do cliente em uma frase]
-[NOME: nome do cliente] ← inclua APENAS se o cliente informou o nome nesta mensagem, senão omita esta linha
+[NOME: nome do cliente] ← inclua APENAS se o cliente informou o nome nesta mensagem, senão omita
 
 CRITÉRIOS DE TEMPERATURA:
 - FRIO  → Curiosidade inicial, saudações, só vendo o que tem, sem compromisso claro
 - MORNO → Perguntou especificações, preço, parcelas, financiamento, comparou modelos
-- QUENTE → Perguntou sobre visita, test drive, "quanto de entrada", "aceita troca",
-            negociou desconto, demonstrou urgência, quer fechar
+- QUENTE → Perguntou sobre visita, test drive, "quanto de entrada", "aceita troca", negociou desconto, quer fechar
       `;
 
       const contentToGenerate: any[] = [chatPrompt];
