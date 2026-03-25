@@ -32,4 +32,5 @@ export interface Vehicle {
   tipo_banco?: string;
   motor?: string;
   estado_pneus?: string;
+  categoria?: string;
 }

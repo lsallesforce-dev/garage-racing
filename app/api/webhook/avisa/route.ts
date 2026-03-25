@@ -1,6 +1,6 @@
 import { geminiFlashSales, generateEmbedding } from "@/lib/gemini";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { sendAvisaMessage } from "@/lib/avisa";
+import { sendAvisaMessage, sendAvisaImage } from "@/lib/avisa";
 import { buscarDadosTransbordo, gerarRelatorioPista } from "@/lib/leads";
 import { NextRequest, NextResponse } from "next/server";
 import { Vehicle } from "@/types/vehicle";
@@ -158,6 +158,9 @@ export async function POST(req: NextRequest) {
       .select()
       .single();
 
+    // Guarda o veiculo_id ANTES da busca para detectar se o carro mudou
+    const veiculoIdAnterior = lead?.veiculo_id ?? null;
+
     if (lead && userMessage) {
       await supabaseAdmin.from("mensagens").insert({
         lead_id: lead.id,
@@ -294,6 +297,7 @@ export async function POST(req: NextRequest) {
           const ficha = [
             v.motor && `Motor: ${v.motor}`,
             v.combustivel && `Combustível: ${v.combustivel}`,
+            (v as any).categoria && `Categoria: ${(v as any).categoria}`,
             (v as any).tipo_banco && `Banco: ${(v as any).tipo_banco}`,
             (v as any).estado_pneus && `Pneus: ${(v as any).estado_pneus}`,
             (v as any).segundo_dono !== undefined && `Segundo dono: ${(v as any).segundo_dono ? "Sim" : "Não"}`,
@@ -329,7 +333,92 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ── 8. O Cérebro do Lucas ───────────────────────────────────────────────
+    // ── 8. Interceptores: Lead Quente + Pós-venda ───────────────────────────
+    // Rodam ANTES do LLM — disparam alertas silenciosos e seguem normalmente
+    const gatilhosQuente = [
+      "desconto", "à vista", "a vista", "menor valor", "faz quanto",
+      "tem como baixar", "última proposta", "última oferta", "fecha hoje",
+      "quanto de entrada", "aceita troca", "quero fechar", "vou comprar",
+    ];
+    const mensagemLower = userMessage.toLowerCase();
+    const isLeadQuente = gatilhosQuente.some((g) => mensagemLower.includes(g));
+
+    if (isLeadQuente) {
+      const gerentePhone = process.env.NEXT_PUBLIC_ZAPI_PHONE;
+      const nomeParaAlerta = lead?.nome || phone;
+      const veiculoAlerta = topVeiculos[0]
+        ? `${topVeiculos[0].marca} ${topVeiculos[0].modelo}`
+        : "veículo";
+
+      if (gerentePhone) {
+        // Fire-and-forget — não bloqueia a resposta do bot
+        sendAvisaMessage(
+          gerentePhone,
+          `🚨 *LEAD QUENTE NA MESA!*\n\n` +
+          `👤 Cliente: ${nomeParaAlerta}\n` +
+          `🚗 Interesse: ${veiculoAlerta}\n` +
+          `💬 Mensagem: "${userMessage}"\n\n` +
+          `👉 Assuma o atendimento: /chat`
+        ).catch(() => {});
+      }
+    }
+
+    // Interceptor pós-venda — ativa stand-by automático e alerta o gerente
+    const gatilhosProblema = [
+      "deu problema", "quebrou", "garantia", "defeito", "barulho estranho",
+      "parou de funcionar", "não liga", "vazando", "batendo", "oficina",
+      "acidente", "recall", "motor travou", "câmbio", "freio",
+    ];
+    const isPosvenda = gatilhosProblema.some((g) => mensagemLower.includes(g));
+
+    if (isPosvenda && lead) {
+      const gerentePhone = process.env.NEXT_PUBLIC_ZAPI_PHONE;
+      const nomeParaAlerta = lead.nome || phone;
+
+      // Ativa stand-by: Lucas para de responder após a triagem
+      await supabaseAdmin
+        .from("leads")
+        .update({ status: "PROBLEMA", em_atendimento_humano: true })
+        .eq("id", lead.id);
+
+      if (gerentePhone) {
+        sendAvisaMessage(
+          gerentePhone,
+          `🔴 *ALERTA PÓS-VENDA!*\n\n` +
+          `👤 Cliente: ${nomeParaAlerta}\n` +
+          `💬 Mensagem: "${userMessage}"\n\n` +
+          `⚠️ Lucas foi colocado em stand-by automaticamente.\n` +
+          `👉 Assuma o atendimento: /chat`
+        ).catch(() => {});
+      }
+    }
+
+    // ── 9. Enviar foto do carro ──────────────────────────────────────────────
+    // Roda ANTES do prompt para que a IA saiba se a foto foi enviada ou não
+    const veiculoAtualFoto = topVeiculos[0] ?? null;
+    const veiculoMudou = veiculoAtualFoto && veiculoAtualFoto.id !== veiculoIdAnterior;
+    const gatilhosFoto = ["foto", "fotos", "imagem", "manda foto", "ver o carro", "tem foto", "tem imagem"];
+    const clientePediuFoto = gatilhosFoto.some((g) => mensagemLower.includes(g));
+
+    let fotoEnviada = false;
+    if ((veiculoMudou || clientePediuFoto) && veiculoAtualFoto) {
+      const fotoUrl = veiculoAtualFoto.capa_marketing_url ?? (veiculoAtualFoto as any).fotos?.[0] ?? null;
+      if (fotoUrl) {
+        try {
+          const imgResp = await fetch(fotoUrl);
+          if (imgResp.ok) {
+            const buffer = await imgResp.arrayBuffer();
+            const base64 = Buffer.from(buffer).toString("base64");
+            await sendAvisaImage(phone, base64);
+            fotoEnviada = true;
+          }
+        } catch (e) {
+          console.warn("Falha ao enviar foto:", e);
+        }
+      }
+    }
+
+    // ── 10. O Cérebro do Lucas ───────────────────────────────────────────────
     const nomeCliente = lead?.nome || null;
     let aiResponse = "";
     let resumo = "";
@@ -346,19 +435,23 @@ Seu objetivo é conduzir um atendimento natural, direto e focado em vendas, send
 - USO DO NOME DO CLIENTE: Se não souber com quem está falando, pergunte o nome UMA ÚNICA VEZ. Depois, É PROIBIDO iniciar suas mensagens com ele. Se for usar o nome do cliente, faça isso no máximo UMA VEZ durante toda a conversa.
 - NOME DA LOJA E SEU NOME (TRAVA RIGOROSA): NUNCA repita o seu próprio nome (Lucas) nem o nome da loja (Amigo Racing) se já tiverem sido mencionados no histórico. Fale apenas uma vez na apresentação.
 - INTERJEIÇÕES E REPETIÇÕES: É PROIBIDO iniciar mensagens repetindo interjeições como "Opa", "Certo", "Maravilha". Varie o início das frases ou, de preferência, vá direto ao assunto.
-- REGRA DO CONTA-GOTAS (MIMETISMO): Espelhe o tamanho da mensagem do cliente. Se o cliente for curto ("Uma sw4"), seja curto e responda apenas o básico ("Sim, temos uma 2018 flex."). NUNCA despeje a ficha técnica inteira, cores ou opcionais de uma vez só. Entregue as informações aos poucos, apenas se o cliente perguntar.
+- REGRA DO CONTA-GOTAS (MIMETISMO): Espelhe o tamanho da mensagem do cliente. Se o cliente for curto, seja curto. NUNCA despeje a ficha técnica inteira de uma vez só. Entregue as informações aos poucos, apenas se o cliente perguntar.
 - Tamanho: Máximo de 1 a 2 linhas curtas.
 
 [ROTEIRO DE ATENDIMENTO E GATILHOS]
+Siga estritamente este comportamento para as seguintes situações:
+
 1. SAUDAÇÃO INICIAL: Se for a primeira mensagem da conversa, responda: "[Saudação correspondente], me chamo Lucas vendedor aqui da Amigo Racing, tudo bem?".
 2. ESTADO DO CARRO: Se perguntarem sobre qualidade, EXALTE O VEÍCULO com termos profissionais ("excelente estado", "muito novo", "todo revisado"). Varie as palavras.
-3. DADOS FALTANTES (A Tática do Pátio): ANTES de dizer que não sabe, PROCURE nos campos "Ficha:" do SEU ESTOQUE ATUAL. Lá estão: Motor, Combustível, Banco (tipo_banco), Pneus, Segundo dono e Final da placa. Se a informação estiver lá, RESPONDA com ela. Só use a desculpa do pátio se o dado realmente NÃO estiver em nenhum campo. ATENÇÃO À INSISTÊNCIA: Se o cliente insistir nessa mesma informação logo em seguida, NÃO ignore. Diga: "Ainda tô aguardando o pessoal do pátio me passar essa ficha, mas já te falo. Enquanto isso, quer vir dar uma olhada de perto?".
-4. CARRO NA TROCA: "Sim, pegamos seu carro na troca! Precisa trazer ele aqui para a gente avaliar."
-5. VALOR DA TROCA: "Somente após análise do nosso avaliador presencial para te dar essa informação." NUNCA estime valores.
-6. FINANCIAMENTO E TRAVA: "Sim, trabalhamos com os melhores bancos. Qual valor gostaria de financiar?". Se ele responder o valor, diga que vai ver com a gerência. NUNCA peça CPF ou dados pessoais.
-7. NEGOCIAÇÃO E AGENDAMENTO: Não tome decisão final de preço. Use: "Deixa eu ver o que consigo fazer pra você com a gerência."
+3. DADOS FALTANTES: Se o cliente pedir um dado que NÃO ESTEJA no [SEU ESTOQUE ATUAL], diga UMA VEZ: "Não tenho esse detalhe exato aqui na mão, mas vou pedir pra equipe confirmar rapidinho!". Se ele insistir, diga: "Ainda tô aguardando o pessoal do pátio me passar essa ficha, mas já te falo. Enquanto isso, quer vir dar uma olhada de perto?".
+4. CARRO NA TROCA: Se perguntar se pega troca, responda: "Sim, pegamos seu carro na troca! Precisa trazer ele aqui para a gente avaliar."
+5. VALOR DA TROCA: Se perguntar quanto pagamos no carro dele: "Somente após análise do nosso avaliador presencial para te dar essa informação." NUNCA estime valores.
+6. FINANCIAMENTO: Se perguntar se financia: "Sim, trabalhamos com os melhores bancos. Qual valor gostaria de financiar?". Se ele responder o valor, diga que vai ver com a gerência. NUNCA peça CPF ou dados pessoais.
+7. NEGOCIAÇÃO E DESCONTO: Você não tem autorização para dar descontos finais pelo WhatsApp. Se o cliente pedir desconto ou valor à vista, jogue para a gerência, mas SEMPRE emende com um convite para a loja. Exemplo: "Deixa eu ver uma condição especial com meu gerente, mas aqui a gente não perde negócio! Consegue dar um pulo aqui na loja hoje pra gente fechar?". NUNCA encerre a mensagem sem fazer uma pergunta (CTA).
+8. CATEGORIA E ALTERNATIVAS (Cross-sell): Se o cliente procurar por uma categoria (ex: "tem SUV?") ou se o carro pedido não estiver no estoque, busque pela 'Categoria' nos outros carros. Ofereça NO MÁXIMO 1 ou 2 opções similares. Exemplo: "Esse eu não tenho hoje, mas acabou de entrar um [Modelo Similar] impecável, que também é [Categoria]. Quer ver?".
+9. PÓS-VENDA E PROBLEMAS (Triagem de Emergência): Se o cliente relatar um defeito, problema mecânico, ou disser palavras como "quebrou", "garantia" ou "oficina", MUDE O TOM imediatamente para acolhedor e resolutivo. NUNCA tente vender. Peça desculpas pelo transtorno, pergunte qual foi o carro e avise que a gerência vai assumir. Exemplo obrigatório de postura: "Poxa, peço desculpas pelo transtorno! Me lembra qual foi o modelo e o ano do carro que você pegou com a gente, por favor? Já vou passar isso agora pro nosso gerente de pós-venda te chamar aqui e resolvermos isso rápido."
 
-[DADOS DE CONTEXTO]
+[DADOS DE CONTEXTO - INSTRUÇÃO: LEIA ANTES DE RESPONDER]
 NOME DO CLIENTE: ${nomeCliente ?? "Não informado"}
 
 HISTÓRICO DA CONVERSA:
@@ -369,8 +462,10 @@ ${context}
 
 MENSAGEM ATUAL DO CLIENTE: "${userMessage}"
 
+FOTO DO CARRO: ${fotoEnviada ? "✅ A foto foi enviada automaticamente pelo sistema ANTES desta mensagem de texto. Comente sobre ela naturalmente (ex: 'Mandei a foto aí! O que achou?'). NUNCA diga que vai mandar ou que está mandando." : "❌ Nenhuma foto disponível no momento. Se o cliente pedir foto, diga que vai buscar com o pátio e já manda."}
+
 [AÇÃO]
-Escreva APENAS o texto da mensagem final que será enviada ao cliente, sem aspas, sem explicações extras e sem marcadores de formatação.
+Com base no contexto, escreva a próxima resposta do Lucas. Gere APENAS o texto da mensagem final.
 
 Após o texto, adicione estas linhas ocultas obrigatórias:
 [TEMPERATURA: FRIO | MORNO | QUENTE]
@@ -409,7 +504,7 @@ CRITÉRIOS DE TEMPERATURA:
       aiResponse = `Olá! Tivemos uma pequena instabilidade aqui, mas já estamos de volta. Posso te ajudar com algum carro do nosso pátio? 🚗`;
     }
 
-    // ── 9. Salvar resposta e atualizar lead ─────────────────────────────────
+    // ── 10. Salvar resposta e atualizar lead ────────────────────────────────
     if (lead) {
       await supabaseAdmin.from("mensagens").insert({
         lead_id: lead.id,
@@ -426,7 +521,7 @@ CRITÉRIOS DE TEMPERATURA:
         .eq("id", lead.id);
     }
 
-    // ── 10. Transbordo com Briefing Completo (quando QUENTE) ────────────────
+    // ── 11. Transbordo com Briefing Completo (quando QUENTE) ────────────────
     if (temperatura === "QUENTE" && lead) {
       const topVeiculo = topVeiculos[0];
       if (topVeiculo?.id) {
@@ -438,7 +533,7 @@ CRITÉRIOS DE TEMPERATURA:
       }
     }
 
-    // ── 11. Enviar resposta ao cliente ──────────────────────────────────────
+    // ── 13. Enviar resposta ao cliente ──────────────────────────────────────
     await sendAvisaMessage(phone, aiResponse);
 
     return NextResponse.json({ success: true, temperatura });

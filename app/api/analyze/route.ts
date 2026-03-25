@@ -44,6 +44,7 @@ export async function POST(req: NextRequest) {
       "cor": "string",
       "combustivel": "string (ex: Flex, Diesel, Elétrico)",
       "motor": "string (ex: 1.0 Turbo, 2.8 Diesel 4x4)",
+      "categoria": "string — APENAS uma destas: Hatch, Sedan, SUV, Pick-up, Esportivo",
       "tipo_banco": "string (ex: Couro, Tecido, Bancos esportivos)",
       "estado_pneus": "string (ex: Novos, Bom estado, Desgastados)",
       "segundo_dono": "boolean (true se mencionado que é segundo dono)",

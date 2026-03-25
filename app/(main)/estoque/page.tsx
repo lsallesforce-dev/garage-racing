@@ -15,6 +15,7 @@ export default function ListaEstoque() {
       const { data } = await supabase
         .from('veiculos')
         .select('*')
+        .order('status_venda', { ascending: true })   // DISPONIVEL vem antes de VENDIDO (alfabético)
         .order('created_at', { ascending: false });
       if (data) setCarros(data);
       setLoading(false);

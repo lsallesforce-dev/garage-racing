@@ -23,9 +23,10 @@ type Mensagem = {
 };
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; dot: string }> = {
-  QUENTE: { label: "Quente", color: "text-red-600 bg-red-50 border-red-100",   dot: "bg-red-500"   },
-  MORNO:  { label: "Morno",  color: "text-amber-600 bg-amber-50 border-amber-100", dot: "bg-amber-400" },
-  FRIO:   { label: "Frio",   color: "text-blue-600 bg-blue-50 border-blue-100",  dot: "bg-blue-400"  },
+  PROBLEMA: { label: "🚨 Pós-venda", color: "text-red-700 bg-red-100 border-red-300", dot: "bg-red-600" },
+  QUENTE:   { label: "Quente",       color: "text-red-600 bg-red-50 border-red-100",   dot: "bg-red-500" },
+  MORNO:    { label: "Morno",        color: "text-amber-600 bg-amber-50 border-amber-100", dot: "bg-amber-400" },
+  FRIO:     { label: "Frio",         color: "text-blue-600 bg-blue-50 border-blue-100",  dot: "bg-blue-400" },
 };
 
 function formatTime(dateStr: string) {
@@ -179,13 +180,19 @@ export default function CentralChat() {
               <button
                 key={lead.id}
                 onClick={() => setSelectedLead(lead)}
-                className={`w-full text-left p-4 border-b border-gray-50 transition-all hover:bg-gray-50 ${
-                  isSelected ? "bg-gray-50 border-l-2 border-l-red-600" : "border-l-2 border-l-transparent"
+                className={`w-full text-left p-4 border-b border-gray-50 transition-all ${
+                  lead.status === "PROBLEMA"
+                    ? "bg-red-50 hover:bg-red-100 border-l-4 border-l-red-600"
+                    : isSelected
+                    ? "bg-gray-50 border-l-2 border-l-red-600 hover:bg-gray-50"
+                    : "border-l-2 border-l-transparent hover:bg-gray-50"
                 }`}
               >
                 <div className="flex items-center gap-3">
                   <div className="relative flex-shrink-0">
-                    <div className="w-11 h-11 rounded-2xl bg-slate-900 flex items-center justify-center text-white font-black text-sm">
+                    <div className={`w-11 h-11 rounded-2xl flex items-center justify-center text-white font-black text-sm ${
+                      lead.status === "PROBLEMA" ? "bg-red-600" : "bg-slate-900"
+                    }`}>
                       {(lead.nome || lead.wa_id).substring(0, 2).toUpperCase()}
                     </div>
                     <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${cfg.dot}`} />

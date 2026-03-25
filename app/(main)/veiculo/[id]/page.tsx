@@ -73,6 +73,7 @@ export default function DetalheVeiculo() {
   const [salvandoPontos, setSalvandoPontos] = useState(false);
   const [roteiro, setRoteiro] = useState("");
   const [isGeneratingRoteiro, setIsGeneratingRoteiro] = useState(false);
+  const [isExtractingFicha, setIsExtractingFicha] = useState(false);
 
   // Vendedores
   const [vendedores, setVendedores] = useState<any[]>([]);
@@ -249,6 +250,26 @@ export default function DetalheVeiculo() {
       alert("Falha ao registrar venda: " + e.message);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleExtrairFicha = async () => {
+    if (!veiculo) return;
+    setIsExtractingFicha(true);
+    try {
+      const resp = await fetch("/api/veiculo/extrair-ficha", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: veiculo.id }),
+      });
+      const data = await resp.json();
+      if (!data.success) throw new Error(data.error);
+      // Atualiza o estado local com os campos extraídos
+      setVeiculo((prev: any) => ({ ...prev, ...data.campos }));
+    } catch (e: any) {
+      alert("Falha ao extrair: " + e.message);
+    } finally {
+      setIsExtractingFicha(false);
     }
   };
 
@@ -606,7 +627,22 @@ export default function DetalheVeiculo() {
               </p>
 
               {/* Campos estruturados da ficha */}
-              <div className="mt-6 grid grid-cols-2 gap-3">
+              <div className="mt-6 flex items-center justify-between mb-3">
+                <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">
+                  Ficha Técnica
+                </p>
+                <button
+                  onClick={handleExtrairFicha}
+                  disabled={isExtractingFicha}
+                  className="flex items-center gap-1.5 px-4 py-1.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-[9px] font-black uppercase tracking-widest rounded-xl transition-colors"
+                >
+                  {isExtractingFicha ? (
+                    <Loader2 size={10} className="animate-spin" />
+                  ) : null}
+                  {isExtractingFicha ? "Extraindo..." : "⚡ Extrair da IA"}
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
                 {[
                   { label: "Valor", field: "preco_sugerido", format: (v: any) => v ? `R$ ${Number(v/100).toLocaleString("pt-BR")}` : "" },
                   { label: "Ano", field: "ano_modelo", format: (v: any) => v || "" },
@@ -615,6 +651,7 @@ export default function DetalheVeiculo() {
                   { label: "Cor", field: "cor", format: (v: any) => v || "" },
                   { label: "Combustível", field: "combustivel", format: (v: any) => v || "" },
                   { label: "Motor", field: "motor", format: (v: any) => v || "" },
+                  { label: "Categoria", field: "categoria", format: (v: any) => v || "" },
                   { label: "Tipo de Banco", field: "tipo_banco", format: (v: any) => v || "" },
                   { label: "Estado dos Pneus", field: "estado_pneus", format: (v: any) => v || "" },
                   { label: "Final da Placa", field: "final_placa", format: (v: any) => v || "" },
@@ -624,6 +661,7 @@ export default function DetalheVeiculo() {
                     <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-1">{label}</p>
                     <input
                       type="text"
+                      key={`${field}-${veiculo?.[field]}`}
                       defaultValue={format(veiculo?.[field])}
                       onBlur={(e) => {
                         const val = e.target.value.trim();
@@ -740,13 +778,13 @@ export default function DetalheVeiculo() {
             </div>
 
             {/* Marketing AI Factory */}
-            <div className="p-8 bg-slate-900 rounded-[2.5rem] text-white shadow-2xl relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-red-600/10 blur-3xl rounded-full -mr-16 -mt-16" />
+            <div className="p-8 bg-[#e2e2de] rounded-[2.5rem] border border-black/5 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-red-600/5 blur-3xl rounded-full -mr-16 -mt-16" />
               <div className="flex justify-between items-center mb-4 relative z-10">
-                <h3 className="text-lg font-black uppercase italic tracking-tighter">
+                <h3 className="text-lg font-black uppercase italic tracking-tighter text-gray-900">
                   Marketing AI
                 </h3>
-                <span className="px-3 py-1 bg-red-600 text-[9px] font-black rounded-full uppercase">
+                <span className="px-3 py-1 bg-red-600 text-white text-[9px] font-black rounded-full uppercase">
                   Factory
                 </span>
               </div>
@@ -756,7 +794,7 @@ export default function DetalheVeiculo() {
               <button
                 onClick={handleGerarRoteiro}
                 disabled={isGeneratingRoteiro}
-                className="w-full py-4 bg-white text-slate-900 font-black uppercase italic rounded-2xl hover:bg-red-600 hover:text-white transition-all flex items-center justify-center gap-2 relative z-10 disabled:opacity-50"
+                className="w-full py-4 bg-gray-900 text-white font-black uppercase italic rounded-2xl hover:bg-red-600 transition-all flex items-center justify-center gap-2 relative z-10 disabled:opacity-50"
               >
                 {isGeneratingRoteiro ? (
                   <Loader2 size={18} className="animate-spin" />
@@ -767,11 +805,11 @@ export default function DetalheVeiculo() {
               </button>
 
               {roteiro && (
-                <div className="mt-6 p-5 bg-slate-800/50 rounded-2xl border border-slate-700/50 relative z-10">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-red-500 mb-3">
+                <div className="mt-6 p-5 bg-gray-50 rounded-2xl border border-gray-100 relative z-10">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-red-600 mb-3">
                     Roteiro (Reels/TikTok)
                   </p>
-                  <pre className="text-xs text-gray-300 whitespace-pre-wrap font-sans leading-relaxed italic">
+                  <pre className="text-xs text-gray-600 whitespace-pre-wrap font-sans leading-relaxed italic">
                     {roteiro}
                   </pre>
                 </div>

@@ -147,10 +147,10 @@ export const PhotoGallery = ({
   };
 
   return (
-    <div className="bg-[#111] p-6 rounded-3xl border border-white/5 shadow-2xl">
+    <div className="bg-[#e2e2de] p-6 rounded-3xl border border-gray-200/50">
       {/* Header */}
       <div className="flex justify-between items-center mb-4 gap-3 flex-wrap">
-        <h3 className="text-[10px] font-black text-gray-500 uppercase tracking-widest">
+        <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
           Galeria de Mídia
         </h3>
 
@@ -161,8 +161,8 @@ export const PhotoGallery = ({
             title={watermarkEnabled ? "Marca d'água ativa" : "Marca d'água desativada"}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[9px] font-black uppercase tracking-widest transition-all ${
               watermarkEnabled
-                ? "border-red-600/60 text-red-500 bg-red-600/10"
-                : "border-white/10 text-gray-600 hover:border-white/20"
+                ? "border-red-600/60 text-red-500 bg-red-50"
+                : "border-gray-200 text-gray-400 hover:border-gray-300"
             }`}
           >
             <Stamp size={11} />
@@ -173,8 +173,8 @@ export const PhotoGallery = ({
           <label
             className={`cursor-pointer flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-full border transition-all ${
               isUploading
-                ? "border-slate-800 text-slate-600 cursor-wait"
-                : "border-red-600/50 text-red-500 hover:bg-red-600/10"
+                ? "border-gray-200 text-gray-400 cursor-wait"
+                : "border-red-600/50 text-red-500 hover:bg-red-50"
             }`}
           >
             {isUploading ? (
@@ -200,7 +200,7 @@ export const PhotoGallery = ({
       </div>
 
       {/* Foto principal */}
-      <div className="w-full h-80 rounded-2xl border-4 border-red-600/30 overflow-hidden mb-4 relative bg-[#0a0a0a]">
+      <div className="w-full h-80 rounded-2xl border-2 border-black/10 overflow-hidden mb-4 relative bg-[#d4d4d0]">
         {fotos.length > 0 ? (
           <img
             src={selectedPhoto || fotos[0]}
@@ -209,13 +209,13 @@ export const PhotoGallery = ({
           />
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center text-center p-8">
-            <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mb-4 text-gray-700">
+            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4 text-gray-300">
               <ImagePlus size={28} />
             </div>
-            <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">
               Sem fotos no pátio
             </p>
-            <p className="text-[9px] text-gray-700 uppercase font-bold max-w-[160px]">
+            <p className="text-[9px] text-gray-300 uppercase font-bold max-w-[160px]">
               Clique em "Adicionar Foto" para iniciar a vitrine
             </p>
           </div>
@@ -242,7 +242,7 @@ export const PhotoGallery = ({
               className={`w-full h-16 rounded-xl overflow-hidden border-2 transition-all ${
                 selectedPhoto === foto
                   ? "border-red-600"
-                  : "border-white/10 hover:border-red-600/50"
+                  : "border-gray-100 hover:border-red-400"
               }`}
             >
               <img
@@ -260,7 +260,7 @@ export const PhotoGallery = ({
           </div>
         ))}
         {fotos.length === 0 && (
-          <div className="col-span-5 h-16 border-2 border-dashed border-white/5 rounded-xl flex items-center justify-center text-[10px] text-gray-600 font-bold uppercase tracking-widest">
+          <div className="col-span-5 h-16 border-2 border-dashed border-gray-200 rounded-xl flex items-center justify-center text-[10px] text-gray-300 font-bold uppercase tracking-widest">
             Nenhuma foto cadastrada
           </div>
         )}

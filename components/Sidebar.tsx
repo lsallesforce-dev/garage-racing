@@ -1,8 +1,9 @@
 "use client";
 
-import { LayoutDashboard, PlusSquare, MessageSquare, DollarSign, Users, ShieldCheck, Car, Store, Settings } from "lucide-react";
+import { LayoutDashboard, PlusSquare, MessageSquare, DollarSign, Users, ShieldCheck, Car, Store, Settings, LogOut } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
 
 const menuItems: { icon: any; label: string; href: string; badge?: number }[] = [
   { icon: LayoutDashboard, label: "Pátio Digital", href: "/" },
@@ -17,6 +18,13 @@ const menuItems: { icon: any; label: string; href: string; badge?: number }[] = 
 
 export const Sidebar = () => {
   const pathname = usePathname();
+  const router = useRouter();
+
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    router.push("/login");
+    router.refresh();
+  }
 
   return (
     <aside className="w-64 h-screen bg-[#e2e2de] border-r border-gray-300 p-6 flex flex-col fixed left-0 top-0 z-50">
@@ -49,10 +57,17 @@ export const Sidebar = () => {
       {/* Perfil do Usuário */}
       <div className="mt-10 pt-6 border-t border-gray-300 flex items-center gap-3">
         <div className="w-10 h-10 rounded-full bg-gray-900 flex items-center justify-center text-white font-black text-sm italic shadow-lg">LS</div>
-        <div className="flex flex-col">
+        <div className="flex flex-col flex-1 min-w-0">
           <span className="text-[11px] font-black uppercase tracking-tight text-gray-900">Lucas Salles</span>
           <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest italic">Gerente de Pátio</span>
         </div>
+        <button
+          onClick={handleLogout}
+          title="Sair"
+          className="text-gray-400 hover:text-red-600 transition-colors"
+        >
+          <LogOut size={16} />
+        </button>
       </div>
     </aside>
   );
