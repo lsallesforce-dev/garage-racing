@@ -120,7 +120,7 @@ export default function VitrineDetalheClient({ veiculo, relacionados }: { veicul
   const fotos: string[] = veiculo.fotos ?? [];
   const pontos: string[] = veiculo.pontos_fortes_venda ?? [];
   const vendido = veiculo.status_venda === "VENDIDO";
-  const msgWhats = `Oi! Vi o *${titulo}${veiculo.versao ? " " + veiculo.versao : ""}${veiculo.ano_modelo ? " " + veiculo.ano_modelo : ""}* na vitrine da Garage Racing e tenho interesse. Ainda disponível?`;
+  const msgWhats = `Oi! Vi o *${titulo}${veiculo.versao ? " " + veiculo.versao : ""}${veiculo.ano_modelo ? " " + veiculo.ano_modelo : ""}* na vitrine da AutoZap e tenho interesse. Ainda disponível?`;
 
   return (
     <div className="bg-gray-50 min-h-screen text-gray-900 font-sans">
@@ -267,7 +267,7 @@ export default function VitrineDetalheClient({ veiculo, relacionados }: { veicul
           <Link href="/vitrine" className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-gray-400 hover:text-gray-900 transition-colors">
             <ChevronLeft size={11} /> Ver todo o estoque
           </Link>
-          <p className="text-[9px] font-bold uppercase tracking-widest text-gray-300">© 2026 Garage Racing</p>
+          <p className="text-[9px] font-bold uppercase tracking-widest text-gray-300">© 2026 AutoZap</p>
         </div>
       </div>
 

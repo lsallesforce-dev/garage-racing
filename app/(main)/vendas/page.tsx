@@ -546,9 +546,60 @@ function ModalComissoes({
     }, 0);
     const comissao = (totalLucro * vend.comissao_pct) / 100;
     return { ...vend, vendas: vendas.length, totalLucro, comissao };
-  }).filter((v) => v.vendas > 0 || true); // mostra todos mesmo sem venda no mês
+  }).filter((v) => v.vendas > 0 || true);
 
   const totalComissoes = resumo.reduce((s, v) => s + v.comissao, 0);
+
+  // Pagamentos já registrados neste mês (chave: COMISSAO:[vendedorId]:[mes])
+  const [pagamentos, setPagamentos] = useState<Record<string, { id: string; data: string }>>({});
+  const [datas, setDatas] = useState<Record<string, string>>({});
+  const [salvando, setSalvando] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    async function carregarPagamentos() {
+      const { data } = await supabase
+        .from("financeiro_geral")
+        .select("id, descricao, data")
+        .ilike("descricao", `COMISSAO:%:${mes}`);
+      if (!data) return;
+      const map: Record<string, { id: string; data: string }> = {};
+      data.forEach((item) => {
+        // formato: COMISSAO:[vendedorId]:[mes]
+        const parts = item.descricao.split(":");
+        if (parts.length === 3) map[parts[1]] = { id: item.id, data: item.data };
+      });
+      setPagamentos(map);
+    }
+    carregarPagamentos();
+  }, [mes]);
+
+  async function registrarPagamento(vendId: string, vendNome: string, valor: number) {
+    const data = datas[vendId] || new Date().toISOString().split("T")[0];
+    setSalvando((p) => ({ ...p, [vendId]: true }));
+
+    const { data: inserted } = await supabase
+      .from("financeiro_geral")
+      .insert({
+        tipo: "despesa",
+        descricao: `COMISSAO:${vendId}:${mes}`,
+        valor,
+        data,
+      })
+      .select("id, data")
+      .single();
+
+    if (inserted) {
+      setPagamentos((p) => ({ ...p, [vendId]: { id: inserted.id, data: inserted.data } }));
+    }
+    setSalvando((p) => ({ ...p, [vendId]: false }));
+  }
+
+  async function desfazerPagamento(vendId: string) {
+    const pag = pagamentos[vendId];
+    if (!pag) return;
+    await supabase.from("financeiro_geral").delete().eq("id", pag.id);
+    setPagamentos((p) => { const n = { ...p }; delete n[vendId]; return n; });
+  }
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
@@ -566,30 +617,73 @@ function ModalComissoes({
           </button>
         </div>
 
-        <div className="p-6 space-y-3 max-h-96 overflow-y-auto">
-          {resumo.map((v) => (
-            <div key={v.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">
-              <div>
-                <p className="font-black text-gray-900 text-sm">{v.nome}</p>
-                <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">
-                  {v.vendas} venda{v.vendas !== 1 ? "s" : ""} • {v.comissao_pct}% do lucro
-                </p>
-                {v.vendas > 0 && (
-                  <p className="text-[9px] text-gray-500 mt-0.5">
-                    Lucro gerado: {fmt(v.totalLucro)}
-                  </p>
+        <div className="p-6 space-y-3 max-h-[70vh] overflow-y-auto">
+          {resumo.map((v) => {
+            const pago = pagamentos[v.id];
+            return (
+              <div key={v.id} className={`p-4 rounded-2xl border ${pago ? "bg-green-50 border-green-100" : "bg-gray-50 border-transparent"}`}>
+                {/* Linha 1: nome + valor */}
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="font-black text-gray-900 text-sm">{v.nome}</p>
+                    <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">
+                      {v.vendas} venda{v.vendas !== 1 ? "s" : ""} • {v.comissao_pct}% do lucro
+                    </p>
+                    {v.vendas > 0 && (
+                      <p className="text-[9px] text-gray-500 mt-0.5">Lucro gerado: {fmt(v.totalLucro)}</p>
+                    )}
+                  </div>
+                  <div className="text-right">
+                    <p className={`font-black text-lg tracking-tighter ${v.comissao > 0 ? "text-green-600" : "text-gray-300"}`}>
+                      {fmt(v.comissao)}
+                    </p>
+                    {v.vendas === 0 && <p className="text-[9px] text-gray-300 font-bold">sem vendas</p>}
+                  </div>
+                </div>
+
+                {/* Linha 2: ação de pagamento (só aparece se há comissão) */}
+                {v.comissao > 0 && (
+                  <div className="mt-3 pt-3 border-t border-gray-200/60">
+                    {pago ? (
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="w-5 h-5 bg-green-500 rounded-full flex items-center justify-center">
+                            <Check size={11} className="text-white" />
+                          </span>
+                          <span className="text-[10px] font-black text-green-700 uppercase tracking-widest">
+                            Pago em {new Date(pago.data + "T12:00:00").toLocaleDateString("pt-BR")}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => desfazerPagamento(v.id)}
+                          className="text-[9px] text-gray-400 hover:text-red-500 font-bold underline"
+                        >
+                          Desfazer
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="date"
+                          value={datas[v.id] || new Date().toISOString().split("T")[0]}
+                          onChange={(e) => setDatas((p) => ({ ...p, [v.id]: e.target.value }))}
+                          className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-[11px] text-gray-700 focus:outline-none focus:border-green-400"
+                        />
+                        <button
+                          onClick={() => registrarPagamento(v.id, v.nome, v.comissao)}
+                          disabled={salvando[v.id]}
+                          className="flex items-center gap-1.5 px-4 py-2 bg-gray-900 hover:bg-green-600 disabled:opacity-50 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-colors whitespace-nowrap"
+                        >
+                          {salvando[v.id] ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />}
+                          Registrar Baixa
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
-              <div className="text-right">
-                <p className={`font-black text-lg tracking-tighter ${v.comissao > 0 ? "text-green-600" : "text-gray-300"}`}>
-                  {fmt(v.comissao)}
-                </p>
-                {v.vendas === 0 && (
-                  <p className="text-[9px] text-gray-300 font-bold">sem vendas</p>
-                )}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 bg-gray-50">

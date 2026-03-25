@@ -9,8 +9,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: 'Garage Racing | Inteligência Automotiva',
-  description: 'Análise de estoque com precisão de engenharia e IA.',
+  title: 'AutoZap | Inteligência Automotiva',
+  description: 'Gerencie seu estoque e atendimento automotivo com IA.',
 };
 
 export default function RootLayout({

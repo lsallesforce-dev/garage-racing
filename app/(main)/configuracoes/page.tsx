@@ -129,7 +129,7 @@ export default function ConfiguracoesPage() {
           Configurações
         </h1>
         <p className="text-gray-400 uppercase tracking-widest text-[10px] font-bold mt-1">
-          Garage Racing • Personalização do Pátio
+          AutoZap • Personalização do Pátio
         </p>
       </header>
 

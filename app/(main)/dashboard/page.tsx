@@ -60,7 +60,7 @@ export default function DashboardPage() {
       <header className="flex justify-between items-center mb-10 pb-6 border-b border-gray-200">
         <div>
           <h1 className="text-4xl font-black uppercase tracking-tighter italic text-gray-900">Analytics Dashboard</h1>
-          <p className="text-gray-400 uppercase tracking-widest text-[10px] font-bold">Garage Racing • Performance Intelligence</p>
+          <p className="text-gray-400 uppercase tracking-widest text-[10px] font-bold">AutoZap • Performance Intelligence</p>
         </div>
 
         <div className="flex items-center gap-4 text-gray-400">

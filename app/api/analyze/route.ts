@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
     const videoBuffer = await videoResp.arrayBuffer();
 
     // 2. PROMPT DE ENGENHARIA "SUPER AVALIADOR MULTIMODAL"
-    const promptSistema = `Você é o Avaliador Chefe da Garage Racing. Analise o VÍDEO e o ÁUDIO.
+    const promptSistema = `Você é o Avaliador Chefe da AutoZap. Analise o VÍDEO e o ÁUDIO.
     
     CRITÉRIOS DE ELITE:
     1. AMBIENTE: Identifique se é "CONCESSIONÁRIA" (Showroom, luz forte, banners) ou "PÁTIO/RUA".

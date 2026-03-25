@@ -96,7 +96,7 @@ export default function LoginPage() {
         </div>
 
         <p className="text-center text-[10px] text-gray-400 mt-6 uppercase tracking-widest">
-          Amigo Racing © {new Date().getFullYear()}
+          AutoZap © {new Date().getFullYear()}
         </p>
       </div>
     </div>

@@ -89,7 +89,7 @@ export async function gerarRelatorioPista() {
     maximumFractionDigits: 0 
   }).format(totalEstoque);
 
-  return `🏁 *GARAGE RACING - STATUS DO PÁTIO* 🏁\n\n` +
+  return `⚡ *AUTOZAP - STATUS DO PÁTIO* ⚡\n\n` +
          `🚗 *ESTOQUE:* ${numCarros} máquinas (${faturamentoFormatado})\n` +
          `🔥 *LEADS QUENTES:* ${quentes || 0} aguardando fechamento!\n` +
          `👀 *DESTAQUE:* A ${carroDaSemana} é a mais procurada.\n\n` +

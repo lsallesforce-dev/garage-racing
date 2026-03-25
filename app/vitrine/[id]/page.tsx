@@ -31,8 +31,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const imagem = data.capa_marketing_url ?? data.fotos?.[0] ?? null;
 
   return {
-    title: `${titulo} — Garage Racing`,
-    description: `${titulo} por ${preco}. Confira fotos, vídeo e detalhes completos no Pátio Digital da Garage Racing.`,
+    title: `${titulo} — AutoZap`,
+    description: `${titulo} por ${preco}. Confira fotos, vídeo e detalhes completos no Pátio Digital da AutoZap.`,
     openGraph: {
       title: `${titulo} • ${preco}`,
       description: "Estoque verificado com análise de IA. Clique e fale com o consultor agora.",

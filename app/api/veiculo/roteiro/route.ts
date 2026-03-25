@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
 
     // 2. Criar o Prompt Estratégico para o Roteiro "Reels/TikTok"
     const prompt = `
-      Você é o Especialista em Marketing Viral da Garage Racing. 
+      Você é o Especialista em Marketing Viral da AutoZap. 
       Crie um roteiro de vídeo curto (Reels/TikTok) de 30-45 segundos para o seguinte veículo:
       
       Veículo: ${veiculo.marca} ${veiculo.modelo} ${veiculo.versao || ""}

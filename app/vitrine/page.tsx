@@ -26,8 +26,9 @@ export default function VitrinePublica() {
       <header className="bg-white border-b border-gray-100 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-xl font-black uppercase italic tracking-tighter text-gray-900">Garage</span>
-            <span className="text-xl font-black uppercase italic tracking-tighter text-red-600">Racing</span>
+            <span className="text-xl font-black uppercase italic tracking-tighter">
+              <span className="text-gray-900">AUTO</span><span className="text-red-600">ZAP</span>
+            </span>
           </div>
         </div>
       </header>
@@ -111,7 +112,7 @@ export default function VitrinePublica() {
       {/* ── Footer ── */}
       <footer className="border-t border-gray-100 py-8 text-center bg-white">
         <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">
-          © 2026 Garage Racing • Pátio Digital de Elite
+          © 2026 AutoZap • Pátio Digital de Elite
         </p>
       </footer>
 
