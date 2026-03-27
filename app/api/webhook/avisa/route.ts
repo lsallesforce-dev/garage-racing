@@ -1,4 +1,4 @@
-import { geminiFlashSales, generateEmbedding } from "@/lib/gemini";
+import { geminiFlashSales, geminiFlashFallback, generateEmbedding } from "@/lib/gemini";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendAvisaMessage, sendAvisaImage } from "@/lib/avisa";
 import { buscarDadosTransbordo, gerarRelatorioPista } from "@/lib/leads";
@@ -9,14 +9,6 @@ import { Vehicle } from "@/types/vehicle";
 
 type Temperatura = "FRIO" | "MORNO" | "QUENTE";
 
-function parseTag(text: string, tag: string): string | null {
-  const match = text.match(new RegExp(`\\[${tag}:\\s*(.*?)\\]`));
-  return match ? match[1].trim() : null;
-}
-
-function stripTag(text: string, tag: string): string {
-  return text.replace(new RegExp(`\\[${tag}:.*?\\]`), "").trim();
-}
 
 function buildBriefingVendedor(
   phone: string,
@@ -45,7 +37,7 @@ function buildBriefingVendedor(
 // ─── Extrair campos do payload da Avisa ─────────────────────────────────────
 // Loga o payload completo na primeira mensagem para identificar o formato exato
 
-function extractFields(payload: any): { phone: string; userMessage: string; fromMe: boolean; audioUrl?: string } {
+function extractFields(payload: any): { phone: string; userMessage: string; fromMe: boolean; audioUrl?: string; messageId?: string } {
   console.log("📨 AVISA WEBHOOK PAYLOAD:", JSON.stringify(payload, null, 2));
 
   // Avisa envia jsonData como string JSON aninhada
@@ -189,19 +181,30 @@ export async function POST(req: NextRequest) {
       if (vPrincipal) veiculoPrincipal = vPrincipal as Vehicle;
     }
 
-    // Busca textual por marca/modelo — detecta se cliente pediu um carro diferente
-    const palavras = userMessage.toLowerCase().split(/\s+/).filter((p: string) => p.length > 2);
+    // Busca textual por marca/modelo/categoria — detecta se cliente pediu um carro diferente
+    // Stop words: palavras comuns do português que poderiam dar falso match em nomes de carros
+    const stopWordsPT = new Set(["que", "com", "tem", "por", "dos", "das", "não", "cor", "sim", "boa", "bom", "ter", "seu", "sua", "foi", "bem", "mal", "mas", "pra", "pro", "oco", "ela", "ele", "eles", "elas", "uns", "uma", "umas", "qual", "tem", "teu", "tua", "era", "vai", "vou", "ate", "até", "ver", "vem", "quer", "mais"]);
+    const palavras = userMessage.toLowerCase().split(/\s+/).filter((p: string) => p.length > 2 && !stopWordsPT.has(p));
     let hitsTextuais: Vehicle[] = [];
     for (const palavra of palavras) {
-      const { data: hits } = await supabaseAdmin
-        .from("veiculos")
-        .select("*")
-        .eq("status_venda", "DISPONIVEL")
-        .or(`marca.ilike.%${palavra}%,modelo.ilike.%${palavra}%`)
-        .limit(3);
-      if (hits && hits.length > 0) {
-        const idsExist = new Set(hitsTextuais.map((v) => v.id));
-        hitsTextuais = [...hitsTextuais, ...(hits as Vehicle[]).filter((h) => !idsExist.has(h.id))];
+      // Gera variações: "hb20" → ["hb20", "hb 20", "hb-20"] para cobrir cadastros com espaço/hífen
+      const variacoes = [palavra];
+      const comEspaco = palavra.replace(/([a-z]+)(\d+)/g, "$1 $2");
+      if (comEspaco !== palavra) variacoes.push(comEspaco);
+      const comHifen = palavra.replace(/([a-z]+)(\d+)/g, "$1-$2");
+      if (comHifen !== palavra) variacoes.push(comHifen);
+
+      for (const v of variacoes) {
+        const { data: hits } = await supabaseAdmin
+          .from("veiculos")
+          .select("*")
+          .eq("status_venda", "DISPONIVEL")
+          .or(`marca.ilike.%${v}%,modelo.ilike.%${v}%,categoria.ilike.%${v}%`)
+          .limit(3);
+        if (hits && hits.length > 0) {
+          const idsExist = new Set(hitsTextuais.map((h) => h.id));
+          hitsTextuais = [...hitsTextuais, ...(hits as Vehicle[]).filter((h) => !idsExist.has(h.id))];
+        }
       }
     }
 
@@ -316,7 +319,7 @@ export async function POST(req: NextRequest) {
     console.log("🚗 CONTEXTO ENVIADO AO LUCAS:\n", context);
 
     // ── 7. Histórico da Conversa ─────────────────────────────────────────────
-    let historico = "Nenhuma conversa anterior.";
+    let historico: any[] = [];
     if (lead?.id) {
       const { data: msgs } = await supabaseAdmin
         .from("mensagens")
@@ -326,10 +329,10 @@ export async function POST(req: NextRequest) {
         .limit(15);
 
       if (msgs && msgs.length > 0) {
-        historico = msgs
-          .reverse()
-          .map((m) => `${m.remetente === "usuario" ? "Cliente" : "Lucas"}: ${m.content}`)
-          .join("\n");
+        historico = msgs.reverse().map((m) => ({
+          role: m.remetente === "usuario" ? "user" : "model",
+          parts: [{ text: m.content }],
+        }));
       }
     }
 
@@ -395,14 +398,19 @@ export async function POST(req: NextRequest) {
 
     // ── 9. Enviar foto do carro ──────────────────────────────────────────────
     // Roda ANTES do prompt para que a IA saiba se a foto foi enviada ou não
-    const veiculoAtualFoto = topVeiculos[0] ?? null;
-    const veiculoMudou = veiculoAtualFoto && veiculoAtualFoto.id !== veiculoIdAnterior;
     const gatilhosFoto = ["foto", "fotos", "imagem", "manda foto", "ver o carro", "tem foto", "tem imagem"];
     const clientePediuFoto = gatilhosFoto.some((g) => mensagemLower.includes(g));
 
+    // Se o cliente pediu foto E mencionou um carro específico (via texto), usa esse carro.
+    // Caso contrário, usa o topo da lista (que pode ser o carro vinculado ao lead).
+    const veiculoParaFoto =
+      clientePediuFoto && hitsTextuais.length > 0
+        ? hitsTextuais[0]
+        : topVeiculos[0] ?? null;
+
     let fotoEnviada = false;
-    if ((veiculoMudou || clientePediuFoto) && veiculoAtualFoto) {
-      const fotoUrl = veiculoAtualFoto.capa_marketing_url ?? (veiculoAtualFoto as any).fotos?.[0] ?? null;
+    if (clientePediuFoto && veiculoParaFoto) {
+      const fotoUrl = veiculoParaFoto.capa_marketing_url ?? (veiculoParaFoto as any).fotos?.[0] ?? null;
       if (fotoUrl) {
         try {
           const imgResp = await fetch(fotoUrl);
@@ -411,6 +419,10 @@ export async function POST(req: NextRequest) {
             const base64 = Buffer.from(buffer).toString("base64");
             await sendAvisaImage(phone, base64);
             fotoEnviada = true;
+            // Atualiza o veiculo_id do lead se a foto enviada é de um carro diferente
+            if (lead && veiculoParaFoto.id !== veiculoIdAnterior) {
+              await supabaseAdmin.from("leads").update({ veiculo_id: veiculoParaFoto.id }).eq("id", lead.id);
+            }
           }
         } catch (e) {
           console.warn("Falha ao enviar foto:", e);
@@ -425,7 +437,7 @@ export async function POST(req: NextRequest) {
     let temperatura: Temperatura = "FRIO";
 
     try {
-      const chatPrompt = `
+      const systemInstruction = `
 Você é o motor cognitivo de Lucas, um vendedor experiente de veículos da AutoZap, atendendo via WhatsApp.
 Seu objetivo é conduzir um atendimento natural, direto e focado em vendas, sendo indistinguível de um humano.
 
@@ -451,53 +463,80 @@ Siga estritamente este comportamento para as seguintes situações:
 8. CATEGORIA E ALTERNATIVAS (Cross-sell): Se o cliente procurar por uma categoria (ex: "tem SUV?") ou se o carro pedido não estiver no estoque, busque pela 'Categoria' nos outros carros. Ofereça NO MÁXIMO 1 ou 2 opções similares. Exemplo: "Esse eu não tenho hoje, mas acabou de entrar um [Modelo Similar] impecável, que também é [Categoria]. Quer ver?".
 9. PÓS-VENDA E PROBLEMAS (Triagem de Emergência): Se o cliente relatar um defeito, problema mecânico, ou disser palavras como "quebrou", "garantia" ou "oficina", MUDE O TOM imediatamente para acolhedor e resolutivo. NUNCA tente vender. Peça desculpas pelo transtorno, pergunte qual foi o carro e avise que a gerência vai assumir. Exemplo obrigatório de postura: "Poxa, peço desculpas pelo transtorno! Me lembra qual foi o modelo e o ano do carro que você pegou com a gente, por favor? Já vou passar isso agora pro nosso gerente de pós-venda te chamar aqui e resolvermos isso rápido."
 
-[DADOS DE CONTEXTO - INSTRUÇÃO: LEIA ANTES DE RESPONDER]
+[DADOS DE CONTEXTO]
 NOME DO CLIENTE: ${nomeCliente ?? "Não informado"}
-
-HISTÓRICO DA CONVERSA:
-${historico}
-
-SEU ESTOQUE ATUAL:
+SEU ESTOQUE ATUAL (Mantenha o foco nestes veículos e em suas descrições):
 ${context}
 
-MENSAGEM ATUAL DO CLIENTE: "${userMessage}"
+FOTO DO CARRO: ${fotoEnviada ? "✅ A foto foi enviada automaticamente pelo sistema ANTES desta mensagem. Sua resposta de texto deve ser EXATAMENTE: 'Segue a foto!' ou 'Segue as fotos!' (escolha conforme o contexto). NADA MAIS sobre a foto — não diga 'o que achou', não descreva o carro, não faça perguntas sobre a imagem." : "❌ Nenhuma foto foi enviada. NUNCA diga que mandou ou que vai mandar foto."}
 
-FOTO DO CARRO: ${fotoEnviada ? "✅ A foto foi enviada automaticamente pelo sistema ANTES desta mensagem de texto. Comente sobre ela naturalmente (ex: 'Mandei a foto aí! O que achou?'). NUNCA diga que vai mandar ou que está mandando." : "❌ Nenhuma foto disponível no momento. Se o cliente pedir foto, diga que vai buscar com o pátio e já manda."}
-
-[AÇÃO]
-Com base no contexto, escreva a próxima resposta do Lucas. Gere APENAS o texto da mensagem final.
-
-Após o texto, adicione estas linhas ocultas obrigatórias:
-[TEMPERATURA: FRIO | MORNO | QUENTE]
-[RESUMO: intenção clara do cliente em uma frase]
-[NOME: nome do cliente] ← inclua APENAS se o cliente informou o nome nesta mensagem, senão omita
+[AÇÃO REQUERIDA]
+Você DEVE retornar a resposta estritamente no formato JSON, usando a seguinte estrutura exata:
+{
+  "resposta": "O texto final da mensagem que você enviará ao cliente",
+  "temperatura": "FRIO" | "MORNO" | "QUENTE",
+  "resumo": "Intenção clara do cliente em uma frase curta",
+  "nome_cliente_extraido": "Nome do cliente se revelado na mensagem atual (ou null caso não dito)"
+}
 
 CRITÉRIOS DE TEMPERATURA:
 - FRIO  → Curiosidade inicial, saudações, só vendo o que tem, sem compromisso claro
 - MORNO → Perguntou especificações, preço, parcelas, financiamento, comparou modelos
 - QUENTE → Perguntou sobre visita, test drive, "quanto de entrada", "aceita troca", negociou desconto, quer fechar
-      `;
+`;
 
-      const contentToGenerate: any[] = [chatPrompt];
-      if (audioData) contentToGenerate.unshift({ inlineData: audioData });
+      const partsToGenerate: any[] = [{ text: userMessage }];
+      if (audioData) partsToGenerate.unshift({ inlineData: audioData });
 
-      const result = await geminiFlashSales.generateContent(contentToGenerate);
-      aiResponse = result.response.text();
+      // Build chat prompt with valid system instruction options
+      const chatRequest = {
+        contents: [
+          ...historico,
+          { role: "user", parts: partsToGenerate }
+        ],
+        systemInstruction: systemInstruction,
+        generationConfig: { responseMimeType: "application/json" }
+      };
 
-      const tempRaw = parseTag(aiResponse, "TEMPERATURA") as Temperatura | null;
-      if (tempRaw && ["FRIO", "MORNO", "QUENTE"].includes(tempRaw)) temperatura = tempRaw;
-      aiResponse = stripTag(aiResponse, "TEMPERATURA");
-
-      const resumoRaw = parseTag(aiResponse, "RESUMO");
-      if (resumoRaw) resumo = resumoRaw;
-      aiResponse = stripTag(aiResponse, "RESUMO");
-
-      // Extrai nome do cliente se ainda não tiver
-      const nomeRaw = parseTag(aiResponse, "NOME");
-      if (nomeRaw && lead && !nomeCliente) {
-        await supabaseAdmin.from("leads").update({ nome: nomeRaw }).eq("id", lead.id);
+      let result;
+      try {
+        result = await geminiFlashSales.generateContent(chatRequest);
+      } catch (primaryError: any) {
+        if (primaryError?.status === 429) {
+          console.warn("⚠️ gemini-2.5-flash atingiu spending cap, tentando gemini-2.0-flash-lite (free tier)");
+          try {
+            result = await geminiFlashFallback.generateContent(chatRequest);
+          } catch (fallbackError: any) {
+            if (fallbackError?.status === 429) {
+              console.error("❌ Todos os modelos Gemini indisponíveis (spending cap atingido)");
+              aiResponse = "Oi! Estou com uma instabilidade técnica agora, mas já vou resolver. Me manda uma mensagem em alguns minutinhos? 🙏";
+            } else {
+              throw fallbackError;
+            }
+          }
+        } else {
+          throw primaryError;
+        }
       }
-      aiResponse = stripTag(aiResponse, "NOME");
+      if (result) {
+        let jsonResponseText = "";
+        try {
+          jsonResponseText = result.response.text();
+          const parsed = JSON.parse(jsonResponseText);
+          aiResponse = parsed.resposta || "Tivemos uma pequena instabilidade, mas já estamos de volta. Posso te ajudar com os carros do pátio?";
+          if (parsed.temperatura && ["FRIO", "MORNO", "QUENTE"].includes(parsed.temperatura)) {
+            temperatura = parsed.temperatura;
+          }
+          resumo = parsed.resumo || "";
+          const nomeRaw = parsed.nome_cliente_extraido;
+          if (nomeRaw && nomeRaw.toLowerCase() !== "null" && lead && !nomeCliente) {
+            await supabaseAdmin.from("leads").update({ nome: nomeRaw }).eq("id", lead.id);
+          }
+        } catch (e) {
+          console.error("Falha ao parsear JSON response do Gemini", jsonResponseText);
+          aiResponse = "Olá! Tivemos uma pequena instabilidade aqui, mas já estou de volta.";
+        }
+      }
 
     } catch (aiError) {
       console.error("❌ ERRO FATAL NO GEMINI:", aiError);
@@ -527,7 +566,8 @@ CRITÉRIOS DE TEMPERATURA:
       if (topVeiculo?.id) {
         const transbordo = await buscarDadosTransbordo(topVeiculo.id);
         if (transbordo) {
-          const briefing = buildBriefingVendedor(phone, transbordo.carro, resumo, historico, temperatura);
+          const historicoFormatado = historico.map((h: any) => `${h.role === "user" ? "Cliente" : "Lucas"}: ${h.parts[0].text}`).join("\n") || "Sem histórico.";
+          const briefing = buildBriefingVendedor(phone, transbordo.carro, resumo, historicoFormatado, temperatura);
           await sendAvisaMessage(transbordo.vendedor_wa, briefing);
         }
       }

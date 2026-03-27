@@ -50,7 +50,7 @@ export default function ConfiguracoesPage() {
     setProcessing(true);
     try {
       const { removeBackground } = await import("@imgly/background-removal");
-      const blob = await removeBackground(file, { model: "medium" });
+      const blob = await removeBackground(file, { model: "isnet_fp16" });
       setProcessedPreview(URL.createObjectURL(blob));
       setProcessedBlob(blob);
     } catch (err) {
@@ -81,7 +81,7 @@ export default function ConfiguracoesPage() {
     setProcessing(true);
     try {
       const { removeBackground } = await import("@imgly/background-removal");
-      const blob = await removeBackground(originalFile, { model: "medium" });
+      const blob = await removeBackground(originalFile, { model: "isnet_fp16" });
       setProcessedPreview(URL.createObjectURL(blob));
       setProcessedBlob(blob);
     } catch (err) {
