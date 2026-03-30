@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
     };
 
     // 5. Gerar Embedding para RAG
-    const summaryForEmbedding = `${parsedData.marca} ${parsedData.modelo} ${parsedData.versao} ${parsedData.detalhes_inspecao} ${parsedData.tags_busca}`;
+    const summaryForEmbedding = `${parsedData.categoria} ${parsedData.marca} ${parsedData.modelo} ${parsedData.versao} de cor ${parsedData.cor} ${parsedData.condicao} | opcionais: ${parsedData.pontos_fortes_venda?.join(", ")} | ${parsedData.detalhes_inspecao} ${parsedData.tags_busca}`;
     const embedding = await generateEmbedding(summaryForEmbedding);
     console.log("Final Embedding Length to Supabase:", embedding.length);
 

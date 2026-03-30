@@ -199,7 +199,7 @@ export async function POST(req: NextRequest) {
           .from("veiculos")
           .select("*")
           .eq("status_venda", "DISPONIVEL")
-          .or(`marca.ilike.%${v}%,modelo.ilike.%${v}%,categoria.ilike.%${v}%`)
+          .or(`marca.ilike.%${v}%,modelo.ilike.%${v}%,categoria.ilike.%${v}%,versao.ilike.%${v}%,cor.ilike.%${v}%,tags_busca.ilike.%${v}%`)
           .limit(3);
         if (hits && hits.length > 0) {
           const idsExist = new Set(hitsTextuais.map((h) => h.id));
@@ -224,17 +224,21 @@ export async function POST(req: NextRequest) {
       }
     } else if (veiculoPrincipal) {
       // Lead já tem carro vinculado — mantém ele no topo, busca semântica apenas para complementar
-      const queryEmbedding = await generateEmbedding(userMessage);
-      const { data: matchedVehicles } = await supabaseAdmin.rpc("match_veiculos", {
-        query_embedding: queryEmbedding,
-        match_threshold: 0.3,
-        match_count: 4,
-      });
+      // Mensagens curtas/vagas (ex: "?", "sim") não disparam busca complementar — evita ruído
+      const msgCurta = userMessage.trim().length < 8;
       let complementares: Vehicle[] = [];
-      if (matchedVehicles && (matchedVehicles as any[]).length > 0) {
-        const ids = (matchedVehicles as any[]).map((v) => v.id).filter((id: string) => id !== veiculoPrincipal!.id);
-        const { data: vc } = await supabaseAdmin.from("veiculos").select("*").in("id", ids).eq("status_venda", "DISPONIVEL");
-        if (vc) complementares = vc as Vehicle[];
+      if (!msgCurta) {
+        const queryEmbedding = await generateEmbedding(userMessage);
+        const { data: matchedVehicles } = await supabaseAdmin.rpc("match_veiculos", {
+          query_embedding: queryEmbedding,
+          match_threshold: 0.45,
+          match_count: 3,
+        });
+        if (matchedVehicles && (matchedVehicles as any[]).length > 0) {
+          const ids = (matchedVehicles as any[]).map((v) => v.id).filter((id: string) => id !== veiculoPrincipal!.id);
+          const { data: vc } = await supabaseAdmin.from("veiculos").select("*").in("id", ids).eq("status_venda", "DISPONIVEL");
+          if (vc) complementares = vc as Vehicle[];
+        }
       }
       topVeiculos = [veiculoPrincipal, ...complementares].slice(0, 5);
     } else {
@@ -242,7 +246,7 @@ export async function POST(req: NextRequest) {
       const queryEmbedding = await generateEmbedding(userMessage);
       const { data: matchedVehicles, error: matchError } = await supabaseAdmin.rpc("match_veiculos", {
         query_embedding: queryEmbedding,
-        match_threshold: 0.2,
+        match_threshold: 0.55,
         match_count: 5,
       });
 
@@ -301,6 +305,8 @@ export async function POST(req: NextRequest) {
             v.motor && `Motor: ${v.motor}`,
             v.combustivel && `Combustível: ${v.combustivel}`,
             (v as any).categoria && `Categoria: ${(v as any).categoria}`,
+            (v as any).condicao && `Condição: ${(v as any).condicao}`,
+            (v as any).parcelas && `Parcelas: ${(v as any).parcelas}`,
             (v as any).tipo_banco && `Banco: ${(v as any).tipo_banco}`,
             (v as any).estado_pneus && `Pneus: ${(v as any).estado_pneus}`,
             (v as any).segundo_dono !== undefined && `Segundo dono: ${(v as any).segundo_dono ? "Sim" : "Não"}`,
