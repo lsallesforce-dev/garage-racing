@@ -17,11 +17,10 @@ export const geminiFlashFallback = genAI.getGenerativeModel(
 
 export async function generateEmbedding(text: string) {
   try {
-    const model = genAI.getGenerativeModel({
-      model: "text-embedding-004",
-    }, {
-      apiVersion: "v1beta"
-    });
+    const model = genAI.getGenerativeModel(
+      { model: "text-embedding-004" },
+      { apiVersion: "v1" }
+    );
     
     // Some Gemini API models don't support passing outputDimensionality in this SDK version
     // So we safely pad the results to 1536 if it's less.
