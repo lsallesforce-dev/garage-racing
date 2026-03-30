@@ -7,6 +7,8 @@ import { Zap, MessageCircle, Play } from "lucide-react";
 
 export default function VitrinePublica() {
   const [estoque, setEstoque] = useState<any[]>([]);
+  const [nomeEmpresa, setNomeEmpresa] = useState("AutoZap");
+  const [whatsapp, setWhatsapp] = useState(process.env.NEXT_PUBLIC_ZAPI_PHONE ?? "5521999999999");
 
   useEffect(() => {
     supabase
@@ -15,9 +17,16 @@ export default function VitrinePublica() {
       .eq("status_venda", "DISPONIVEL")
       .order("created_at", { ascending: false })
       .then(({ data }) => { if (data) setEstoque(data); });
-  }, []);
 
-  const WHATSAPP = process.env.NEXT_PUBLIC_ZAPI_PHONE ?? "5521999999999";
+    supabase
+      .from("config_garage")
+      .select("nome_empresa, whatsapp")
+      .single()
+      .then(({ data }) => {
+        if (data?.nome_empresa) setNomeEmpresa(data.nome_empresa);
+        if (data?.whatsapp) setWhatsapp(data.whatsapp);
+      });
+  }, []);
 
   return (
     <div className="bg-gray-50 min-h-screen text-gray-900 font-sans">
@@ -26,8 +35,8 @@ export default function VitrinePublica() {
       <header className="bg-white border-b border-gray-100 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-xl font-black uppercase italic tracking-tighter">
-              <span className="text-gray-900">AUTO</span><span className="text-red-600">ZAP</span>
+            <span className="text-xl font-black uppercase italic tracking-tighter text-gray-900">
+              {nomeEmpresa}
             </span>
           </div>
         </div>
@@ -112,14 +121,14 @@ export default function VitrinePublica() {
       {/* ── Footer ── */}
       <footer className="border-t border-gray-100 py-8 text-center bg-white">
         <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">
-          © 2026 AutoZap • Pátio Digital de Elite
+          © 2026 {nomeEmpresa} • Pátio Digital
         </p>
       </footer>
 
       {/* ── FAB WhatsApp ── */}
       <div className="fixed bottom-6 right-6 z-50">
         <a
-          href={`https://wa.me/${WHATSAPP}?text=Oi! Me ajuda a escolher um carro no pátio?`}
+          href={`https://wa.me/${whatsapp}?text=Oi! Me ajuda a escolher um carro no pátio?`}
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center gap-3 bg-green-500 hover:bg-green-400 text-white pl-4 pr-5 py-3.5 rounded-full shadow-2xl transition-all hover:scale-105 active:scale-95"

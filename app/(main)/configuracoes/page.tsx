@@ -1,9 +1,19 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { Upload, CheckCircle2, Loader2, ImageIcon, Trash2, Sparkles, FileImage } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { Upload, CheckCircle2, Loader2, ImageIcon, Trash2, Sparkles, FileImage, Save } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 
 type Mode = "auto" | "manual";
+
+interface GarageConfig {
+  id?: string;
+  nome_empresa: string;
+  nome_agente: string;
+  endereco: string;
+  whatsapp: string;
+  logo_url: string | null;
+}
 
 export default function ConfiguracoesPage() {
   const [mode, setMode] = useState<Mode>("manual");
@@ -14,10 +24,37 @@ export default function ConfiguracoesPage() {
   const [processing, setProcessing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [currentLogo, setCurrentLogo] = useState<string | null>(
-    typeof window !== "undefined" ? localStorage.getItem("garage_logo_url") : null
-  );
+  const [savingInfo, setSavingInfo] = useState(false);
+  const [savedInfo, setSavedInfo] = useState(false);
+  const [currentLogo, setCurrentLogo] = useState<string | null>(null);
+  const [config, setConfig] = useState<GarageConfig>({
+    nome_empresa: "",
+    nome_agente: "",
+    endereco: "",
+    whatsapp: "",
+    logo_url: null,
+  });
   const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    supabase
+      .from("config_garage")
+      .select("*")
+      .single()
+      .then(({ data }) => {
+        if (data) {
+          setConfig({
+            id: data.id,
+            nome_empresa: data.nome_empresa ?? "",
+            nome_agente: data.nome_agente ?? "",
+            endereco: data.endereco ?? "",
+            whatsapp: data.whatsapp ?? "",
+            logo_url: data.logo_url ?? null,
+          });
+          if (data.logo_url) setCurrentLogo(data.logo_url);
+        }
+      });
+  }, []);
 
   const reset = () => {
     setOriginalFile(null);
@@ -32,29 +69,23 @@ export default function ConfiguracoesPage() {
     if (!file) return;
     e.target.value = "";
     reset();
-
     const previewUrl = URL.createObjectURL(file);
     setOriginalFile(file);
     setOriginalPreview(previewUrl);
     setSaved(false);
-
     if (mode === "manual") {
-      // Usa o arquivo original direto
       const blob = new Blob([await file.arrayBuffer()], { type: file.type });
       setProcessedPreview(previewUrl);
       setProcessedBlob(blob);
       return;
     }
-
-    // mode === "auto": remove fundo
     setProcessing(true);
     try {
       const { removeBackground } = await import("@imgly/background-removal");
       const blob = await removeBackground(file, { model: "isnet_fp16" });
       setProcessedPreview(URL.createObjectURL(blob));
       setProcessedBlob(blob);
-    } catch (err) {
-      console.error("Erro ao remover fundo:", err);
+    } catch {
       const blob = new Blob([await file.arrayBuffer()], { type: file.type });
       setProcessedPreview(previewUrl);
       setProcessedBlob(blob);
@@ -66,25 +97,22 @@ export default function ConfiguracoesPage() {
   const handleModeChange = async (newMode: Mode) => {
     setMode(newMode);
     if (!originalFile) return;
-
     setSaved(false);
     setProcessedPreview(null);
     setProcessedBlob(null);
-
     if (newMode === "manual") {
       const blob = new Blob([await originalFile.arrayBuffer()], { type: originalFile.type });
       setProcessedPreview(URL.createObjectURL(blob));
       setProcessedBlob(blob);
       return;
     }
-
     setProcessing(true);
     try {
       const { removeBackground } = await import("@imgly/background-removal");
       const blob = await removeBackground(originalFile, { model: "isnet_fp16" });
       setProcessedPreview(URL.createObjectURL(blob));
       setProcessedBlob(blob);
-    } catch (err) {
+    } catch {
       const blob = new Blob([await originalFile.arrayBuffer()], { type: originalFile.type });
       setProcessedPreview(URL.createObjectURL(blob));
       setProcessedBlob(blob);
@@ -93,20 +121,20 @@ export default function ConfiguracoesPage() {
     }
   };
 
-  const handleSave = async () => {
+  const handleSaveLogo = async () => {
     if (!processedBlob) return;
     setSaving(true);
     try {
       const formData = new FormData();
       formData.append("file", new File([processedBlob], "logo.png", { type: "image/png" }));
-
       const res = await fetch("/api/configuracoes/logo", { method: "POST", body: formData });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Falha no upload");
-
       const url = `${data.url}?t=${Date.now()}`;
-      localStorage.setItem("garage_logo_url", url);
+      // Salva logo_url no banco
+      await supabase.from("config_garage").update({ logo_url: url }).eq("id", config.id!);
       setCurrentLogo(url);
+      setConfig(c => ({ ...c, logo_url: url }));
       setSaved(true);
     } catch (err: any) {
       alert("Erro ao salvar logo: " + err.message);
@@ -115,11 +143,40 @@ export default function ConfiguracoesPage() {
     }
   };
 
-  const handleRemoveLogo = () => {
-    if (!confirm("Remover logo atual? As próximas fotos serão enviadas sem marca.")) return;
-    localStorage.removeItem("garage_logo_url");
+  const handleRemoveLogo = async () => {
+    if (!confirm("Remover logo atual?")) return;
+    await supabase.from("config_garage").update({ logo_url: null }).eq("id", config.id!);
     setCurrentLogo(null);
+    setConfig(c => ({ ...c, logo_url: null }));
     reset();
+  };
+
+  const handleSaveInfo = async () => {
+    setSavingInfo(true);
+    try {
+      if (config.id) {
+        await supabase.from("config_garage").update({
+          nome_empresa: config.nome_empresa,
+          nome_agente: config.nome_agente,
+          endereco: config.endereco,
+          whatsapp: config.whatsapp,
+        }).eq("id", config.id);
+      } else {
+        const { data } = await supabase.from("config_garage").insert({
+          nome_empresa: config.nome_empresa,
+          nome_agente: config.nome_agente,
+          endereco: config.endereco,
+          whatsapp: config.whatsapp,
+        }).select().single();
+        if (data) setConfig(c => ({ ...c, id: data.id }));
+      }
+      setSavedInfo(true);
+      setTimeout(() => setSavedInfo(false), 3000);
+    } catch (err: any) {
+      alert("Erro ao salvar: " + err.message);
+    } finally {
+      setSavingInfo(false);
+    }
   };
 
   return (
@@ -129,11 +186,93 @@ export default function ConfiguracoesPage() {
           Configurações
         </h1>
         <p className="text-gray-400 uppercase tracking-widest text-[10px] font-bold mt-1">
-          AutoZap • Personalização do Pátio
+          Personalização da Garagem
         </p>
       </header>
 
-      <div className="max-w-2xl">
+      <div className="max-w-2xl flex flex-col gap-6">
+
+        {/* ── Informações da Garagem ── */}
+        <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-8">
+          <h2 className="text-[11px] font-black uppercase tracking-widest text-gray-400 mb-1">
+            Informações da Garagem
+          </h2>
+          <p className="text-[11px] text-gray-500 mb-6">
+            Usadas pelo agente e na vitrine pública.
+          </p>
+
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+                Nome da Empresa
+              </label>
+              <input
+                type="text"
+                value={config.nome_empresa}
+                onChange={e => setConfig(c => ({ ...c, nome_empresa: e.target.value }))}
+                placeholder="Ex: Garage Racing"
+                className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+                Nome do Agente IA
+              </label>
+              <input
+                type="text"
+                value={config.nome_agente}
+                onChange={e => setConfig(c => ({ ...c, nome_agente: e.target.value }))}
+                placeholder="Ex: Lucas"
+                className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+                Endereço
+              </label>
+              <input
+                type="text"
+                value={config.endereco}
+                onChange={e => setConfig(c => ({ ...c, endereco: e.target.value }))}
+                placeholder="Ex: Rua das Garagens, 100 — São Paulo, SP"
+                className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+                WhatsApp (com DDI)
+              </label>
+              <input
+                type="text"
+                value={config.whatsapp}
+                onChange={e => setConfig(c => ({ ...c, whatsapp: e.target.value }))}
+                placeholder="Ex: 5517991141010"
+                className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
+              />
+            </div>
+
+            <button
+              onClick={handleSaveInfo}
+              disabled={savingInfo || savedInfo}
+              className={`mt-2 w-full py-3 rounded-2xl font-black uppercase text-[11px] tracking-widest transition-all flex items-center justify-center gap-2 ${
+                savedInfo ? "bg-green-500 text-white" : "bg-gray-900 text-white hover:bg-red-600"
+              }`}
+            >
+              {savingInfo ? (
+                <><Loader2 size={16} className="animate-spin" /> Salvando...</>
+              ) : savedInfo ? (
+                <><CheckCircle2 size={16} /> Salvo com sucesso!</>
+              ) : (
+                <><Save size={14} /> Salvar informações</>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* ── Logo da Garagem ── */}
         <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-8">
           <h2 className="text-[11px] font-black uppercase tracking-widest text-gray-400 mb-1">
             Logo da Garagem
@@ -142,7 +281,6 @@ export default function ConfiguracoesPage() {
             Aplicada automaticamente como marca d'água em todas as fotos do estoque.
           </p>
 
-          {/* Logo atual */}
           {currentLogo && !originalPreview && (
             <div className="mb-6 p-4 bg-gray-50 rounded-2xl border border-gray-100 flex items-center gap-4">
               <div className="w-24 h-16 flex items-center justify-center bg-gray-200 rounded-xl overflow-hidden">
@@ -161,60 +299,42 @@ export default function ConfiguracoesPage() {
             </div>
           )}
 
-          {/* Seletor de modo */}
           <div className="flex gap-3 mb-6">
-            <button
-              type="button"
-              onClick={() => handleModeChange("manual")}
+            <button type="button" onClick={() => handleModeChange("manual")}
               className={`flex-1 flex items-center gap-2 px-4 py-3 rounded-2xl border-2 text-left transition-all ${
-                mode === "manual"
-                  ? "border-gray-900 bg-gray-900 text-white"
-                  : "border-gray-200 text-gray-500 hover:border-gray-300"
+                mode === "manual" ? "border-gray-900 bg-gray-900 text-white" : "border-gray-200 text-gray-500 hover:border-gray-300"
               }`}
             >
               <FileImage size={16} />
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest">PNG com fundo transparente</p>
-                <p className={`text-[9px] mt-0.5 ${mode === "manual" ? "text-gray-400" : "text-gray-400"}`}>
-                  Melhor qualidade — recomendado
-                </p>
+                <p className="text-[9px] mt-0.5 text-gray-400">Melhor qualidade — recomendado</p>
               </div>
             </button>
-            <button
-              type="button"
-              onClick={() => handleModeChange("auto")}
+            <button type="button" onClick={() => handleModeChange("auto")}
               className={`flex-1 flex items-center gap-2 px-4 py-3 rounded-2xl border-2 text-left transition-all ${
-                mode === "auto"
-                  ? "border-gray-900 bg-gray-900 text-white"
-                  : "border-gray-200 text-gray-500 hover:border-gray-300"
+                mode === "auto" ? "border-gray-900 bg-gray-900 text-white" : "border-gray-200 text-gray-500 hover:border-gray-300"
               }`}
             >
               <Sparkles size={16} />
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest">Remover fundo automático</p>
-                <p className="text-[9px] text-gray-400 mt-0.5">
-                  Funciona com JPG/PNG — qualidade variável
-                </p>
+                <p className="text-[9px] text-gray-400 mt-0.5">Funciona com JPG/PNG</p>
               </div>
             </button>
           </div>
 
-          {/* Dica de tamanho (modo manual) */}
           {mode === "manual" && (
             <div className="mb-5 px-4 py-3 bg-blue-50 border border-blue-100 rounded-2xl">
-              <p className="text-[10px] font-black text-blue-700 uppercase tracking-widest mb-1">
-                Especificações recomendadas
-              </p>
+              <p className="text-[10px] font-black text-blue-700 uppercase tracking-widest mb-1">Especificações recomendadas</p>
               <ul className="text-[10px] text-blue-600 space-y-0.5">
                 <li>• Formato: <strong>PNG com fundo transparente</strong></li>
-                <li>• Tamanho: <strong>mínimo 600 × 300 px</strong> (proporcional horizontal)</li>
-                <li>• Resolução: <strong>72–150 dpi</strong> é suficiente</li>
+                <li>• Tamanho: <strong>mínimo 600 × 300 px</strong></li>
                 <li>• Fundo branco vai aparecer sobre as fotos — use transparente</li>
               </ul>
             </div>
           )}
 
-          {/* Upload area */}
           <label className="block cursor-pointer">
             <div className="border-2 border-dashed border-gray-200 rounded-2xl p-8 flex flex-col items-center gap-3 hover:border-red-400 hover:bg-red-50/30 transition-all">
               <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center">
@@ -227,16 +347,9 @@ export default function ConfiguracoesPage() {
                 {mode === "manual" ? "PNG com fundo transparente" : "PNG ou JPG • fundo removido automaticamente"}
               </p>
             </div>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={handleFileSelect}
-            />
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFileSelect} />
           </label>
 
-          {/* Preview */}
           {(originalPreview || processing) && (
             <div className="mt-6 grid grid-cols-2 gap-4">
               <div className="flex flex-col gap-2">
@@ -247,7 +360,6 @@ export default function ConfiguracoesPage() {
                     : <ImageIcon size={24} className="text-gray-300" />}
                 </div>
               </div>
-
               <div className="flex flex-col gap-2">
                 <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">
                   {mode === "auto" ? "Sem fundo" : "Logo final"}
@@ -266,7 +378,6 @@ export default function ConfiguracoesPage() {
             </div>
           )}
 
-          {/* Prévia da marca d'água na foto */}
           {processedPreview && !processing && (
             <div className="mt-4">
               <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">Prévia na foto</p>
@@ -274,9 +385,7 @@ export default function ConfiguracoesPage() {
                 <div className="absolute inset-0 flex items-center justify-center text-gray-600 text-[10px] font-bold uppercase tracking-widest">
                   [foto do veículo]
                 </div>
-                <img
-                  src={processedPreview}
-                  alt="Preview watermark"
+                <img src={processedPreview} alt="Preview watermark"
                   className="absolute bottom-3 right-3 opacity-85"
                   style={{ width: "20%", maxWidth: 120 }}
                 />
@@ -284,10 +393,9 @@ export default function ConfiguracoesPage() {
             </div>
           )}
 
-          {/* Botão salvar */}
           {processedBlob && !processing && (
             <button
-              onClick={handleSave}
+              onClick={handleSaveLogo}
               disabled={saving || saved}
               className={`mt-6 w-full py-3 rounded-2xl font-black uppercase text-[11px] tracking-widest transition-all flex items-center justify-center gap-2 ${
                 saved ? "bg-green-500 text-white" : "bg-gray-900 text-white hover:bg-red-600"
@@ -297,9 +405,7 @@ export default function ConfiguracoesPage() {
                 <><Loader2 size={16} className="animate-spin" /> Salvando...</>
               ) : saved ? (
                 <><CheckCircle2 size={16} /> Logo salva com sucesso!</>
-              ) : (
-                "Salvar logo"
-              )}
+              ) : "Salvar logo"}
             </button>
           )}
         </div>
