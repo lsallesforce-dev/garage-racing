@@ -25,7 +25,7 @@ async function sendWithRetry(url: string, form: FormData, retries = 2): Promise<
       try {
         return JSON.parse(text);
       } catch {
-        console.warn(`Avisa tentativa ${i + 1}: resposta não-JSON`, text.slice(0, 100));
+        console.warn(`Avisa tentativa ${i + 1}: HTTP ${response.status} ${response.url} — resposta não-JSON`, text.slice(0, 200));
         if (i < retries - 1) await new Promise(r => setTimeout(r, 1500));
       }
     } catch (err) {
@@ -41,6 +41,7 @@ export async function sendAvisaMessage(phone: string, message: string) {
   const token = process.env.AVISA_TOKEN;
   if (!baseUrl || !token) { console.warn("Avisa credentials missing"); return; }
 
+  console.log(`📤 Avisa sendMessage → ${formatPhone(phone)} (${message.length} chars)`);
   const form = new FormData();
   form.append("number", formatPhone(phone));
   form.append("message", message);

@@ -184,7 +184,11 @@ export async function POST(req: NextRequest) {
     // Busca textual por marca/modelo/categoria — detecta se cliente pediu um carro diferente
     // Stop words: palavras comuns do português que poderiam dar falso match em nomes de carros
     const stopWordsPT = new Set(["que", "com", "tem", "por", "dos", "das", "não", "cor", "sim", "boa", "bom", "ter", "seu", "sua", "foi", "bem", "mal", "mas", "pra", "pro", "oco", "ela", "ele", "eles", "elas", "uns", "uma", "umas", "qual", "tem", "teu", "tua", "era", "vai", "vou", "ate", "até", "ver", "vem", "quer", "mais"]);
-    const palavras = userMessage.toLowerCase().split(/\s+/).filter((p: string) => p.length > 2 && !stopWordsPT.has(p));
+    const palavras = userMessage
+      .replace(/[.,!?()[\]{}"']/g, "")
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((p: string) => p.length > 2 && !stopWordsPT.has(p));
     let hitsTextuais: Vehicle[] = [];
     for (const palavra of palavras) {
       // Gera variações: "hb20" → ["hb20", "hb 20", "hb-20"] para cobrir cadastros com espaço/hífen
@@ -231,7 +235,7 @@ export async function POST(req: NextRequest) {
         const queryEmbedding = await generateEmbedding(userMessage);
         const { data: matchedVehicles } = await supabaseAdmin.rpc("match_veiculos", {
           query_embedding: queryEmbedding,
-          match_threshold: 0.45,
+          match_threshold: 0.40,
           match_count: 3,
         });
         if (matchedVehicles && (matchedVehicles as any[]).length > 0) {
@@ -246,7 +250,7 @@ export async function POST(req: NextRequest) {
       const queryEmbedding = await generateEmbedding(userMessage);
       const { data: matchedVehicles, error: matchError } = await supabaseAdmin.rpc("match_veiculos", {
         query_embedding: queryEmbedding,
-        match_threshold: 0.55,
+        match_threshold: 0.50,
         match_count: 5,
       });
 
@@ -291,8 +295,7 @@ export async function POST(req: NextRequest) {
             ? `[Link da Foto: ${v.capa_marketing_url}]`
             : "";
           const detalhes = [
-            (v as any).relatorio_ia,
-            v.detalhes_inspecao,
+            (v as any).relatorio_ia || v.detalhes_inspecao,
             v.transcricao_vendedor,
             v.roteiro_pitch,
             v.pontos_fortes_venda?.join(", "),
