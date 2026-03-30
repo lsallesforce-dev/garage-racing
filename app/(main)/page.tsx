@@ -72,23 +72,23 @@ export default function Dashboard() {
   }, []);
 
   return (
-    <div className="p-8 bg-[#f4f4f2] min-h-screen font-sans overflow-y-auto w-full">
+    <div className="p-4 md:p-8 bg-[#f4f4f2] min-h-screen font-sans overflow-y-auto w-full">
       <div className="max-w-7xl mx-auto">
         {/* Flash: Header com Título e Botões de Ação */}
-        <div className="flex justify-between items-end mb-12">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4 mb-8 md:mb-12">
             <div>
-            <h1 className="text-6xl font-black italic uppercase text-gray-300/80 leading-none mb-2 tracking-tighter">Radar do Pátio</h1>
+            <h1 className="text-3xl md:text-6xl font-black italic uppercase text-gray-300/80 leading-none mb-2 tracking-tighter">Radar do Pátio</h1>
             <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-gray-400">Bem-vindo à AutoZap, Comandante.</p>
             </div>
-            <div className="flex gap-4">
-            <button className="px-6 py-4 bg-white rounded-3xl text-[10px] font-black uppercase border border-gray-100 shadow-sm hover:bg-gray-50 transition-all">Exportar Relatórios</button>
-            <button className="px-6 py-4 bg-slate-900 text-white rounded-3xl text-[10px] font-black uppercase shadow-xl shadow-slate-200 hover:bg-red-600 transition-all">Configurações</button>
+            <div className="flex gap-2 md:gap-4">
+            <button className="flex-1 sm:flex-none px-4 md:px-6 py-3 md:py-4 bg-white rounded-3xl text-[10px] font-black uppercase border border-gray-100 shadow-sm hover:bg-gray-50 transition-all">Exportar</button>
+            <button className="flex-1 sm:flex-none px-4 md:px-6 py-3 md:py-4 bg-slate-900 text-white rounded-3xl text-[10px] font-black uppercase shadow-xl shadow-slate-200 hover:bg-red-600 transition-all">Config.</button>
             </div>
         </div>
 
         {/* Flash: Cards de Performance (Telemetria) */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <div className="bg-slate-900 p-8 rounded-[2.5rem] text-white shadow-2xl relative overflow-hidden group">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mb-8">
+            <div className="bg-slate-900 p-5 md:p-8 rounded-[2rem] md:rounded-[2.5rem] text-white shadow-2xl relative overflow-hidden group col-span-2 md:col-span-1">
             <div className="absolute -right-4 -top-4 text-white/5 group-hover:text-white/10 transition-colors">
                 <TrendingUp size={120} />
             </div>
@@ -99,21 +99,21 @@ export default function Dashboard() {
             <p className="text-[9px] text-green-400 font-bold uppercase mt-2 italic">↑ Performance Estável</p>
             </div>
             
-            <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm hover:shadow-lg transition-all">
+            <div className="bg-white p-5 md:p-8 rounded-[2rem] md:rounded-[2.5rem] border border-gray-100 shadow-sm hover:shadow-lg transition-all">
             <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Eficiencia IA (Lucas)</p>
-            <h4 className="text-4xl font-black italic tracking-tighter">{stats.eficienciaIA}%</h4>
+            <h4 className="text-3xl md:text-4xl font-black italic tracking-tighter">{stats.eficienciaIA}%</h4>
             <p className="text-[9px] text-slate-900 font-bold uppercase mt-2 italic">Conversão p/ Quente</p>
             </div>
 
-            <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm hover:shadow-lg transition-all">
+            <div className="bg-white p-5 md:p-8 rounded-[2rem] md:rounded-[2.5rem] border border-gray-100 shadow-sm hover:shadow-lg transition-all">
             <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Total de Leads</p>
-            <h4 className="text-4xl font-black italic tracking-tighter">{stats.leadsTotais}</h4>
+            <h4 className="text-3xl md:text-4xl font-black italic tracking-tighter">{stats.leadsTotais}</h4>
             <p className="text-[9px] text-blue-500 font-bold uppercase mt-2 italic">Novas Oportunidades</p>
             </div>
 
-            <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm hover:shadow-lg transition-all">
+            <div className="bg-white p-5 md:p-8 rounded-[2rem] md:rounded-[2.5rem] border border-gray-100 shadow-sm hover:shadow-lg transition-all">
             <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Carros em Pátio</p>
-            <h4 className="text-4xl font-black italic tracking-tighter">{stats.carrosPatio}</h4>
+            <h4 className="text-3xl md:text-4xl font-black italic tracking-tighter">{stats.carrosPatio}</h4>
             <p className="text-[9px] text-orange-500 font-bold uppercase mt-2 italic">Giro de Estoque</p>
             </div>
         </div>

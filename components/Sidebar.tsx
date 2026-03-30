@@ -1,6 +1,6 @@
 "use client";
 
-import { LayoutDashboard, PlusSquare, MessageSquare, DollarSign, Users, ShieldCheck, Car, Store, Settings, LogOut } from "lucide-react";
+import { LayoutDashboard, PlusSquare, MessageSquare, DollarSign, Users, ShieldCheck, Car, Store, Settings, LogOut, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
@@ -16,7 +16,7 @@ const menuItems: { icon: any; label: string; href: string; badge?: number }[] = 
   { icon: Settings, label: "Configurações", href: "/configuracoes" },
 ];
 
-export const Sidebar = () => {
+export const Sidebar = ({ onClose }: { onClose?: () => void }) => {
   const pathname = usePathname();
   const router = useRouter();
 
@@ -27,8 +27,9 @@ export const Sidebar = () => {
   }
 
   return (
-    <aside className="w-64 h-screen bg-[#e2e2de] border-r border-gray-300 p-6 flex flex-col fixed left-0 top-0 z-50">
-      <div className="mb-10 px-2">
+    <aside className="w-64 h-screen bg-[#e2e2de] border-r border-gray-300 p-6 flex flex-col">
+      <div className="mb-10 px-2 flex items-start justify-between">
+        <div>
         <h2 className="text-xl font-black tracking-tighter italic border-b border-gray-400/20 pb-2">
           <span className="text-gray-900">AUTO</span><span className="text-red-600">ZAP</span>
         </h2>
@@ -36,13 +37,20 @@ export const Sidebar = () => {
           <ShieldCheck size={10} />
           <p className="text-[9px] font-black uppercase tracking-[0.2em]">Painel Operacional</p>
         </div>
+        </div>
+        {onClose && (
+          <button onClick={onClose} className="md:hidden p-1 text-gray-400 hover:text-gray-700 transition-colors" aria-label="Fechar menu">
+            <X size={18} />
+          </button>
+        )}
       </div>
       
       <nav className="flex-1 space-y-2">
         {menuItems.map((item) => (
-          <Link 
-            key={item.label} 
-            href={item.href} 
+          <Link
+            key={item.label}
+            href={item.href}
+            onClick={onClose}
             className={`flex items-center justify-between p-3 rounded-xl transition-all ${
               pathname === item.href ? "bg-white text-red-600 shadow-sm" : "text-gray-600 hover:bg-white/50"
             }`}

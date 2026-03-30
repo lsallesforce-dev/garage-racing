@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
-import { Send, MessageSquare, Phone, Bot } from "lucide-react";
+import { Send, MessageSquare, Phone, Bot, ArrowLeft } from "lucide-react";
 
 type Lead = {
   id: string;
@@ -46,6 +46,7 @@ export default function CentralChat() {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
+  const [showChat, setShowChat] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const carregarLeads = useCallback(async () => {
@@ -152,10 +153,10 @@ export default function CentralChat() {
     : null;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#f4f4f2]">
+    <div className="flex h-[calc(100vh-48px)] md:h-screen overflow-hidden bg-[#f4f4f2]">
 
       {/* ── SIDEBAR DE LEADS ── */}
-      <div className="w-80 flex-shrink-0 bg-white border-r border-gray-100 flex flex-col">
+      <div className={`${showChat ? "hidden md:flex" : "flex"} w-full md:w-80 flex-shrink-0 bg-white border-r border-gray-100 flex-col`}>
 
         <div className="p-6 border-b border-gray-100 flex-shrink-0">
           <h2 className="text-lg font-black uppercase italic tracking-tighter text-gray-900">Central de Chat</h2>
@@ -179,7 +180,7 @@ export default function CentralChat() {
             return (
               <button
                 key={lead.id}
-                onClick={() => setSelectedLead(lead)}
+                onClick={() => { setSelectedLead(lead); setShowChat(true); }}
                 className={`w-full text-left p-4 border-b border-gray-50 transition-all ${
                   lead.status === "PROBLEMA"
                     ? "bg-red-50 hover:bg-red-100 border-l-4 border-l-red-600"
@@ -225,11 +226,18 @@ export default function CentralChat() {
 
       {/* ── ÁREA PRINCIPAL ── */}
       {selectedLead ? (
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className={`${showChat ? "flex" : "hidden md:flex"} flex-1 flex-col overflow-hidden`}>
 
           {/* Header */}
-          <div className="bg-white border-b border-gray-100 px-8 py-5 flex items-center justify-between flex-shrink-0">
-            <div className="flex items-center gap-4">
+          <div className="bg-white border-b border-gray-100 px-4 md:px-8 py-4 md:py-5 flex items-center justify-between flex-shrink-0">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setShowChat(false)}
+                className="md:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors text-gray-500"
+                aria-label="Voltar"
+              >
+                <ArrowLeft size={18} />
+              </button>
               <div className="w-12 h-12 rounded-2xl bg-slate-900 flex items-center justify-center text-white font-black text-sm">
                 {(selectedLead.nome || selectedLead.wa_id).substring(0, 2).toUpperCase()}
               </div>
@@ -259,14 +267,14 @@ export default function CentralChat() {
               href={`https://wa.me/${selectedLead.wa_id}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-2 px-5 py-3 bg-green-500 text-white text-[10px] font-black uppercase rounded-xl hover:bg-green-600 transition-all shadow-lg shadow-green-500/20"
+              className="flex items-center gap-1.5 px-3 md:px-5 py-2.5 md:py-3 bg-green-500 text-white text-[10px] font-black uppercase rounded-xl hover:bg-green-600 transition-all shadow-lg shadow-green-500/20 whitespace-nowrap"
             >
-              <Phone size={14} /> Abrir no WhatsApp
+              <Phone size={14} /> <span className="hidden sm:inline">Abrir no WhatsApp</span><span className="sm:hidden">WhatsApp</span>
             </a>
           </div>
 
           {/* Mensagens */}
-          <div className="flex-1 overflow-y-auto px-8 py-6 space-y-3">
+          <div className="flex-1 overflow-y-auto px-4 md:px-8 py-4 md:py-6 space-y-3">
             {loadingMsgs ? (
               <div className="flex items-center justify-center h-full">
                 <div className="w-8 h-8 border-4 border-gray-100 border-t-red-600 rounded-full animate-spin" />
@@ -281,7 +289,7 @@ export default function CentralChat() {
               const isAgente = msg.remetente === "agente";
               return (
                 <div key={msg.id} className={`flex ${isAgente ? "justify-end" : "justify-start"}`}>
-                  <div className={`max-w-[65%] flex flex-col gap-1 ${isAgente ? "items-end" : "items-start"}`}>
+                  <div className={`max-w-[85%] sm:max-w-[70%] flex flex-col gap-1 ${isAgente ? "items-end" : "items-start"}`}>
                     <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
                       isAgente
                         ? "bg-slate-900 text-white rounded-br-sm"
