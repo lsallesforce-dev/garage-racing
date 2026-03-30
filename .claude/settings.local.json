@@ -18,7 +18,14 @@
       "WebFetch(domain:www.postman.com)",
       "Bash(curl -s -w \"\\\\n%{http_code}\" -X POST \"https://www.avisaapi.com.br/api/actions/sendMessage\" -H \"Authorization: Bearer 5kkxDD4v8dDLxsQoKw4PGV8QVIRwZSRAwicRBY3pTYO4U0GkO89fVfdVW1Bz\" -F \"number=5517991141010\" -F \"message=teste\")",
       "Bash(find c:/Users/lsaud/Downloads/garage-racing/node_modules/next/dist/docs -name *.md)",
-      "Bash(find c:/Users/lsaud/Downloads/garage-racing/node_modules/next/dist -name *middleware* -o -name *proxy*)"
+      "Bash(find c:/Users/lsaud/Downloads/garage-racing/node_modules/next/dist -name *middleware* -o -name *proxy*)",
+      "Bash(grep -A5 '\"\"scripts\"\"' package.json)",
+      "Bash(find /c/Users/lsaud/Downloads/garage-racing -type f -name *.sql)",
+      "Bash(find /c/Users/lsaud/Downloads/garage-racing -path *supabase* -type f)",
+      "Bash(grep -r \"tenant\\\\|organization\\\\|patio\\\\|garage\" /c/Users/lsaud/Downloads/garage-racing/.env*)",
+      "Bash(find /c/Users/lsaud/Downloads/garage-racing -name *.sql -type f)",
+      "Bash(xargs head:*)",
+      "Bash(grep -r \"subdomain\\\\|hostname\\\\|tenant\\\\|organization\\\\|patio_id\" /c/Users/lsaud/Downloads/garage-racing/app --include=*.ts --include=*.tsx)"
     ]
   }
 }

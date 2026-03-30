@@ -162,11 +162,13 @@ export default function ConfiguracoesPage() {
           whatsapp: config.whatsapp,
         }).eq("id", config.id);
       } else {
+        const { data: { user } } = await supabase.auth.getUser();
         const { data } = await supabase.from("config_garage").insert({
           nome_empresa: config.nome_empresa,
           nome_agente: config.nome_agente,
           endereco: config.endereco,
           whatsapp: config.whatsapp,
+          user_id: user?.id,
         }).select().single();
         if (data) setConfig(c => ({ ...c, id: data.id }));
       }

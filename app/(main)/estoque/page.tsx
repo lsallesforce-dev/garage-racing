@@ -12,11 +12,14 @@ export default function ListaEstoque() {
   useEffect(() => {
     const buscarEstoque = async () => {
       setLoading(true);
-      const { data } = await supabase
+      const { data: { user } } = await supabase.auth.getUser();
+      console.log("🔑 USER LOGADO:", user?.id, user?.email);
+      const { data, error } = await supabase
         .from('veiculos')
         .select('*')
-        .order('status_venda', { ascending: true })   // DISPONIVEL vem antes de VENDIDO (alfabético)
+        .order('status_venda', { ascending: true })
         .order('created_at', { ascending: false });
+      console.log("🚗 VEICULOS:", data?.length, "ERRO:", error?.message);
       if (data) setCarros(data);
       setLoading(false);
     };
@@ -28,7 +31,7 @@ export default function ListaEstoque() {
       <div className="max-w-6xl mx-auto">
         <div className="flex justify-between items-end mb-12">
             <div>
-                <h1 className="text-6xl font-black italic uppercase text-gray-300 leading-none mb-2 tracking-tighter">Estoque Elite</h1>
+                <h1 className="text-6xl font-black italic uppercase text-gray-300 leading-none mb-2 tracking-tighter">Estoque Inteligente</h1>
                 <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-gray-400">Gerenciamento completo do pátio digital.</p>
             </div>
             <Link href="/upload" className="px-8 py-4 bg-red-600 text-white font-black uppercase italic rounded-2xl shadow-xl shadow-red-200 flex items-center gap-2 hover:scale-105 transition-all tracking-widest text-[10px]">

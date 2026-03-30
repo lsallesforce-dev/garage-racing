@@ -173,10 +173,10 @@ export async function POST(req: NextRequest) {
 
     // ── 5. Config da Garagem ────────────────────────────────────────────────
     const webhookUserId = process.env.WEBHOOK_USER_ID;
-    const configQuery = supabaseAdmin
+    let configQuery = supabaseAdmin
       .from("config_garage")
       .select("nome_empresa, nome_agente, endereco, whatsapp");
-    if (webhookUserId) configQuery.eq("user_id", webhookUserId);
+    if (webhookUserId) configQuery = configQuery.eq("user_id", webhookUserId);
     const { data: garageConfig } = await configQuery.single();
     const nomeEmpresa = garageConfig?.nome_empresa || "AutoZap";
     const nomeAgente = garageConfig?.nome_agente || "Lucas";
