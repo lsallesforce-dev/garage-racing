@@ -1,5 +1,6 @@
 import { geminiFlashSales, generateEmbedding } from "@/lib/gemini";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
@@ -12,6 +13,14 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Pega o user_id da sessão autenticada
+    const serverClient = await createSupabaseServerClient();
+    const { data: { user } } = await serverClient.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+    }
+    const userId = user.id;
 
     // 1. Fetch video from URL
     const videoResp = await fetch(videoUrl);
@@ -101,7 +110,8 @@ export async function POST(req: NextRequest) {
       ...parsedData,
       video_url: videoUrl,
       vendedor_id: vendedorId,
-      embedding: embedding
+      embedding: embedding,
+      user_id: userId,
     };
 
     const { data, error } = await supabaseAdmin

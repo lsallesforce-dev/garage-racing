@@ -144,9 +144,13 @@ export async function POST(req: NextRequest) {
     }
 
     // ── 3. Lead e histórico ─────────────────────────────────────────────────
+    const webhookUserIdEarly = process.env.WEBHOOK_USER_ID;
     const { data: lead } = await supabaseAdmin
       .from("leads")
-      .upsert({ wa_id: phone }, { onConflict: "wa_id" })
+      .upsert(
+        { wa_id: phone, ...(webhookUserIdEarly ? { user_id: webhookUserIdEarly } : {}) },
+        { onConflict: "wa_id" }
+      )
       .select()
       .single();
 
@@ -168,10 +172,12 @@ export async function POST(req: NextRequest) {
     }
 
     // ── 5. Config da Garagem ────────────────────────────────────────────────
-    const { data: garageConfig } = await supabaseAdmin
+    const webhookUserId = process.env.WEBHOOK_USER_ID;
+    const configQuery = supabaseAdmin
       .from("config_garage")
-      .select("nome_empresa, nome_agente, endereco, whatsapp")
-      .single();
+      .select("nome_empresa, nome_agente, endereco, whatsapp");
+    if (webhookUserId) configQuery.eq("user_id", webhookUserId);
+    const { data: garageConfig } = await configQuery.single();
     const nomeEmpresa = garageConfig?.nome_empresa || "AutoZap";
     const nomeAgente = garageConfig?.nome_agente || "Lucas";
     const enderecoGaragem = garageConfig?.endereco || "";
@@ -208,12 +214,14 @@ export async function POST(req: NextRequest) {
       if (comHifen !== palavra) variacoes.push(comHifen);
 
       for (const v of variacoes) {
-        const { data: hits } = await supabaseAdmin
+        let q = supabaseAdmin
           .from("veiculos")
           .select("*")
           .eq("status_venda", "DISPONIVEL")
           .or(`marca.ilike.%${v}%,modelo.ilike.%${v}%,categoria.ilike.%${v}%,versao.ilike.%${v}%,cor.ilike.%${v}%,tags_busca.ilike.%${v}%`)
           .limit(3);
+        if (webhookUserId) q = q.eq("user_id", webhookUserId);
+        const { data: hits } = await q;
         if (hits && hits.length > 0) {
           const idsExist = new Set(hitsTextuais.map((h) => h.id));
           hitsTextuais = [...hitsTextuais, ...(hits as Vehicle[]).filter((h) => !idsExist.has(h.id))];
@@ -249,7 +257,9 @@ export async function POST(req: NextRequest) {
         });
         if (matchedVehicles && (matchedVehicles as any[]).length > 0) {
           const ids = (matchedVehicles as any[]).map((v) => v.id).filter((id: string) => id !== veiculoPrincipal!.id);
-          const { data: vc } = await supabaseAdmin.from("veiculos").select("*").in("id", ids).eq("status_venda", "DISPONIVEL");
+          let vcQ = supabaseAdmin.from("veiculos").select("*").in("id", ids).eq("status_venda", "DISPONIVEL");
+          if (webhookUserId) vcQ = vcQ.eq("user_id", webhookUserId);
+          const { data: vc } = await vcQ;
           if (vc) complementares = vc as Vehicle[];
         }
       }
@@ -264,11 +274,15 @@ export async function POST(req: NextRequest) {
       });
 
       if (matchError || !matchedVehicles || (matchedVehicles as any[]).length === 0) {
-        const { data: estoqueGeral } = await supabaseAdmin.from("veiculos").select("*").eq("status_venda", "DISPONIVEL").limit(5);
+        let estoqueQ = supabaseAdmin.from("veiculos").select("*").eq("status_venda", "DISPONIVEL").limit(5);
+        if (webhookUserId) estoqueQ = estoqueQ.eq("user_id", webhookUserId);
+        const { data: estoqueGeral } = await estoqueQ;
         if (estoqueGeral) topVeiculos = estoqueGeral as Vehicle[];
       } else {
         const ids = (matchedVehicles as any[]).map((v) => v.id);
-        const { data: veiculosCompletos } = await supabaseAdmin.from("veiculos").select("*").in("id", ids).eq("status_venda", "DISPONIVEL");
+        let vcQ2 = supabaseAdmin.from("veiculos").select("*").in("id", ids).eq("status_venda", "DISPONIVEL");
+        if (webhookUserId) vcQ2 = vcQ2.eq("user_id", webhookUserId);
+        const { data: veiculosCompletos } = await vcQ2;
         if (veiculosCompletos) topVeiculos = veiculosCompletos as Vehicle[];
       }
 
