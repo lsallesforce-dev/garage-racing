@@ -10,18 +10,19 @@ interface PhotoGalleryProps {
   onPhotosUpdated: (newPhotos: string[]) => void;
 }
 
-// Aplica o logo no canto inferior direito via Canvas API (client-side, zero custo)
-// Usa o logo salvo em localStorage ("garage_logo_url"), senão fallback para /logo.svg
-function getLogoSrc(): string {
+// Dimensões fixas de saída (16:9) — garante enquadramento consistente
+const OUTPUT_W = 1280;
+const OUTPUT_H = 720;
+
+function getLogoSrc(): string | null {
   try {
-    return localStorage.getItem("garage_logo_url") || "/logo.svg";
+    return localStorage.getItem("garage_logo_url") || null;
   } catch {
-    return "/logo.svg";
+    return null;
   }
 }
 
 async function loadImageElement(src: string): Promise<HTMLImageElement> {
-  // Busca como blob para evitar bloqueio de CORS no Canvas
   let objectUrl = src;
   try {
     const res = await fetch(src);
@@ -39,27 +40,37 @@ async function loadImageElement(src: string): Promise<HTMLImageElement> {
 }
 
 async function applyWatermark(file: File): Promise<Blob> {
-  const logoSrc = getLogoSrc();
   const img = await loadImageElement(URL.createObjectURL(file));
 
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Canvas não suportado");
 
-  canvas.width = img.width;
-  canvas.height = img.height;
-  ctx.drawImage(img, 0, 0);
+  // Saída sempre 16:9 — recorta centralizando (object-cover)
+  canvas.width = OUTPUT_W;
+  canvas.height = OUTPUT_H;
 
-  try {
-    const logo = await loadImageElement(logoSrc);
-    const logoW = Math.round(canvas.width * 0.2);
-    const logoH = Math.round(logoW * (logo.height / (logo.width || 1)));
-    const margin = Math.round(canvas.width * 0.025);
-    ctx.globalAlpha = 0.82;
-    ctx.drawImage(logo, canvas.width - logoW - margin, canvas.height - logoH - margin, logoW, logoH);
-    ctx.globalAlpha = 1;
-  } catch {
-    // logo falhou — sobe foto sem marca
+  const scale = Math.max(OUTPUT_W / img.width, OUTPUT_H / img.height);
+  const drawW = img.width * scale;
+  const drawH = img.height * scale;
+  const offsetX = (OUTPUT_W - drawW) / 2;
+  const offsetY = (OUTPUT_H - drawH) / 2;
+  ctx.drawImage(img, offsetX, offsetY, drawW, drawH);
+
+  // Aplica marca d'água apenas se houver logo configurado
+  const logoSrc = getLogoSrc();
+  if (logoSrc) {
+    try {
+      const logo = await loadImageElement(logoSrc);
+      const logoW = Math.round(OUTPUT_W * 0.2);
+      const logoH = Math.round(logoW * (logo.height / (logo.width || 1)));
+      const margin = Math.round(OUTPUT_W * 0.025);
+      ctx.globalAlpha = 0.82;
+      ctx.drawImage(logo, OUTPUT_W - logoW - margin, OUTPUT_H - logoH - margin, logoW, logoH);
+      ctx.globalAlpha = 1;
+    } catch {
+      // logo falhou — sobe foto sem marca
+    }
   }
 
   return new Promise((resolve, reject) =>
