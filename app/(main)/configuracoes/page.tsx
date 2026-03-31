@@ -66,7 +66,10 @@ export default function ConfiguracoesPage() {
               nome_usuario: row.nome_usuario ?? "",
               cargo_usuario: row.cargo_usuario ?? "",
             });
-            if (row.logo_url) setCurrentLogo(row.logo_url);
+            if (row.logo_url) {
+              setCurrentLogo(row.logo_url);
+              localStorage.setItem("garage_logo_url", row.logo_url);
+            }
           }
         });
     });
@@ -149,6 +152,7 @@ export default function ConfiguracoesPage() {
       const url = `${data.url}?t=${Date.now()}`;
       // Salva logo_url no banco
       await supabase.from("config_garage").update({ logo_url: url }).eq("id", config.id!);
+      localStorage.setItem("garage_logo_url", url);
       setCurrentLogo(url);
       setConfig(c => ({ ...c, logo_url: url }));
       setSaved(true);
@@ -162,6 +166,7 @@ export default function ConfiguracoesPage() {
   const handleRemoveLogo = async () => {
     if (!confirm("Remover logo atual?")) return;
     await supabase.from("config_garage").update({ logo_url: null }).eq("id", config.id!);
+    localStorage.removeItem("garage_logo_url");
     setCurrentLogo(null);
     setConfig(c => ({ ...c, logo_url: null }));
     reset();
