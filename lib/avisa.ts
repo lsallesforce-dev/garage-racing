@@ -13,14 +13,25 @@ export async function enviarMensagemAvisa(telefone: string, texto: string) {
   return sendAvisaMessage(telefone, texto);
 }
 
-async function sendWithRetry(url: string, form: FormData, retries = 2): Promise<any> {
+async function sendWithRetry(url: string, payload: any, retries = 2): Promise<any> {
   for (let i = 0; i < retries; i++) {
     try {
+      const isFormData = payload instanceof FormData;
+      
+      const headers: Record<string, string> = {
+        Authorization: getAuthHeader(),
+      };
+      
+      if (!isFormData) {
+        headers["Content-Type"] = "application/json";
+      }
+
       const response = await fetch(url, {
         method: "POST",
-        headers: { Authorization: getAuthHeader() },
-        body: form,
+        headers,
+        body: isFormData ? payload : JSON.stringify(payload),
       });
+      
       const text = await response.text();
       try {
         return JSON.parse(text);
@@ -42,10 +53,13 @@ export async function sendAvisaMessage(phone: string, message: string) {
   if (!baseUrl || !token) { console.warn("Avisa credentials missing"); return; }
 
   console.log(`📤 Avisa sendMessage → ${formatPhone(phone)} (${message.length} chars)`);
-  const form = new FormData();
-  form.append("number", formatPhone(phone));
-  form.append("message", message);
-  return sendWithRetry(`${baseUrl}/actions/sendMessage`, form);
+  
+  const payload = {
+    number: formatPhone(phone),
+    message: message
+  };
+  
+  return sendWithRetry(`${baseUrl}/actions/sendMessage`, payload);
 }
 
 export async function sendAvisaImage(phone: string, imageBase64: string, message?: string) {
@@ -53,9 +67,12 @@ export async function sendAvisaImage(phone: string, imageBase64: string, message
   const token = process.env.AVISA_TOKEN;
   if (!baseUrl || !token) { console.warn("Avisa credentials missing"); return; }
 
-  const form = new FormData();
-  form.append("number", formatPhone(phone));
-  form.append("image", imageBase64);
-  if (message) form.append("message", message);
-  return sendWithRetry(`${baseUrl}/actions/sendImage`, form);
+  // A API da Avisa geralmente suporta JSON para envio de mídia em base64
+  const payload: any = {
+    number: formatPhone(phone),
+    image: imageBase64
+  };
+  if (message) payload.message = message;
+  
+  return sendWithRetry(`${baseUrl}/actions/sendImage`, payload);
 }

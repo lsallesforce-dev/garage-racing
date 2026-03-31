@@ -25,7 +25,21 @@
       "Bash(grep -r \"tenant\\\\|organization\\\\|patio\\\\|garage\" /c/Users/lsaud/Downloads/garage-racing/.env*)",
       "Bash(find /c/Users/lsaud/Downloads/garage-racing -name *.sql -type f)",
       "Bash(xargs head:*)",
-      "Bash(grep -r \"subdomain\\\\|hostname\\\\|tenant\\\\|organization\\\\|patio_id\" /c/Users/lsaud/Downloads/garage-racing/app --include=*.ts --include=*.tsx)"
+      "Bash(grep -r \"subdomain\\\\|hostname\\\\|tenant\\\\|organization\\\\|patio_id\" /c/Users/lsaud/Downloads/garage-racing/app --include=*.ts --include=*.tsx)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(gh auth:*)",
+      "Bash(git remote:*)",
+      "Bash(git push:*)",
+      "Bash(npm run:*)",
+      "Bash(find c:UserslsaudDownloadsgarage-racing -type f \\\\\\(-name *.prisma -o -name *.sql -o -name schema* -o -name *migration* \\\\\\))",
+      "Bash(find c:UserslsaudDownloadsgarage-racingappapi -type f -name *.ts -o -name *.tsx)",
+      "Bash(find c:UserslsaudDownloadsgarage-racing -type f \\\\\\(-name *.md -o -name *.txt \\\\\\))",
+      "Bash(ls -la \"c:\\\\Users\\\\lsaud\\\\Downloads\\\\garage-racing\\\\app\\\\\\(main\\)\")",
+      "Bash(grep -r \"config_garage\\\\|CREATE TABLE\\\\|ALTER TABLE\" c:UserslsaudDownloadsgarage-racing --include=*.sql --include=*.ts --include=*.tsx --include=*.md)",
+      "Bash(grep -r \"INSERT INTO config_garage\\\\|CREATE TABLE config_garage\\\\|upsert\\\\|webhook_token.*=\" c:UserslsaudDownloadsgarage-racingapp --include=*.ts --include=*.tsx)",
+      "Bash(xargs grep:*)",
+      "Bash(grep -r \"CREATE TABLE\\\\|INTEGER\\\\|VARCHAR\\\\|TIMESTAMP\\\\|uuid\" c:UserslsaudDownloadsgarage-racing --include=*.sql --include=*.ts --include=*.tsx)"
     ]
   }
 }

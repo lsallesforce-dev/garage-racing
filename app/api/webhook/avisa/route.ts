@@ -95,16 +95,17 @@ export async function POST(req: NextRequest) {
         .from("config_garage")
         .select("user_id, nome_empresa, nome_agente, endereco, whatsapp")
         .eq("webhook_token", token)
-        .single();
+        .maybeSingle();
       
       if (data) {
         tenantUserId = data.user_id;
         garageConfig = data;
       } else {
-        console.warn(`⚠️ Token de webhook inválido ou não encontrado: ${token}`);
-        return NextResponse.json({ status: "invalid_token" }, { status: 401 });
+        console.warn(`⚠️ Token de webhook '${token}' não encontrado na base, tentando fallback mono-tenant...`);
       }
-    } else {
+    }
+
+    if (!tenantUserId) {
       // Fallback para Mono-tenant (legacy via .env)
       tenantUserId = process.env.WEBHOOK_USER_ID || null;
       if (tenantUserId) {
@@ -112,15 +113,16 @@ export async function POST(req: NextRequest) {
           .from("config_garage")
           .select("user_id, nome_empresa, nome_agente, endereco, whatsapp")
           .eq("user_id", tenantUserId)
-          .single();
-        garageConfig = data;
+          .maybeSingle();
+        garageConfig = data || null;
       } else {
         const { data } = await supabaseAdmin
           .from("config_garage")
           .select("user_id, nome_empresa, nome_agente, endereco, whatsapp")
-          .single();
+          .limit(1)
+          .maybeSingle();
         tenantUserId = data?.user_id || null;
-        garageConfig = data;
+        garageConfig = data || null;
       }
     }
 
