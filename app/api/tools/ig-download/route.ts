@@ -50,39 +50,32 @@ async function fetchViaRapidApi(instagramUrl: string): Promise<string | null> {
     return null;
   }
 
-  const hosts = [
-    "instagram-downloader-download-instagram-videos-stories5.p.rapidapi.com",
-    "instagram-video-downloader2.p.rapidapi.com",
-    "social-media-video-downloader.p.rapidapi.com",
-  ];
+  const host = "instagram120.p.rapidapi.com";
 
-  for (const host of hosts) {
-    const endpoints = [
-      `https://${host}/index?url=${encodeURIComponent(instagramUrl)}`,
-      `https://${host}/getReels?url=${encodeURIComponent(instagramUrl)}`,
-      `https://${host}/dl?url=${encodeURIComponent(instagramUrl)}`,
-    ];
-
-    for (const url of endpoints) {
-      try {
-        const res = await fetch(url, {
-          headers: { "X-RapidAPI-Key": key, "X-RapidAPI-Host": host },
-        });
-        const raw = await res.text();
-        console.log(`📡 RapidAPI host=${host} endpoint=${url.split("?")[0].split("/").pop()} status=${res.status} body=${raw.slice(0, 200)}`);
-        if (!res.ok) continue;
-        let data: unknown;
-        try { data = JSON.parse(raw); } catch { continue; }
-        const found = deepFindVideoUrl(data);
-        if (found) {
-          console.log(`✅ RapidAPI encontrou URL via ${host}`);
-          return found;
-        }
-      } catch (e) {
-        console.error(`RapidAPI error (${host}):`, e);
-      }
+  try {
+    const res = await fetch("https://instagram120.p.rapidapi.com/api/instagram/links", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-RapidAPI-Key": key,
+        "X-RapidAPI-Host": host,
+      },
+      body: JSON.stringify({ url: instagramUrl }),
+    });
+    const raw = await res.text();
+    console.log(`📡 RapidAPI instagram120 status=${res.status} body=${raw.slice(0, 300)}`);
+    if (!res.ok) return null;
+    let data: unknown;
+    try { data = JSON.parse(raw); } catch { return null; }
+    const found = deepFindVideoUrl(data);
+    if (found) {
+      console.log(`✅ RapidAPI encontrou URL`);
+      return found;
     }
+  } catch (e) {
+    console.error("RapidAPI error:", e);
   }
+
   return null;
 }
 
