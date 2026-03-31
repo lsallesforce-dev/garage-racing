@@ -3,18 +3,30 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
-import { Edit3, Plus, Car, Zap, Search, ArrowRight } from "lucide-react";
+import { Edit3, Plus, Car, Zap, Search, ArrowRight, Trash2 } from "lucide-react";
 
 export default function ListaEstoque() {
   const [carros, setCarros] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [confirmandoId, setConfirmandoId] = useState<string | null>(null);
+
+  const handleDelete = async (id: string) => {
+    await supabase.from("vendas_concluidas").update({ veiculo_id: null }).eq("veiculo_id", id);
+    await supabase.from("leads").update({ veiculo_id: null }).eq("veiculo_id", id);
+    await supabase.from("veiculos").delete().eq("id", id);
+    setCarros(prev => prev.filter(c => c.id !== id));
+    setConfirmandoId(null);
+  };
 
   useEffect(() => {
     const buscarEstoque = async () => {
       setLoading(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setLoading(false); return; }
       const { data } = await supabase
         .from('veiculos')
         .select('*')
+        .eq('user_id', user.id)
         .order('status_venda', { ascending: true })
         .order('created_at', { ascending: false });
       if (data) setCarros(data);
@@ -45,7 +57,7 @@ export default function ListaEstoque() {
                         <img 
                             src={carro.capa_marketing_url || (carro.fotos?.[0] || 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?q=80&w=2070&auto=format&fit=crop')} 
                             alt={carro.modelo}
-                            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" 
+                            className="w-full h-full object-contain group-hover:scale-110 transition-transform duration-700"
                         />
                         {carro.status_venda === 'VENDIDO' && (
                             <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
@@ -66,9 +78,29 @@ export default function ListaEstoque() {
                     </div>
                     </div>
 
-                    <div className="flex gap-3">
-                        <Link 
-                            href={`/veiculo/${carro.id}`} 
+                    <div className="flex gap-3 items-center">
+                        {confirmandoId === carro.id ? (
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-black uppercase text-gray-500">Tem certeza?</span>
+                            <button
+                              onClick={() => handleDelete(carro.id)}
+                              className="px-4 py-2 bg-red-600 text-white text-[10px] font-black uppercase rounded-xl hover:bg-red-700 transition-all"
+                            >Apagar</button>
+                            <button
+                              onClick={() => setConfirmandoId(null)}
+                              className="px-4 py-2 bg-gray-100 text-gray-600 text-[10px] font-black uppercase rounded-xl hover:bg-gray-200 transition-all"
+                            >Cancelar</button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setConfirmandoId(carro.id)}
+                            className="p-3 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                        <Link
+                            href={`/veiculo/${carro.id}`}
                             className="flex items-center gap-2 px-8 py-4 bg-slate-900 text-white text-[10px] font-black uppercase italic rounded-2xl hover:bg-red-600 transition-all tracking-widest shadow-lg shadow-slate-200"
                         >
                             <Zap size={14} className="fill-white" /> Business / IA Insights

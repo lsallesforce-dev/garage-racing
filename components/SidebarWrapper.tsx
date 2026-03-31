@@ -1,11 +1,31 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Sidebar } from "./Sidebar";
-import { Menu, X } from "lucide-react";
+import { Menu } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 
 export function SidebarWrapper({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
+  const [nomeEmpresa, setNomeEmpresa] = useState("");
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      supabase
+        .from("config_garage")
+        .select("nome_empresa")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .then(({ data }) => {
+          const row = data?.[0];
+          if (row?.nome_empresa) setNomeEmpresa(row.nome_empresa);
+        });
+    });
+  }, []);
+
+  const meio = Math.ceil(nomeEmpresa.length / 2);
 
   return (
     <div className="flex min-h-screen bg-[#efefed]">
@@ -38,8 +58,17 @@ export function SidebarWrapper({ children }: { children: React.ReactNode }) {
             <Menu size={20} />
           </button>
           <span className="font-black text-base tracking-tighter italic">
-            <span className="text-gray-900">AUTO</span>
-            <span className="text-red-600">ZAP</span>
+            {nomeEmpresa ? (
+              <>
+                <span className="text-gray-900">{nomeEmpresa.slice(0, meio)}</span>
+                <span className="text-red-600">{nomeEmpresa.slice(meio)}</span>
+              </>
+            ) : (
+              <>
+                <span className="text-gray-900">AUTO</span>
+                <span className="text-red-600">ZAP</span>
+              </>
+            )}
           </span>
         </div>
 

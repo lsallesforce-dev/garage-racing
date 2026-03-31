@@ -900,12 +900,15 @@ export default function VendasPage() {
   const [fechamentoDate, setFechamentoDate] = useState<string>("");
 
   const carregar = useCallback(async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    const uid = user?.id;
+    if (!uid) return;
     const [{ data: veic }, { data: desp }, { data: rec }, { data: vend }, { data: geral }] = await Promise.all([
-      supabase.from("veiculos").select("*").order("created_at", { ascending: false }),
+      supabase.from("veiculos").select("*").eq("user_id", uid).order("created_at", { ascending: false }),
       supabase.from("despesas_veiculo").select("*"),
       supabase.from("receitas_veiculo").select("*"),
-      supabase.from("vendedores").select("id, nome, comissao_pct"),
-      supabase.from("financeiro_geral").select("*").order("data", { ascending: false }),
+      supabase.from("vendedores").select("id, nome, comissao_pct").eq("user_id", uid),
+      supabase.from("financeiro_geral").select("*").eq("user_id", uid).order("data", { ascending: false }),
     ]);
 
     const lista = (veic ?? []).map((v) => ({

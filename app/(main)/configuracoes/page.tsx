@@ -13,6 +13,9 @@ interface GarageConfig {
   endereco: string;
   whatsapp: string;
   logo_url: string | null;
+  webhook_token?: string;
+  nome_usuario?: string;
+  cargo_usuario?: string;
 }
 
 export default function ConfiguracoesPage() {
@@ -33,27 +36,40 @@ export default function ConfiguracoesPage() {
     endereco: "",
     whatsapp: "",
     logo_url: null,
+    webhook_token: "",
+    nome_usuario: "",
+    cargo_usuario: "",
   });
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    supabase
-      .from("config_garage")
-      .select("*")
-      .single()
-      .then(({ data }) => {
-        if (data) {
-          setConfig({
-            id: data.id,
-            nome_empresa: data.nome_empresa ?? "",
-            nome_agente: data.nome_agente ?? "",
-            endereco: data.endereco ?? "",
-            whatsapp: data.whatsapp ?? "",
-            logo_url: data.logo_url ?? null,
-          });
-          if (data.logo_url) setCurrentLogo(data.logo_url);
-        }
-      });
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      supabase
+        .from("config_garage")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .then(({ data, error }) => {
+          if (error) console.error("❌ config_garage load error:", error);
+          const row = data?.[0];
+          if (row) {
+            setConfig({
+              id: row.id,
+              nome_empresa: row.nome_empresa ?? "",
+              nome_agente: row.nome_agente ?? "",
+              endereco: row.endereco ?? "",
+              whatsapp: row.whatsapp ?? "",
+              logo_url: row.logo_url ?? null,
+              webhook_token: row.webhook_token ?? "",
+              nome_usuario: row.nome_usuario ?? "",
+              cargo_usuario: row.cargo_usuario ?? "",
+            });
+            if (row.logo_url) setCurrentLogo(row.logo_url);
+          }
+        });
+    });
   }, []);
 
   const reset = () => {
@@ -154,24 +170,32 @@ export default function ConfiguracoesPage() {
   const handleSaveInfo = async () => {
     setSavingInfo(true);
     try {
-      if (config.id) {
-        await supabase.from("config_garage").update({
-          nome_empresa: config.nome_empresa,
-          nome_agente: config.nome_agente,
-          endereco: config.endereco,
-          whatsapp: config.whatsapp,
-        }).eq("id", config.id);
-      } else {
-        const { data: { user } } = await supabase.auth.getUser();
-        const { data } = await supabase.from("config_garage").insert({
-          nome_empresa: config.nome_empresa,
-          nome_agente: config.nome_agente,
-          endereco: config.endereco,
-          whatsapp: config.whatsapp,
-          user_id: user?.id,
-        }).select().single();
-        if (data) setConfig(c => ({ ...c, id: data.id }));
-      }
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Usuário não autenticado");
+
+      // Usa upsert com onConflict para nunca criar duplicatas
+      const { data, error } = await supabase
+        .from("config_garage")
+        .upsert(
+          {
+            ...(config.id ? { id: config.id } : {}),
+            user_id: user.id,
+            nome_empresa: config.nome_empresa,
+            nome_agente: config.nome_agente,
+            endereco: config.endereco,
+            whatsapp: config.whatsapp,
+            webhook_token: config.webhook_token || null,
+            nome_usuario: config.nome_usuario || null,
+            cargo_usuario: config.cargo_usuario || null,
+          },
+          { onConflict: "user_id" }
+        )
+        .select()
+        .single();
+
+      if (error) throw error;
+      if (data && !config.id) setConfig(c => ({ ...c, id: data.id }));
+
       setSavedInfo(true);
       setTimeout(() => setSavedInfo(false), 3000);
     } catch (err: any) {
@@ -252,6 +276,46 @@ export default function ConfiguracoesPage() {
                 value={config.whatsapp}
                 onChange={e => setConfig(c => ({ ...c, whatsapp: e.target.value }))}
                 placeholder="Ex: 5517991141010"
+                className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5 mt-2 bg-blue-50/50 p-4 border border-blue-100 rounded-2xl">
+              <label className="text-[10px] font-black uppercase tracking-widest text-blue-800">
+                Token do Webhook (Identificador do Cliente)
+              </label>
+              <input
+                type="text"
+                value={config.webhook_token || ""}
+                onChange={e => setConfig(c => ({ ...c, webhook_token: e.target.value }))}
+                placeholder="Ex: autozap ou aprove"
+                className="bg-white border flex-1 border-blue-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
+              />
+              <p className="text-[10px] text-blue-600 mt-1">Configure na Avisa: <strong>https://[seu-dominio]/api/webhook/avisa?token={config.webhook_token || "SEU_TOKEN"}</strong></p>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+                Seu Nome
+              </label>
+              <input
+                type="text"
+                value={config.nome_usuario || ""}
+                onChange={e => setConfig(c => ({ ...c, nome_usuario: e.target.value }))}
+                placeholder="Ex: Lucas Salles"
+                className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+                Cargo
+              </label>
+              <input
+                type="text"
+                value={config.cargo_usuario || ""}
+                onChange={e => setConfig(c => ({ ...c, cargo_usuario: e.target.value }))}
+                placeholder="Ex: Gerente de Pátio"
                 className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
               />
             </div>

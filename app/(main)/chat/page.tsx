@@ -50,9 +50,12 @@ export default function CentralChat() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const carregarLeads = useCallback(async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
     const { data } = await supabase
       .from("leads")
       .select("*, veiculos(marca, modelo)")
+      .eq("user_id", user.id)
       .order("updated_at", { ascending: false });
     if (data) setLeads(data as Lead[]);
   }, []);

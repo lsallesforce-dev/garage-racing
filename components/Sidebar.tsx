@@ -3,6 +3,7 @@
 import { LayoutDashboard, PlusSquare, MessageSquare, DollarSign, Users, ShieldCheck, Car, Store, Settings, LogOut, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
 const menuItems: { icon: any; label: string; href: string; badge?: number }[] = [
@@ -19,6 +20,36 @@ const menuItems: { icon: any; label: string; href: string; badge?: number }[] = 
 export const Sidebar = ({ onClose }: { onClose?: () => void }) => {
   const pathname = usePathname();
   const router = useRouter();
+  const [nomeUsuario, setNomeUsuario] = useState("");
+  const [cargoUsuario, setCargoUsuario] = useState("");
+  const [nomeEmpresa, setNomeEmpresa] = useState("");
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      supabase
+        .from("config_garage")
+        .select("nome_usuario, cargo_usuario, nome_empresa")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .then(({ data }) => {
+          const row = data?.[0];
+          if (row) {
+            setNomeUsuario(row.nome_usuario || "");
+            setCargoUsuario(row.cargo_usuario || "");
+            setNomeEmpresa(row.nome_empresa || "");
+          }
+        });
+    });
+  }, []);
+
+  const iniciais = nomeUsuario
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p: string) => p[0].toUpperCase())
+    .join("") || "?";
 
   async function handleLogout() {
     await supabase.auth.signOut();
@@ -31,7 +62,16 @@ export const Sidebar = ({ onClose }: { onClose?: () => void }) => {
       <div className="mb-10 px-2 flex items-start justify-between">
         <div>
         <h2 className="text-xl font-black tracking-tighter italic border-b border-gray-400/20 pb-2">
-          <span className="text-gray-900">AUTO</span><span className="text-red-600">ZAP</span>
+          {nomeEmpresa ? (
+            <>
+              <span className="text-gray-900">{nomeEmpresa.split(" ")[0]}</span>
+              {nomeEmpresa.split(" ").length > 1 && (
+                <span className="text-red-600"> {nomeEmpresa.split(" ").slice(1).join(" ")}</span>
+              )}
+            </>
+          ) : (
+            <><span className="text-gray-900">AUTO</span><span className="text-red-600">ZAP</span></>
+          )}
         </h2>
         <div className="flex items-center gap-1 mt-2 text-red-600">
           <ShieldCheck size={10} />
@@ -66,10 +106,10 @@ export const Sidebar = ({ onClose }: { onClose?: () => void }) => {
 
       {/* Perfil do Usuário */}
       <div className="mt-10 pt-6 border-t border-gray-300 flex items-center gap-3">
-        <div className="w-10 h-10 rounded-full bg-gray-900 flex items-center justify-center text-white font-black text-sm italic shadow-lg">LS</div>
+        <div className="w-10 h-10 rounded-full bg-gray-900 flex items-center justify-center text-white font-black text-sm italic shadow-lg">{iniciais}</div>
         <div className="flex flex-col flex-1 min-w-0">
-          <span className="text-[11px] font-black uppercase tracking-tight text-gray-900">Lucas Salles</span>
-          <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest italic">Gerente de Pátio</span>
+          <span className="text-[11px] font-black uppercase tracking-tight text-gray-900 truncate">{nomeUsuario || "—"}</span>
+          <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest italic truncate">{cargoUsuario || "—"}</span>
         </div>
         <button
           onClick={handleLogout}

@@ -18,18 +18,22 @@ export default function Dashboard() {
   });
   const [atividades, setAtividades] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [nomeEmpresa, setNomeEmpresa] = useState("");
 
   // Flash: Função que puxa a realidade do banco de dados
   const carregarDashboard = async () => {
     setLoading(true);
     try {
+        const { data: { user } } = await supabase.auth.getUser();
+        const uid = user?.id;
+        if (!uid) return;
+
         // 1. Faturamento (Soma de carros VENDIDOS)
-        // Usando preco_sugerido conforme schema do banco
-        const { data: vendidos } = await supabase.from('veiculos').select('preco_sugerido').eq('status_venda', 'VENDIDO');
+        const { data: vendidos } = await supabase.from('veiculos').select('preco_sugerido').eq('status_venda', 'VENDIDO').eq('user_id', uid);
         const totalFaturado = vendidos?.reduce((acc, curr) => acc + Number(curr.preco_sugerido || 0), 0) || 0;
 
         // 2. Leads e Temperaturas
-        const { data: leads } = await supabase.from('leads').select('status');
+        const { data: leads } = await supabase.from('leads').select('status').eq('user_id', uid);
         const contagem = {
         total: leads?.length || 0,
         frios: leads?.filter(l => l.status === 'FRIO').length || 0,
@@ -41,12 +45,14 @@ export default function Dashboard() {
         const { count: totalPatio } = await supabase
             .from('veiculos')
             .select('*', { count: 'exact', head: true })
+            .eq('user_id', uid)
             .or('status_venda.eq.DISPONIVEL,status_venda.is.null');
 
         // 4. Atividades Recentes (Movimentação)
         const { data: recents } = await supabase
         .from('leads')
         .select('*, veiculos(modelo)')
+        .eq('user_id', uid)
         .order('updated_at', { ascending: false })
         .limit(5);
 
@@ -69,6 +75,20 @@ export default function Dashboard() {
 
   useEffect(() => {
     carregarDashboard();
+    // Carrega nome da empresa para o greeting
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      supabase
+        .from("config_garage")
+        .select("nome_empresa")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .then(({ data }) => {
+          const row = data?.[0];
+          if (row?.nome_empresa) setNomeEmpresa(row.nome_empresa);
+        });
+    });
   }, []);
 
   return (
@@ -78,7 +98,7 @@ export default function Dashboard() {
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4 mb-8 md:mb-12">
             <div>
             <h1 className="text-3xl md:text-6xl font-black italic uppercase text-gray-300/80 leading-none mb-2 tracking-tighter">Radar do Pátio</h1>
-            <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-gray-400">Bem-vindo à AutoZap, Comandante.</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-gray-400">Bem-vindo à {nomeEmpresa || "AutoZap"}, Comandante.</p>
             </div>
             <div className="flex gap-2 md:gap-4">
             <button className="flex-1 sm:flex-none px-4 md:px-6 py-3 md:py-4 bg-white rounded-3xl text-[10px] font-black uppercase border border-gray-100 shadow-sm hover:bg-gray-50 transition-all">Exportar</button>

@@ -8,6 +8,12 @@ const supabaseServer = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+// Admin para leituras que precisam bypassar RLS em páginas públicas
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
 interface Props {
   params: Promise<{ id: string }>;
 }
@@ -60,13 +66,27 @@ export default async function VitrineDetalhePage({ params }: Props) {
   if (veiculoError) console.error("❌ Supabase vitrine/[id] error:", veiculoError);
   if (!veiculo) notFound();
 
-  // Busca outros carros disponíveis (exceto este)
-  const { data: relacionados } = await supabaseServer
+  // Busca config da garagem dona do veículo (admin bypassa RLS — página pública)
+  const { data: garagem } = veiculo.user_id
+    ? await supabaseAdmin.from("config_garage").select("nome_empresa, whatsapp").eq("user_id", veiculo.user_id).single()
+    : { data: null };
+
+  // Busca outros carros disponíveis do mesmo tenant (exceto este)
+  const relacionadosQuery = supabaseServer
     .from("veiculos")
     .select("id, marca, modelo, versao, ano_modelo, preco_sugerido, capa_marketing_url, fotos")
     .eq("status_venda", "DISPONIVEL")
     .neq("id", id)
     .limit(3);
+  if (veiculo.user_id) relacionadosQuery.eq("user_id", veiculo.user_id);
+  const { data: relacionados } = await relacionadosQuery;
 
-  return <VitrineDetalheClient veiculo={veiculo} relacionados={relacionados ?? []} />;
+  return (
+    <VitrineDetalheClient
+      veiculo={veiculo}
+      relacionados={relacionados ?? []}
+      nomeEmpresa={garagem?.nome_empresa ?? "AutoZap"}
+      whatsapp={garagem?.whatsapp ?? process.env.NEXT_PUBLIC_ZAPI_PHONE ?? ""}
+    />
+  );
 }

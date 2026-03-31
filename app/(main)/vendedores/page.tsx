@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Sidebar } from "@/components/Sidebar";
 import { supabase } from "@/lib/supabase";
 import { UserPlus, MoreHorizontal, X, UserCircle, Upload, Zap, Phone, Edit, Trash2 } from "lucide-react";
 
@@ -17,7 +16,9 @@ export default function VendedoresPage() {
 
   const carregarEquipe = async () => {
     setLoading(true);
-    const { data } = await supabase.from('vendedores').select('*').order('nome');
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setLoading(false); return; }
+    const { data } = await supabase.from('vendedores').select('*').eq('user_id', user.id).order('nome');
     if (data) setVendedores(data);
     setLoading(false);
   };
@@ -78,9 +79,10 @@ export default function VendedoresPage() {
       setEditingVendedor(null);
     } else {
       // Modo Novo (INSERT)
+      const { data: { user } } = await supabase.auth.getUser();
       const { error } = await supabase
         .from('vendedores')
-        .insert([form]);
+        .insert([{ ...form, user_id: user?.id }]);
         
       if (error) {
         alert("Erro ao cadastrar vendedor.");
@@ -123,10 +125,8 @@ export default function VendedoresPage() {
   };
 
   return (
-    <div className="flex bg-[#f4f4f2] min-h-screen text-slate-900 font-sans">
-      <Sidebar />
-
-      <main className="flex-1 p-10">
+    <div className="flex-1 bg-[#f4f4f2] min-h-screen text-slate-900 font-sans">
+      <main className="p-10">
         <header className="flex justify-between items-center mb-10 pb-6 border-b border-gray-200">
           <div>
             <h1 className="text-4xl font-black uppercase tracking-tighter italic text-gray-900">Equipe de Vendas</h1>

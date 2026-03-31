@@ -7,14 +7,14 @@ import {
   CheckCircle2, Calendar, Palette, CreditCard, ArrowRight,
 } from "lucide-react";
 
-const WHATSAPP = process.env.NEXT_PUBLIC_ZAPI_PHONE ?? "5521999999999";
+const WHATSAPP_DEFAULT = process.env.NEXT_PUBLIC_ZAPI_PHONE ?? "5521999999999";
 
 function fmt(value: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 }
 
-function whatsappLink(texto: string) {
-  return `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(texto)}`;
+function whatsappLink(numero: string, texto: string) {
+  return `https://wa.me/${numero}?text=${encodeURIComponent(texto)}`;
 }
 
 // ─── Galeria ─────────────────────────────────────────────────────────────────
@@ -114,13 +114,15 @@ function CardRelacionado({ carro }: { carro: any }) {
 
 // ─── Página principal ─────────────────────────────────────────────────────────
 
-export default function VitrineDetalheClient({ veiculo, relacionados }: { veiculo: any; relacionados: any[] }) {
+export default function VitrineDetalheClient({ veiculo, relacionados, nomeEmpresa, whatsapp }: { veiculo: any; relacionados: any[]; nomeEmpresa?: string; whatsapp?: string }) {
   const titulo = `${veiculo.marca} ${veiculo.modelo}`.trim();
   const subtitulo = [veiculo.versao, veiculo.ano_modelo].filter(Boolean).join(" • ");
   const fotos: string[] = veiculo.fotos ?? [];
   const pontos: string[] = veiculo.pontos_fortes_venda ?? [];
   const vendido = veiculo.status_venda === "VENDIDO";
-  const msgWhats = `Oi! Vi o *${titulo}${veiculo.versao ? " " + veiculo.versao : ""}${veiculo.ano_modelo ? " " + veiculo.ano_modelo : ""}* na vitrine da AutoZap e tenho interesse. Ainda disponível?`;
+  const nomeGaragem = nomeEmpresa ?? "AutoZap";
+  const numeroWhats = whatsapp || WHATSAPP_DEFAULT;
+  const msgWhats = `Oi! Vi o *${titulo}${veiculo.versao ? " " + veiculo.versao : ""}${veiculo.ano_modelo ? " " + veiculo.ano_modelo : ""}* na vitrine da ${nomeGaragem} e tenho interesse. Ainda disponível?`;
 
   return (
     <div className="bg-gray-50 min-h-screen text-gray-900 font-sans">
@@ -132,8 +134,10 @@ export default function VitrineDetalheClient({ veiculo, relacionados }: { veicul
             <ChevronLeft size={14} /> Voltar ao pátio
           </Link>
           <div className="flex items-center gap-2">
-            <span className="text-lg font-black uppercase italic tracking-tighter text-gray-900">Garage</span>
-            <span className="text-lg font-black uppercase italic tracking-tighter text-red-600">Racing</span>
+            <span className="text-lg font-black uppercase italic tracking-tighter text-gray-900">{nomeGaragem.split(" ")[0]}</span>
+            {nomeGaragem.split(" ").length > 1 && (
+              <span className="text-lg font-black uppercase italic tracking-tighter text-red-600"> {nomeGaragem.split(" ").slice(1).join(" ")}</span>
+            )}
           </div>
         </div>
       </header>
@@ -233,7 +237,7 @@ export default function VitrineDetalheClient({ veiculo, relacionados }: { veicul
             {!vendido && (
               <div className="space-y-3">
                 <a
-                  href={whatsappLink(msgWhats)}
+                  href={whatsappLink(numeroWhats, msgWhats)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center justify-center gap-3 w-full bg-green-500 hover:bg-green-400 text-white py-5 rounded-2xl font-black uppercase tracking-widest text-sm transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-green-200"

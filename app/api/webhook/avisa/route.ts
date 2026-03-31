@@ -82,6 +82,52 @@ const processedIds = new Set<string>();
 export async function POST(req: NextRequest) {
   try {
     const payload = await req.json();
+    // Token pode vir na query string (?token=) ou no body (campo "token")
+    const token = req.nextUrl.searchParams.get("token") || payload.token || null;
+
+    // ── 0. Identificar Tenant (Multi-tenant) ─────────────────────────────────
+    let tenantUserId: string | null = null;
+    let garageConfig: any = null;
+
+    if (token) {
+      const { data } = await supabaseAdmin
+        .from("config_garage")
+        .select("user_id, nome_empresa, nome_agente, endereco, whatsapp")
+        .eq("webhook_token", token)
+        .single();
+      
+      if (data) {
+        tenantUserId = data.user_id;
+        garageConfig = data;
+      } else {
+        console.warn(`⚠️ Token de webhook inválido ou não encontrado: ${token}`);
+        return NextResponse.json({ status: "invalid_token" }, { status: 401 });
+      }
+    } else {
+      // Fallback para Mono-tenant (legacy via .env)
+      tenantUserId = process.env.WEBHOOK_USER_ID || null;
+      if (tenantUserId) {
+        const { data } = await supabaseAdmin
+          .from("config_garage")
+          .select("user_id, nome_empresa, nome_agente, endereco, whatsapp")
+          .eq("user_id", tenantUserId)
+          .single();
+        garageConfig = data;
+      } else {
+        const { data } = await supabaseAdmin
+          .from("config_garage")
+          .select("user_id, nome_empresa, nome_agente, endereco, whatsapp")
+          .single();
+        tenantUserId = data?.user_id || null;
+        garageConfig = data;
+      }
+    }
+
+    if (!tenantUserId) {
+      console.error("❌ Nenhum tenant configurado para este webhook.");
+      return NextResponse.json({ status: "no_tenant" }, { status: 500 });
+    }
+
 
     const { phone, userMessage: rawMessage, fromMe, audioUrl, messageId } = extractFields(payload) as any;
 
@@ -144,12 +190,11 @@ export async function POST(req: NextRequest) {
     }
 
     // ── 3. Lead e histórico ─────────────────────────────────────────────────
-    const webhookUserIdEarly = process.env.WEBHOOK_USER_ID;
     const { data: lead } = await supabaseAdmin
       .from("leads")
       .upsert(
-        { wa_id: phone, ...(webhookUserIdEarly ? { user_id: webhookUserIdEarly } : {}) },
-        { onConflict: "wa_id" }
+        { wa_id: phone, user_id: tenantUserId },
+        { onConflict: "user_id, wa_id" }
       )
       .select()
       .single();
@@ -172,12 +217,6 @@ export async function POST(req: NextRequest) {
     }
 
     // ── 5. Config da Garagem ────────────────────────────────────────────────
-    const webhookUserId = process.env.WEBHOOK_USER_ID;
-    let configQuery = supabaseAdmin
-      .from("config_garage")
-      .select("nome_empresa, nome_agente, endereco, whatsapp");
-    if (webhookUserId) configQuery = configQuery.eq("user_id", webhookUserId);
-    const { data: garageConfig } = await configQuery.single();
     const nomeEmpresa = garageConfig?.nome_empresa || "AutoZap";
     const nomeAgente = garageConfig?.nome_agente || "Lucas";
     const enderecoGaragem = garageConfig?.endereco || "";
@@ -188,11 +227,12 @@ export async function POST(req: NextRequest) {
     // Se o lead já tem um carro vinculado, busca ele primeiro como veículo principal
     let veiculoPrincipal: Vehicle | null = null;
     if (lead?.veiculo_id) {
-      const { data: vPrincipal } = await supabaseAdmin
+      let vQ = supabaseAdmin
         .from("veiculos")
         .select("*")
-        .eq("id", lead.veiculo_id)
-        .single();
+        .eq("id", lead.veiculo_id);
+      if (tenantUserId) vQ = vQ.eq("user_id", tenantUserId);
+      const { data: vPrincipal } = await vQ.single();
       if (vPrincipal) veiculoPrincipal = vPrincipal as Vehicle;
     }
 
@@ -220,7 +260,7 @@ export async function POST(req: NextRequest) {
           .eq("status_venda", "DISPONIVEL")
           .or(`marca.ilike.%${v}%,modelo.ilike.%${v}%,categoria.ilike.%${v}%,versao.ilike.%${v}%,cor.ilike.%${v}%,tags_busca.ilike.%${v}%`)
           .limit(3);
-        if (webhookUserId) q = q.eq("user_id", webhookUserId);
+        if (tenantUserId) q = q.eq("user_id", tenantUserId);
         const { data: hits } = await q;
         if (hits && hits.length > 0) {
           const idsExist = new Set(hitsTextuais.map((h) => h.id));
@@ -254,11 +294,12 @@ export async function POST(req: NextRequest) {
           query_embedding: queryEmbedding,
           match_threshold: 0.40,
           match_count: 3,
+          filter_user_id: tenantUserId || null,
         });
         if (matchedVehicles && (matchedVehicles as any[]).length > 0) {
           const ids = (matchedVehicles as any[]).map((v) => v.id).filter((id: string) => id !== veiculoPrincipal!.id);
           let vcQ = supabaseAdmin.from("veiculos").select("*").in("id", ids).eq("status_venda", "DISPONIVEL");
-          if (webhookUserId) vcQ = vcQ.eq("user_id", webhookUserId);
+          if (tenantUserId) vcQ = vcQ.eq("user_id", tenantUserId);
           const { data: vc } = await vcQ;
           if (vc) complementares = vc as Vehicle[];
         }
@@ -271,17 +312,18 @@ export async function POST(req: NextRequest) {
         query_embedding: queryEmbedding,
         match_threshold: 0.50,
         match_count: 5,
+        filter_user_id: tenantUserId || null,
       });
 
       if (matchError || !matchedVehicles || (matchedVehicles as any[]).length === 0) {
         let estoqueQ = supabaseAdmin.from("veiculos").select("*").eq("status_venda", "DISPONIVEL").limit(5);
-        if (webhookUserId) estoqueQ = estoqueQ.eq("user_id", webhookUserId);
+        if (tenantUserId) estoqueQ = estoqueQ.eq("user_id", tenantUserId);
         const { data: estoqueGeral } = await estoqueQ;
         if (estoqueGeral) topVeiculos = estoqueGeral as Vehicle[];
       } else {
         const ids = (matchedVehicles as any[]).map((v) => v.id);
         let vcQ2 = supabaseAdmin.from("veiculos").select("*").in("id", ids).eq("status_venda", "DISPONIVEL");
-        if (webhookUserId) vcQ2 = vcQ2.eq("user_id", webhookUserId);
+        if (tenantUserId) vcQ2 = vcQ2.eq("user_id", tenantUserId);
         const { data: veiculosCompletos } = await vcQ2;
         if (veiculosCompletos) topVeiculos = veiculosCompletos as Vehicle[];
       }
