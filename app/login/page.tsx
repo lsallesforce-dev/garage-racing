@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
 import { supabase } from "@/lib/supabase";
 
 export default function LoginPage() {
@@ -32,7 +31,9 @@ export default function LoginPage() {
 
         {/* Logo */}
         <div className="flex justify-center mb-8">
-          <Image src="/logo.svg" alt="Garage Racing" width={180} height={72} priority />
+          <h1 className="text-4xl font-black tracking-tighter italic">
+            <span className="text-gray-900">AUTO</span><span className="text-red-600">ZAP</span>
+          </h1>
         </div>
 
         {/* Card */}
