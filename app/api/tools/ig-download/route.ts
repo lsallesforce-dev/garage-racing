@@ -1,45 +1,13 @@
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { NextRequest, NextResponse } from "next/server";
-import { exec } from "child_process";
-import { promisify } from "util";
-import { readFile, unlink } from "fs/promises";
-import { join } from "path";
-import { tmpdir } from "os";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
-
-const execAsync = promisify(exec);
 
 // ─── Valida URL ───────────────────────────────────────────────────────────────
 
 function parseInstagramUrl(url: string): boolean {
   return /instagram\.com\/(p|reel|tv)\/[A-Za-z0-9_-]+/.test(url);
-}
-
-// ─── yt-dlp: método principal ─────────────────────────────────────────────────
-// Instale uma vez: pip install yt-dlp
-// Funciona com reels, posts e IGTV públicos sem chave de API.
-
-async function fetchViaYtDlp(instagramUrl: string): Promise<Buffer | null> {
-  const tmpFile = join(tmpdir(), `ig-${Date.now()}.mp4`);
-  try {
-    console.log("⬇️  yt-dlp iniciando download...");
-    const { stdout, stderr } = await execAsync(
-      `python -m yt_dlp --merge-output-format mp4 -o "${tmpFile}" "${instagramUrl}"`,
-      { timeout: 50_000 }
-    );
-    if (stdout) console.log("yt-dlp stdout:", stdout.slice(0, 300));
-    if (stderr) console.log("yt-dlp stderr:", stderr.slice(0, 300));
-    const buffer = await readFile(tmpFile);
-    console.log(`✅ yt-dlp concluído — ${(buffer.length / 1_048_576).toFixed(1)} MB`);
-    return buffer;
-  } catch (e) {
-    console.warn("⚠️  yt-dlp falhou:", e instanceof Error ? e.message : e);
-    return null;
-  } finally {
-    await unlink(tmpFile).catch(() => {});
-  }
 }
 
 // ─── Fallback: RapidAPI ───────────────────────────────────────────────────────
@@ -77,28 +45,42 @@ function deepFindVideoUrl(obj: unknown, depth = 0): string | null {
 
 async function fetchViaRapidApi(instagramUrl: string): Promise<string | null> {
   const key = process.env.RAPIDAPI_KEY;
-  if (!key) return null;
+  if (!key) {
+    console.error("❌ RAPIDAPI_KEY não configurada");
+    return null;
+  }
 
-  const host = "instagram-downloader-download-instagram-videos-stories5.p.rapidapi.com";
-  const endpoints = [
-    `https://${host}/index?url=${encodeURIComponent(instagramUrl)}`,
-    `https://${host}/getReels?url=${encodeURIComponent(instagramUrl)}`,
+  const hosts = [
+    "instagram-downloader-download-instagram-videos-stories5.p.rapidapi.com",
+    "instagram-video-downloader2.p.rapidapi.com",
+    "social-media-video-downloader.p.rapidapi.com",
   ];
 
-  for (const url of endpoints) {
-    try {
-      const res = await fetch(url, {
-        headers: { "X-RapidAPI-Key": key, "X-RapidAPI-Host": host },
-      });
-      const raw = await res.text();
-      console.log(`📡 RapidAPI [${url.split("?")[0].split("/").pop()}] status=${res.status}`);
-      if (!res.ok) continue;
-      let data: unknown;
-      try { data = JSON.parse(raw); } catch { continue; }
-      const found = deepFindVideoUrl(data);
-      if (found) return found;
-    } catch (e) {
-      console.error("RapidAPI error:", e);
+  for (const host of hosts) {
+    const endpoints = [
+      `https://${host}/index?url=${encodeURIComponent(instagramUrl)}`,
+      `https://${host}/getReels?url=${encodeURIComponent(instagramUrl)}`,
+      `https://${host}/dl?url=${encodeURIComponent(instagramUrl)}`,
+    ];
+
+    for (const url of endpoints) {
+      try {
+        const res = await fetch(url, {
+          headers: { "X-RapidAPI-Key": key, "X-RapidAPI-Host": host },
+        });
+        const raw = await res.text();
+        console.log(`📡 RapidAPI host=${host} endpoint=${url.split("?")[0].split("/").pop()} status=${res.status} body=${raw.slice(0, 200)}`);
+        if (!res.ok) continue;
+        let data: unknown;
+        try { data = JSON.parse(raw); } catch { continue; }
+        const found = deepFindVideoUrl(data);
+        if (found) {
+          console.log(`✅ RapidAPI encontrou URL via ${host}`);
+          return found;
+        }
+      } catch (e) {
+        console.error(`RapidAPI error (${host}):`, e);
+      }
     }
   }
   return null;
@@ -124,14 +106,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 1. Tenta yt-dlp (primário) → retorna Buffer direto
-    const ytBuffer = await fetchViaYtDlp(url);
-
+    // Busca URL do vídeo via RapidAPI
     let buffer: Buffer;
-    if (ytBuffer) {
-      buffer = ytBuffer;
-    } else {
-      // 2. Fallback: RapidAPI → busca URL pública e baixa o binário
+    {
       const videoUrl = await fetchViaRapidApi(url);
 
       if (!videoUrl) {
@@ -139,7 +116,7 @@ export async function POST(req: NextRequest) {
           {
             success: false,
             error:
-              "Não foi possível baixar o vídeo. Instale o yt-dlp (pip install yt-dlp) ou configure a RAPIDAPI_KEY com um plano que inclua Instagram.",
+              "Não foi possível baixar o vídeo. Verifique se a RAPIDAPI_KEY está configurada e se o plano inclui Instagram.",
           },
           { status: 422 }
         );
