@@ -82,8 +82,9 @@ const processedIds = new Set<string>();
 export async function POST(req: NextRequest) {
   try {
     const payload = await req.json();
-    // Token pode vir na query string (?token=) ou no body (campo "token")
-    const token = req.nextUrl.searchParams.get("token") || payload.token || null;
+    // Token pode vir na query string (?token=), no body (campo "token") ou no header Authorization: Bearer <token>
+    const bearerToken = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") || null;
+    const token = req.nextUrl.searchParams.get("token") || payload.token || bearerToken || null;
 
     // ── 0. Identificar Tenant (Multi-tenant) ─────────────────────────────────
     let tenantUserId: string | null = null;
