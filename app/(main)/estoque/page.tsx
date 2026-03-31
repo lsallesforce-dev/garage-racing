@@ -12,14 +12,11 @@ export default function ListaEstoque() {
   useEffect(() => {
     const buscarEstoque = async () => {
       setLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      console.log("🔑 USER LOGADO:", user?.id, user?.email);
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('veiculos')
         .select('*')
         .order('status_venda', { ascending: true })
         .order('created_at', { ascending: false });
-      console.log("🚗 VEICULOS:", data?.length, "ERRO:", error?.message);
       if (data) setCarros(data);
       setLoading(false);
     };
