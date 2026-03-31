@@ -103,8 +103,31 @@ const processedIds = new Set<string>();
 
 export async function POST(req: NextRequest) {
   try {
-    const payload = await req.json();
-    // Token pode vir na query string (?token=), no body (campo "token") ou no header Authorization: Bearer <token>
+    const contentType = req.headers.get("content-type") || "";
+    let payload: any = {};
+
+    if (contentType.includes("application/x-www-form-urlencoded")) {
+      const formData = await req.formData();
+      payload = Object.fromEntries(formData.entries());
+    } else {
+      const textBody = await req.text();
+      try {
+        payload = textBody ? JSON.parse(textBody) : {};
+      } catch (parseError) {
+        // Fallback manual se a Avisa não mandar o Content-Type correto
+        if (textBody.includes("jsonData=")) {
+          const params = new URLSearchParams(textBody);
+          payload = Object.fromEntries(params.entries());
+        } else {
+          console.warn("Payload não é JSON rastreável:", textBody);
+          payload = { rawText: textBody };
+        }
+      }
+    }
+
+    console.log("---------------------------------");
+
+    // Extrai o token de webhook da URL ou do payloader Authorization: Bearer <token>
     const bearerToken = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") || null;
     const token = req.nextUrl.searchParams.get("token") || payload.token || bearerToken || null;
 
