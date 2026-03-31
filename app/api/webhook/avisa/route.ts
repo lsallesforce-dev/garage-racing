@@ -5,6 +5,8 @@ import { buscarDadosTransbordo, gerarRelatorioPista } from "@/lib/leads";
 import { NextRequest, NextResponse } from "next/server";
 import { Vehicle } from "@/types/vehicle";
 
+export const maxDuration = 60;
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 type Temperatura = "FRIO" | "MORNO" | "QUENTE";
@@ -40,20 +42,16 @@ function buildBriefingVendedor(
 function extractFields(payload: any): { phone: string; userMessage: string; fromMe: boolean; audioUrl?: string; messageId?: string } {
   console.log("📨 AVISA WEBHOOK PAYLOAD:", JSON.stringify(payload, null, 2));
 
-  // Avisa envia jsonData como string JSON aninhada
-  let event: any = null;
-  try {
-    const parsed = typeof payload.jsonData === "string" ? JSON.parse(payload.jsonData) : payload.jsonData;
-    event = parsed?.event;
-  } catch {
-    event = null;
+  // Tenta extrair de 'jsonData' se existir (alguns provedores envelopam o corpo)
+  // Caso contrário, assume que o payload de raiz já é o objeto correto
+  let parsedData: any = payload;
+  if (payload && payload.jsonData) {
+    parsedData = typeof payload.jsonData === "string" ? JSON.parse(payload.jsonData) : payload.jsonData;
   }
 
-  if (!event) return { phone: "", userMessage: "", fromMe: false };
-
-  // Ignora eventos que não são mensagens
-  const parsedData = typeof payload.jsonData === "string" ? JSON.parse(payload.jsonData) : payload.jsonData;
-  if (parsedData?.type !== "Message") {
+  const event = parsedData?.event;
+  if (!event || parsedData?.type !== "Message") {
+    // Ignora eventos que não são mensagens
     return { phone: "", userMessage: "", fromMe: true };
   }
 
