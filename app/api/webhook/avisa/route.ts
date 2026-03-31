@@ -42,34 +42,58 @@ function buildBriefingVendedor(
 function extractFields(payload: any): { phone: string; userMessage: string; fromMe: boolean; audioUrl?: string; messageId?: string } {
   console.log("📨 AVISA WEBHOOK PAYLOAD:", JSON.stringify(payload, null, 2));
 
-  // Tenta extrair de 'jsonData' se existir (alguns provedores envelopam o corpo)
-  // Caso contrário, assume que o payload de raiz já é o objeto correto
   let parsedData: any = payload;
   if (payload && payload.jsonData) {
-    parsedData = typeof payload.jsonData === "string" ? JSON.parse(payload.jsonData) : payload.jsonData;
+    try {
+      parsedData = typeof payload.jsonData === "string" ? JSON.parse(payload.jsonData) : payload.jsonData;
+    } catch { }
   }
 
-  const event = parsedData?.event;
-  if (!event || parsedData?.type !== "Message") {
+  // Se o payload for vazio
+  if (!parsedData) return { phone: "", userMessage: "", fromMe: true };
+
+  let phone = "";
+  let userMessage = "";
+  let fromMe = false;
+  let audioUrl = undefined;
+  let messageId = null;
+
+  // 1. Formato Baileys/Antigo (event.Info / event.Message)
+  if (parsedData?.event?.Info) {
+    const info = parsedData.event.Info;
+    const msg = parsedData.event.Message;
     // Ignora eventos que não são mensagens
-    return { phone: "", userMessage: "", fromMe: true };
+    if (parsedData.type !== "Message") return { phone: "", userMessage: "", fromMe: true };
+    fromMe = info.IsFromMe ?? false;
+    phone = (info.SenderAlt || info.Sender || "").replace(/@.*$/, "");
+    userMessage = msg?.conversation || msg?.extendedTextMessage?.text || "";
+    audioUrl = msg?.audioMessage?.url;
+    messageId = info.ID;
+  }
+  // 2. Formato Avisa/Z-API simplificado (number, message)
+  else if (parsedData?.number || parsedData?.phone) {
+    phone = (parsedData.number || parsedData.phone || "").replace(/@.*$/, "");
+    userMessage = parsedData.message || parsedData.text?.message || parsedData.body || "";
+    fromMe = parsedData.isGroup || parsedData.fromMe || false; // Aproximação
+    if (!userMessage && !parsedData.text && parsedData.type !== "text") {
+        return { phone: "", userMessage: "", fromMe: true };
+    }
+  }
+  // 3. Formato Evolution API (data.key.remoteJid, data.message.conversation)
+  else if (parsedData?.data?.key?.remoteJid) {
+    const key = parsedData.data.key;
+    const msg = parsedData.data.message;
+    fromMe = key.fromMe || false;
+    phone = (key.remoteJid || "").replace(/@.*$/, "");
+    userMessage = msg?.conversation || msg?.extendedTextMessage?.text || "";
+    messageId = key.id;
+  }
+  // 4. Formato Desconhecido (Modo Debug!)
+  else {
+    return { phone: "debug", userMessage: JSON.stringify(payload).slice(0, 1000), fromMe: false };
   }
 
-  const fromMe = event.Info?.IsFromMe ?? false;
-
-  // Extrai o número removendo o sufixo @s.whatsapp.net
-  const senderRaw = event.Info?.SenderAlt || event.Info?.Sender || "";
-  const phone = senderRaw.replace(/@.*$/, "");
-
-  // Texto da mensagem
-  const userMessage = event.Message?.conversation || event.Message?.extendedTextMessage?.text || "";
-
-  // Áudio
-  const audioUrl = event.Message?.audioMessage?.url || undefined;
-
-  const messageId = event.Info?.ID || null;
-
-  return { phone, userMessage, fromMe, audioUrl, messageId };
+  return { phone, userMessage: userMessage?.trim() || "", fromMe, audioUrl, messageId };
 }
 
 // Cache simples em memória para deduplicação (evita processar a mesma mensagem duas vezes)
