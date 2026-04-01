@@ -1,7 +1,28 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+const MAIN_DOMAIN = "autozap.com.br";
+const IGNORED_SUBDOMAINS = new Set(["www", "app", "api"]);
+
 export async function proxy(request: NextRequest) {
+  // ── Detecção de subdomínio (multi-tenant vitrine) ─────────────────────────
+  const hostname = request.headers.get("host") || "";
+  const isMainDomain =
+    hostname === MAIN_DOMAIN ||
+    hostname === `www.${MAIN_DOMAIN}` ||
+    hostname.endsWith(".vercel.app") ||
+    hostname.startsWith("localhost");
+
+  if (!isMainDomain) {
+    const subdomain = hostname.replace(`.${MAIN_DOMAIN}`, "");
+    if (subdomain && !IGNORED_SUBDOMAINS.has(subdomain)) {
+      const { pathname } = request.nextUrl;
+      const rewriteUrl = request.nextUrl.clone();
+      rewriteUrl.pathname = `/vitrine/${subdomain}${pathname === "/" ? "" : pathname}`;
+      return NextResponse.rewrite(rewriteUrl);
+    }
+  }
+
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(

@@ -89,10 +89,10 @@ function VideoPlayer({ url }: { url: string }) {
 
 // ─── Card relacionado ─────────────────────────────────────────────────────────
 
-function CardRelacionado({ carro }: { carro: any }) {
+function CardRelacionado({ carro, tenant }: { carro: any; tenant: string }) {
   const img = carro.capa_marketing_url ?? carro.fotos?.[0];
   return (
-    <Link href={`/vitrine/${carro.id}`} className="group bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all block">
+    <Link href={`/vitrine/${tenant}/${carro.id}`} className="group bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all block">
       <div className="aspect-video overflow-hidden bg-gray-100">
         {img
           ? <img src={img} alt={carro.modelo} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
@@ -114,7 +114,7 @@ function CardRelacionado({ carro }: { carro: any }) {
 
 // ─── Página principal ─────────────────────────────────────────────────────────
 
-export default function VitrineDetalheClient({ veiculo, relacionados, nomeEmpresa, whatsapp }: { veiculo: any; relacionados: any[]; nomeEmpresa?: string; whatsapp?: string }) {
+export default function VitrineDetalheClient({ veiculo, relacionados, nomeEmpresa, whatsapp, tenant }: { veiculo: any; relacionados: any[]; nomeEmpresa?: string; whatsapp?: string; tenant: string }) {
   const titulo = `${veiculo.marca} ${veiculo.modelo}`.trim();
   const subtitulo = [veiculo.versao, veiculo.ano_modelo].filter(Boolean).join(" • ");
   const fotos: string[] = veiculo.fotos ?? [];
@@ -130,7 +130,7 @@ export default function VitrineDetalheClient({ veiculo, relacionados, nomeEmpres
       {/* ── Header ── */}
       <header className="bg-white border-b border-gray-100 sticky top-0 z-40">
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-          <Link href="/vitrine" className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-gray-900 transition-colors">
+          <Link href={`/vitrine/${tenant}`} className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-gray-900 transition-colors">
             <ChevronLeft size={14} /> Voltar ao pátio
           </Link>
           <div className="flex items-center gap-2">
@@ -261,14 +261,14 @@ export default function VitrineDetalheClient({ veiculo, relacionados, nomeEmpres
               <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">Mais do pátio</p>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {relacionados.map((c) => <CardRelacionado key={c.id} carro={c} />)}
+              {relacionados.map((c) => <CardRelacionado key={c.id} carro={c} tenant={tenant} />)}
             </div>
           </div>
         )}
 
         {/* ── Footer ── */}
         <div className="mt-16 pt-8 border-t border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-3">
-          <Link href="/vitrine" className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-gray-400 hover:text-gray-900 transition-colors">
+          <Link href={`/vitrine/${tenant}`} className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-gray-400 hover:text-gray-900 transition-colors">
             <ChevronLeft size={11} /> Ver todo o estoque
           </Link>
           <p className="text-[9px] font-bold uppercase tracking-widest text-gray-300">© 2026 AutoZap</p>
