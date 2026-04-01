@@ -6,14 +6,13 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
-const menuItems: { icon: any; label: string; href: string; badge?: number }[] = [
+const staticMenuItems = [
   { icon: LayoutDashboard, label: "Pátio Digital", href: "/" },
   { icon: Car, label: "Estoque Inteligente", href: "/estoque" },
   { icon: PlusSquare, label: "Adicionar Estoque", href: "/upload" },
   { icon: MessageSquare, label: "Central de Chat", href: "/chat" },
   { icon: DollarSign, label: "Vendas / Financeiro", href: "/vendas" },
   { icon: Users, label: "Equipe de Vendas", href: "/vendedores" },
-  { icon: Store, label: "Vitrine Pública", href: "/vitrine" },
   { icon: Settings, label: "Configurações", href: "/configuracoes" },
 ];
 
@@ -23,13 +22,14 @@ export const Sidebar = ({ onClose }: { onClose?: () => void }) => {
   const [nomeUsuario, setNomeUsuario] = useState("");
   const [cargoUsuario, setCargoUsuario] = useState("");
   const [nomeEmpresa, setNomeEmpresa] = useState("");
+  const [vitrineSlug, setVitrineSlug] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) return;
       supabase
         .from("config_garage")
-        .select("nome_usuario, cargo_usuario, nome_empresa")
+        .select("nome_usuario, cargo_usuario, nome_empresa, vitrine_slug, webhook_token")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false })
         .limit(1)
@@ -39,6 +39,7 @@ export const Sidebar = ({ onClose }: { onClose?: () => void }) => {
             setNomeUsuario(row.nome_usuario || "");
             setCargoUsuario(row.cargo_usuario || "");
             setNomeEmpresa(row.nome_empresa || "");
+            setVitrineSlug(row.vitrine_slug || row.webhook_token || null);
           }
         });
     });
@@ -86,7 +87,7 @@ export const Sidebar = ({ onClose }: { onClose?: () => void }) => {
       </div>
       
       <nav className="flex-1 space-y-2">
-        {menuItems.map((item) => (
+        {staticMenuItems.map((item) => (
           <Link
             key={item.label}
             href={item.href}
@@ -99,9 +100,19 @@ export const Sidebar = ({ onClose }: { onClose?: () => void }) => {
               <item.icon size={18} />
               <span className="font-bold text-[11px] uppercase tracking-wider">{item.label}</span>
             </div>
-            {item.badge && <span className="bg-red-600 text-white text-[9px] px-2 py-0.5 rounded-full font-black">{item.badge}</span>}
           </Link>
         ))}
+        {/* Vitrine Pública — link externo com slug do tenant */}
+        <a
+          href={vitrineSlug ? `/vitrine/${vitrineSlug}` : "/vitrine"}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={onClose}
+          className="flex items-center gap-3 p-3 rounded-xl transition-all text-gray-600 hover:bg-white/50"
+        >
+          <Store size={18} />
+          <span className="font-bold text-[11px] uppercase tracking-wider">Vitrine Pública</span>
+        </a>
       </nav>
 
       {/* Perfil do Usuário */}
