@@ -355,25 +355,40 @@ export async function POST(req: NextRequest) {
       topVeiculos = [veiculoPrincipal, ...complementares].slice(0, 5);
     } else {
       // Lead novo sem carro vinculado — busca semântica + textual normal
-      const queryEmbedding = await generateEmbedding(userMessage);
-      const { data: matchedVehicles, error: matchError } = await supabaseAdmin.rpc("match_veiculos", {
-        query_embedding: queryEmbedding,
-        match_threshold: 0.50,
-        match_count: 5,
-        filter_user_id: tenantUserId || null,
-      });
-
-      if (matchError || !matchedVehicles || (matchedVehicles as any[]).length === 0) {
+      const estoqueGeralFallback = async () => {
         let estoqueQ = supabaseAdmin.from("veiculos").select("*").eq("status_venda", "DISPONIVEL").limit(5);
         if (tenantUserId) estoqueQ = estoqueQ.eq("user_id", tenantUserId);
         const { data: estoqueGeral } = await estoqueQ;
         if (estoqueGeral) topVeiculos = estoqueGeral as Vehicle[];
-      } else {
-        const ids = (matchedVehicles as any[]).map((v) => v.id);
-        let vcQ2 = supabaseAdmin.from("veiculos").select("*").in("id", ids).eq("status_venda", "DISPONIVEL");
-        if (tenantUserId) vcQ2 = vcQ2.eq("user_id", tenantUserId);
-        const { data: veiculosCompletos } = await vcQ2;
-        if (veiculosCompletos) topVeiculos = veiculosCompletos as Vehicle[];
+      };
+
+      try {
+        const queryEmbedding = await generateEmbedding(userMessage);
+        // Vetor zero indica falha no embedding — vai direto pro fallback
+        const isZeroVector = queryEmbedding.every((v: number) => v === 0);
+        if (isZeroVector) {
+          await estoqueGeralFallback();
+        } else {
+          const { data: matchedVehicles, error: matchError } = await supabaseAdmin.rpc("match_veiculos", {
+            query_embedding: queryEmbedding,
+            match_threshold: 0.50,
+            match_count: 5,
+            filter_user_id: tenantUserId || null,
+          });
+
+          if (matchError || !matchedVehicles || (matchedVehicles as any[]).length === 0) {
+            await estoqueGeralFallback();
+          } else {
+            const ids = (matchedVehicles as any[]).map((v) => v.id);
+            let vcQ2 = supabaseAdmin.from("veiculos").select("*").in("id", ids).eq("status_venda", "DISPONIVEL");
+            if (tenantUserId) vcQ2 = vcQ2.eq("user_id", tenantUserId);
+            const { data: veiculosCompletos } = await vcQ2;
+            if (veiculosCompletos) topVeiculos = veiculosCompletos as Vehicle[];
+          }
+        }
+      } catch (embeddingErr) {
+        console.warn("⚠️ Embedding falhou, usando fallback geral:", embeddingErr);
+        await estoqueGeralFallback();
       }
 
       // Coloca hits textuais no topo
