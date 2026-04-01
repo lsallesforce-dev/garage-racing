@@ -298,6 +298,7 @@ export default function ConfiguracoesPage() {
                 className="bg-white border flex-1 border-blue-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
               />
               <p className="text-[10px] text-blue-600 mt-1">Configure na Avisa: <strong>https://[seu-dominio]/api/webhook/avisa?token={config.webhook_token || "SEU_TOKEN"}</strong></p>
+              <p className="text-[10px] text-blue-600 mt-1">Vitrine pública: <strong>https://garage-racing.vercel.app/vitrine?t={config.webhook_token || "SEU_TOKEN"}</strong></p>
             </div>
 
             <div className="flex flex-col gap-1.5">

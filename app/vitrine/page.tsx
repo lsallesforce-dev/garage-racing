@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import {
@@ -133,11 +134,15 @@ function ModalFinanciamento({
 // ─── Página Principal ─────────────────────────────────────────────────────────
 
 export default function VitrinePublica() {
+  const searchParams = useSearchParams();
+  const tenantToken = searchParams.get("t");
+
   const [estoque, setEstoque] = useState<any[]>([]);
   const [nomeEmpresa, setNomeEmpresa] = useState("AutoZap");
   const [whatsapp, setWhatsapp] = useState(
     process.env.NEXT_PUBLIC_ZAPI_PHONE ?? "5521999999999"
   );
+  const [tenantUserId, setTenantUserId] = useState<string | null>(null);
   const [modalCarro, setModalCarro] = useState<any | null>(null);
 
   // Filtros
@@ -147,26 +152,34 @@ export default function VitrinePublica() {
   const [filtroPreco, setFiltroPreco] = useState("");
 
   useEffect(() => {
-    supabase
-      .from("veiculos")
-      .select(
-        "id, marca, modelo, versao, ano_modelo, preco_sugerido, capa_marketing_url, fotos, video_url, segundo_dono"
-      )
-      .eq("status_venda", "DISPONIVEL")
-      .order("created_at", { ascending: false })
-      .then(({ data }) => {
-        if (data) setEstoque(data);
-      });
+    // Busca config do tenant pelo token ou pega o primeiro (mono-tenant legacy)
+    const configQuery = tenantToken
+      ? supabase.from("config_garage").select("user_id, nome_empresa, whatsapp").eq("webhook_token", tenantToken).single()
+      : supabase.from("config_garage").select("user_id, nome_empresa, whatsapp").single();
 
-    supabase
-      .from("config_garage")
-      .select("nome_empresa, whatsapp")
-      .single()
-      .then(({ data }) => {
-        if (data?.nome_empresa) setNomeEmpresa(data.nome_empresa);
-        if (data?.whatsapp) setWhatsapp(data.whatsapp);
-      });
-  }, []);
+    configQuery.then(({ data }) => {
+      if (!data) return;
+      if (data.nome_empresa) setNomeEmpresa(data.nome_empresa);
+      if (data.whatsapp) setWhatsapp(data.whatsapp);
+      if (data.user_id) setTenantUserId(data.user_id);
+    });
+  }, [tenantToken]);
+
+  useEffect(() => {
+    if (tenantToken && !tenantUserId) return; // aguarda resolver o tenant
+
+    const query = supabase
+      .from("veiculos")
+      .select("id, marca, modelo, versao, ano_modelo, preco_sugerido, capa_marketing_url, fotos, video_url, segundo_dono")
+      .eq("status_venda", "DISPONIVEL")
+      .order("created_at", { ascending: false });
+
+    if (tenantUserId) query.eq("user_id", tenantUserId);
+
+    query.then(({ data }) => {
+      if (data) setEstoque(data);
+    });
+  }, [tenantUserId, tenantToken]);
 
   // Opções derivadas do estoque
   const marcas = useMemo(
