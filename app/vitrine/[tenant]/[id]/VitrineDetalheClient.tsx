@@ -114,7 +114,7 @@ function CardRelacionado({ carro, tenant }: { carro: any; tenant: string }) {
 
 // ─── Página principal ─────────────────────────────────────────────────────────
 
-export default function VitrineDetalheClient({ veiculo, relacionados, nomeEmpresa, whatsapp, tenant }: { veiculo: any; relacionados: any[]; nomeEmpresa?: string; whatsapp?: string; tenant: string }) {
+export default function VitrineDetalheClient({ veiculo, relacionados, nomeEmpresa, whatsapp, logoUrl, tenant }: { veiculo: any; relacionados: any[]; nomeEmpresa?: string; whatsapp?: string; logoUrl?: string | null; tenant: string }) {
   const titulo = `${veiculo.marca} ${veiculo.modelo}`.trim();
   const subtitulo = [veiculo.versao, veiculo.ano_modelo].filter(Boolean).join(" • ");
   const fotos: string[] = veiculo.fotos ?? [];
@@ -134,9 +134,15 @@ export default function VitrineDetalheClient({ veiculo, relacionados, nomeEmpres
             <ChevronLeft size={14} /> Voltar ao pátio
           </Link>
           <div className="flex items-center gap-2">
-            <span className="text-lg font-black uppercase italic tracking-tighter text-gray-900">{nomeGaragem.split(" ")[0]}</span>
-            {nomeGaragem.split(" ").length > 1 && (
-              <span className="text-lg font-black uppercase italic tracking-tighter text-red-600"> {nomeGaragem.split(" ").slice(1).join(" ")}</span>
+            {logoUrl ? (
+              <img src={logoUrl} alt={nomeGaragem} className="h-10 w-auto object-contain" />
+            ) : (
+              <>
+                <span className="text-lg font-black uppercase italic tracking-tighter text-gray-900">{nomeGaragem.split(" ")[0]}</span>
+                {nomeGaragem.split(" ").length > 1 && (
+                  <span className="text-lg font-black uppercase italic tracking-tighter text-red-600"> {nomeGaragem.split(" ").slice(1).join(" ")}</span>
+                )}
+              </>
             )}
           </div>
         </div>

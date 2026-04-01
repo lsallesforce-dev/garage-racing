@@ -50,11 +50,20 @@ export default async function VitrineDetalhePage({ params }: Props) {
   if (error) console.error("❌ vitrine/[tenant]/[id] error:", error);
   if (!veiculo) notFound();
 
-  const { data: garagem } = await supabaseAdmin
+  let { data: garagem } = await supabaseAdmin
     .from("config_garage")
-    .select("nome_empresa, whatsapp")
-    .eq("webhook_token", tenant)
+    .select("nome_empresa, whatsapp, whatsapp_agente, logo_url")
+    .eq("vitrine_slug", tenant)
     .single();
+
+  if (!garagem) {
+    const { data } = await supabaseAdmin
+      .from("config_garage")
+      .select("nome_empresa, whatsapp, whatsapp_agente, logo_url")
+      .eq("webhook_token", tenant)
+      .single();
+    garagem = data;
+  }
 
   const relacionadosQuery = supabaseAdmin
     .from("veiculos")
@@ -71,7 +80,8 @@ export default async function VitrineDetalhePage({ params }: Props) {
       veiculo={veiculo}
       relacionados={relacionados ?? []}
       nomeEmpresa={garagem?.nome_empresa ?? "AutoZap"}
-      whatsapp={garagem?.whatsapp ?? process.env.NEXT_PUBLIC_ZAPI_PHONE ?? ""}
+      whatsapp={garagem?.whatsapp_agente ?? garagem?.whatsapp ?? process.env.NEXT_PUBLIC_ZAPI_PHONE ?? ""}
+      logoUrl={garagem?.logo_url ?? null}
       tenant={tenant}
     />
   );
