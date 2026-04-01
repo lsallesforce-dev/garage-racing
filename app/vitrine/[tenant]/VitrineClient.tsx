@@ -14,10 +14,11 @@ function fmt(v: number) {
 // ─── Selos do veículo ─────────────────────────────────────────────────────────
 
 const SELOS: { key: string; label: string; color: string }[] = [
-  { key: "segundo_dono_false", label: "Único Dono",    color: "bg-blue-600 text-white" },
-  { key: "vistoriado",         label: "Vistoriado",    color: "bg-green-600 text-white" },
-  { key: "abaixo_fipe",        label: "Abaixo FIPE",   color: "bg-orange-500 text-white" },
-  { key: "de_repasse",         label: "De Repasse",    color: "bg-purple-600 text-white" },
+  { key: "segundo_dono_false",  label: "Único Dono",         color: "bg-blue-600 text-white" },
+  { key: "vistoriado",          label: "Vistoriado",         color: "bg-green-600 text-white" },
+  { key: "vistoria_cautelar",   label: "Vistoria Cautelar",  color: "bg-teal-600 text-white" },
+  { key: "abaixo_fipe",         label: "Abaixo FIPE",        color: "bg-orange-500 text-white" },
+  { key: "de_repasse",          label: "De Repasse",         color: "bg-purple-600 text-white" },
 ];
 
 function selosAtivos(carro: any) {

@@ -707,10 +707,11 @@ export default function DetalheVeiculo() {
                   <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-3">Selos da Vitrine</p>
                   <div className="grid grid-cols-2 gap-2">
                     {([
-                      { field: "segundo_dono_inv", label: "Único Dono", color: "bg-blue-50 border-blue-200 text-blue-700" },
-                      { field: "vistoriado",        label: "Vistoriado",  color: "bg-green-50 border-green-200 text-green-700" },
-                      { field: "abaixo_fipe",       label: "Abaixo FIPE", color: "bg-orange-50 border-orange-200 text-orange-700" },
-                      { field: "de_repasse",        label: "De Repasse",  color: "bg-purple-50 border-purple-200 text-purple-700" },
+                      { field: "segundo_dono_inv",  label: "Único Dono",        color: "bg-blue-50 border-blue-200 text-blue-700" },
+                      { field: "vistoriado",         label: "Vistoriado",        color: "bg-green-50 border-green-200 text-green-700" },
+                      { field: "vistoria_cautelar",  label: "Vistoria Cautelar", color: "bg-teal-50 border-teal-200 text-teal-700" },
+                      { field: "abaixo_fipe",        label: "Abaixo FIPE",       color: "bg-orange-50 border-orange-200 text-orange-700" },
+                      { field: "de_repasse",         label: "De Repasse",        color: "bg-purple-50 border-purple-200 text-purple-700" },
                     ] as { field: string; label: string; color: string }[]).map(({ field, label, color }) => {
                       const checked = field === "segundo_dono_inv"
                         ? veiculo?.segundo_dono === false

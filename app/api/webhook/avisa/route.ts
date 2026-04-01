@@ -426,6 +426,7 @@ export async function POST(req: NextRequest) {
             (v as any).tipo_banco && `Banco: ${(v as any).tipo_banco}`,
             (v as any).estado_pneus && `Pneus: ${(v as any).estado_pneus}`,
             (v as any).segundo_dono !== undefined && `Segundo dono: ${(v as any).segundo_dono ? "Sim" : "Não"}`,
+            (v as any).vistoria_cautelar && `Vistoria cautelar: realizada`,
             (v as any).final_placa && `Final da placa: ${(v as any).final_placa}`,
           ].filter(Boolean).join(" | ");
 
