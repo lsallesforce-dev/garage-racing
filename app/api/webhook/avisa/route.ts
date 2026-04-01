@@ -522,7 +522,9 @@ export async function POST(req: NextRequest) {
     // ── 9. Enviar foto do carro ──────────────────────────────────────────────
     // Roda ANTES do prompt para que a IA saiba se a foto foi enviada ou não
     const gatilhosFoto = ["foto", "fotos", "imagem", "manda foto", "ver o carro", "tem foto", "tem imagem"];
-    const clientePediuFoto = gatilhosFoto.some((g) => mensagemLower.includes(g));
+    const exclusoesFoto = ["documento", "crlv", "nota fiscal", "laudo", "manual", "revisão", "historico", "histórico", "comprovante", "licenciamento"];
+    const clientePediuFoto = gatilhosFoto.some((g) => mensagemLower.includes(g))
+      && !exclusoesFoto.some((e) => mensagemLower.includes(e));
 
     // Prioridade: 1) carro mencionado na msg, 2) carro vinculado ao lead, 3) top semântico
     const veiculoParaFoto =
