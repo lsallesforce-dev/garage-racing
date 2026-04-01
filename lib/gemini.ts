@@ -19,7 +19,7 @@ export async function generateEmbedding(text: string) {
   try {
     const model = genAI.getGenerativeModel(
       { model: "text-embedding-004" },
-      { apiVersion: "v1beta" }
+      { apiVersion: "v1" }
     );
     
     // Some Gemini API models don't support passing outputDimensionality in this SDK version
