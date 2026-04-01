@@ -243,6 +243,9 @@ export default function DetalheVeiculo() {
         estado_pneus: veiculo.estado_pneus,
         segundo_dono: veiculo.segundo_dono,
         final_placa: veiculo.final_placa,
+        vistoriado: veiculo.vistoriado,
+        abaixo_fipe: veiculo.abaixo_fipe,
+        de_repasse: veiculo.de_repasse,
       })
       .eq("id", id);
     if (!error) alert("Dados atualizados! 🚀");
@@ -698,6 +701,40 @@ export default function DetalheVeiculo() {
                     />
                   </div>
                 ))}
+
+                {/* Selos da vitrine */}
+                <div className="col-span-full pt-2 border-t border-gray-100">
+                  <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-3">Selos da Vitrine</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {([
+                      { field: "segundo_dono_inv", label: "Único Dono", color: "bg-blue-50 border-blue-200 text-blue-700" },
+                      { field: "vistoriado",        label: "Vistoriado",  color: "bg-green-50 border-green-200 text-green-700" },
+                      { field: "abaixo_fipe",       label: "Abaixo FIPE", color: "bg-orange-50 border-orange-200 text-orange-700" },
+                      { field: "de_repasse",        label: "De Repasse",  color: "bg-purple-50 border-purple-200 text-purple-700" },
+                    ] as { field: string; label: string; color: string }[]).map(({ field, label, color }) => {
+                      const checked = field === "segundo_dono_inv"
+                        ? veiculo?.segundo_dono === false
+                        : veiculo?.[field] === true;
+                      return (
+                        <label key={field} className={`flex items-center gap-2 border rounded-xl px-3 py-2.5 cursor-pointer transition-all ${color}`}>
+                          <input
+                            type="checkbox"
+                            checked={checked ?? false}
+                            onChange={(e) => {
+                              if (field === "segundo_dono_inv") {
+                                patch({ segundo_dono: e.target.checked ? false : null });
+                              } else {
+                                patch({ [field]: e.target.checked || null });
+                              }
+                            }}
+                            className="w-3.5 h-3.5 accent-current"
+                          />
+                          <span className="text-[10px] font-black uppercase tracking-widest">{label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             </SectionCard>
           </div>

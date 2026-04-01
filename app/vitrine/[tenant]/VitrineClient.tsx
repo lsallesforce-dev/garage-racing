@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import {
-  Zap, MessageCircle, Play, Shield, Award,
+  Zap, MessageCircle, Play, Award,
   X, ChevronDown, SlidersHorizontal,
 } from "lucide-react";
 
@@ -11,17 +11,25 @@ function fmt(v: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
 }
 
+// ─── Selos do veículo ─────────────────────────────────────────────────────────
+
+const SELOS: { key: string; label: string; color: string }[] = [
+  { key: "segundo_dono_false", label: "Único Dono",    color: "bg-blue-600 text-white" },
+  { key: "vistoriado",         label: "Vistoriado",    color: "bg-green-600 text-white" },
+  { key: "abaixo_fipe",        label: "Abaixo FIPE",   color: "bg-orange-500 text-white" },
+  { key: "de_repasse",         label: "De Repasse",    color: "bg-purple-600 text-white" },
+];
+
+function selosAtivos(carro: any) {
+  return SELOS.filter(({ key }) => {
+    if (key === "segundo_dono_false") return carro.segundo_dono === false;
+    return carro[key] === true;
+  });
+}
+
 // ─── Modal de Financiamento ───────────────────────────────────────────────────
 
-function ModalFinanciamento({
-  carro,
-  whatsapp,
-  onClose,
-}: {
-  carro: any;
-  whatsapp: string;
-  onClose: () => void;
-}) {
+function ModalFinanciamento({ carro, whatsapp, onClose }: { carro: any; whatsapp: string; onClose: () => void }) {
   const preco = carro.preco_sugerido ?? 0;
   const [entrada, setEntrada] = useState("");
   const [parcelas, setParcelas] = useState("48");
@@ -36,27 +44,14 @@ function ModalFinanciamento({
   );
 
   return (
-    <div
-      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white rounded-3xl w-full max-w-md p-8 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-3xl w-full max-w-md p-8 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-between items-start mb-6">
           <div>
-            <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">
-              Simulação de Financiamento
-            </p>
-            <h3 className="text-xl font-black uppercase italic tracking-tight text-gray-900">
-              {carro.marca} {carro.modelo}
-            </h3>
+            <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Simulação de Financiamento</p>
+            <h3 className="text-xl font-black uppercase italic tracking-tight text-gray-900">{carro.marca} {carro.modelo}</h3>
           </div>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 transition-colors"
-          >
+          <button onClick={onClose} className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 transition-colors">
             <X size={14} />
           </button>
         </div>
@@ -69,25 +64,15 @@ function ModalFinanciamento({
         <div className="space-y-4 mb-6">
           <div>
             <label className="text-[9px] font-black uppercase tracking-widest text-gray-500 block mb-2">Entrada (R$)</label>
-            <input
-              type="number"
-              placeholder="Ex: 15000"
-              value={entrada}
-              onChange={(e) => setEntrada(e.target.value)}
-              className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold text-gray-900 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500"
-            />
+            <input type="number" placeholder="Ex: 15000" value={entrada} onChange={(e) => setEntrada(e.target.value)}
+              className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold text-gray-900 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500" />
           </div>
           <div>
             <label className="text-[9px] font-black uppercase tracking-widest text-gray-500 block mb-2">Parcelas desejadas</label>
             <div className="relative">
-              <select
-                value={parcelas}
-                onChange={(e) => setParcelas(e.target.value)}
-                className="w-full appearance-none bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold text-gray-900 focus:outline-none focus:border-red-500 pr-10"
-              >
-                {[12, 24, 36, 48, 60, 72].map((n) => (
-                  <option key={n} value={n}>{n}x</option>
-                ))}
+              <select value={parcelas} onChange={(e) => setParcelas(e.target.value)}
+                className="w-full appearance-none bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold text-gray-900 focus:outline-none focus:border-red-500 pr-10">
+                {[12, 24, 36, 48, 60, 72].map((n) => <option key={n} value={n}>{n}x</option>)}
               </select>
               <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             </div>
@@ -104,12 +89,8 @@ function ModalFinanciamento({
           </div>
         )}
 
-        <a
-          href={`https://wa.me/${whatsapp}?text=${msgWpp}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center justify-center gap-2 w-full bg-green-500 hover:bg-green-400 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-[11px] transition-all hover:scale-[1.02] active:scale-[0.98]"
-        >
+        <a href={`https://wa.me/${whatsapp}?text=${msgWpp}`} target="_blank" rel="noopener noreferrer"
+          className="flex items-center justify-center gap-2 w-full bg-green-500 hover:bg-green-400 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-[11px] transition-all hover:scale-[1.02] active:scale-[0.98]">
           <MessageCircle size={16} /> Enviar simulação no WhatsApp
         </a>
       </div>
@@ -134,10 +115,7 @@ export default function VitrineClient({ tenant, nomeEmpresa, whatsapp, estoque, 
   const [filtroAno, setFiltroAno] = useState("");
   const [filtroPreco, setFiltroPreco] = useState("");
 
-  const marcas = useMemo(
-    () => [...new Set(estoque.map((c) => c.marca).filter(Boolean))].sort(),
-    [estoque]
-  );
+  const marcas = useMemo(() => [...new Set(estoque.map((c) => c.marca).filter(Boolean))].sort(), [estoque]);
   const modelos = useMemo(
     () => [...new Set(estoque.filter((c) => !filtroMarca || c.marca === filtroMarca).map((c) => c.modelo).filter(Boolean))].sort(),
     [estoque, filtroMarca]
@@ -159,21 +137,18 @@ export default function VitrineClient({ tenant, nomeEmpresa, whatsapp, estoque, 
   );
 
   const filtrosAtivos = filtroMarca || filtroModelo || filtroAno || filtroPreco;
-
-  function limparFiltros() {
-    setFiltroMarca(""); setFiltroModelo(""); setFiltroAno(""); setFiltroPreco("");
-  }
+  function limparFiltros() { setFiltroMarca(""); setFiltroModelo(""); setFiltroAno(""); setFiltroPreco(""); }
 
   const selectClass = "appearance-none bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-bold text-gray-700 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 pr-8 w-full cursor-pointer";
 
   return (
     <div className="bg-gray-50 min-h-screen text-gray-900 font-sans">
 
-      {/* Header */}
+      {/* ── Header ── */}
       <header className="bg-white border-b border-gray-100 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
           {logoUrl ? (
-            <img src={logoUrl} alt={nomeEmpresa} className="h-9 w-auto object-contain" />
+            <img src={logoUrl} alt={nomeEmpresa} className="h-14 w-auto object-contain" />
           ) : (
             <span className="text-xl font-black uppercase italic tracking-tighter text-gray-900">{nomeEmpresa}</span>
           )}
@@ -187,7 +162,7 @@ export default function VitrineClient({ tenant, nomeEmpresa, whatsapp, estoque, 
         </div>
       </header>
 
-      {/* Hero + Filtro */}
+      {/* ── Hero + Filtro ── */}
       <div className="bg-white border-b border-gray-100 pt-12 pb-8 px-6">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-8">
@@ -248,21 +223,20 @@ export default function VitrineClient({ tenant, nomeEmpresa, whatsapp, estoque, 
         </div>
       </div>
 
-      {/* Faixa de Confiança */}
-      <div className="bg-white border-b border-gray-100 py-4 px-6">
-        <div className="max-w-7xl mx-auto flex flex-wrap justify-center gap-8">
-          <div className="flex items-center gap-2.5 text-gray-500">
-            <Shield size={15} className="text-red-500 flex-shrink-0" />
-            <span className="text-[11px] font-bold uppercase tracking-widest">Vistoria Cautelar Inclusa</span>
-          </div>
-          <div className="flex items-center gap-2.5 text-gray-500">
-            <Award size={15} className="text-red-500 flex-shrink-0" />
-            <span className="text-[11px] font-bold uppercase tracking-widest">Melhor Avaliação na Troca</span>
-          </div>
+      {/* ── Banner Propaganda ── */}
+      <div className="bg-gray-900 overflow-hidden relative">
+        <div className="absolute inset-0 bg-[repeating-linear-gradient(45deg,transparent,transparent_20px,rgba(220,38,38,0.08)_20px,rgba(220,38,38,0.08)_21px)]" />
+        <div className="max-w-7xl mx-auto px-6 py-5 flex items-center justify-center gap-4 relative">
+          <Award size={22} className="text-red-500 flex-shrink-0" />
+          <p className="text-center">
+            <span className="text-white font-black uppercase italic tracking-tight text-lg md:text-2xl">MELHOR AVALIAÇÃO DO SEU USADO</span>
+            <span className="text-red-500 font-black uppercase italic tracking-tight text-lg md:text-2xl"> — VENHA CONFERIR</span>
+          </p>
+          <Award size={22} className="text-red-500 flex-shrink-0" />
         </div>
       </div>
 
-      {/* Grid */}
+      {/* ── Grid ── */}
       <div className="max-w-7xl mx-auto px-6 py-12">
         {filtrosAtivos && (
           <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-6">
@@ -275,25 +249,21 @@ export default function VitrineClient({ tenant, nomeEmpresa, whatsapp, estoque, 
             {estoqueFiltrado.map((carro) => {
               const img = carro.capa_marketing_url ?? carro.fotos?.[0];
               const preco = fmt(carro.preco_sugerido ?? 0);
-              const unicoDono = carro.segundo_dono === false;
+              const selos = selosAtivos(carro);
               const msgWhats = encodeURIComponent(
                 `Olá! Vi o *${carro.marca} ${carro.modelo} ${carro.ano_modelo ?? ""}* na vitrine da ${nomeEmpresa} e tenho interesse. Ainda disponível?`
               );
 
               return (
                 <div key={carro.id} className="bg-white rounded-3xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group flex flex-col">
+
+                  {/* Foto */}
                   <Link href={`/vitrine/${tenant}/${carro.id}`} className="block relative aspect-video overflow-hidden bg-gray-100 flex-shrink-0">
                     {img ? (
                       <img src={img} alt={carro.modelo} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-gray-300"><Zap size={32} /></div>
                     )}
-                    <div className="absolute top-3 left-3 flex flex-col gap-1.5">
-                      <span className="bg-white/90 backdrop-blur-sm text-gray-700 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest">Verificado</span>
-                      {unicoDono && (
-                        <span className="bg-blue-600 text-white px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest">Único Dono</span>
-                      )}
-                    </div>
                     {carro.video_url && (
                       <div className="absolute top-3 right-3 bg-red-600 text-white px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest flex items-center gap-1 shadow-lg">
                         <Play size={8} className="fill-white" /> Vídeo
@@ -301,6 +271,18 @@ export default function VitrineClient({ tenant, nomeEmpresa, whatsapp, estoque, 
                     )}
                   </Link>
 
+                  {/* Selos abaixo da foto */}
+                  {selos.length > 0 && (
+                    <div className="flex flex-wrap gap-0 border-b border-gray-100">
+                      {selos.map(({ key, label, color }) => (
+                        <span key={key} className={`${color} text-[9px] font-black uppercase tracking-widest px-3 py-1.5 flex-1 text-center`}>
+                          {label}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Info */}
                   <div className="p-6 flex flex-col flex-1">
                     <Link href={`/vitrine/${tenant}/${carro.id}`}>
                       <h2 className="text-xl font-black uppercase italic tracking-tight leading-none text-gray-900 group-hover:text-red-600 transition-colors">
@@ -350,12 +332,12 @@ export default function VitrineClient({ tenant, nomeEmpresa, whatsapp, estoque, 
         )}
       </div>
 
-      {/* Footer */}
+      {/* ── Footer ── */}
       <footer className="border-t border-gray-100 py-8 text-center bg-white">
         <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">© 2026 {nomeEmpresa} • Pátio Digital</p>
       </footer>
 
-      {/* FAB WhatsApp */}
+      {/* ── FAB WhatsApp ── */}
       <div className="fixed bottom-6 right-6 z-50">
         <a
           href={`https://wa.me/${whatsapp}?text=${encodeURIComponent("Olá! Preciso de ajuda para escolher um veículo.")}`}
@@ -367,9 +349,7 @@ export default function VitrineClient({ tenant, nomeEmpresa, whatsapp, estoque, 
         </a>
       </div>
 
-      {modalCarro && (
-        <ModalFinanciamento carro={modalCarro} whatsapp={whatsapp} onClose={() => setModalCarro(null)} />
-      )}
+      {modalCarro && <ModalFinanciamento carro={modalCarro} whatsapp={whatsapp} onClose={() => setModalCarro(null)} />}
     </div>
   );
 }
