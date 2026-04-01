@@ -7,20 +7,13 @@ import { ImagePlus, Stamp } from "lucide-react";
 interface PhotoGalleryProps {
   veiculoId: string;
   fotos?: string[];
+  logoUrl?: string | null;
   onPhotosUpdated: (newPhotos: string[]) => void;
 }
 
 // Dimensões fixas de saída (16:9) — garante enquadramento consistente
 const OUTPUT_W = 1280;
 const OUTPUT_H = 720;
-
-function getLogoSrc(): string | null {
-  try {
-    return localStorage.getItem("garage_logo_url") || null;
-  } catch {
-    return null;
-  }
-}
 
 async function loadImageElement(src: string): Promise<HTMLImageElement> {
   let objectUrl = src;
@@ -39,7 +32,7 @@ async function loadImageElement(src: string): Promise<HTMLImageElement> {
   });
 }
 
-async function applyWatermark(file: File): Promise<Blob> {
+async function applyWatermark(file: File, logoUrl: string | null | undefined): Promise<Blob> {
   const img = await loadImageElement(URL.createObjectURL(file));
 
   const canvas = document.createElement("canvas");
@@ -58,10 +51,9 @@ async function applyWatermark(file: File): Promise<Blob> {
   ctx.drawImage(img, offsetX, offsetY, drawW, drawH);
 
   // Aplica marca d'água apenas se houver logo configurado
-  const logoSrc = getLogoSrc();
-  if (logoSrc) {
+  if (logoUrl) {
     try {
-      const logo = await loadImageElement(logoSrc);
+      const logo = await loadImageElement(logoUrl);
       const logoW = Math.round(OUTPUT_W * 0.2);
       const logoH = Math.round(logoW * (logo.height / (logo.width || 1)));
       const margin = Math.round(OUTPUT_W * 0.025);
@@ -85,6 +77,7 @@ async function applyWatermark(file: File): Promise<Blob> {
 export const PhotoGallery = ({
   veiculoId,
   fotos = [],
+  logoUrl,
   onPhotosUpdated,
 }: PhotoGalleryProps) => {
   const [selectedPhoto, setSelectedPhoto] = useState(fotos[0] || "");
@@ -103,7 +96,7 @@ export const PhotoGallery = ({
       const fileName = `foto-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
 
       if (watermarkEnabled) {
-        uploadBlob = await applyWatermark(file);
+        uploadBlob = await applyWatermark(file, logoUrl);
       }
 
       const formData = new FormData();

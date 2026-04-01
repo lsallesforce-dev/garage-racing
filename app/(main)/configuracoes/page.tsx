@@ -144,15 +144,16 @@ export default function ConfiguracoesPage() {
     if (!processedBlob) return;
     setSaving(true);
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Não autenticado");
       const formData = new FormData();
       formData.append("file", new File([processedBlob], "logo.png", { type: "image/png" }));
+      formData.append("user_id", user.id);
       const res = await fetch("/api/configuracoes/logo", { method: "POST", body: formData });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Falha no upload");
       const url = `${data.url}?t=${Date.now()}`;
-      // Salva logo_url no banco
       await supabase.from("config_garage").update({ logo_url: url }).eq("id", config.id!);
-      localStorage.setItem("garage_logo_url", url);
       setCurrentLogo(url);
       setConfig(c => ({ ...c, logo_url: url }));
       setSaved(true);

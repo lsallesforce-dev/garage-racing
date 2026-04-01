@@ -82,6 +82,9 @@ export default function DetalheVeiculo() {
   // Leads
   const [leadsDoVeiculo, setLeadsDoVeiculo] = useState<any[]>([]);
 
+  // Logo do tenant para marca d'água
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+
   // Instagram import
   const [igUrl, setIgUrl] = useState("");
   const [importandoIG, setImportandoIG] = useState(false);
@@ -115,6 +118,21 @@ export default function DetalheVeiculo() {
     setRoteiro(veiculo.roteiro_pitch || "");
     setVendedorId(veiculo.vendedor_responsavel_id || "");
   }, [veiculo]);
+
+  // ── Carrega logo do tenant ───────────────────────────────────────────────
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      supabase
+        .from("config_garage")
+        .select("logo_url")
+        .eq("user_id", user.id)
+        .single()
+        .then(({ data }) => {
+          if (data?.logo_url) setLogoUrl(data.logo_url);
+        });
+    });
+  }, []);
 
   // ── Carrega vendedores e leads ───────────────────────────────────────────
   useEffect(() => {
@@ -440,6 +458,7 @@ export default function DetalheVeiculo() {
             <PhotoGallery
               veiculoId={veiculo.id}
               fotos={veiculo.fotos}
+              logoUrl={logoUrl}
               onPhotosUpdated={(newPhotos) =>
                 setVeiculo({ ...veiculo, fotos: newPhotos })
               }
