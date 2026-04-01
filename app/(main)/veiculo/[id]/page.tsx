@@ -722,9 +722,13 @@ export default function DetalheVeiculo() {
                             checked={checked ?? false}
                             onChange={(e) => {
                               if (field === "segundo_dono_inv") {
-                                patch({ segundo_dono: e.target.checked ? false : null });
+                                const val = e.target.checked ? false : null;
+                                patch({ segundo_dono: val });
+                                setVeiculo((p: any) => ({ ...p, segundo_dono: val }));
                               } else {
-                                patch({ [field]: e.target.checked || null });
+                                const val = e.target.checked ? true : null;
+                                patch({ [field]: val });
+                                setVeiculo((p: any) => ({ ...p, [field]: val }));
                               }
                             }}
                             className="w-3.5 h-3.5 accent-current"
