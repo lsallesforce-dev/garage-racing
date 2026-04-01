@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
@@ -133,7 +133,7 @@ function ModalFinanciamento({
 
 // ─── Página Principal ─────────────────────────────────────────────────────────
 
-export default function VitrinePublica() {
+function VitrinePublicaInner() {
   const searchParams = useSearchParams();
   const tenantToken = searchParams.get("t");
 
@@ -502,5 +502,13 @@ export default function VitrinePublica() {
         />
       )}
     </div>
+  );
+}
+
+export default function VitrinePublica() {
+  return (
+    <Suspense>
+      <VitrinePublicaInner />
+    </Suspense>
   );
 }
