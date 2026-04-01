@@ -29,18 +29,21 @@ function selosAtivos(carro: any) {
 
 // ─── Modal de Financiamento ───────────────────────────────────────────────────
 
-function ModalFinanciamento({ carro, whatsapp, onClose }: { carro: any; whatsapp: string; onClose: () => void }) {
+function ModalFinanciamento({ carro, whatsapp, nomeEmpresa, onClose }: { carro: any; whatsapp: string; nomeEmpresa: string; onClose: () => void }) {
   const preco = carro.preco_sugerido ?? 0;
   const [entrada, setEntrada] = useState("");
   const [parcelas, setParcelas] = useState("48");
+  const [nome, setNome] = useState("");
 
-  const entradaNum = parseFloat(entrada) || 0;
-  const parcelasNum = parseInt(parcelas) || 1;
-  const saldo = Math.max(preco - entradaNum, 0);
-  const valorParcela = saldo / parcelasNum;
+  const entradaNum = parseFloat(entrada.replace(/\./g, "").replace(",", ".")) || 0;
 
   const msgWpp = encodeURIComponent(
-    `Olá! Fiz uma simulação do ${carro.marca} ${carro.modelo} ${carro.ano_modelo ?? ""}: entrada de ${fmt(entradaNum)}, ${parcelas}x de ~${fmt(valorParcela)}. Podemos conversar?`
+    `Olá! Vi o *${carro.marca} ${carro.modelo}${carro.ano_modelo ? " " + carro.ano_modelo : ""}* na vitrine da ${nomeEmpresa} e gostaria de uma simulação de financiamento real.\n\n` +
+    `💰 Valor do veículo: ${fmt(preco)}\n` +
+    (entradaNum > 0 ? `💵 Entrada: ${fmt(entradaNum)}\n` : "") +
+    `📅 Prazo desejado: ${parcelas}x\n` +
+    (nome ? `👤 Nome: ${nome}\n` : "") +
+    `\nPode me ajudar com as melhores condições?`
   );
 
   return (
@@ -50,25 +53,26 @@ function ModalFinanciamento({ carro, whatsapp, onClose }: { carro: any; whatsapp
           <div>
             <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Simulação de Financiamento</p>
             <h3 className="text-xl font-black uppercase italic tracking-tight text-gray-900">{carro.marca} {carro.modelo}</h3>
+            <p className="text-sm font-black tracking-tighter text-red-600 mt-1">{fmt(preco)}</p>
           </div>
           <button onClick={onClose} className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 transition-colors">
             <X size={14} />
           </button>
         </div>
 
-        <div className="bg-gray-50 rounded-2xl p-4 mb-6">
-          <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-1">Valor do veículo</p>
-          <p className="text-2xl font-black tracking-tighter text-gray-900">{fmt(preco)}</p>
-        </div>
-
         <div className="space-y-4 mb-6">
           <div>
-            <label className="text-[9px] font-black uppercase tracking-widest text-gray-500 block mb-2">Entrada (R$)</label>
+            <label className="text-[9px] font-black uppercase tracking-widest text-gray-500 block mb-2">Seu nome</label>
+            <input type="text" placeholder="Ex: João Silva" value={nome} onChange={(e) => setNome(e.target.value)}
+              className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold text-gray-900 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500" />
+          </div>
+          <div>
+            <label className="text-[9px] font-black uppercase tracking-widest text-gray-500 block mb-2">Valor de entrada (R$)</label>
             <input type="number" placeholder="Ex: 15000" value={entrada} onChange={(e) => setEntrada(e.target.value)}
               className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold text-gray-900 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500" />
           </div>
           <div>
-            <label className="text-[9px] font-black uppercase tracking-widest text-gray-500 block mb-2">Parcelas desejadas</label>
+            <label className="text-[9px] font-black uppercase tracking-widest text-gray-500 block mb-2">Prazo desejado</label>
             <div className="relative">
               <select value={parcelas} onChange={(e) => setParcelas(e.target.value)}
                 className="w-full appearance-none bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold text-gray-900 focus:outline-none focus:border-red-500 pr-10">
@@ -79,19 +83,15 @@ function ModalFinanciamento({ carro, whatsapp, onClose }: { carro: any; whatsapp
           </div>
         </div>
 
-        {saldo > 0 && (
-          <div className="bg-red-50 border border-red-100 rounded-2xl p-4 mb-6">
-            <p className="text-[8px] font-black uppercase tracking-widest text-red-400 mb-1">Estimativa de parcela</p>
-            <p className="text-3xl font-black tracking-tighter text-red-600">
-              {fmt(valorParcela)}<span className="text-sm font-bold text-red-400"> /mês</span>
-            </p>
-            <p className="text-[9px] text-red-400 mt-1">Simulação sem juros. Taxa final sujeita à análise de crédito.</p>
-          </div>
-        )}
+        <div className="bg-gray-50 rounded-2xl p-4 mb-6">
+          <p className="text-[9px] text-gray-400 leading-relaxed">
+            Um consultor vai te enviar a simulação real com as condições do banco, taxa de juros atualizada e melhores opções de prazo.
+          </p>
+        </div>
 
         <a href={`https://wa.me/${whatsapp}?text=${msgWpp}`} target="_blank" rel="noopener noreferrer"
           className="flex items-center justify-center gap-2 w-full bg-green-500 hover:bg-green-400 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-[11px] transition-all hover:scale-[1.02] active:scale-[0.98]">
-          <MessageCircle size={16} /> Enviar simulação no WhatsApp
+          <MessageCircle size={16} /> Solicitar simulação real
         </a>
       </div>
     </div>
@@ -347,7 +347,7 @@ export default function VitrineClient({ tenant, nomeEmpresa, whatsapp, estoque, 
         </a>
       </div>
 
-      {modalCarro && <ModalFinanciamento carro={modalCarro} whatsapp={whatsapp} onClose={() => setModalCarro(null)} />}
+      {modalCarro && <ModalFinanciamento carro={modalCarro} whatsapp={whatsapp} nomeEmpresa={nomeEmpresa} onClose={() => setModalCarro(null)} />}
     </div>
   );
 }
