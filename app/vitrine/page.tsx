@@ -139,6 +139,7 @@ function VitrinePublicaInner() {
 
   const [estoque, setEstoque] = useState<any[]>([]);
   const [nomeEmpresa, setNomeEmpresa] = useState("AutoZap");
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [whatsapp, setWhatsapp] = useState(
     process.env.NEXT_PUBLIC_ZAPI_PHONE ?? "5521999999999"
   );
@@ -154,12 +155,13 @@ function VitrinePublicaInner() {
   useEffect(() => {
     // Busca config do tenant pelo token ou pega o primeiro (mono-tenant legacy)
     const configQuery = tenantToken
-      ? supabase.from("config_garage").select("user_id, nome_empresa, whatsapp, whatsapp_agente").eq("webhook_token", tenantToken).single()
-      : supabase.from("config_garage").select("user_id, nome_empresa, whatsapp, whatsapp_agente").single();
+      ? supabase.from("config_garage").select("user_id, nome_empresa, whatsapp, whatsapp_agente, logo_url").eq("webhook_token", tenantToken).single()
+      : supabase.from("config_garage").select("user_id, nome_empresa, whatsapp, whatsapp_agente, logo_url").single();
 
     configQuery.then(({ data }) => {
       if (!data) return;
       if (data.nome_empresa) setNomeEmpresa(data.nome_empresa);
+      if (data.logo_url) setLogoUrl(data.logo_url);
       const numero = data.whatsapp_agente || data.whatsapp;
       if (numero) setWhatsapp(numero);
       if (data.user_id) setTenantUserId(data.user_id);
@@ -239,9 +241,11 @@ function VitrinePublicaInner() {
       {/* ── Header ── */}
       <header className="bg-white border-b border-gray-100 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <span className="text-xl font-black uppercase italic tracking-tighter text-gray-900">
-            {nomeEmpresa}
-          </span>
+          {logoUrl ? (
+            <img src={logoUrl} alt={nomeEmpresa} className="h-9 w-auto object-contain" />
+          ) : (
+            <span className="text-xl font-black uppercase italic tracking-tighter text-gray-900">{nomeEmpresa}</span>
+          )}
           <a
             href={`https://wa.me/${whatsapp}?text=${encodeURIComponent("Olá! Preciso de ajuda para escolher um veículo.")}`}
             target="_blank"
