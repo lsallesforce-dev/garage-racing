@@ -1,5 +1,7 @@
 function formatPhone(phone: string): string {
-  let cleaned = phone.replace(/\D/g, "");
+  // Remove sufixo de sessão multi-device do WhatsApp (ex: "5521999999:32" → "5521999999")
+  const withoutDevice = phone.split(":")[0];
+  let cleaned = withoutDevice.replace(/\D/g, "");
   if (cleaned.startsWith("0")) cleaned = cleaned.slice(1);
   if (cleaned.length === 10 || cleaned.length === 11) cleaned = "55" + cleaned;
   return cleaned;
