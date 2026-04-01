@@ -14,6 +14,7 @@ interface GarageConfig {
   whatsapp: string;
   whatsapp_agente?: string;
   logo_url: string | null;
+  vitrine_slug?: string;
   webhook_token?: string;
   nome_usuario?: string;
   cargo_usuario?: string;
@@ -37,6 +38,7 @@ export default function ConfiguracoesPage() {
     endereco: "",
     whatsapp: "",
     whatsapp_agente: "",
+    vitrine_slug: "",
     logo_url: null,
     webhook_token: "",
     nome_usuario: "",
@@ -64,6 +66,7 @@ export default function ConfiguracoesPage() {
               endereco: row.endereco ?? "",
               whatsapp: row.whatsapp ?? "",
               whatsapp_agente: row.whatsapp_agente ?? "",
+              vitrine_slug: row.vitrine_slug ?? "",
               logo_url: row.logo_url ?? null,
               webhook_token: row.webhook_token ?? "",
               nome_usuario: row.nome_usuario ?? "",
@@ -194,6 +197,7 @@ export default function ConfiguracoesPage() {
             endereco: config.endereco,
             whatsapp: config.whatsapp,
             whatsapp_agente: config.whatsapp_agente || null,
+            vitrine_slug: config.vitrine_slug || null,
             webhook_token: config.webhook_token || null,
             nome_usuario: config.nome_usuario || null,
             cargo_usuario: config.cargo_usuario || null,
@@ -316,7 +320,18 @@ export default function ConfiguracoesPage() {
                 className="bg-white border flex-1 border-blue-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
               />
               <p className="text-[10px] text-blue-600 mt-1">Configure na Avisa: <strong>https://autozap.com.br/api/webhook/avisa?token={config.webhook_token || "SEU_TOKEN"}</strong></p>
-              <p className="text-[10px] text-blue-600 mt-1">Vitrine pública: <strong>https://{config.webhook_token || "SEU_TOKEN"}.autozap.com.br</strong></p>
+
+              <label className="text-[10px] font-black uppercase tracking-widest text-blue-800 mt-3 block">
+                Slug da Vitrine (URL curta)
+              </label>
+              <input
+                type="text"
+                value={config.vitrine_slug || ""}
+                onChange={e => setConfig(c => ({ ...c, vitrine_slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "") }))}
+                placeholder="Ex: aprove"
+                className="bg-white border border-blue-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
+              />
+              <p className="text-[10px] text-blue-600 mt-1">Vitrine pública: <strong>garage-racing.vercel.app/vitrine/{config.vitrine_slug || "SEU_SLUG"}</strong></p>
             </div>
 
             <div className="flex flex-col gap-1.5">

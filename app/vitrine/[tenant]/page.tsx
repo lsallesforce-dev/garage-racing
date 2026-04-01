@@ -14,12 +14,21 @@ interface Props {
 export default async function VitrineTenantPage({ params }: Props) {
   const { tenant } = await params;
 
-  // Resolve tenant pelo webhook_token
-  const { data: garagem } = await supabaseAdmin
+  // Resolve tenant por vitrine_slug (curto) ou webhook_token (legado)
+  let { data: garagem } = await supabaseAdmin
     .from("config_garage")
     .select("user_id, nome_empresa, whatsapp, whatsapp_agente, logo_url")
-    .eq("webhook_token", tenant)
+    .eq("vitrine_slug", tenant)
     .single();
+
+  if (!garagem) {
+    const { data } = await supabaseAdmin
+      .from("config_garage")
+      .select("user_id, nome_empresa, whatsapp, whatsapp_agente, logo_url")
+      .eq("webhook_token", tenant)
+      .single();
+    garagem = data;
+  }
 
   if (!garagem) notFound();
 
