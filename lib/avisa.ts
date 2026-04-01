@@ -49,18 +49,39 @@ async function sendWithRetry(url: string, payload: any, retries = 2): Promise<an
   console.error("Avisa API: todas as tentativas falharam.");
 }
 
+// Delay humanizado: ~1.5s curto, ~7s longo (máx)
+function typingDelay(text: string): number {
+  return Math.min(1500 + Math.floor(text.length / 50) * 500, 7000);
+}
+
+async function sendAvisaTyping(baseUrl: string, phone: string) {
+  try {
+    await fetch(`${baseUrl}/actions/sendPresence`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: getAuthHeader() },
+      body: JSON.stringify({ number: formatPhone(phone), presence: "composing" }),
+    });
+  } catch {
+    // silencia — nem toda instância Avisa suporta sendPresence
+  }
+}
+
 export async function sendAvisaMessage(phone: string, message: string) {
   const baseUrl = process.env.AVISA_BASE_URL;
   const token = process.env.AVISA_TOKEN;
   if (!baseUrl || !token) { console.warn("Avisa credentials missing"); return; }
 
-  console.log(`📤 Avisa sendMessage → ${formatPhone(phone)} (${message.length} chars)`);
-  
+  const delay = typingDelay(message);
+  console.log(`📤 Avisa sendMessage → ${formatPhone(phone)} (${message.length} chars, delay ${delay}ms)`);
+
+  await sendAvisaTyping(baseUrl, phone);
+  await new Promise((r) => setTimeout(r, delay));
+
   const payload = {
     number: formatPhone(phone),
     message: message
   };
-  
+
   return sendWithRetry(`${baseUrl}/actions/sendMessage`, payload);
 }
 
