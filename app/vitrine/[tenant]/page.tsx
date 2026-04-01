@@ -17,7 +17,7 @@ export default async function VitrineTenantPage({ params }: Props) {
   // Resolve tenant pelo webhook_token
   const { data: garagem } = await supabaseAdmin
     .from("config_garage")
-    .select("user_id, nome_empresa, whatsapp")
+    .select("user_id, nome_empresa, whatsapp, logo_url")
     .eq("webhook_token", tenant)
     .single();
 
@@ -36,6 +36,7 @@ export default async function VitrineTenantPage({ params }: Props) {
       nomeEmpresa={garagem.nome_empresa}
       whatsapp={garagem.whatsapp ?? process.env.NEXT_PUBLIC_ZAPI_PHONE ?? ""}
       estoque={estoque ?? []}
+      logoUrl={garagem.logo_url ?? null}
     />
   );
 }

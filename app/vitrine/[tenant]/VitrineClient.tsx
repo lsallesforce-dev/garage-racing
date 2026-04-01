@@ -124,9 +124,10 @@ interface Props {
   nomeEmpresa: string;
   whatsapp: string;
   estoque: any[];
+  logoUrl?: string | null;
 }
 
-export default function VitrineClient({ tenant, nomeEmpresa, whatsapp, estoque }: Props) {
+export default function VitrineClient({ tenant, nomeEmpresa, whatsapp, estoque, logoUrl }: Props) {
   const [modalCarro, setModalCarro] = useState<any | null>(null);
   const [filtroMarca, setFiltroMarca] = useState("");
   const [filtroModelo, setFiltroModelo] = useState("");
@@ -171,7 +172,11 @@ export default function VitrineClient({ tenant, nomeEmpresa, whatsapp, estoque }
       {/* Header */}
       <header className="bg-white border-b border-gray-100 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <span className="text-xl font-black uppercase italic tracking-tighter text-gray-900">{nomeEmpresa}</span>
+          {logoUrl ? (
+            <img src={logoUrl} alt={nomeEmpresa} className="h-9 w-auto object-contain" />
+          ) : (
+            <span className="text-xl font-black uppercase italic tracking-tighter text-gray-900">{nomeEmpresa}</span>
+          )}
           <a
             href={`https://wa.me/${whatsapp}?text=${encodeURIComponent("Olá! Preciso de ajuda para escolher um veículo.")}`}
             target="_blank" rel="noopener noreferrer"
