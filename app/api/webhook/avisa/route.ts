@@ -561,6 +561,16 @@ export async function POST(req: NextRequest) {
         ? hitsTextuais[0]
         : veiculoPrincipal ?? topVeiculos[0] ?? null;
 
+    console.log("🎬 VIDEO DEBUG:", {
+      clientePediuVideo,
+      leadVeiculoId: lead?.veiculo_id ?? null,
+      veiculoPrincipalId: veiculoPrincipal?.id ?? null,
+      veiculoPrincipalModelo: veiculoPrincipal ? `${(veiculoPrincipal as any).marca} ${(veiculoPrincipal as any).modelo}` : null,
+      veiculoParaVideoId: veiculoParaVideo?.id ?? null,
+      veiculoParaVideoModelo: veiculoParaVideo ? `${(veiculoParaVideo as any).marca} ${(veiculoParaVideo as any).modelo}` : null,
+      hitsTextuaisCount: hitsTextuais.length,
+    });
+
     let videoEnviado = false;
     if (clientePediuVideo && veiculoParaVideo) {
       const videoUrl = (veiculoParaVideo as any).video_url ?? null;
