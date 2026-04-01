@@ -224,15 +224,13 @@ export default function VitrineClient({ tenant, nomeEmpresa, whatsapp, estoque, 
       </div>
 
       {/* ── Banner Propaganda ── */}
-      <div className="bg-gray-900 overflow-hidden relative">
-        <div className="absolute inset-0 bg-[repeating-linear-gradient(45deg,transparent,transparent_20px,rgba(220,38,38,0.08)_20px,rgba(220,38,38,0.08)_21px)]" />
-        <div className="max-w-7xl mx-auto px-6 py-5 flex items-center justify-center gap-4 relative">
-          <Award size={22} className="text-red-500 flex-shrink-0" />
+      <div className="bg-[#e2e2de] border-y border-gray-300 overflow-hidden relative">
+        <div className="absolute inset-0 bg-[repeating-linear-gradient(45deg,transparent,transparent_20px,rgba(220,38,38,0.06)_20px,rgba(220,38,38,0.06)_21px)]" />
+        <div className="max-w-7xl mx-auto px-6 py-5 flex items-center justify-center relative">
           <p className="text-center">
-            <span className="text-white font-black uppercase italic tracking-tight text-lg md:text-2xl">MELHOR AVALIAÇÃO DO SEU USADO</span>
-            <span className="text-red-500 font-black uppercase italic tracking-tight text-lg md:text-2xl"> — VENHA CONFERIR</span>
+            <span className="text-gray-900 font-black uppercase italic tracking-tight text-lg md:text-2xl">MELHOR AVALIAÇÃO DO SEU USADO</span>
+            <span className="text-red-600 font-black uppercase italic tracking-tight text-lg md:text-2xl"> — VENHA CONFERIR</span>
           </p>
-          <Award size={22} className="text-red-500 flex-shrink-0" />
         </div>
       </div>
 
