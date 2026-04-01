@@ -34,7 +34,7 @@ export default async function VitrineTenantPage({ params }: Props) {
 
   const { data: estoque } = await supabaseAdmin
     .from("veiculos")
-    .select("id, marca, modelo, versao, ano_modelo, preco_sugerido, capa_marketing_url, fotos, video_url, segundo_dono")
+    .select("id, marca, modelo, versao, ano_modelo, preco_sugerido, capa_marketing_url, fotos, video_url, segundo_dono, vistoriado, abaixo_fipe, de_repasse")
     .eq("user_id", garagem.user_id)
     .eq("status_venda", "DISPONIVEL")
     .order("created_at", { ascending: false });
