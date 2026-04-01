@@ -523,12 +523,11 @@ export async function POST(req: NextRequest) {
     const gatilhosFoto = ["foto", "fotos", "imagem", "manda foto", "ver o carro", "tem foto", "tem imagem"];
     const clientePediuFoto = gatilhosFoto.some((g) => mensagemLower.includes(g));
 
-    // Se o cliente pediu foto E mencionou um carro específico (via texto), usa esse carro.
-    // Caso contrário, usa o topo da lista (que pode ser o carro vinculado ao lead).
+    // Prioridade: 1) carro mencionado na msg, 2) carro vinculado ao lead, 3) top semântico
     const veiculoParaFoto =
-      clientePediuFoto && hitsTextuais.length > 0
+      (clientePediuFoto && hitsTextuais.length > 0)
         ? hitsTextuais[0]
-        : topVeiculos[0] ?? null;
+        : veiculoPrincipal ?? topVeiculos[0] ?? null;
 
     let fotoEnviada = false;
     if (clientePediuFoto && veiculoParaFoto) {
@@ -556,9 +555,11 @@ export async function POST(req: NextRequest) {
     const gatilhosVideo = ["vídeo", "video", "ver o video", "manda o video", "tem video", "filmagem", "ver o vídeo", "manda o vídeo", "tem vídeo"];
     const clientePediuVideo = gatilhosVideo.some((g) => mensagemLower.includes(g));
 
-    const veiculoParaVideo = clientePediuVideo && hitsTextuais.length > 0
-      ? hitsTextuais[0]
-      : topVeiculos[0] ?? null;
+    // Prioridade: 1) carro mencionado na msg, 2) carro vinculado ao lead, 3) top semântico
+    const veiculoParaVideo =
+      (clientePediuVideo && hitsTextuais.length > 0)
+        ? hitsTextuais[0]
+        : veiculoPrincipal ?? topVeiculos[0] ?? null;
 
     let videoEnviado = false;
     if (clientePediuVideo && veiculoParaVideo) {
