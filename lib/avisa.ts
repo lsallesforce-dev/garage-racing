@@ -54,15 +54,16 @@ function typingDelay(text: string): number {
   return Math.min(1500 + Math.floor(text.length / 50) * 500, 7000);
 }
 
-async function sendAvisaTyping(baseUrl: string, phone: string) {
+async function sendAvisaTyping(baseUrl: string, phone: string, action: "start" | "stop") {
   try {
-    await fetch(`${baseUrl}/actions/sendPresence`, {
+    const chat = `${formatPhone(phone)}@s.whatsapp.net`;
+    await fetch(`${baseUrl}/chat/typing/${action}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: getAuthHeader() },
-      body: JSON.stringify({ number: formatPhone(phone), presence: "composing" }),
+      body: JSON.stringify({ chat }),
     });
   } catch {
-    // silencia — nem toda instância Avisa suporta sendPresence
+    // silencia se não suportado
   }
 }
 
@@ -74,8 +75,9 @@ export async function sendAvisaMessage(phone: string, message: string) {
   const delay = typingDelay(message);
   console.log(`📤 Avisa sendMessage → ${formatPhone(phone)} (${message.length} chars, delay ${delay}ms)`);
 
-  await sendAvisaTyping(baseUrl, phone);
+  await sendAvisaTyping(baseUrl, phone, "start");
   await new Promise((r) => setTimeout(r, delay));
+  await sendAvisaTyping(baseUrl, phone, "stop");
 
   const payload = {
     number: formatPhone(phone),
