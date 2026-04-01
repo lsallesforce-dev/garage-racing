@@ -336,17 +336,6 @@ export default function VitrineClient({ tenant, nomeEmpresa, whatsapp, estoque, 
         <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">© 2026 {nomeEmpresa} • Pátio Digital</p>
       </footer>
 
-      {/* ── FAB WhatsApp ── */}
-      <div className="fixed bottom-6 right-6 z-50">
-        <a
-          href={`https://wa.me/${whatsapp}?text=${encodeURIComponent("Olá! Preciso de ajuda para escolher um veículo.")}`}
-          target="_blank" rel="noopener noreferrer"
-          className="flex items-center gap-3 bg-green-500 hover:bg-green-400 text-white pl-4 pr-5 py-3.5 rounded-full shadow-2xl transition-all hover:scale-105 active:scale-95"
-        >
-          <MessageCircle size={18} strokeWidth={2.5} />
-          <span className="font-black uppercase text-[9px] tracking-widest">Falar agora</span>
-        </a>
-      </div>
 
       {modalCarro && <ModalFinanciamento carro={modalCarro} whatsapp={whatsapp} nomeEmpresa={nomeEmpresa} onClose={() => setModalCarro(null)} />}
     </div>
