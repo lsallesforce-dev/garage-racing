@@ -106,7 +106,7 @@ export async function POST(req: NextRequest) {
     const contentType = req.headers.get("content-type") || "";
     let payload: any = {};
 
-    if (contentType.includes("application/x-www-form-urlencoded")) {
+    if (contentType.includes("application/x-www-form-urlencoded") || contentType.includes("multipart/form-data")) {
       const formData = await req.formData();
       payload = Object.fromEntries(formData.entries());
     } else {
