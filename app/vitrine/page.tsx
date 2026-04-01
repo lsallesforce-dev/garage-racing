@@ -154,13 +154,14 @@ function VitrinePublicaInner() {
   useEffect(() => {
     // Busca config do tenant pelo token ou pega o primeiro (mono-tenant legacy)
     const configQuery = tenantToken
-      ? supabase.from("config_garage").select("user_id, nome_empresa, whatsapp").eq("webhook_token", tenantToken).single()
-      : supabase.from("config_garage").select("user_id, nome_empresa, whatsapp").single();
+      ? supabase.from("config_garage").select("user_id, nome_empresa, whatsapp, whatsapp_agente").eq("webhook_token", tenantToken).single()
+      : supabase.from("config_garage").select("user_id, nome_empresa, whatsapp, whatsapp_agente").single();
 
     configQuery.then(({ data }) => {
       if (!data) return;
       if (data.nome_empresa) setNomeEmpresa(data.nome_empresa);
-      if (data.whatsapp) setWhatsapp(data.whatsapp);
+      const numero = data.whatsapp_agente || data.whatsapp;
+      if (numero) setWhatsapp(numero);
       if (data.user_id) setTenantUserId(data.user_id);
     });
   }, [tenantToken]);
