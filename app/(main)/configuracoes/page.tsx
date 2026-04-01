@@ -12,6 +12,7 @@ interface GarageConfig {
   nome_agente: string;
   endereco: string;
   whatsapp: string;
+  whatsapp_agente?: string;
   logo_url: string | null;
   webhook_token?: string;
   nome_usuario?: string;
@@ -35,6 +36,7 @@ export default function ConfiguracoesPage() {
     nome_agente: "",
     endereco: "",
     whatsapp: "",
+    whatsapp_agente: "",
     logo_url: null,
     webhook_token: "",
     nome_usuario: "",
@@ -61,6 +63,7 @@ export default function ConfiguracoesPage() {
               nome_agente: row.nome_agente ?? "",
               endereco: row.endereco ?? "",
               whatsapp: row.whatsapp ?? "",
+              whatsapp_agente: row.whatsapp_agente ?? "",
               logo_url: row.logo_url ?? null,
               webhook_token: row.webhook_token ?? "",
               nome_usuario: row.nome_usuario ?? "",
@@ -190,6 +193,7 @@ export default function ConfiguracoesPage() {
             nome_agente: config.nome_agente,
             endereco: config.endereco,
             whatsapp: config.whatsapp,
+            whatsapp_agente: config.whatsapp_agente || null,
             webhook_token: config.webhook_token || null,
             nome_usuario: config.nome_usuario || null,
             cargo_usuario: config.cargo_usuario || null,
@@ -275,7 +279,7 @@ export default function ConfiguracoesPage() {
 
             <div className="flex flex-col gap-1.5">
               <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
-                WhatsApp (com DDI)
+                WhatsApp do Gerente (com DDI)
               </label>
               <input
                 type="text"
@@ -284,6 +288,20 @@ export default function ConfiguracoesPage() {
                 placeholder="Ex: 5517991141010"
                 className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
               />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+                WhatsApp do Agente IA (com DDI)
+              </label>
+              <input
+                type="text"
+                value={config.whatsapp_agente || ""}
+                onChange={e => setConfig(c => ({ ...c, whatsapp_agente: e.target.value }))}
+                placeholder="Ex: 5521999999999"
+                className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
+              />
+              <p className="text-[10px] text-gray-400 mt-0.5">Número conectado ao Z-API. Os leads da vitrine cairão neste WhatsApp.</p>
             </div>
 
             <div className="flex flex-col gap-1.5 mt-2 bg-blue-50/50 p-4 border border-blue-100 rounded-2xl">
