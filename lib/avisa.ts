@@ -69,12 +69,29 @@ export async function sendAvisaImage(phone: string, imageBase64: string, message
   const token = process.env.AVISA_TOKEN;
   if (!baseUrl || !token) { console.warn("Avisa credentials missing"); return; }
 
-  // A API da Avisa geralmente suporta JSON para envio de mídia em base64
   const payload: any = {
     number: formatPhone(phone),
     image: imageBase64
   };
   if (message) payload.message = message;
-  
+
   return sendWithRetry(`${baseUrl}/actions/sendImage`, payload);
+}
+
+export async function sendAvisaVideo(phone: string, videoUrl: string, caption?: string) {
+  const baseUrl = process.env.AVISA_BASE_URL;
+  const token = process.env.AVISA_TOKEN;
+  if (!baseUrl || !token) { console.warn("Avisa credentials missing"); return; }
+
+  console.log(`📹 Avisa sendVideo → ${formatPhone(phone)}`);
+
+  const payload: any = {
+    number: formatPhone(phone),
+    fileUrl: videoUrl,
+    type: "video",
+    fileName: "video.mp4",
+  };
+  if (caption) payload.message = caption;
+
+  return sendWithRetry(`${baseUrl}/actions/sendMedia`, payload);
 }

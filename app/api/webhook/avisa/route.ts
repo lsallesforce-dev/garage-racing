@@ -1,6 +1,6 @@
 import { geminiFlashSales, geminiFlashFallback, generateEmbedding } from "@/lib/gemini";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { sendAvisaMessage, sendAvisaImage } from "@/lib/avisa";
+import { sendAvisaMessage, sendAvisaImage, sendAvisaVideo } from "@/lib/avisa";
 import { buscarDadosTransbordo, gerarRelatorioPista } from "@/lib/leads";
 import { NextRequest, NextResponse } from "next/server";
 import { Vehicle } from "@/types/vehicle";
@@ -552,6 +552,30 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // ── 9b. Enviar vídeo do carro ────────────────────────────────────────────
+    const gatilhosVideo = ["vídeo", "video", "ver o video", "manda o video", "tem video", "filmagem", "ver o vídeo", "manda o vídeo", "tem vídeo"];
+    const clientePediuVideo = gatilhosVideo.some((g) => mensagemLower.includes(g));
+
+    const veiculoParaVideo = clientePediuVideo && hitsTextuais.length > 0
+      ? hitsTextuais[0]
+      : topVeiculos[0] ?? null;
+
+    let videoEnviado = false;
+    if (clientePediuVideo && veiculoParaVideo) {
+      const videoUrl = (veiculoParaVideo as any).video_url ?? null;
+      if (videoUrl) {
+        try {
+          await sendAvisaVideo(phone, videoUrl);
+          videoEnviado = true;
+          if (lead && veiculoParaVideo.id !== veiculoIdAnterior) {
+            await supabaseAdmin.from("leads").update({ veiculo_id: veiculoParaVideo.id }).eq("id", lead.id);
+          }
+        } catch (e) {
+          console.warn("Falha ao enviar vídeo:", e);
+        }
+      }
+    }
+
     // ── 10. O Cérebro do Lucas ───────────────────────────────────────────────
     const nomeCliente = lead?.nome || null;
     let aiResponse = "";
@@ -594,6 +618,7 @@ SEU ESTOQUE ATUAL (Mantenha o foco nestes veículos e em suas descrições):
 ${context}
 
 FOTO DO CARRO: ${fotoEnviada ? "✅ A foto foi enviada automaticamente pelo sistema ANTES desta mensagem. Sua resposta de texto deve ser EXATAMENTE: 'Segue a foto!' ou 'Segue as fotos!' (escolha conforme o contexto). NADA MAIS sobre a foto — não diga 'o que achou', não descreva o carro, não faça perguntas sobre a imagem." : "❌ Nenhuma foto foi enviada. NUNCA diga que mandou ou que vai mandar foto."}
+VÍDEO DO CARRO: ${videoEnviado ? "✅ O vídeo foi enviado automaticamente pelo sistema ANTES desta mensagem. Sua resposta de texto deve ser EXATAMENTE: 'Segue o vídeo!' NADA MAIS — não descreva o vídeo, não faça perguntas sobre ele." : "❌ Nenhum vídeo foi enviado. NUNCA diga que mandou ou que vai mandar vídeo. Se o cliente pedir vídeo e não houver, diga: 'Esse não tem vídeo disponível no momento.'."}
 
 [AÇÃO REQUERIDA]
 Você DEVE retornar a resposta estritamente no formato JSON, usando a seguinte estrutura exata:
