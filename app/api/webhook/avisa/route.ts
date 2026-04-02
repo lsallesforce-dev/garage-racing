@@ -743,13 +743,14 @@ CRITÉRIOS DE TEMPERATURA:
     // ── 11. Transbordo com Briefing Completo (quando QUENTE) ────────────────
     if (temperatura === "QUENTE" && lead) {
       const topVeiculo = topVeiculos[0];
-      if (topVeiculo?.id) {
+      const gerenteWa = garageConfig?.whatsapp ?? null;
+      if (topVeiculo?.id && gerenteWa) {
         const transbordo = await buscarDadosTransbordo(topVeiculo.id);
-        if (transbordo) {
-          const historicoFormatado = historico.map((h: any) => `${h.role === "user" ? "Cliente" : "Lucas"}: ${h.parts[0].text}`).join("\n") || "Sem histórico.";
-          const briefing = buildBriefingVendedor(phone, transbordo.carro, resumo, historicoFormatado, temperatura);
-          await sendAvisaMessage(transbordo.vendedor_wa, briefing);
-        }
+        const destinoWa = transbordo?.vendedor_wa ?? gerenteWa;
+        const nomeCarro = transbordo?.carro ?? `${topVeiculo.marca} ${topVeiculo.modelo}`;
+        const historicoFormatado = historico.map((h: any) => `${h.role === "user" ? "Cliente" : "Lucas"}: ${h.parts[0].text}`).join("\n") || "Sem histórico.";
+        const briefing = buildBriefingVendedor(phone, nomeCarro, resumo, historicoFormatado, temperatura);
+        await sendAvisaMessage(destinoWa, briefing);
       }
     }
 
