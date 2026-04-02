@@ -71,20 +71,30 @@ export default function UploadPage() {
     setResultadoAnalise(null);
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const uploadResponse = await fetch("/api/upload", {
+      // 1. Pede signed URL ao servidor (payload pequeno, sem limite)
+      const metaRes = await fetch("/api/upload", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileName: file.name, fileType: file.type }),
       });
 
-      const uploadData = await uploadResponse.json();
-      if (!uploadResponse.ok || !uploadData.videoUrl) {
-        throw new Error(uploadData.error || "Erro no upload");
+      const metaData = await metaRes.json();
+      if (!metaRes.ok || !metaData.signedUrl) {
+        throw new Error(metaData.error || "Erro ao obter URL de upload");
       }
 
-      await analisarVideoUrl(uploadData.videoUrl);
+      // 2. Upload direto do browser pro Supabase (sem passar pela Vercel)
+      const uploadRes = await fetch(metaData.signedUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+
+      if (!uploadRes.ok) {
+        throw new Error("Erro ao enviar vídeo para o storage");
+      }
+
+      await analisarVideoUrl(metaData.publicUrl);
     } catch (error: any) {
       console.error("Processing error:", error);
       alert("Erro ao processar o vídeo: " + error.message);
