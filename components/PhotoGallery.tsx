@@ -99,14 +99,24 @@ export const PhotoGallery = ({
         uploadBlob = await applyWatermark(file, logoUrl);
       }
 
-      const formData = new FormData();
-      formData.append("file", new File([uploadBlob], fileName, { type: "image/jpeg" }));
+      // 1. Pede signed URL
+      const metaRes = await fetch("/api/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileName, fileType: "image/jpeg" }),
+      });
+      const metaData = await metaRes.json();
+      if (!metaRes.ok || !metaData.signedUrl) throw new Error(metaData.error || "Falha ao obter URL");
 
-      const res = await fetch("/api/upload", { method: "POST", body: formData });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Falha no upload");
+      // 2. Upload direto ao Supabase
+      const uploadRes = await fetch(metaData.signedUrl, {
+        method: "PUT",
+        headers: { "Content-Type": "image/jpeg" },
+        body: uploadBlob,
+      });
+      if (!uploadRes.ok) throw new Error("Falha no upload direto");
 
-      const newPhotoUrl: string = data.videoUrl;
+      const newPhotoUrl: string = metaData.publicUrl;
       const newPhotos = [...fotos, newPhotoUrl];
 
       const { error: dbError } = await supabase
