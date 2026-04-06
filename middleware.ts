@@ -21,7 +21,12 @@ import { NextRequest, NextResponse } from "next/server";
 // Domínios base que NÃO devem ser tratados como tenant.
 // Adicione aqui todos os domínios raiz da aplicação.
 const BASE_HOSTNAMES = new Set([
+  // Domínio de produção — adicione aqui seu domínio raiz exato
+  "autozap.com.br",
+  "www.autozap.com.br",
+  // Preview / staging da Vercel
   "garage-racing.vercel.app",
+  // Desenvolvimento local
   "localhost",
   "127.0.0.1",
 ]);

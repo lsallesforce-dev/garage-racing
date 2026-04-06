@@ -210,6 +210,16 @@ export default function ConfiguracoesPage() {
       if (error) throw error;
       if (data && !config.id) setConfig(c => ({ ...c, id: data.id }));
 
+      // Popula o Redis com o slug para que o middleware de subdomínio funcione.
+      // Fire-and-forget — falha não bloqueia o save (o middleware tem fail-open).
+      if (config.vitrine_slug) {
+        fetch("/api/vitrine/seed-slug", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ slug: config.vitrine_slug }),
+        }).catch(() => {});
+      }
+
       setSavedInfo(true);
       setTimeout(() => setSavedInfo(false), 3000);
     } catch (err: any) {
@@ -331,7 +341,14 @@ export default function ConfiguracoesPage() {
                 placeholder="Ex: aprove"
                 className="bg-white border border-blue-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
               />
-              <p className="text-[10px] text-blue-600 mt-1">Vitrine pública: <strong>garage-racing.vercel.app/vitrine/{config.vitrine_slug || "SEU_SLUG"}</strong></p>
+              <p className="text-[10px] text-blue-600 mt-1">
+                Vitrine pública:{" "}
+                <strong>
+                  {config.vitrine_slug
+                    ? `${config.vitrine_slug}.autozap.com.br`
+                    : "SEU_SLUG.autozap.com.br"}
+                </strong>
+              </p>
             </div>
 
             <div className="flex flex-col gap-1.5">
