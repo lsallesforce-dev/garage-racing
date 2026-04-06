@@ -43,7 +43,8 @@
       "Bash(identify /c/Users/lsaud/Downloads/garage-racing/app/icon.png)",
       "Bash(cp app/favicon.png.png app/icon.png)",
       "Bash(rm app/favicon.png.png)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(claude mcp:*)"
     ]
   }
 }
