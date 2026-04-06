@@ -9,6 +9,7 @@
 // ─────────────────────────────────────────────────────────────
 //   dedup:{tenantUserId}:{messageId}    TTL: 3600s (1h)
 //   history:{tenantUserId}:{leadId}     TTL: 1800s (30min)
+//   vitrine:slug:{slug}                TTL: 86400s (24h) — usado pelo middleware
 //
 // Chaves incluem o tenantUserId como prefixo para garantir isolamento
 // completo entre garagens diferentes — mesmo que messageId ou leadId
@@ -128,4 +129,57 @@ export async function invalidateHistory(
 // ─── Ping (para Health Check) ─────────────────────────────────────────────────
 export async function redisPing(): Promise<string> {
   return getClient().ping();
+}
+
+// ─── Cache de Slug da Vitrine (usado pelo Middleware Multi-Tenant) ────────────
+//
+// O middleware.ts roda no Edge Runtime e valida slugs via Redis REST API.
+// Essas funções são chamadas no contexto Node.js (Server Actions / API Routes)
+// para manter o cache sincronizado com o banco.
+//
+// Ciclo de vida:
+//   1. Admin cadastra/atualiza vitrine_slug → chama `cacheVitrineSlug`
+//   2. Middleware valida `vitrine:slug:{slug}` existe no Redis
+//   3. Admin desativa loja → chama `invalidateVitrineSlug`
+//   4. Middleware redireciona para /loja-nao-encontrada
+//
+// TTL de 24h: muito maior que slugs de garagem são atualizados na prática.
+// A invalidação manual garante consistência sem depender do TTL.
+//
+export async function cacheVitrineSlug(
+  slug: string,
+  userId: string
+): Promise<void> {
+  try {
+    const key = `vitrine:slug:${slug}`;
+    // Valor é o userId para facilitar lookups futuros sem ir ao Supabase
+    await getClient().set(key, userId, { ex: 86400 }); // 24h
+    console.log(`✅ [Redis] Slug cacheado: ${key} → ${userId}`);
+  } catch (e) {
+    console.warn("⚠️ [Redis] cacheVitrineSlug falhou (non-fatal):", e);
+  }
+}
+
+export async function invalidateVitrineSlug(slug: string): Promise<void> {
+  try {
+    const key = `vitrine:slug:${slug}`;
+    await getClient().del(key);
+    console.log(`🗑️ [Redis] Slug invalidado: ${key}`);
+  } catch (e) {
+    console.warn("⚠️ [Redis] invalidateVitrineSlug falhou (non-fatal):", e);
+  }
+}
+
+// Retorna o userId associado ao slug, ou null se não estiver no cache.
+// Útil para componentes que precisam do userId sem ir ao Supabase.
+export async function getVitrineSlugOwner(
+  slug: string
+): Promise<string | null> {
+  try {
+    const key = `vitrine:slug:${slug}`;
+    return await getClient().get<string>(key);
+  } catch (e) {
+    console.warn("⚠️ [Redis] getVitrineSlugOwner falhou (non-fatal):", e);
+    return null;
+  }
 }
