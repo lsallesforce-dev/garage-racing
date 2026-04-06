@@ -1,28 +1,102 @@
+// proxy.ts  (Next.js 16 — antigo middleware.ts)
+//
+// Responsabilidades:
+//   1. Multi-tenant: subdomínio → rewrite interno para /vitrine/[tenant]
+//      (com validação do slug no Redis antes do rewrite)
+//   2. Auth: protege rotas privadas via Supabase SSR
+//
+// Fluxo de subdomínio:
+//   aprove.autozap.com.br/
+//     → isSlugValid("aprove")  →  Redis: vitrine:slug:aprove existe?
+//     → sim  → rewrite para /vitrine/aprove   (URL do usuário não muda)
+//     → não  → redirect para /loja-nao-encontrada?slug=aprove
+
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+// ─── Configuração ─────────────────────────────────────────────────────────────
+
 const MAIN_DOMAIN = "autozap.com.br";
-const IGNORED_SUBDOMAINS = new Set(["www", "app", "api"]);
+
+// Subdomínios reservados — nunca são tenants de loja
+const IGNORED_SUBDOMAINS = new Set(["www", "app", "api", "admin", "mail", "staging"]);
+
+// ─── Validação do slug no Redis (via REST API — Edge safe) ────────────────────
+//
+// Usa fetch() puro porque o Edge Runtime não suporta módulos Node.js.
+// Checa se existe a chave `vitrine:slug:{slug}` populada por cacheVitrineSlug().
+//
+// Política fail-open: erro → retorna true (faz o rewrite e deixa a página
+// /vitrine/[tenant] resolver via Supabase com notFound() se necessário).
+//
+async function isSlugValid(slug: string): Promise<boolean> {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+
+  // Redis não configurado → passthrough (a página faz sua própria validação)
+  if (!url || !token) return true;
+
+  try {
+    const res = await fetch(
+      `${url}/exists/vitrine:slug:${encodeURIComponent(slug)}`,
+      {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      }
+    );
+
+    if (!res.ok) return true; // fail-open
+
+    const data = (await res.json()) as { result: number };
+    return data.result === 1;
+  } catch {
+    return true; // fail-open: prefere rewrite do que 404 falso
+  }
+}
+
+// ─── Proxy Principal ──────────────────────────────────────────────────────────
 
 export async function proxy(request: NextRequest) {
-  // ── Detecção de subdomínio (multi-tenant vitrine) ─────────────────────────
   const hostname = request.headers.get("host") || "";
+  const { pathname } = request.nextUrl;
+
+  // ── 1. Multi-tenant: detecção de subdomínio ───────────────────────────────
   const isMainDomain =
     hostname === MAIN_DOMAIN ||
     hostname === `www.${MAIN_DOMAIN}` ||
     hostname.endsWith(".vercel.app") ||
-    hostname.startsWith("localhost");
+    hostname.startsWith("localhost") ||
+    hostname.startsWith("127.0.0.1");
 
   if (!isMainDomain) {
-    const subdomain = hostname.replace(`.${MAIN_DOMAIN}`, "");
+    const subdomain = hostname.replace(`.${MAIN_DOMAIN}`, "").split(":")[0];
+
     if (subdomain && !IGNORED_SUBDOMAINS.has(subdomain)) {
-      const { pathname } = request.nextUrl;
+      // Valida slug no Redis antes do rewrite
+      const valid = await isSlugValid(subdomain);
+
+      if (!valid) {
+        // Slug não cadastrado → página de erro personalizada
+        const notFoundUrl = new URL(
+          `/loja-nao-encontrada?slug=${encodeURIComponent(subdomain)}`,
+          // Usa o domínio principal como base para a URL de redirect
+          `https://${MAIN_DOMAIN}`
+        );
+        return NextResponse.redirect(notFoundUrl, { status: 302 });
+      }
+
+      // Rewrite silencioso: URL do usuário continua sendo subdomain.autozap.com.br
       const rewriteUrl = request.nextUrl.clone();
       rewriteUrl.pathname = `/vitrine/${subdomain}${pathname === "/" ? "" : pathname}`;
-      return NextResponse.rewrite(rewriteUrl);
+
+      const response = NextResponse.rewrite(rewriteUrl);
+      response.headers.set("x-tenant-slug", subdomain);
+      return response;
     }
   }
 
+  // ── 2. Auth Supabase (somente para domínio principal) ─────────────────────
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -34,7 +108,6 @@ export async function proxy(request: NextRequest) {
           return request.cookies.getAll();
         },
         setAll(cookiesToSet) {
-          // Atualiza cookies na request e na response para renovar sessões expiradas
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
           );
@@ -47,18 +120,18 @@ export async function proxy(request: NextRequest) {
     }
   );
 
-  // IMPORTANTE: não use getSession() — usa getUser() para validar com o servidor
+  // Usa getUser() (valida com servidor) em vez de getSession() (apenas cookie local)
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const { pathname } = request.nextUrl;
-
-  // Rotas públicas — não exigem login
+  // Rotas públicas — sem login obrigatório
   const isPublic =
     pathname.startsWith("/login") ||
     pathname.startsWith("/vitrine") ||
-    pathname.startsWith("/api/webhook");
+    pathname.startsWith("/loja-nao-encontrada") ||
+    pathname.startsWith("/api/webhook") ||
+    pathname.startsWith("/api/health");
 
   if (!user && !isPublic) {
     const loginUrl = request.nextUrl.clone();
@@ -66,7 +139,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // Usuário logado tentando acessar /login → manda para o painel
+  // Usuário logado tentando acessar /login → redireciona para o painel
   if (user && pathname === "/login") {
     const homeUrl = request.nextUrl.clone();
     homeUrl.pathname = "/";
@@ -76,9 +149,10 @@ export async function proxy(request: NextRequest) {
   return supabaseResponse;
 }
 
+// ─── Matcher ──────────────────────────────────────────────────────────────────
+// Exclui arquivos estáticos e imagens otimizadas do Next.js
 export const config = {
   matcher: [
-    // Aplica em todas as rotas exceto arquivos estáticos e _next
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };
