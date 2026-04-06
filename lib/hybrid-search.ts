@@ -189,12 +189,21 @@ export async function hybridVehicleSearch(
   // ── Caso 2: Lead com carro vinculado, cliente não pediu outro ──────────────
   if (veiculoPrincipal) {
     if (msgCurta) {
-      // Mensagem vaga ("?", "sim", "e aí") — mantém o carro atual, sem ruído
+      // Mensagem vaga ("?", "sim", "e aí") — mantém só o principal, sem ruído
       return { topVeiculos: [veiculoPrincipal], clientePediuCarroDiferente: false };
     }
-    // Semântica só como complemento — principal nunca sai do topo
-    const semanticos = await semanticSearch(userMessage, tenantUserId, 0.40, 3);
-    const complementares = semanticos.filter((v) => v.id !== veiculoPrincipal.id);
+    // Semântica como complemento filtrada pela mesma categoria do principal.
+    // Impede que Sedan em negociação traga Pickup/SUV como "alternativas"
+    // (que confundem a IA e geram cross-sell errado).
+    const categoriaAtual = (veiculoPrincipal as any).categoria as string | undefined;
+    const semanticos = await semanticSearch(userMessage, tenantUserId, 0.40, 5);
+    const complementares = semanticos
+      .filter((v) => v.id !== veiculoPrincipal.id)
+      .filter((v) => {
+        const catV = (v as any).categoria as string | undefined;
+        if (categoriaAtual && catV) return catV === categoriaAtual;
+        return true; // sem categoria definida → inclui por precaução
+      });
     return {
       topVeiculos: [veiculoPrincipal, ...complementares].slice(0, 5),
       clientePediuCarroDiferente: false,

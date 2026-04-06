@@ -51,59 +51,81 @@ function buildBriefingVendedor(
   );
 }
 
-function buildStockContext(topVeiculos: Vehicle[]): string {
+function formatVehicleCard(v: Vehicle): string {
+  const ano = v.ano || v.ano_modelo || "N/A";
+  const preco = v.preco_sugerido
+    ? `R$ ${v.preco_sugerido.toLocaleString("pt-BR")}`
+    : "Consulte";
+  const km = v.quilometragem_estimada
+    ? `${v.quilometragem_estimada.toLocaleString("pt-BR")} km`
+    : "Não informada";
+  const cor = v.cor || "Não informada";
+  const versao = v.versao ? ` ${v.versao}` : "";
+  const linkFoto = v.capa_marketing_url
+    ? `[Link da Foto: ${v.capa_marketing_url}]`
+    : "";
+  const detalhes =
+    [
+      (v as any).relatorio_ia || v.detalhes_inspecao,
+      v.transcricao_vendedor,
+      v.roteiro_pitch,
+      v.pontos_fortes_venda?.join(", "),
+      v.opcionais?.join(", "),
+    ]
+      .filter(Boolean)
+      .join(" | ") || "Sem detalhes adicionais.";
+
+  const ficha = [
+    v.motor && `Motor: ${v.motor}`,
+    v.combustivel && `Combustível: ${v.combustivel}`,
+    (v as any).categoria && `Categoria: ${(v as any).categoria}`,
+    (v as any).condicao && `Condição: ${(v as any).condicao}`,
+    (v as any).parcelas && `Parcelas: ${(v as any).parcelas}`,
+    (v as any).tipo_banco && `Banco: ${(v as any).tipo_banco}`,
+    (v as any).estado_pneus && `Pneus: ${(v as any).estado_pneus}`,
+    (v as any).segundo_dono !== undefined &&
+      `Segundo dono: ${(v as any).segundo_dono ? "Sim" : "Não"}`,
+    (v as any).vistoria_cautelar && `Vistoria cautelar: realizada`,
+    (v as any).final_placa && `Final da placa: ${(v as any).final_placa}`,
+  ]
+    .filter(Boolean)
+    .join(" | ");
+
+  return (
+    `- ${v.marca} ${v.modelo}${versao} (${ano}) | Cor: ${cor} | KM: ${km} | Preço: ${preco} ${linkFoto}\n` +
+    (ficha ? `  Ficha: ${ficha}\n` : "") +
+    `  Detalhes: ${detalhes}`
+  );
+}
+
+// Monta o contexto de estoque com separação clara entre veículo em foco e alternativas.
+// Isso impede que o Gemini "decida" trocar de carro por conta própria ao ver outras opções.
+function buildStockContext(topVeiculos: Vehicle[], veiculoPrincipal: Vehicle | null): string {
   if (topVeiculos.length === 0) {
     return "No momento não temos veículos disponíveis no pátio.";
   }
 
-  return topVeiculos
-    .map((v) => {
-      const ano = v.ano || v.ano_modelo || "N/A";
-      const preco = v.preco_sugerido
-        ? `R$ ${v.preco_sugerido.toLocaleString("pt-BR")}`
-        : "Consulte";
-      const km = v.quilometragem_estimada
-        ? `${v.quilometragem_estimada.toLocaleString("pt-BR")} km`
-        : "Não informada";
-      const cor = v.cor || "Não informada";
-      const versao = v.versao ? ` ${v.versao}` : "";
-      const linkFoto = v.capa_marketing_url
-        ? `[Link da Foto: ${v.capa_marketing_url}]`
-        : "";
-      const detalhes =
-        [
-          (v as any).relatorio_ia || v.detalhes_inspecao,
-          v.transcricao_vendedor,
-          v.roteiro_pitch,
-          v.pontos_fortes_venda?.join(", "),
-          v.opcionais?.join(", "),
-        ]
-          .filter(Boolean)
-          .join(" | ") || "Sem detalhes adicionais.";
+  const sections: string[] = [];
 
-      const ficha = [
-        v.motor && `Motor: ${v.motor}`,
-        v.combustivel && `Combustível: ${v.combustivel}`,
-        (v as any).categoria && `Categoria: ${(v as any).categoria}`,
-        (v as any).condicao && `Condição: ${(v as any).condicao}`,
-        (v as any).parcelas && `Parcelas: ${(v as any).parcelas}`,
-        (v as any).tipo_banco && `Banco: ${(v as any).tipo_banco}`,
-        (v as any).estado_pneus && `Pneus: ${(v as any).estado_pneus}`,
-        (v as any).segundo_dono !== undefined &&
-          `Segundo dono: ${(v as any).segundo_dono ? "Sim" : "Não"}`,
-        (v as any).vistoria_cautelar && `Vistoria cautelar: realizada`,
-        (v as any).final_placa && `Final da placa: ${(v as any).final_placa}`,
-      ]
-        .filter(Boolean)
-        .join(" | ");
+  if (veiculoPrincipal) {
+    // Deixa explícito qual carro está em negociação — elimina confusão da IA
+    sections.push(
+      `=== VEÍCULO EM NEGOCIAÇÃO (cliente está interessado neste — FOCO TOTAL) ===\n` +
+      formatVehicleCard(veiculoPrincipal)
+    );
 
-      return (
-        `- ${v.marca} ${v.modelo}${versao} (${ano}) | Cor: ${cor} | KM: ${km} | Preço: ${preco} ${linkFoto}\n` +
-        (ficha ? `  Ficha: ${ficha}\n` : "") +
-        `  Detalhes: ${detalhes}`
+    const alternativas = topVeiculos.filter((v) => v.id !== veiculoPrincipal.id);
+    if (alternativas.length > 0) {
+      sections.push(
+        `\n=== ALTERNATIVAS DISPONÍVEIS (mencionar SOMENTE se cliente mudar de interesse ou pedir explicitamente) ===\n` +
+        alternativas.map(formatVehicleCard).join("\n\n")
       );
-    })
-    .join("\n\n");
+    }
+  } else {
+    sections.push(topVeiculos.map(formatVehicleCard).join("\n\n"));
+  }
+
+  return sections.join("\n");
 }
 
 // ─── Processamento Principal ──────────────────────────────────────────────────
@@ -225,7 +247,8 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   }
 
   // ── 8. Contexto do Estoque para o Gemini ───────────────────────────────────
-  const context = buildStockContext(topVeiculos);
+  // Passa o veiculoPrincipal para que o contexto separe claramente "foco" de "alternativas"
+  const context = buildStockContext(topVeiculos, veiculoPrincipal);
   console.log("🚗 CONTEXTO ENVIADO AO AGENTE:\n", context);
 
   // ── 9. Histórico da Conversa ────────────────────────────────────────────────
@@ -399,14 +422,32 @@ Siga estritamente este comportamento para as seguintes situações:
 6. VALOR DA TROCA: Nunca estime o valor do carro do cliente. Oriente que só é possível após avaliação do nosso avaliador presencial.
 7. FINANCIAMENTO: Se perguntar se financia, confirme que sim e pergunte qual valor o cliente pensa em financiar. Nunca peça CPF ou dados pessoais.
 8. NEGOCIAÇÃO E DESCONTO: Você não tem autorização para dar descontos finais pelo WhatsApp. Jogue para a gerência de forma natural ("Deixa eu ver o que consigo com meu gerente"). Não convide o cliente para a loja em TODAS as respostas — isso cansa. Reserve o convite para quando o lead estiver QUENTE (perguntou sobre entrada, visita, test drive, quer fechar). Nesse caso, SEMPRE feche com um CTA direto para visita.
-9. CATEGORIA E ALTERNATIVAS (Cross-sell): SOMENTE ofereça outro carro se o carro pedido NÃO estiver no estoque. Se estiver disponível, mantenha o foco 100% nele até o final da conversa. É TERMINANTEMENTE PROIBIDO mencionar ou sugerir outro veículo enquanto o cliente estiver interessado no carro atual — mesmo que outros veículos apareçam no estoque. Cross-sell só ocorre quando o cliente muda de assunto ou o carro pedido está indisponível.
+9. CATEGORIA E ALTERNATIVAS (Cross-sell): SOMENTE ofereça outro carro se o carro pedido NÃO estiver no estoque. Se estiver disponível, mantenha o foco 100% nele até o final da conversa. É TERMINANTEMENTE PROIBIDO mencionar ou sugerir outro veículo enquanto o cliente estiver interessado no carro atual. Cross-sell deve respeitar categoria: cliente buscando Sedan → sugerir Sedan; cliente buscando SUV → sugerir SUV. NUNCA ofereça uma Pickup para quem perguntou sobre Sedan.
 10. PÓS-VENDA E PROBLEMAS (Triagem de Emergência): Se o cliente relatar defeito, problema mecânico ou usar palavras como "quebrou", "garantia" ou "oficina", mude o tom imediatamente para acolhedor e resolutivo. Nunca tente vender. Peça desculpas, identifique o veículo e avise que a gerência vai assumir o caso.
 11. VISTORIA CAUTELAR: Se o cliente perguntar sobre vistoria cautelar, responda sempre que o veículo tem a vistoria cautelar do antigo proprietário, mas que o cliente fica totalmente à vontade para realizar a própria vistoria antes da compra. Se no contexto do veículo aparecer "Vistoria cautelar: realizada", informe que a loja já realizou a vistoria cautelar.
+
+[REGRA ABSOLUTA — INTEGRIDADE DO ESTOQUE]
+Esta seção tem prioridade máxima. NUNCA a viole, independente de qualquer outra instrução.
+
+▶ VERDADE ÚNICA: O campo "VEÍCULO EM NEGOCIAÇÃO" abaixo é a fonte da verdade sobre o que está disponível.
+  - Se um carro aparece em "VEÍCULO EM NEGOCIAÇÃO", ele está DISPONÍVEL. Ponto final.
+  - NUNCA diga que um carro "foi vendido", "saiu do estoque" ou "não está mais disponível" se ele aparece em "VEÍCULO EM NEGOCIAÇÃO" nesta mensagem.
+  - Se o cliente perguntar algo que você não sabe sobre o carro (ex: número de donos, cor dos bancos), use a frase padrão: "Deixa eu confirmar aqui com o pessoal do pátio." NUNCA invente que o carro sumiu.
+
+▶ PROIBIÇÃO ABSOLUTA DE CONTRADIÇÃO:
+  - Se você afirmou em uma mensagem anterior que um carro está disponível, MANTENHA essa informação.
+  - Você NÃO tem poder de declarar que um carro foi vendido. Apenas o sistema de estoque pode fazer isso.
+  - Se o histórico mostra que você disse "Temos dois Corollas disponíveis", esses Corollas ainda estão disponíveis a menos que o campo VEÍCULO EM NEGOCIAÇÃO não os liste mais.
+
+▶ CROSS-SELL RESTRITO:
+  - O campo "ALTERNATIVAS DISPONÍVEIS" existe APENAS para referência interna.
+  - IGNORE completamente as alternativas enquanto o cliente estiver perguntando sobre o VEÍCULO EM NEGOCIAÇÃO.
+  - Só mencione alternativas se: (a) o cliente pedir explicitamente outro carro, ou (b) o veículo em negociação não aparece mais no contexto.
 
 [DADOS DE CONTEXTO]
 NOME DO CLIENTE: ${nomeCliente ?? "Não informado"}
 ${enderecoGaragem ? `ENDEREÇO DA LOJA: ${enderecoGaragem}` : ""}
-SEU ESTOQUE ATUAL (Mantenha o foco nestes veículos e em suas descrições):
+ESTOQUE ESTRUTURADO:
 ${context}
 
 FOTO DO CARRO: ${fotoEnviada ? "✅ A foto foi enviada automaticamente pelo sistema ANTES desta mensagem. Sua resposta de texto deve ser EXATAMENTE: 'Segue a foto!' ou 'Segue as fotos!' (escolha conforme o contexto). NADA MAIS sobre a foto — não diga 'o que achou', não descreva o carro, não faça perguntas sobre a imagem." : "❌ Nenhuma foto foi enviada. NUNCA diga que mandou ou que vai mandar foto."}
