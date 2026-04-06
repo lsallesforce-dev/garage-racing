@@ -7,6 +7,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendAvisaMessage, sendAvisaImage, sendAvisaVideo } from "@/lib/avisa";
 import { buscarDadosTransbordo, gerarRelatorioPista } from "@/lib/leads";
 import { hybridVehicleSearch } from "@/lib/hybrid-search";
+import { getCachedHistory, cacheHistory, invalidateHistory } from "@/lib/redis";
 import { Vehicle } from "@/types/vehicle";
 
 type Temperatura = "FRIO" | "MORNO" | "QUENTE";
@@ -251,21 +252,33 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   const context = buildStockContext(topVeiculos, veiculoPrincipal);
   console.log("🚗 CONTEXTO ENVIADO AO AGENTE:\n", context);
 
-  // ── 9. Histórico da Conversa ────────────────────────────────────────────────
+  // ── 9. Histórico da Conversa ──────────────────────────────────────────────────
+  // Estratégia: Redis first → cache hit usa direto | cache miss → Supabase → cacheia resultado
+  // Invalidação: ocorre no step 13 após salvar a resposta do agente
   let historico: any[] = [];
   if (lead?.id) {
-    const { data: msgs } = await supabaseAdmin
-      .from("mensagens")
-      .select("remetente, content")
-      .eq("lead_id", lead.id)
-      .order("created_at", { ascending: false })
-      .limit(15);
+    const cached = await getCachedHistory(tenantUserId, lead.id);
+    if (cached) {
+      historico = cached;
+      console.log(`⚡ [Redis] Cache hit de histórico para lead ${lead.id} (${cached.length} msgs)`);
+    } else {
+      // Cache miss — busca no Supabase e armazena para próximas mensagens
+      const { data: msgs } = await supabaseAdmin
+        .from("mensagens")
+        .select("remetente, content")
+        .eq("lead_id", lead.id)
+        .order("created_at", { ascending: false })
+        .limit(15);
 
-    if (msgs && msgs.length > 0) {
-      historico = msgs.reverse().map((m) => ({
-        role: m.remetente === "usuario" ? "user" : "model",
-        parts: [{ text: m.content }],
-      }));
+      if (msgs && msgs.length > 0) {
+        historico = msgs.reverse().map((m) => ({
+          role: m.remetente === "usuario" ? "user" : "model",
+          parts: [{ text: m.content }],
+        }));
+        // Cacheia para a próxima mensagem deste lead (TTL: 30min)
+        await cacheHistory(tenantUserId, lead.id, historico);
+        console.log(`💾 [Redis] Cache miss — histórico armazenado para lead ${lead.id} (${historico.length} msgs)`);
+      }
     }
   }
 
@@ -532,7 +545,7 @@ CRITÉRIOS DE TEMPERATURA:
   } catch (aiError) {
     console.error("❌ ERRO FATAL NO GEMINI:", aiError);
     aiResponse =
-      "Olá! Tivemos uma pequena instabilidade aqui, mas já estamos de volta. Posso te ajudar com algum carro do nosso pátio? 🚗";
+      "Olá! Tivemos uma pequena instabilidade aqui, mas já estou de volta. Posso te ajudar com algum carro do nosso pátio? 🚗";
   }
 
   // ── 13. Salvar resposta + atualizar lead ─────────────────────────────────────
@@ -549,6 +562,10 @@ CRITÉRIOS DE TEMPERATURA:
         ...(resumo ? { resumo_negociacao: resumo } : {}),
       })
       .eq("id", lead.id);
+
+    // Invalida o cache de histórico após salvar a resposta do agente.
+    // A próxima mensagem do lead buscará histórico atualizado do Supabase.
+    await invalidateHistory(tenantUserId, lead.id);
   }
 
   // ── 14. Transbordo com Briefing (QUENTE) ─────────────────────────────────────

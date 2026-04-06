@@ -14,15 +14,15 @@ import { after } from "next/server";
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { processWhatsAppMessage } from "@/lib/process-whatsapp";
+import { isDuplicateMessage } from "@/lib/redis";
 
 // Vercel Pro: 300s | Hobby: 60s
 // O after() usa o mesmo budget de tempo — resposta vai em ~50ms, sobra tudo para a IA
 export const maxDuration = 300;
 
-// ─── Deduplicação em Memória ──────────────────────────────────────────────────
-// Fase 1: em memória (resiste bem em produção de instância única)
-// Fase 3: migrar para Upstash Redis com TTL de 1h (elimina race conditions em multi-instância)
-const processedIds = new Set<string>();
+// ─── Deduplicação via Redis ─────────────────────────────────────────────────
+// Fase 2: Upstash Redis com SET NX EX — atômico e seguro em multi-instância.
+// Política fail-open: se o Redis estiver offline, a mensagem é processada normalmente.
 
 // ─── Extração de Campos do Payload ───────────────────────────────────────────
 function extractFields(payload: any): {
@@ -183,13 +183,12 @@ export async function POST(req: NextRequest) {
 
     if (fromMe) return NextResponse.json({ status: "ignored_from_me" });
 
-    // ── Deduplicação ──────────────────────────────────────────────────────────
+    // ── Deduplicação Redis (SET NX EX — atômico, cross-instância) ──────────────
     if (messageId) {
-      if (processedIds.has(messageId)) {
+      if (await isDuplicateMessage(tenantUserId!, messageId)) {
+        console.log(`🔁 [Dedup] messageId ${messageId} já processado — ignorando.`);
         return NextResponse.json({ status: "duplicate" });
       }
-      processedIds.add(messageId);
-      if (processedIds.size > 500) processedIds.clear();
     }
 
     if (!rawMessage && !audioUrl) {
