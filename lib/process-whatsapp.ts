@@ -220,7 +220,9 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   }
 
   // ── 7. Busca Híbrida ────────────────────────────────────────────────────────
-  const msgCurta = userMessage.trim().length < 8;
+  // Mensagens de mídia ("Foto", "Video") são intencionalmente curtas — não tratar como msgCurta
+  const isMidiaRequest = /^(foto|fotos|video|vídeo|imagem)s?$/i.test(userMessage.trim());
+  const msgCurta = !isMidiaRequest && userMessage.trim().length < 8;
   const { topVeiculos, hitsTextuais, clientePediuCarroDiferente } = await hybridVehicleSearch(
     userMessage,
     tenantUserId,
@@ -474,7 +476,7 @@ ${enderecoGaragem ? `ENDEREÇO DA LOJA: ${enderecoGaragem}` : ""}
 ESTOQUE ESTRUTURADO:
 ${context}
 
-FOTO DO CARRO: ${fotoEnviada ? "✅ A foto foi enviada automaticamente pelo sistema ANTES desta mensagem. Sua resposta de texto deve ser EXATAMENTE: 'Segue a foto!' ou 'Segue as fotos!' (escolha conforme o contexto). NADA MAIS sobre a foto — não diga 'o que achou', não descreva o carro, não faça perguntas sobre a imagem." : "❌ Nenhuma foto foi enviada. NUNCA diga que mandou ou que vai mandar foto."}
+FOTO DO CARRO: ${fotoEnviada ? "✅ A foto foi enviada automaticamente pelo sistema ANTES desta mensagem. Sua resposta de texto deve ser EXATAMENTE: 'Segue a foto!' ou 'Segue as fotos!' (escolha conforme o contexto). NADA MAIS sobre a foto — não diga 'o que achou', não descreva o carro, não faça perguntas sobre a imagem." : `❌ Nenhuma foto foi enviada. ${clientePediuFoto ? "O cliente pediu foto mas NÃO temos imagem disponível desse veículo no sistema. Responda EXATAMENTE: 'Esse ainda não tem foto disponível, mas posso te passar mais detalhes sobre ele.' NUNCA diga que vai verificar ou que está checando — a resposta é definitiva." : "NUNCA diga que mandou ou que vai mandar foto."}`}
 VÍDEO DO CARRO: ${videoEnviado ? "✅ O vídeo foi enviado automaticamente pelo sistema ANTES desta mensagem. Sua resposta de texto deve ser EXATAMENTE: 'Segue o vídeo!' NADA MAIS — não descreva o vídeo, não faça perguntas sobre ele." : "❌ Nenhum vídeo foi enviado. NUNCA diga que mandou ou que vai mandar vídeo. Se o cliente pedir vídeo e não houver, diga: 'Esse não tem vídeo disponível no momento.'."}
 
 [AÇÃO REQUERIDA]
