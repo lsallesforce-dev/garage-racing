@@ -329,7 +329,7 @@ export default function ConfiguracoesPage() {
                 placeholder="Ex: autozap ou aprove"
                 className="bg-white border flex-1 border-blue-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
               />
-              <p className="text-[10px] text-blue-600 mt-1">Configure na Avisa: <strong>https://autozap.com.br/api/webhook/avisa?token={config.webhook_token || "SEU_TOKEN"}</strong></p>
+              <p className="text-[10px] text-blue-600 mt-1">Configure na Avisa: <strong>https://autozap.digital/api/webhook/avisa?token={config.webhook_token || "SEU_TOKEN"}</strong></p>
 
               <label className="text-[10px] font-black uppercase tracking-widest text-blue-800 mt-3 block">
                 Slug da Vitrine (URL curta)
@@ -345,8 +345,8 @@ export default function ConfiguracoesPage() {
                 Vitrine pública:{" "}
                 <strong>
                   {config.vitrine_slug
-                    ? `${config.vitrine_slug}.autozap.com.br`
-                    : "SEU_SLUG.autozap.com.br"}
+                    ? `${config.vitrine_slug}.autozap.digital`
+                    : "SEU_SLUG.autozap.digital"}
                 </strong>
               </p>
             </div>

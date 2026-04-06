@@ -6,7 +6,7 @@
 //   2. Auth: protege rotas privadas via Supabase SSR
 //
 // Fluxo de subdomínio:
-//   aprove.autozap.com.br/
+//   aprove.autozap.digital/
 //     → isSlugValid("aprove")  →  Redis: vitrine:slug:aprove existe?
 //     → sim  → rewrite para /vitrine/aprove   (URL do usuário não muda)
 //     → não  → redirect para /loja-nao-encontrada?slug=aprove
@@ -16,7 +16,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 // ─── Configuração ─────────────────────────────────────────────────────────────
 
-const MAIN_DOMAIN = "autozap.com.br";
+const MAIN_DOMAIN = "autozap.digital";
 
 // Subdomínios reservados — nunca são tenants de loja
 const IGNORED_SUBDOMAINS = new Set(["www", "app", "api", "admin", "mail", "staging"]);
@@ -72,21 +72,27 @@ export async function proxy(request: NextRequest) {
   if (!isMainDomain) {
     const subdomain = hostname.replace(`.${MAIN_DOMAIN}`, "").split(":")[0];
 
-    if (subdomain && !IGNORED_SUBDOMAINS.has(subdomain)) {
+    // Subdomínios reservados (api, www, admin…) → passthrough sem auth
+    if (subdomain && IGNORED_SUBDOMAINS.has(subdomain)) {
+      return NextResponse.next();
+    }
+
+    if (subdomain) {
       // Valida slug no Redis antes do rewrite
       const valid = await isSlugValid(subdomain);
 
       if (!valid) {
         // Slug não cadastrado → página de erro personalizada
+        // Deriva protocolo do request para evitar hardcode de domínio
+        const protocol = request.url.startsWith("https") ? "https" : "http";
         const notFoundUrl = new URL(
           `/loja-nao-encontrada?slug=${encodeURIComponent(subdomain)}`,
-          // Usa o domínio principal como base para a URL de redirect
-          `https://${MAIN_DOMAIN}`
+          `${protocol}://${MAIN_DOMAIN}`
         );
         return NextResponse.redirect(notFoundUrl, { status: 302 });
       }
 
-      // Rewrite silencioso: URL do usuário continua sendo subdomain.autozap.com.br
+      // Rewrite silencioso: URL do usuário continua sendo subdomain.autozap.digital
       const rewriteUrl = request.nextUrl.clone();
       rewriteUrl.pathname = `/vitrine/${subdomain}${pathname === "/" ? "" : pathname}`;
 
