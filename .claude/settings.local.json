@@ -39,7 +39,11 @@
       "Bash(grep -r \"config_garage\\\\|CREATE TABLE\\\\|ALTER TABLE\" c:UserslsaudDownloadsgarage-racing --include=*.sql --include=*.ts --include=*.tsx --include=*.md)",
       "Bash(grep -r \"INSERT INTO config_garage\\\\|CREATE TABLE config_garage\\\\|upsert\\\\|webhook_token.*=\" c:UserslsaudDownloadsgarage-racingapp --include=*.ts --include=*.tsx)",
       "Bash(xargs grep:*)",
-      "Bash(grep -r \"CREATE TABLE\\\\|INTEGER\\\\|VARCHAR\\\\|TIMESTAMP\\\\|uuid\" c:UserslsaudDownloadsgarage-racing --include=*.sql --include=*.ts --include=*.tsx)"
+      "Bash(grep -r \"CREATE TABLE\\\\|INTEGER\\\\|VARCHAR\\\\|TIMESTAMP\\\\|uuid\" c:UserslsaudDownloadsgarage-racing --include=*.sql --include=*.ts --include=*.tsx)",
+      "Bash(identify /c/Users/lsaud/Downloads/garage-racing/app/icon.png)",
+      "Bash(cp app/favicon.png.png app/icon.png)",
+      "Bash(rm app/favicon.png.png)",
+      "Bash(npx tsc:*)"
     ]
   }
 }

@@ -3,6 +3,10 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { NextRequest, NextResponse } from "next/server";
 
+// Vercel Pro: 300s | Hobby: 60s
+// Análise de vídeo com Gemini Vision pode levar 2-5 min para vídeos grandes
+export const maxDuration = 300;
+
 export async function POST(req: NextRequest) {
   try {
     const { videoUrl, vendedorId } = await req.json();

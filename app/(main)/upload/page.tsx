@@ -17,6 +17,8 @@ export default function UploadPage() {
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [resultadoAnalise, setResultadoAnalise] = useState<Vehicle | null>(null);
+  const [uploadStep, setUploadStep] = useState<string>("");
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   // Instagram
   const [igUrl, setIgUrl] = useState("");
@@ -69,9 +71,11 @@ export default function UploadPage() {
     setVideoFile(file);
     setIsAnalyzing(true);
     setResultadoAnalise(null);
+    setUploadError(null);
 
     try {
-      // 1. Pede signed URL ao servidor (payload pequeno, sem limite)
+      // 1. Pede signed URL ao servidor
+      setUploadStep("Preparando upload...");
       const metaRes = await fetch("/api/upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -83,21 +87,48 @@ export default function UploadPage() {
         throw new Error(metaData.error || "Erro ao obter URL de upload");
       }
 
-      // 2. Upload direto do browser pro Supabase (sem passar pela Vercel)
-      const uploadRes = await fetch(metaData.signedUrl, {
-        method: "PUT",
-        headers: { "Content-Type": file.type },
-        body: file,
-      });
+      // 2. Upload direto com retry (backoff exponencial: 1s, 2s, 4s)
+      setUploadStep("Enviando arquivo...");
+      let uploadOk = false;
+      let lastError = "";
 
-      if (!uploadRes.ok) {
-        throw new Error("Erro ao enviar vídeo para o storage");
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          if (attempt > 1) {
+            const waitSec = attempt - 1;
+            setUploadStep(`Tentativa ${attempt}/3 — aguardando ${waitSec}s...`);
+            await new Promise((r) => setTimeout(r, waitSec * 1000));
+            setUploadStep(`Tentativa ${attempt}/3 — enviando...`);
+          }
+
+          const uploadRes = await fetch(metaData.signedUrl, {
+            method: "PUT",
+            headers: { "Content-Type": file.type },
+            body: file,
+          });
+
+          if (uploadRes.ok) {
+            uploadOk = true;
+            break;
+          }
+          lastError = `HTTP ${uploadRes.status}: ${uploadRes.statusText}`;
+        } catch (err: any) {
+          lastError = err.message || "Erro de rede";
+        }
       }
 
+      if (!uploadOk) {
+        throw new Error(`Upload falhou após 3 tentativas. Último erro: ${lastError}`);
+      }
+
+      // 3. Análise com Gemini Vision (pode demorar 2-5 min para vídeos grandes)
+      setUploadStep("Analisando vídeo com IA... (pode levar alguns minutos)");
       await analisarVideoUrl(metaData.publicUrl);
+      setUploadStep("");
     } catch (error: any) {
       console.error("Processing error:", error);
-      alert("Erro ao processar o vídeo: " + error.message);
+      setUploadError(error.message);
+      setUploadStep("");
     } finally {
       setIsAnalyzing(false);
     }
@@ -202,11 +233,25 @@ export default function UploadPage() {
                       />
 
                       {isAnalyzing ? (
-                        <div className="flex flex-col items-center gap-4">
+                        <div className="flex flex-col items-center gap-4 px-6 text-center">
                           <div className="w-10 h-10 border-2 border-red-600 border-t-transparent rounded-full animate-spin" />
                           <p className="text-[10px] font-black text-red-600 uppercase tracking-widest animate-pulse">
-                            Processando Inteligência...
+                            {uploadStep || "Processando Inteligência..."}
                           </p>
+                        </div>
+                      ) : uploadError ? (
+                        <div className="flex flex-col items-center gap-3 px-6 text-center">
+                          <p className="text-[10px] font-black text-red-600 uppercase tracking-widest">
+                            Falha no upload
+                          </p>
+                          <p className="text-[9px] text-gray-400 leading-relaxed">{uploadError}</p>
+                          <button
+                            type="button"
+                            onClick={() => setUploadError(null)}
+                            className="text-[9px] font-black uppercase tracking-widest text-red-600 underline"
+                          >
+                            Tentar novamente
+                          </button>
                         </div>
                       ) : (
                         <>
