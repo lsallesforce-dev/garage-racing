@@ -19,7 +19,7 @@ import { NextResponse, type NextRequest } from "next/server";
 const MAIN_DOMAIN = "autozap.digital";
 
 // Subdomínios reservados — nunca são tenants de loja
-const IGNORED_SUBDOMAINS = new Set(["www", "app", "api", "admin", "mail", "staging"]);
+const IGNORED_SUBDOMAINS = new Set(["www", "app", "admin", "mail", "staging"]);
 
 // ─── Validação do slug no Redis (via REST API — Edge safe) ────────────────────
 //
@@ -72,7 +72,14 @@ export async function proxy(request: NextRequest) {
   if (!isMainDomain) {
     const subdomain = hostname.replace(`.${MAIN_DOMAIN}`, "").split(":")[0];
 
-    // Subdomínios reservados (api, www, admin…) → passthrough sem auth
+    // Subdomínio `api` → rewrite para /api/* (ex: api.autozap.digital/health → /api/health)
+    if (subdomain === "api") {
+      const rewriteUrl = request.nextUrl.clone();
+      rewriteUrl.pathname = `/api${pathname}`;
+      return NextResponse.rewrite(rewriteUrl);
+    }
+
+    // Demais subdomínios reservados (www, admin…) → passthrough sem auth
     if (subdomain && IGNORED_SUBDOMAINS.has(subdomain)) {
       return NextResponse.next();
     }
