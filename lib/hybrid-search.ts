@@ -84,7 +84,7 @@ async function textSearch(tokens: string[], tenantUserId: string): Promise<Vehic
     const orClauses = modelTokens
       .map(
         (t) =>
-          `marca.ilike.%${t}%,modelo.ilike.%${t}%,versao.ilike.%${t}%,categoria.ilike.%${t}%,tags_busca.ilike.%${t}%`
+          `marca.ilike.%${t}%,modelo.ilike.%${t}%,versao.ilike.%${t}%,categoria.ilike.%${t}%,tags_busca.ilike.%${t}%,cor.ilike.%${t}%`
       )
       .join(",");
 
@@ -139,6 +139,9 @@ async function textSearch(tokens: string[], tenantUserId: string): Promise<Vehic
     const anoModelo = String((v as any).ano_modelo || v.ano || "");
     const ano = String(v.ano || "");
 
+    const corNorm = normalizeStr(v.cor || "");
+    const versaoNorm = normalizeStr(v.versao || "");
+
     for (const token of allTokens) {
       // Match em modelo
       if (modeloNorm === token) score += 100;
@@ -149,6 +152,13 @@ async function textSearch(tokens: string[], tenantUserId: string): Promise<Vehic
       if (marcaNorm === token) score += 80;
       else if (marcaNorm.startsWith(token)) score += 40;
       else if (marcaNorm.includes(token)) score += 20;
+
+      // Match em cor (boost alto — "corolla prata" deve preferir o prata)
+      if (corNorm === token) score += 95;
+      else if (corNorm.includes(token)) score += 60;
+
+      // Match em versão
+      if (versaoNorm.includes(token)) score += 40;
 
       // Match em ano (boost extra — "corolla 2016" deve preferir o 2016)
       if (isYearToken(token) && (anoModelo === token || ano === token)) score += 90;
