@@ -219,7 +219,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
 
   // ── 7. Busca Híbrida ────────────────────────────────────────────────────────
   const msgCurta = userMessage.trim().length < 8;
-  const { topVeiculos, clientePediuCarroDiferente } = await hybridVehicleSearch(
+  const { topVeiculos, hitsTextuais, clientePediuCarroDiferente } = await hybridVehicleSearch(
     userMessage,
     tenantUserId,
     veiculoPrincipal,
@@ -333,7 +333,12 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
     gatilhosFoto.some((g) => mensagemLower.includes(g)) &&
     !exclusoesFoto.some((e) => mensagemLower.includes(e));
 
-  const veiculoParaFoto = veiculoPrincipal ?? topVeiculos[0] ?? null;
+  // Prioridade de foto: carro explicitamente mencionado na msg → principal → top semântico
+  // Usa hitsTextuais[0] quando o cliente menciona um carro específico (ex: "foto do 2016")
+  const veiculoParaFoto =
+    (clientePediuFoto && hitsTextuais.length > 0)
+      ? hitsTextuais[0]
+      : veiculoPrincipal ?? topVeiculos[0] ?? null;
   let fotoEnviada = false;
 
   if (clientePediuFoto && veiculoParaFoto) {
@@ -368,7 +373,11 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   ];
   const clientePediuVideo = gatilhosVideo.some((g) => mensagemLower.includes(g));
 
-  const veiculoParaVideo = veiculoPrincipal ?? topVeiculos[0] ?? null;
+  // Mesma lógica da foto: carro explicitamente mencionado tem prioridade
+  const veiculoParaVideo =
+    (clientePediuVideo && hitsTextuais.length > 0)
+      ? hitsTextuais[0]
+      : veiculoPrincipal ?? topVeiculos[0] ?? null;
   let videoEnviado = false;
 
   if (clientePediuVideo && veiculoParaVideo) {
