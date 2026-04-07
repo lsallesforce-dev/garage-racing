@@ -514,8 +514,17 @@ ${enderecoGaragem ? `ENDEREÇO DA LOJA: ${enderecoGaragem}` : ""}
 ESTOQUE ESTRUTURADO:
 ${context}
 
-FOTO DO CARRO: ${fotoEnviada ? "✅ A foto foi enviada automaticamente pelo sistema ANTES desta mensagem. Sua resposta de texto deve ser EXATAMENTE: 'Segue a foto!' ou 'Segue as fotos!' (escolha conforme o contexto). NADA MAIS sobre a foto — não diga 'o que achou', não descreva o carro, não faça perguntas sobre a imagem." : `❌ Nenhuma foto foi enviada. ${clientePediuFoto ? "O cliente pediu foto mas NÃO temos imagem disponível desse veículo no sistema. Responda EXATAMENTE: 'Esse ainda não tem foto disponível, mas posso te passar mais detalhes sobre ele.' NUNCA diga que vai verificar ou que está checando — a resposta é definitiva." : "NUNCA diga que mandou ou que vai mandar foto."}`}
-VÍDEO DO CARRO: ${videoEnviado ? "✅ O vídeo foi enviado automaticamente pelo sistema ANTES desta mensagem. Sua resposta de texto deve ser EXATAMENTE: 'Segue o vídeo!' NADA MAIS — não descreva o vídeo, não faça perguntas sobre ele." : "❌ Nenhum vídeo foi enviado. NUNCA diga que mandou ou que vai mandar vídeo. Se o cliente pedir vídeo e não houver, diga: 'Esse não tem vídeo disponível no momento.'."}
+⚠️ REGRA ABSOLUTA DE MÍDIA — LEIA ANTES DE GERAR QUALQUER RESPOSTA:
+FOTO: ${fotoEnviada
+  ? "✅ FOTO ENVIADA. Sua resposta deve ser ÚNICA E EXCLUSIVAMENTE: 'Segue a foto!' — ZERO palavras a mais, ZERO menção ao carro, ZERO perguntas. Qualquer desvio é uma falha grave."
+  : clientePediuFoto
+    ? "❌ FOTO NÃO ENVIADA. Não há foto desse veículo no sistema. Responda ÚNICA E EXCLUSIVAMENTE: 'Esse ainda não tem foto disponível, mas posso te passar mais detalhes.' PROIBIDO dizer que vai verificar."
+    : "❌ FOTO NÃO ENVIADA. NUNCA mencione foto nesta resposta."}
+VÍDEO: ${videoEnviado
+  ? "✅ VÍDEO ENVIADO. Sua resposta deve ser ÚNICA E EXCLUSIVAMENTE: 'Segue o vídeo!' — ZERO palavras a mais, ZERO menção ao modelo ou ano, ZERO perguntas. Qualquer desvio é uma falha grave."
+  : clientePediuVideo
+    ? "❌ VÍDEO NÃO ENVIADO. Não há vídeo desse veículo. Responda: 'Esse não tem vídeo disponível no momento.'"
+    : "❌ VÍDEO NÃO ENVIADO. NUNCA mencione vídeo nesta resposta."}
 
 [AÇÃO REQUERIDA]
 Você DEVE retornar a resposta estritamente no formato JSON, usando a seguinte estrutura exata:
