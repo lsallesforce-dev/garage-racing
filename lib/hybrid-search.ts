@@ -240,13 +240,28 @@ export async function hybridVehicleSearch(
 
   // ── Caso 1: Cliente mencionou um carro DIFERENTE do vinculado ─────────────
   // Ex: vinculado = Strada, cliente diz "quero ver o Gol"
+  const pedindoOutro = /\boutro\b|\bo outro\b|\besse outro\b|\baquele outro\b/i.test(userMessage);
+
+  // "outro corolla" com múltiplos Corollas → clientePediuCarroDiferente deve ser true
+  // para que o veiculo_id seja atualizado para o carro alternativo
+  const variantesOutros = veiculoPrincipal
+    ? hitsTextuais.filter((h) => h.id !== veiculoPrincipal.id)
+    : [];
+  const pedindoVariante = pedindoOutro && variantesOutros.length > 0;
+
   const clientePediuCarroDiferente =
     temHitsTextuais &&
-    (!veiculoPrincipal || !hitsTextuais.some((h) => h.id === veiculoPrincipal.id));
+    (!veiculoPrincipal ||
+      !hitsTextuais.some((h) => h.id === veiculoPrincipal.id) ||
+      pedindoVariante);
 
   if (clientePediuCarroDiferente) {
+    // Se pediu "outro X" → prioriza os que não são o principal
+    const ordered = pedindoVariante
+      ? [...variantesOutros, ...hitsTextuais.filter((h) => h.id === veiculoPrincipal!.id)]
+      : hitsTextuais;
     return {
-      topVeiculos: hitsTextuais.slice(0, 5),
+      topVeiculos: ordered.slice(0, 5),
       hitsTextuais,
       clientePediuCarroDiferente: true,
     };
