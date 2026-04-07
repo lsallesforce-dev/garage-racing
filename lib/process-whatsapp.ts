@@ -87,9 +87,8 @@ function formatVehicleCard(v: Vehicle): string {
     : "Não informada";
   const cor = v.cor || "Não informada";
   const versao = v.versao ? ` ${v.versao}` : "";
-  const linkFoto = v.capa_marketing_url
-    ? `[Link da Foto: ${v.capa_marketing_url}]`
-    : "";
+  const temFoto = v.capa_marketing_url || (v as any).fotos?.[0] ? "Sim" : "Não";
+  const temVideo = (v as any).video_url ? "Sim" : "Não";
   const detalhes =
     [
       (v as any).relatorio_ia || v.detalhes_inspecao,
@@ -118,7 +117,7 @@ function formatVehicleCard(v: Vehicle): string {
     .join(" | ");
 
   return (
-    `- ${v.marca} ${v.modelo}${versao} (${ano}) | Cor: ${cor} | KM: ${km} | Preço: ${preco} ${linkFoto}\n` +
+    `[ID:${v.id}] ${v.marca} ${v.modelo}${versao} (${ano}) | Cor: ${cor} | KM: ${km} | Preço: ${preco} | Foto: ${temFoto} | Vídeo: ${temVideo}\n` +
     (ficha ? `  Ficha: ${ficha}\n` : "") +
     `  Detalhes: ${detalhes}`
   );
@@ -134,17 +133,17 @@ function buildStockContext(topVeiculos: Vehicle[], veiculoPrincipal: Vehicle | n
   const sections: string[] = [];
 
   if (veiculoPrincipal) {
-    // Deixa explícito qual carro está em negociação — elimina confusão da IA
     sections.push(
-      `=== VEÍCULO EM NEGOCIAÇÃO (cliente está interessado neste — FOCO TOTAL) ===\n` +
+      `=== VEÍCULO EM FOCO — ID ATUAL: ${veiculoPrincipal.id} ===\n` +
+      `⚠️ REGRA: Toda referência a foto, vídeo, detalhes ou preço se aplica a ESTE carro (ID acima), a menos que o cliente mencione explicitamente outro.\n` +
       formatVehicleCard(veiculoPrincipal)
     );
 
     const alternativas = topVeiculos.filter((v) => v.id !== veiculoPrincipal.id);
     if (alternativas.length > 0) {
       sections.push(
-        `\n=== ALTERNATIVAS DISPONÍVEIS (mencionar SOMENTE se cliente mudar de interesse ou pedir explicitamente) ===\n` +
-        `IMPORTANTE: Os preços abaixo são REAIS e estão no sistema — responda IMEDIATAMENTE se perguntado, sem dizer que vai verificar.\n` +
+        `\n=== OUTROS VEÍCULOS DISPONÍVEIS ===\n` +
+        `Mencione apenas se o cliente pedir outro carro. Preços são REAIS — responda imediatamente se perguntado.\n` +
         alternativas.map(formatVehicleCard).join("\n\n")
       );
     }
@@ -501,9 +500,15 @@ Siga estritamente este comportamento para as seguintes situações:
 [REGRA ABSOLUTA — INTEGRIDADE DO ESTOQUE]
 Esta seção tem prioridade máxima. NUNCA a viole, independente de qualquer outra instrução.
 
-▶ VERDADE ÚNICA: O campo "VEÍCULO EM NEGOCIAÇÃO" abaixo é a fonte da verdade sobre o que está disponível.
-  - Se um carro aparece em "VEÍCULO EM NEGOCIAÇÃO", ele está DISPONÍVEL. Ponto final.
-  - NUNCA diga que um carro "foi vendido", "saiu do estoque" ou "não está mais disponível" se ele aparece em "VEÍCULO EM NEGOCIAÇÃO" nesta mensagem.
+▶ FOCO NO CARRO ATUAL — ÂNCORA POR ID:
+  - O contexto marca o "VEÍCULO EM FOCO" com seu ID único. Este é o carro da conversa atual.
+  - TODA pergunta sobre foto, vídeo, km, preço, cor, motor se refere a ESTE carro — a menos que o cliente mencione explicitamente outro modelo/ano.
+  - Se o cliente perguntar "tem foto?", "tem vídeo?", é sobre o VEÍCULO EM FOCO — NUNCA ofereça mídia do carro em foco se o cliente acabou de perguntar sobre um carro diferente.
+  - NUNCA ofereça espontaneamente foto ou vídeo de um carro quando o cliente está perguntando sobre outro. Isso gera confusão.
+
+▶ VERDADE ÚNICA: O "VEÍCULO EM FOCO" abaixo é a fonte da verdade sobre o carro em negociação.
+  - Se um carro aparece no contexto, ele está DISPONÍVEL. Ponto final.
+  - NUNCA diga que um carro "foi vendido", "saiu do estoque" ou "não está mais disponível" se ele aparece no contexto desta mensagem.
   - Se o cliente perguntar algo que você não sabe sobre o carro (ex: número de donos, cor dos bancos), use a frase padrão: "Deixa eu confirmar aqui com o pessoal do pátio." NUNCA invente que o carro sumiu.
 
 ▶ PROIBIÇÃO ABSOLUTA DE CONTRADIÇÃO:
