@@ -49,7 +49,9 @@
       "Bash(curl -s 'https://rjcdkasnipxcdrlmkskm.supabase.co/rest/v1/?select=*' -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJqY2RrYXNuaXB4Y2RybG1rc2ttIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Mjk3MjI1MiwiZXhwIjoyMDg4NTQ4MjUyfQ.p2yXaLISuwfYOhFWLE3jUoazX2B1k3jQpmEdtg8TJw0' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJqY2RrYXNuaXB4Y2RybG1rc2ttIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Mjk3MjI1MiwiZXhwIjoyMDg4NTQ4MjUyfQ.p2yXaLISuwfYOhFWLE3jUoazX2B1k3jQpmEdtg8TJw0')",
       "Bash(curl -s https://api.supabase.com/v1/projects/rjcdkasnipxcdrlmkskm/database/query -H 'Authorization: Bearer sbp_a28110ce0d1bd53f4494a7ac3981dd0af528a1c0' -H 'Content-Type: application/json' -d '{\"query\": \"DROP POLICY IF EXISTS \\\\\"user vê própria config\\\\\" ON public.config_garage;\"}')",
       "Bash(node -e \"const {Redis} = require\\('@upstash/redis'\\); console.log\\(Object.getOwnPropertyNames\\(Redis.prototype\\).filter\\(m => m === 'del'\\)\\)\")",
-      "Bash(npx -y tsx -e \"import {Redis} from '@upstash/redis'; const r = new Redis\\({url:'x',token:'x'}\\); console.log\\(typeof r.del\\)\")"
+      "Bash(npx -y tsx -e \"import {Redis} from '@upstash/redis'; const r = new Redis\\({url:'x',token:'x'}\\); console.log\\(typeof r.del\\)\")",
+      "Bash(curl -s \"https://api.vercel.com/v1/integrations/deploy/prj_VIb8X4dtzzeWnIapXtF8pJb29Lzd/7AHt1kgHBX\")",
+      "Bash(chmod +x \"c:/Users/lsaud/Downloads/garage-racing/.git/hooks/post-push\")"
     ]
   }
 }
