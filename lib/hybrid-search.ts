@@ -291,6 +291,45 @@ export async function hybridVehicleSearch(
       };
     }
 
+    // Cliente pediu "outro/outra" sem mencionar modelo específico
+    // → busca variantes da mesma marca+modelo diretamente no banco
+    if (pedindoOutro) {
+      const { data: variantes } = await supabaseAdmin
+        .from("veiculos")
+        .select("*")
+        .eq("status_venda", "DISPONIVEL")
+        .eq("user_id", tenantUserId)
+        .ilike("modelo", `%${veiculoPrincipal.modelo}%`)
+        .neq("id", veiculoPrincipal.id)
+        .limit(5);
+
+      if (variantes && variantes.length > 0) {
+        return {
+          topVeiculos: [...(variantes as Vehicle[]), veiculoPrincipal].slice(0, 5),
+          hitsTextuais: variantes as Vehicle[],
+          clientePediuCarroDiferente: true,
+        };
+      }
+
+      // Nenhuma variante do mesmo modelo → busca mesma marca, mesma categoria
+      const { data: mesmaMarca } = await supabaseAdmin
+        .from("veiculos")
+        .select("*")
+        .eq("status_venda", "DISPONIVEL")
+        .eq("user_id", tenantUserId)
+        .ilike("marca", `%${veiculoPrincipal.marca}%`)
+        .neq("id", veiculoPrincipal.id)
+        .limit(5);
+
+      if (mesmaMarca && mesmaMarca.length > 0) {
+        return {
+          topVeiculos: [...(mesmaMarca as Vehicle[]), veiculoPrincipal].slice(0, 5),
+          hitsTextuais: mesmaMarca as Vehicle[],
+          clientePediuCarroDiferente: true,
+        };
+      }
+    }
+
     // Sem hits textuais → semântica como complemento, mesma categoria
     const categoriaAtual = (veiculoPrincipal as any).categoria as string | undefined;
     const semanticos = await semanticSearch(userMessage, tenantUserId, 0.40, 5);
