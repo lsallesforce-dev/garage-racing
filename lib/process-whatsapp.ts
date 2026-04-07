@@ -405,17 +405,24 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
     "historico", "histórico", "comprovante", "licenciamento",
   ];
 
-  // Detecta confirmação (sim/envia/ok) quando agente ofereceu foto/vídeo
+  // ── 11b. Enviar Vídeo ───────────────────────────────────────────────────────
+  const gatilhosVideo = [
+    "vídeo", "video", "ver o video", "manda o video", "tem video",
+    "filmagem", "ver o vídeo", "manda o vídeo", "tem vídeo",
+    "manda o vídeo", "envia o vídeo", "envia o video", "me manda o video", "me manda o vídeo",
+  ];
+
+  // Confirmação ("sim/pode/ok") é válida somente se a msg anterior do cliente pediu foto ou vídeo
   const msgConfirmacao = /^(sim|envia|manda|pode|quero|vai|claro|ok|isso|bora|manda sim|pode sim)$/i.test(userMessage.trim());
-  const ultimaMsgAgente = historico.filter((h: any) => h.role === "model").slice(-1)[0]?.parts?.[0]?.text ?? "";
-  const agenteOfereceufoto = /foto|imagem|te envio|posso enviar|vou enviar|vou mandar/i.test(ultimaMsgAgente);
-  const agenteOfereceuvideo = /vídeo|video|te envio|posso enviar|vou enviar|vou mandar/i.test(ultimaMsgAgente);
+  const ultimaMsgCliente = historico.filter((h: any) => h.role === "user").slice(-2, -1)[0]?.parts?.[0]?.text?.toLowerCase() ?? "";
+  const clientePediuFotoAntes = gatilhosFoto.some((g) => ultimaMsgCliente.includes(g));
+  const clientePediuVideoAntes = gatilhosVideo.some((g) => ultimaMsgCliente.includes(g));
 
   // Detecta pedido de fotos de MÚLTIPLOS carros ("foto deles", "de ambos", "dos dois", "de cada um")
   const pedindoFotosMultiplos = /\b(deles|delas|dos dois|das duas|de ambos|de todos|de cada|de cada um)\b/i.test(mensagemLower);
 
   const clientePediuFoto =
-    (gatilhosFoto.some((g) => mensagemLower.includes(g)) || (msgConfirmacao && agenteOfereceufoto)) &&
+    (gatilhosFoto.some((g) => mensagemLower.includes(g)) || (msgConfirmacao && clientePediuFotoAntes)) &&
     !exclusoesFoto.some((e) => mensagemLower.includes(e));
 
   let fotoEnviada = false;
@@ -452,14 +459,9 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   }
 
   // ── 11b. Enviar Vídeo ───────────────────────────────────────────────────────
-  const gatilhosVideo = [
-    "vídeo", "video", "ver o video", "manda o video", "tem video",
-    "filmagem", "ver o vídeo", "manda o vídeo", "tem vídeo",
-    "manda o vídeo", "envia o vídeo", "envia o video", "me manda o video", "me manda o vídeo",
-  ];
   const clientePediuVideo =
     gatilhosVideo.some((g) => mensagemLower.includes(g)) ||
-    (msgConfirmacao && agenteOfereceuvideo && !agenteOfereceufoto);
+    (msgConfirmacao && clientePediuVideoAntes && !clientePediuFotoAntes);
 
   let videoEnviado = false;
 
@@ -525,6 +527,7 @@ Siga estritamente este comportamento para as seguintes situações:
    ⚠️ AUTOCORREÇÃO DE LOOP: Se o histórico mostra que você disse "vou verificar" para um dado que AGORA está no contexto, corrija-se: "Consegui confirmar aqui! O [dado] é [valor]." PROIBIDO continuar o loop se o dado está disponível.
 4. FOCO E CONTINUIDADE: Se o cliente mandar mensagens curtas ou vagas como "?", "E aí?", "Mas e a...", "E o outro?", mantenha o foco no ÚLTIMO veículo que estavam conversando. NUNCA introduza um carro diferente do estoque sem que o cliente tenha pedido explicitamente. Se não entender a mensagem, peça gentilmente para reformular.
    ⚠️ TROCA DE CARRO: Quando o cliente pedir explicitamente outro carro ("tem outro?", "e o XEI?", "tem algum outro corolla?"), sua resposta deve falar APENAS do novo carro. PROIBIDO mencionar o carro anterior ou o que já foi enviado (fotos/vídeos já enviados não precisam ser anunciados de novo). Vá direto: "Sim, temos o Corolla XEI 2016 prata, com 20.000 km, por R$ 85.000."
+   ⚠️ PROIBIDO OFERECER MÍDIA: NUNCA diga "vou te enviar a foto", "já te mando o vídeo", "tenho fotos e já te envio" ou qualquer variação. O sistema envia foto e vídeo automaticamente quando o cliente pede. Sua resposta de texto NUNCA deve mencionar envio de mídia — responda apenas com informações do carro.
 5. CARRO NA TROCA: Se perguntar se pega troca, explique que sim, mas que o carro precisa ser avaliado presencialmente. Use suas palavras, não uma frase decorada.
 6. VALOR DA TROCA: Nunca estime o valor do carro do cliente. Oriente que só é possível após avaliação do nosso avaliador presencial.
 7. FINANCIAMENTO: Se perguntar se financia, confirme que sim e pergunte qual valor o cliente pensa em financiar. Nunca peça CPF ou dados pessoais.
