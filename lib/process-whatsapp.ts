@@ -621,7 +621,8 @@ CRITÉRIOS DE TEMPERATURA:
 
         // Atualiza veiculo_id do lead com base no foco identificado pelo Gemini
         const veiculoIdFoco = parsed.veiculo_id_foco;
-        if (veiculoIdFoco && veiculoIdFoco !== "null" && lead && veiculoIdFoco !== veiculoIdAnterior) {
+        const isValidUuid = typeof veiculoIdFoco === "string" && veiculoIdFoco.length === 36;
+        if (isValidUuid && lead && veiculoIdFoco !== veiculoIdAnterior) {
           console.log(`🎯 Gemini identificou foco: ${veiculoIdFoco} (anterior: ${veiculoIdAnterior})`);
           await supabaseAdmin.from("leads").update({ veiculo_id: veiculoIdFoco }).eq("id", lead.id);
         }
