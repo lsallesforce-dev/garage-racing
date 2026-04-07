@@ -213,6 +213,25 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
     return;
   }
 
+  // !reset — limpa cache Redis + veiculo_id do lead (útil para testes)
+  if (isAuthorized && userMessage.trim().toLowerCase() === "!reset") {
+    const { data: leadReset } = await supabaseAdmin
+      .from("leads")
+      .select("id")
+      .eq("wa_id", phone)
+      .eq("user_id", tenantUserId)
+      .single();
+    if (leadReset) {
+      await invalidateHistory(tenantUserId, leadReset.id);
+      await supabaseAdmin
+        .from("leads")
+        .update({ veiculo_id: null, status: "FRIO", resumo_negociacao: null })
+        .eq("id", leadReset.id);
+    }
+    await sendAvisaMessage(phone, "✅ Reset completo. Cache e foco do lead limpos.");
+    return;
+  }
+
   // ── 3. Lead + salvar mensagem do usuário ────────────────────────────────────
   const { data: lead } = await supabaseAdmin
     .from("leads")
