@@ -15,7 +15,9 @@ const STOP_WORDS = new Set([
   "teu", "tua", "seu", "sua", "meu", "minha",
   // Verbos comuns (jamais serão carros)
   "tem", "ter", "foi", "vai", "vou", "ver", "vem", "sao", "sou", "ser",
-  "esta", "estou", "era", "quer", "mais",
+  "esta", "estou", "era", "quer", "mais", "vi", "vi", "tinha", "tive",
+  "tinha", "teria", "tivesse", "faz", "fez", "fez", "deu", "diz", "disse",
+  "fica", "ficou", "ficaria", "entra", "entrou",
   // Verbos de intenção (nunca são modelos)
   "quero", "gostaria", "tenho", "preciso", "busco", "procuro", "queria",
   // Saudações e interjeições

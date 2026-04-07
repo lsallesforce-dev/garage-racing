@@ -386,12 +386,12 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
     gatilhosFoto.some((g) => mensagemLower.includes(g)) &&
     !exclusoesFoto.some((e) => mensagemLower.includes(e));
 
-  // Prioridade de foto: carro explicitamente mencionado na msg → principal → top semântico
-  // Usa hitsTextuais[0] quando o cliente menciona um carro específico (ex: "foto do 2016")
+  // Prioridade de foto: carro explicitamente mencionado na msg → principal → nenhum
+  // NUNCA usa topVeiculos[0] como fallback: evita enviar foto do carro errado
   const veiculoParaFoto =
     (clientePediuFoto && hitsTextuais.length > 0)
       ? hitsTextuais[0]
-      : veiculoPrincipal ?? topVeiculos[0] ?? null;
+      : veiculoPrincipal ?? null;
   let fotoEnviada = false;
 
   if (clientePediuFoto && veiculoParaFoto) {
@@ -427,10 +427,11 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   const clientePediuVideo = gatilhosVideo.some((g) => mensagemLower.includes(g));
 
   // Mesma lógica da foto: carro explicitamente mencionado tem prioridade
+  // NUNCA usa topVeiculos[0] como fallback: evita enviar vídeo do carro errado
   const veiculoParaVideo =
     (clientePediuVideo && hitsTextuais.length > 0)
       ? hitsTextuais[0]
-      : veiculoPrincipal ?? topVeiculos[0] ?? null;
+      : veiculoPrincipal ?? null;
   let videoEnviado = false;
 
   if (clientePediuVideo && veiculoParaVideo) {
