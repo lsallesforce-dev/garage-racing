@@ -293,12 +293,13 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
     clientePediuCarroDiferente,
   });
 
-  // Atualiza veiculo_id do lead se mudou
+  // Atualiza veiculo_id do lead se mudou + sincroniza veiculoPrincipal local
   if (lead && clientePediuCarroDiferente && topVeiculos[0]) {
     await supabaseAdmin
       .from("leads")
       .update({ veiculo_id: topVeiculos[0].id })
       .eq("id", lead.id);
+    veiculoPrincipal = topVeiculos[0]; // sincroniza local — contexto já mostra o novo carro em foco
   } else if (lead && !veiculoPrincipal && topVeiculos[0]) {
     await supabaseAdmin
       .from("leads")
