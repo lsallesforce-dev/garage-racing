@@ -377,13 +377,21 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   // ── 11. Enviar Foto ─────────────────────────────────────────────────────────
   const gatilhosFoto = [
     "foto", "fotos", "imagem", "manda foto", "ver o carro", "tem foto", "tem imagem",
+    "manda a foto", "manda as foto", "quero ver", "me manda", "me envia", "envia a foto",
+    "envia as foto", "me passa a foto", "me passa as foto",
   ];
   const exclusoesFoto = [
     "documento", "crlv", "nota fiscal", "laudo", "manual", "revisão",
     "historico", "histórico", "comprovante", "licenciamento",
   ];
+  // Detecta confirmação (sim/envia/ok/manda) quando agente ofereceu foto na última mensagem
+  const msgConfirmacao = /^(sim|envia|manda|pode|quero|vai|claro|ok|isso|bora|manda sim|pode sim)$/i.test(userMessage.trim());
+  const ultimaMsgAgente = historico.filter((h: any) => h.role === "model").slice(-1)[0]?.parts?.[0]?.text ?? "";
+  const agenteOfereceufoto = /foto|imagem|te envio|posso enviar|vou enviar|vou mandar/i.test(ultimaMsgAgente);
+  const agenteOfereceuvideo = /vídeo|video|te envio|posso enviar|vou enviar|vou mandar/i.test(ultimaMsgAgente);
+
   const clientePediuFoto =
-    gatilhosFoto.some((g) => mensagemLower.includes(g)) &&
+    (gatilhosFoto.some((g) => mensagemLower.includes(g)) || (msgConfirmacao && agenteOfereceufoto)) &&
     !exclusoesFoto.some((e) => mensagemLower.includes(e));
 
   // Prioridade de foto: carro explicitamente mencionado na msg → principal → nenhum
@@ -423,8 +431,11 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   const gatilhosVideo = [
     "vídeo", "video", "ver o video", "manda o video", "tem video",
     "filmagem", "ver o vídeo", "manda o vídeo", "tem vídeo",
+    "manda o vídeo", "envia o vídeo", "envia o video", "me manda o video", "me manda o vídeo",
   ];
-  const clientePediuVideo = gatilhosVideo.some((g) => mensagemLower.includes(g));
+  const clientePediuVideo =
+    gatilhosVideo.some((g) => mensagemLower.includes(g)) ||
+    (msgConfirmacao && agenteOfereceuvideo && !agenteOfereceufoto);
 
   // Mesma lógica da foto: carro explicitamente mencionado tem prioridade
   // NUNCA usa topVeiculos[0] como fallback: evita enviar vídeo do carro errado
