@@ -384,46 +384,50 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
     "documento", "crlv", "nota fiscal", "laudo", "manual", "revisão",
     "historico", "histórico", "comprovante", "licenciamento",
   ];
-  // Detecta confirmação (sim/envia/ok/manda) quando agente ofereceu foto na última mensagem
+
+  // Detecta confirmação (sim/envia/ok) quando agente ofereceu foto/vídeo
   const msgConfirmacao = /^(sim|envia|manda|pode|quero|vai|claro|ok|isso|bora|manda sim|pode sim)$/i.test(userMessage.trim());
   const ultimaMsgAgente = historico.filter((h: any) => h.role === "model").slice(-1)[0]?.parts?.[0]?.text ?? "";
   const agenteOfereceufoto = /foto|imagem|te envio|posso enviar|vou enviar|vou mandar/i.test(ultimaMsgAgente);
   const agenteOfereceuvideo = /vídeo|video|te envio|posso enviar|vou enviar|vou mandar/i.test(ultimaMsgAgente);
 
+  // Detecta pedido de fotos de MÚLTIPLOS carros ("foto deles", "de ambos", "dos dois", "de cada um")
+  const pedindoFotosMultiplos = /\b(deles|delas|dos dois|das duas|de ambos|de todos|de cada|de cada um)\b/i.test(mensagemLower);
+
   const clientePediuFoto =
     (gatilhosFoto.some((g) => mensagemLower.includes(g)) || (msgConfirmacao && agenteOfereceufoto)) &&
     !exclusoesFoto.some((e) => mensagemLower.includes(e));
 
-  // Prioridade de foto: carro explicitamente mencionado na msg → principal → nenhum
-  // NUNCA usa topVeiculos[0] como fallback: evita enviar foto do carro errado
-  const veiculoParaFoto =
-    (clientePediuFoto && hitsTextuais.length > 0)
-      ? hitsTextuais[0]
-      : veiculoPrincipal ?? null;
   let fotoEnviada = false;
 
-  if (clientePediuFoto && veiculoParaFoto) {
-    const fotoUrl =
-      veiculoParaFoto.capa_marketing_url ??
-      (veiculoParaFoto as any).fotos?.[0] ??
-      null;
-    if (fotoUrl) {
+  if (clientePediuFoto) {
+    // Pedido de múltiplos: envia fotos de todos os veículos do contexto
+    const veiculosParaFoto: Vehicle[] = pedindoFotosMultiplos
+      ? topVeiculos.slice(0, 4) // máximo 4 para não spammar
+      : hitsTextuais.length > 0
+        ? [hitsTextuais[0]]
+        : veiculoPrincipal
+          ? [veiculoPrincipal]
+          : [];
+
+    for (const v of veiculosParaFoto) {
+      const fotoUrl = v.capa_marketing_url ?? (v as any).fotos?.[0] ?? null;
+      if (!fotoUrl) continue;
       try {
         const imgResp = await fetch(fotoUrl);
         if (imgResp.ok) {
           const base64 = Buffer.from(await imgResp.arrayBuffer()).toString("base64");
           await sendAvisaImage(phone, base64);
           fotoEnviada = true;
-          if (lead && veiculoParaFoto.id !== veiculoIdAnterior) {
-            await supabaseAdmin
-              .from("leads")
-              .update({ veiculo_id: veiculoParaFoto.id })
-              .eq("id", lead.id);
-          }
         }
       } catch (e) {
-        console.warn("⚠️ Falha ao enviar foto:", e);
+        console.warn(`⚠️ Falha ao enviar foto de ${v.marca} ${v.modelo}:`, e);
       }
+    }
+
+    // Atualiza veiculo_id do lead para o carro principal enviado (primeiro da lista se único)
+    if (fotoEnviada && !pedindoFotosMultiplos && veiculosParaFoto[0] && lead && veiculosParaFoto[0].id !== veiculoIdAnterior) {
+      await supabaseAdmin.from("leads").update({ veiculo_id: veiculosParaFoto[0].id }).eq("id", lead.id);
     }
   }
 
@@ -437,28 +441,29 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
     gatilhosVideo.some((g) => mensagemLower.includes(g)) ||
     (msgConfirmacao && agenteOfereceuvideo && !agenteOfereceufoto);
 
-  // Mesma lógica da foto: carro explicitamente mencionado tem prioridade
-  // NUNCA usa topVeiculos[0] como fallback: evita enviar vídeo do carro errado
-  const veiculoParaVideo =
-    (clientePediuVideo && hitsTextuais.length > 0)
-      ? hitsTextuais[0]
-      : veiculoPrincipal ?? null;
   let videoEnviado = false;
 
-  if (clientePediuVideo && veiculoParaVideo) {
-    const videoUrl = (veiculoParaVideo as any).video_url ?? null;
-    if (videoUrl) {
-      try {
-        await sendAvisaVideo(phone, videoUrl);
-        videoEnviado = true;
-        if (lead && veiculoParaVideo.id !== veiculoIdAnterior) {
-          await supabaseAdmin
-            .from("leads")
-            .update({ veiculo_id: veiculoParaVideo.id })
-            .eq("id", lead.id);
+  if (clientePediuVideo) {
+    const veiculoParaVideo =
+      hitsTextuais.length > 0
+        ? hitsTextuais[0]
+        : veiculoPrincipal ?? null;
+
+    if (veiculoParaVideo) {
+      const videoUrl = (veiculoParaVideo as any).video_url ?? null;
+      if (videoUrl) {
+        try {
+          await sendAvisaVideo(phone, videoUrl);
+          videoEnviado = true;
+          if (lead && veiculoParaVideo.id !== veiculoIdAnterior) {
+            await supabaseAdmin
+              .from("leads")
+              .update({ veiculo_id: veiculoParaVideo.id })
+              .eq("id", lead.id);
+          }
+        } catch (e) {
+          console.warn("⚠️ Falha ao enviar vídeo:", e);
         }
-      } catch (e) {
-        console.warn("⚠️ Falha ao enviar vídeo:", e);
       }
     }
   }
