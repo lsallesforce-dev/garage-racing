@@ -60,7 +60,7 @@ function extractFields(payload: any): {
     fromMe = info.IsFromMe ?? false;
     phone = (info.SenderAlt || info.Sender || "").replace(/@.*$/, "");
     userMessage = msg?.conversation || msg?.extendedTextMessage?.text || "";
-    audioUrl = msg?.audioMessage?.url;
+    audioUrl = msg?.audioMessage?.URL ?? msg?.audioMessage?.url;
     messageId = info.ID;
   }
   // Formato Avisa/Z-API simplificado
