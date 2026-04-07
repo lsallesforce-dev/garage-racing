@@ -35,10 +35,15 @@ async function sendWithRetry(url: string, payload: any, retries = 2): Promise<an
       });
       
       const text = await response.text();
+      if (!response.ok) {
+        console.warn(`Avisa tentativa ${i + 1}: HTTP ${response.status} — ${text.slice(0, 300)}`);
+        if (i < retries - 1) await new Promise(r => setTimeout(r, 1500));
+        continue;
+      }
       try {
         return JSON.parse(text);
       } catch {
-        console.warn(`Avisa tentativa ${i + 1}: HTTP ${response.status} ${response.url} — resposta não-JSON`, text.slice(0, 200));
+        console.warn(`Avisa tentativa ${i + 1}: HTTP ${response.status} — resposta não-JSON: ${text.slice(0, 200)}`);
         if (i < retries - 1) await new Promise(r => setTimeout(r, 1500));
       }
     } catch (err) {

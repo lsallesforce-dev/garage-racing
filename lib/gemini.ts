@@ -16,23 +16,30 @@ export const geminiFlashFallback = genAI.getGenerativeModel(
 );
 
 export async function generateEmbedding(text: string) {
-  try {
-    const model = genAI.getGenerativeModel(
-      { model: "text-embedding-004" },
-      { apiVersion: "v1beta" }
-    );
-    
-    // Some Gemini API models don't support passing outputDimensionality in this SDK version
-    // So we safely pad the results to 1536 if it's less.
-    const result = await model.embedContent(text);
-    const embedding = result.embedding.values;
-    
-    if (embedding.length < 1536) {
-      return [...embedding, ...new Array(1536 - embedding.length).fill(0)];
+  const model = genAI.getGenerativeModel(
+    { model: "text-embedding-004" },
+    { apiVersion: "v1beta" }
+  );
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const result = await model.embedContent(text);
+      const embedding = result.embedding.values;
+      if (embedding.length < 1536) {
+        return [...embedding, ...new Array(1536 - embedding.length).fill(0)];
+      }
+      return embedding;
+    } catch (error: any) {
+      const is429 = error?.status === 429 || String(error).includes("429");
+      if (is429 && attempt < 2) {
+        const wait = (attempt + 1) * 2000;
+        console.warn(`⏳ Embedding rate limit, aguardando ${wait}ms (tentativa ${attempt + 1}/3)`);
+        await new Promise(r => setTimeout(r, wait));
+        continue;
+      }
+      console.error("❌ Erro no embedding:", error);
+      return new Array(1536).fill(0);
     }
-    return embedding;
-  } catch (error) {
-    console.error("❌ Erro no embedding:", error);
-    return new Array(1536).fill(0);
   }
+  return new Array(1536).fill(0);
 }
