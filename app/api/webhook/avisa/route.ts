@@ -30,6 +30,7 @@ function extractFields(payload: any): {
   userMessage: string;
   fromMe: boolean;
   audioUrl?: string;
+  audioMediaKey?: string;
   messageId?: string | null;
 } {
   console.log("📨 AVISA WEBHOOK PAYLOAD:", JSON.stringify(payload, null, 2));
@@ -50,6 +51,7 @@ function extractFields(payload: any): {
   let userMessage = "";
   let fromMe = false;
   let audioUrl: string | undefined;
+  let audioMediaKey: string | undefined;
   let messageId: string | null = null;
 
   // Formato Baileys/Antigo
@@ -61,6 +63,7 @@ function extractFields(payload: any): {
     phone = (info.SenderAlt || info.Sender || "").replace(/@.*$/, "");
     userMessage = msg?.conversation || msg?.extendedTextMessage?.text || "";
     audioUrl = msg?.audioMessage?.URL ?? msg?.audioMessage?.url;
+    audioMediaKey = msg?.audioMessage?.mediaKey ?? msg?.audioMessage?.MediaKey;
     messageId = info.ID;
   }
   // Formato Avisa/Z-API simplificado
@@ -91,7 +94,7 @@ function extractFields(payload: any): {
     };
   }
 
-  return { phone, userMessage: userMessage?.trim() || "", fromMe, audioUrl, messageId };
+  return { phone, userMessage: userMessage?.trim() || "", fromMe, audioUrl, audioMediaKey, messageId };
 }
 
 // ─── Webhook Principal ────────────────────────────────────────────────────────
@@ -178,7 +181,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Validação Básica ──────────────────────────────────────────────────────
-    const { phone, userMessage: rawMessage, fromMe, audioUrl, messageId } =
+    const { phone, userMessage: rawMessage, fromMe, audioUrl, audioMediaKey, messageId } =
       extractFields(payload);
 
     if (fromMe) return NextResponse.json({ status: "ignored_from_me" });
@@ -204,6 +207,7 @@ export async function POST(req: NextRequest) {
           phone,
           rawMessage,
           audioUrl,
+          audioMediaKey,
           messageId,
           tenantUserId: tenantUserId!,
           garageConfig,

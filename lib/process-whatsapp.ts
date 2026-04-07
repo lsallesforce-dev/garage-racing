@@ -2,6 +2,7 @@
 // Processamento assíncrono de mensagens WhatsApp
 // Executado via after() no webhook — não bloqueia o 200 OK para a Avisa
 
+import { createDecipheriv, hkdfSync } from "node:crypto";
 import { geminiFlashSales, geminiFlashFallback } from "@/lib/gemini";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendAvisaMessage, sendAvisaImage, sendAvisaVideo } from "@/lib/avisa";
@@ -12,10 +13,34 @@ import { Vehicle } from "@/types/vehicle";
 
 type Temperatura = "FRIO" | "MORNO" | "QUENTE";
 
+// ─── Decriptação de Áudio WhatsApp ────────────────────────────────────────────
+// O WhatsApp criptografa toda mídia com AES-256-CBC + HKDF-SHA256
+async function decryptWhatsAppAudio(encUrl: string, mediaKeyB64: string): Promise<Buffer | null> {
+  try {
+    const mediaKey = Buffer.from(mediaKeyB64, "base64");
+    const salt = Buffer.alloc(32, 0);
+    const derived = Buffer.from(hkdfSync("sha256", mediaKey, salt, "WhatsApp Audio Keys", 112));
+    const iv = derived.subarray(0, 16);
+    const cipherKey = derived.subarray(16, 48);
+
+    const resp = await fetch(encUrl);
+    if (!resp.ok) return null;
+    const enc = Buffer.from(await resp.arrayBuffer());
+    const encData = enc.subarray(0, enc.length - 10); // remove MAC
+
+    const decipher = createDecipheriv("aes-256-cbc", cipherKey, iv);
+    return Buffer.concat([decipher.update(encData), decipher.final()]);
+  } catch (e) {
+    console.warn("⚠️ Falha ao decriptar áudio WhatsApp:", e);
+    return null;
+  }
+}
+
 export interface WhatsAppJobPayload {
   phone: string;
   rawMessage: string;
   audioUrl?: string;
+  audioMediaKey?: string;
   messageId?: string | null;
   tenantUserId: string;
   garageConfig: {
@@ -133,7 +158,7 @@ function buildStockContext(topVeiculos: Vehicle[], veiculoPrincipal: Vehicle | n
 // ─── Processamento Principal ──────────────────────────────────────────────────
 
 export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<void> {
-  const { phone, rawMessage, audioUrl, tenantUserId, garageConfig } = job;
+  const { phone, rawMessage, audioUrl, audioMediaKey, tenantUserId, garageConfig } = job;
 
   let userMessage = rawMessage;
   let audioData: { data: string; mimeType: string } | null = null;
@@ -141,11 +166,23 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   // ── 1. Transcrever Áudio ────────────────────────────────────────────────────
   if (audioUrl) {
     try {
-      const audioResp = await fetch(audioUrl);
-      if (audioResp.ok) {
-        const buffer = await audioResp.arrayBuffer();
+      let audioBuffer: Buffer | null = null;
+
+      // Áudio WhatsApp vem criptografado — decripta se tiver a mediaKey
+      if (audioMediaKey) {
+        audioBuffer = await decryptWhatsAppAudio(audioUrl, audioMediaKey);
+        if (audioBuffer) console.log(`🔓 Áudio decriptado: ${audioBuffer.length} bytes`);
+      }
+
+      // Fallback: tenta baixar direto (para APIs que já entregam decriptado)
+      if (!audioBuffer) {
+        const audioResp = await fetch(audioUrl);
+        if (audioResp.ok) audioBuffer = Buffer.from(await audioResp.arrayBuffer());
+      }
+
+      if (audioBuffer) {
         audioData = {
-          data: Buffer.from(buffer).toString("base64"),
+          data: audioBuffer.toString("base64"),
           mimeType: "audio/ogg; codecs=opus",
         };
         const tx = await geminiFlashSales.generateContent([
@@ -153,6 +190,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
           "Transcreva exatamente o que o cliente disse neste áudio.",
         ]);
         userMessage = tx.response.text();
+        console.log(`🎤 Transcrição: "${userMessage.slice(0, 100)}"`);
       }
     } catch (e) {
       console.warn("⚠️ Erro ao transcrever áudio:", e);
