@@ -346,7 +346,8 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
 
   // ── 10. Interceptores silenciosos ────────────────────────────────────────────
   const mensagemLower = userMessage.toLowerCase();
-  const gerentePhone = process.env.NEXT_PUBLIC_ZAPI_PHONE;
+  // Usa o WhatsApp do gerente configurado no painel; fallback para variável de ambiente
+  const gerentePhone = garageConfig?.whatsapp || process.env.NEXT_PUBLIC_ZAPI_PHONE;
 
   // Lead Quente → alerta gerente (fire-and-forget)
   const gatilhosQuente = [
