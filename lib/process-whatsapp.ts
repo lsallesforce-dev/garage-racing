@@ -306,6 +306,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
       .from("leads")
       .update({ veiculo_id: topVeiculos[0].id })
       .eq("id", lead.id);
+    veiculoPrincipal = topVeiculos[0]; // sincroniza local — necessário para modeloContexto no textSearch
   }
 
   // ── 8. Contexto do Estoque para o Gemini ───────────────────────────────────
