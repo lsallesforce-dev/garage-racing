@@ -283,6 +283,29 @@ export async function hybridVehicleSearch(
       };
     }
 
+    // perguntandoEstoque tem prioridade — ignora hitsTextuais (que podem ser enviesados
+    // por adjetivos de cor como "só esse PRATA?" retornando só carros prata) e busca
+    // diretamente todas as variantes do mesmo modelo no banco.
+    if (perguntandoEstoque) {
+      const { data: variantes } = await supabaseAdmin
+        .from("veiculos")
+        .select("*")
+        .eq("status_venda", "DISPONIVEL")
+        .eq("user_id", tenantUserId)
+        .ilike("modelo", `%${veiculoPrincipal.modelo}%`)
+        .neq("id", veiculoPrincipal.id)
+        .limit(5);
+
+      if (variantes && variantes.length > 0) {
+        return {
+          topVeiculos: [veiculoPrincipal, ...(variantes as Vehicle[])].slice(0, 5),
+          hitsTextuais: variantes as Vehicle[],
+          clientePediuCarroDiferente: false,
+        };
+      }
+      // Sem variantes do mesmo modelo → deixa cair no fluxo normal (semântica)
+    }
+
     // Se há hits textuais que incluem o principal + outras variantes do mesmo modelo
     // (ex: "tem outro corolla" → encontra Corolla 2016 E 2017)
     // → mostra TODAS as variantes como contexto (o principal fica primeiro)
@@ -295,11 +318,9 @@ export async function hybridVehicleSearch(
       };
     }
 
-    // Cliente perguntou sobre estoque ("só esse?", "tem mais?") OU pediu outro
-    // → busca variantes do mesmo modelo para mostrar como alternativas no contexto
-    // perguntandoEstoque: mantém foco no principal (clientePediuCarroDiferente = false)
-    // pedindoOutro: troca o foco para a variante encontrada
-    if (pedindoOutro || perguntandoEstoque) {
+    // Cliente pediu "outro" sem mencionar modelo específico
+    // → busca variantes do mesmo modelo; se não achar, tenta mesma marca
+    if (pedindoOutro) {
       const { data: variantes } = await supabaseAdmin
         .from("veiculos")
         .select("*")
@@ -310,36 +331,29 @@ export async function hybridVehicleSearch(
         .limit(5);
 
       if (variantes && variantes.length > 0) {
-        // perguntandoEstoque: mostra variantes mas mantém foco no principal
-        // pedindoOutro: troca o foco para a variante
-        const trocouFoco = pedindoOutro && !perguntandoEstoque;
         return {
-          topVeiculos: trocouFoco
-            ? [...(variantes as Vehicle[]), veiculoPrincipal].slice(0, 5)
-            : [veiculoPrincipal, ...(variantes as Vehicle[])].slice(0, 5),
+          topVeiculos: [...(variantes as Vehicle[]), veiculoPrincipal].slice(0, 5),
           hitsTextuais: variantes as Vehicle[],
-          clientePediuCarroDiferente: trocouFoco,
+          clientePediuCarroDiferente: true,
         };
       }
 
       // Nenhuma variante do mesmo modelo → busca mesma marca
-      if (pedindoOutro) {
-        const { data: mesmaMarca } = await supabaseAdmin
-          .from("veiculos")
-          .select("*")
-          .eq("status_venda", "DISPONIVEL")
-          .eq("user_id", tenantUserId)
-          .ilike("marca", `%${veiculoPrincipal.marca}%`)
-          .neq("id", veiculoPrincipal.id)
-          .limit(5);
+      const { data: mesmaMarca } = await supabaseAdmin
+        .from("veiculos")
+        .select("*")
+        .eq("status_venda", "DISPONIVEL")
+        .eq("user_id", tenantUserId)
+        .ilike("marca", `%${veiculoPrincipal.marca}%`)
+        .neq("id", veiculoPrincipal.id)
+        .limit(5);
 
-        if (mesmaMarca && mesmaMarca.length > 0) {
-          return {
-            topVeiculos: [...(mesmaMarca as Vehicle[]), veiculoPrincipal].slice(0, 5),
-            hitsTextuais: mesmaMarca as Vehicle[],
-            clientePediuCarroDiferente: true,
-          };
-        }
+      if (mesmaMarca && mesmaMarca.length > 0) {
+        return {
+          topVeiculos: [...(mesmaMarca as Vehicle[]), veiculoPrincipal].slice(0, 5),
+          hitsTextuais: mesmaMarca as Vehicle[],
+          clientePediuCarroDiferente: true,
+        };
       }
     }
 
