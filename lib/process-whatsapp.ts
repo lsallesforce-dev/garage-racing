@@ -594,6 +594,8 @@ ${enderecoGaragem ? `ENDEREÇO DA LOJA: ${enderecoGaragem}` : ""}
 ESTOQUE ESTRUTURADO:
 ${context}
 
+${(lead as any)?.instrucao_pendente ? `✅ INSTRUÇÃO DO GERENTE (use esta informação para responder ao cliente agora): ${(lead as any).instrucao_pendente}` : ""}
+
 ${clientePediuFoto ? "❌ FOTO: Não há foto disponível para esse veículo. Responda: 'Esse ainda não tem foto disponível, mas posso te passar mais detalhes.' PROIBIDO dizer que vai verificar." : ""}
 ${clientePediuVideo ? "❌ VÍDEO: Não há vídeo disponível para esse veículo. Responda: 'Esse não tem vídeo disponível no momento.'" : ""}
 
@@ -604,8 +606,16 @@ Você DEVE retornar a resposta estritamente no formato JSON, usando a seguinte e
   "veiculo_id_foco": "ID exato do veículo sobre o qual você está respondendo (campo [ID:...] do contexto), ou null se não há veículo específico",
   "temperatura": "FRIO" | "MORNO" | "QUENTE",
   "resumo": "Intenção clara do cliente em uma frase curta",
-  "nome_cliente_extraido": "Nome do cliente se revelado na mensagem atual (ou null caso não dito)"
+  "nome_cliente_extraido": "Nome do cliente se revelado na mensagem atual (ou null caso não dito)",
+  "precisa_instrucao": "Descreva EXATAMENTE o que o cliente perguntou e você não tem como responder com certeza — ou null se tem a informação"
 }
+
+REGRAS DO precisa_instrucao:
+- Use SOMENTE quando o cliente pedir um dado que NÃO está na ficha do veículo (ex: laudo de vistoria, cor dos bancos, número de donos, histórico de revisões, detalhes mecânicos específicos)
+- NUNCA use para preço, km, cor, motor, ano — esses dados estão na ficha
+- NUNCA invente ou assuma a resposta — prefira sinalizar a dúvida
+- Quando usar: escreva uma frase objetiva descrevendo o que o cliente quer saber. Ex: "Cliente perguntou se o Gol 2022 tem laudo de vistoria cautelar"
+- Quando NÃO usar: null
 
 REGRAS DO veiculo_id_foco:
 - Use o ID do "VEÍCULO EM FOCO" como padrão
@@ -674,6 +684,39 @@ CRITÉRIOS DE TEMPERATURA:
         const nomeRaw = parsed.nome_cliente_extraido;
         if (nomeRaw && nomeRaw.toLowerCase() !== "null" && lead && !nomeCliente) {
           await supabaseAdmin.from("leads").update({ nome: nomeRaw }).eq("id", lead.id);
+        }
+
+        // Instrução pendente: agente sinalizou dúvida → alerta o gerente
+        const precisaInstrucao = parsed.precisa_instrucao;
+        if (precisaInstrucao && typeof precisaInstrucao === "string" && precisaInstrucao.toLowerCase() !== "null" && lead) {
+          console.log(`❓ Agente precisa de instrução: ${precisaInstrucao}`);
+          await supabaseAdmin
+            .from("leads")
+            .update({ instrucao_pendente: precisaInstrucao })
+            .eq("id", lead.id);
+
+          if (gerentePhone) {
+            const nomeLead = nomeCliente || phone;
+            const veiculoAlert = topVeiculos[0]
+              ? `${topVeiculos[0].marca} ${topVeiculos[0].modelo}`
+              : "veículo em negociação";
+            sendAvisaMessage(
+              gerentePhone,
+              `❓ *AGENTE PRECISA DE INSTRUÇÃO*\n\n` +
+              `👤 Cliente: ${nomeLead}\n` +
+              `🚗 Veículo: ${veiculoAlert}\n\n` +
+              `💬 Dúvida: ${precisaInstrucao}\n\n` +
+              `👉 Responda a esta mensagem com a instrução para o agente continuar.`
+            ).catch(() => {});
+          }
+        }
+
+        // Se havia instrução pendente e foi usada, limpa
+        if ((lead as any)?.instrucao_pendente && !precisaInstrucao) {
+          await supabaseAdmin
+            .from("leads")
+            .update({ instrucao_pendente: null })
+            .eq("id", lead.id);
         }
       } catch {
         console.error("❌ Falha ao parsear JSON do Gemini:", jsonResponseText);
