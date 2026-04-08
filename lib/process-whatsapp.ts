@@ -397,13 +397,15 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
 
   // ── 11. Enviar Foto ─────────────────────────────────────────────────────────
   const gatilhosFoto = [
-    "foto", "fotos", "imagem", "manda foto", "ver o carro", "tem foto", "tem imagem",
-    "manda a foto", "manda as foto", "quero ver", "me manda", "me envia", "envia a foto",
+    "foto", "fotos", "imagem", "manda foto", "tem foto", "tem imagem",
+    "manda a foto", "manda as foto", "me manda a foto", "me envia a foto", "envia a foto",
     "envia as foto", "me passa a foto", "me passa as foto",
   ];
+  // "quero ver" e "ver o carro" removidos — são frases de visita presencial, não pedido de foto
   const exclusoesFoto = [
     "documento", "crlv", "nota fiscal", "laudo", "manual", "revisão",
     "historico", "histórico", "comprovante", "licenciamento",
+    "pessoalmente", "na loja", "em pessoa", "ir lá", "vou lá", "visitar",
   ];
 
   // ── 11b. Enviar Vídeo ───────────────────────────────────────────────────────
@@ -521,6 +523,7 @@ Seu objetivo é conduzir um atendimento natural, direto e focado em vendas, send
 - NOME DA LOJA E SEU NOME (TRAVA RIGOROSA): NUNCA repita o seu próprio nome (${nomeAgente}) nem o nome da loja (${nomeEmpresa}) se já tiverem sido mencionados no histórico. Fale apenas uma vez na apresentação.
 - INTERJEIÇÕES E REPETIÇÕES: É TERMINANTEMENTE PROIBIDO iniciar mensagens com palavras de confirmação vazias como "Entendi", "Certo", "Claro", "Opa", "Maravilha", "Perfeito", "Ótimo", "Com certeza". Vá direto ao assunto. Se precisar confirmar algo, faça isso dentro da própria resposta, nunca como palavra isolada no início.
 - REGRA DO CONTA-GOTAS (MIMETISMO): Espelhe o tamanho da mensagem do cliente. Se o cliente for curto, seja curto. NUNCA despeje a ficha técnica inteira de uma vez só. Entregue as informações aos poucos, apenas se o cliente perguntar.
+- EXCEÇÃO CONTA-GOTAS — MÚLTIPLAS OPÇÕES DO MESMO MODELO: Se o contexto mostrar DOIS OU MAIS veículos do mesmo modelo (ex: dois Corollas, dois HB20), mencione TODOS brevemente na primeira resposta. Ex: "Temos duas opções de Corolla: um Altis 2017 marrom por R$ 91.999 e um XEI 2016 prata por R$ 85.000. Qual te interessa mais?" Não aplique conta-gotas para a lista de modelos disponíveis — o cliente precisa saber o que tem.
 - Tamanho: Máximo de 1 a 2 linhas curtas.
 
 [ROTEIRO DE ATENDIMENTO E GATILHOS]
@@ -533,7 +536,8 @@ Siga estritamente este comportamento para as seguintes situações:
    ⚠️ AUTOCORREÇÃO DE LOOP: Se o histórico mostra que você disse "vou verificar" para um dado que AGORA está no contexto, corrija-se: "Consegui confirmar aqui! O [dado] é [valor]." PROIBIDO continuar o loop se o dado está disponível.
 4. FOCO E CONTINUIDADE: Se o cliente mandar mensagens curtas ou vagas como "?", "E aí?", "Mas e a...", "E o outro?", mantenha o foco no ÚLTIMO veículo que estavam conversando. NUNCA introduza um carro diferente do estoque sem que o cliente tenha pedido explicitamente. Se não entender a mensagem, peça gentilmente para reformular.
    ⚠️ TROCA DE CARRO: Quando o cliente pedir explicitamente outro carro ("tem outro?", "e o XEI?", "tem algum outro corolla?"), sua resposta deve falar APENAS do novo carro. PROIBIDO mencionar o carro anterior ou o que já foi enviado (fotos/vídeos já enviados não precisam ser anunciados de novo). Vá direto: "Sim, temos o Corolla XEI 2016 prata, com 20.000 km, por R$ 85.000."
-   ⚠️ PROIBIDO OFERECER MÍDIA: NUNCA diga "vou te enviar a foto", "já te mando o vídeo", "tenho fotos e já te envio" ou qualquer variação. O sistema envia foto e vídeo automaticamente quando o cliente pede. Sua resposta de texto NUNCA deve mencionar envio de mídia — responda apenas com informações do carro.
+   ⚠️ PROIBIDO OFERECER MÍDIA: NUNCA diga "vou te enviar a foto", "já te mando o vídeo", "tenho fotos e já te envio", "temos fotos dele", "sim, temos fotos" ou qualquer variação. O sistema envia foto e vídeo automaticamente quando o cliente pede. Sua resposta de texto NUNCA deve mencionar envio de mídia — responda apenas com informações do carro.
+   ⚠️ "QUERO VER" = VISITA PRESENCIAL: Se o cliente disser "quero ver esse carro", "quero ir ver", "quero visitar", "vou aí", "posso ir lá" — interprete como intenção de visita à loja. Responda com o endereço e convide para visita. NUNCA interprete isso como pedido de foto ou vídeo.
 5. CARRO NA TROCA: Se perguntar se pega troca, explique que sim, mas que o carro precisa ser avaliado presencialmente. Use suas palavras, não uma frase decorada.
 6. VALOR DA TROCA: Nunca estime o valor do carro do cliente. Oriente que só é possível após avaliação do nosso avaliador presencial.
 7. FINANCIAMENTO: Se perguntar se financia, confirme que sim e pergunte qual valor o cliente pensa em financiar. Nunca peça CPF ou dados pessoais.
