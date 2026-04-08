@@ -12,7 +12,8 @@ const STOP_WORDS = new Set([
   "num", "numa", "nos", "nas", "nem", "nao", "ate",
   // Pronomes
   "ele", "ela", "eles", "elas", "uns", "uma", "umas", "voce", "voces",
-  "teu", "tua", "seu", "sua", "meu", "minha",
+  "teu", "tua", "seu", "sua", "meu", "minha", "esse", "essa", "esses", "essas", 
+  "desse", "dessa", "desses", "dessas", "deste", "desta", "este", "esta", "isto", "isso", "da", "do", "de", "no", "na",
   // Verbos comuns (jamais serão carros)
   "tem", "ter", "foi", "vai", "vou", "ver", "vem", "sao", "sou", "ser",
   "esta", "estou", "era", "quer", "mais", "vi", "vi", "tinha", "tive",
@@ -20,6 +21,8 @@ const STOP_WORDS = new Set([
   "fica", "ficou", "ficaria", "entra", "entrou",
   // Verbos de intenção (nunca são modelos)
   "quero", "gostaria", "tenho", "preciso", "busco", "procuro", "queria",
+  // Intenção multimídia
+  "foto", "fotos", "video", "videos", "vídeo", "vídeos", "imagem", "imagens",
   // Saudações e interjeições
   "boa", "bom", "ola", "sim", "cor", "ok", "oi",
   // Advérbios e conectivos
@@ -72,7 +75,7 @@ function extractVehicleTokens(message: string): string[] {
 
 // ─── Busca Textual com Scoring ────────────────────────────────────────────────
 // Separa tokens de ano (busca em campo numérico) dos tokens de texto (ILIKE)
-async function textSearch(tokens: string[], tenantUserId: string): Promise<Vehicle[]> {
+async function textSearch(tokens: string[], tenantUserId: string, modeloContexto?: string): Promise<Vehicle[]> {
   if (tokens.length === 0) return [];
 
   const yearTokens = tokens.filter(isYearToken);
@@ -165,6 +168,12 @@ async function textSearch(tokens: string[], tenantUserId: string): Promise<Vehic
       // Match em ano (boost extra — "corolla 2016" deve preferir o 2016)
       if (isYearToken(token) && (anoModelo === token || ano === token)) score += 90;
     }
+
+    // Boost de Contexto: desempata adjetivos (como cores) em favor do modelo que o cliente já está conversando
+    if (modeloContexto && modeloNorm === normalizeStr(modeloContexto)) {
+      score += 30; // Mantém o cliente na mesma "família" de carro
+    }
+
     return { vehicle: v, score };
   });
 
@@ -237,7 +246,7 @@ export async function hybridVehicleSearch(
   msgCurta: boolean
 ): Promise<HybridSearchResult> {
   const tokens = extractVehicleTokens(userMessage);
-  const hitsTextuais = tokens.length > 0 ? await textSearch(tokens, tenantUserId) : [];
+  const hitsTextuais = tokens.length > 0 ? await textSearch(tokens, tenantUserId, veiculoPrincipal?.modelo) : [];
   const temHitsTextuais = hitsTextuais.length > 0;
 
   // ── Caso 1: Cliente mencionou um carro DIFERENTE do vinculado ─────────────
