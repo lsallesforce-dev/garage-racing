@@ -223,12 +223,13 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
       .single();
     if (leadReset) {
       await invalidateHistory(tenantUserId, leadReset.id);
+      await supabaseAdmin.from("mensagens").delete().eq("lead_id", leadReset.id);
       await supabaseAdmin
         .from("leads")
         .update({ veiculo_id: null, status: "FRIO", resumo_negociacao: null })
         .eq("id", leadReset.id);
     }
-    await sendAvisaMessage(phone, "✅ Reset completo. Cache e foco do lead limpos.");
+    await sendAvisaMessage(phone, "✅ Reset completo. Cache Redis, mensagens e foco do lead limpos.");
     return;
   }
 
@@ -429,13 +430,18 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
 
   if (clientePediuFoto) {
     // Pedido de múltiplos: envia fotos de todos os veículos do contexto
+    // Foto: veiculoPrincipal tem prioridade sobre hitsTextuais — a menos que o cliente
+    // pediu explicitamente um carro diferente (clientePediuCarroDiferente = true).
+    // Isso evita que adjetivos de cor ("prata é mais bonito") triggem o carro errado.
     const veiculosParaFoto: Vehicle[] = pedindoFotosMultiplos
       ? topVeiculos.slice(0, 4) // máximo 4 para não spammar
-      : hitsTextuais.length > 0
+      : clientePediuCarroDiferente && hitsTextuais.length > 0
         ? [hitsTextuais[0]]
         : veiculoPrincipal
           ? [veiculoPrincipal]
-          : [];
+          : hitsTextuais.length > 0
+            ? [hitsTextuais[0]]
+            : [];
 
     for (const v of veiculosParaFoto) {
       const fotoUrl = v.capa_marketing_url ?? (v as any).fotos?.[0] ?? null;
@@ -466,10 +472,10 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   let videoEnviado = false;
 
   if (clientePediuVideo) {
-    const veiculoParaVideo =
-      hitsTextuais.length > 0
-        ? hitsTextuais[0]
-        : veiculoPrincipal ?? null;
+    // Vídeo: mesma lógica da foto — veiculoPrincipal tem prioridade, salvo troca explícita.
+    const veiculoParaVideo = clientePediuCarroDiferente && hitsTextuais.length > 0
+      ? hitsTextuais[0]
+      : veiculoPrincipal ?? (hitsTextuais.length > 0 ? hitsTextuais[0] : null);
 
     if (veiculoParaVideo) {
       const videoUrl = (veiculoParaVideo as any).video_url ?? null;
