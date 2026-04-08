@@ -75,7 +75,7 @@ function extractVehicleTokens(message: string): string[] {
 
 // ─── Busca Textual com Scoring ────────────────────────────────────────────────
 // Separa tokens de ano (busca em campo numérico) dos tokens de texto (ILIKE)
-async function textSearch(tokens: string[], tenantUserId: string, modeloContexto?: string): Promise<Vehicle[]> {
+async function textSearch(tokens: string[], tenantUserId: string, modeloContexto?: string, marcaContexto?: string): Promise<Vehicle[]> {
   if (tokens.length === 0) return [];
 
   const yearTokens = tokens.filter(isYearToken);
@@ -169,9 +169,13 @@ async function textSearch(tokens: string[], tenantUserId: string, modeloContexto
       if (isYearToken(token) && (anoModelo === token || ano === token)) score += 90;
     }
 
-    // Boost de Contexto: desempata adjetivos (como cores) em favor do modelo que o cliente já está conversando
+    // Boost de Contexto: desempata adjetivos (como cores) em favor do carro que o cliente já está conversando
+    // Marca (+50) tem peso maior que modelo (+30) pois é mais confiável (Toyota vs VW é inequívoco)
+    if (marcaContexto && marcaNorm === normalizeStr(marcaContexto)) {
+      score += 50;
+    }
     if (modeloContexto && modeloNorm === normalizeStr(modeloContexto)) {
-      score += 30; // Mantém o cliente na mesma "família" de carro
+      score += 30;
     }
 
     return { vehicle: v, score };
@@ -246,7 +250,7 @@ export async function hybridVehicleSearch(
   msgCurta: boolean
 ): Promise<HybridSearchResult> {
   const tokens = extractVehicleTokens(userMessage);
-  const hitsTextuais = tokens.length > 0 ? await textSearch(tokens, tenantUserId, veiculoPrincipal?.modelo) : [];
+  const hitsTextuais = tokens.length > 0 ? await textSearch(tokens, tenantUserId, veiculoPrincipal?.modelo, veiculoPrincipal?.marca) : [];
   const temHitsTextuais = hitsTextuais.length > 0;
 
   // ── Caso 1: Cliente mencionou um carro DIFERENTE do vinculado ─────────────
