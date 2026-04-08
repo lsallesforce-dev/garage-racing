@@ -499,9 +499,19 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
     }
   }
 
-  // Se enviou mídia (foto ou vídeo), não manda texto — o cliente já recebeu a mídia
+  // Se enviou mídia (foto ou vídeo), salva placeholder no histórico e retorna
+  // O placeholder evita que o Gemini "complete" o pedido de mídia na próxima mensagem
   if (fotoEnviada || videoEnviado) {
     console.log(`✅ Mídia enviada para ${phone} — sem resposta de texto.`);
+    if (lead) {
+      const tipo = fotoEnviada && videoEnviado ? "foto e vídeo" : fotoEnviada ? "foto" : "vídeo";
+      await supabaseAdmin.from("mensagens").insert({
+        lead_id: lead.id,
+        content: `[${tipo} enviado automaticamente]`,
+        remetente: "agente",
+      });
+      await invalidateHistory(tenantUserId, lead.id);
+    }
     return;
   }
 
@@ -530,7 +540,7 @@ Seu objetivo é conduzir um atendimento natural, direto e focado em vendas, send
 [ROTEIRO DE ATENDIMENTO E GATILHOS]
 Siga estritamente este comportamento para as seguintes situações:
 
-1. SAUDAÇÃO INICIAL: Se for a primeira mensagem da conversa, responda: "[Saudação correspondente], me chamo ${nomeAgente} vendedor aqui da ${nomeEmpresa}, tudo bem?".
+1. SAUDAÇÃO INICIAL: Se for a primeira mensagem da conversa, responda EXATAMENTE: "[Saudação correspondente], me chamo ${nomeAgente} vendedor aqui da ${nomeEmpresa}, tudo bem?" — NADA MAIS. Não adicione perguntas sobre carros, fotos ou qualquer outra coisa na saudação.
 2. ESTADO DO CARRO: Se perguntarem sobre qualidade, EXALTE O VEÍCULO com termos profissionais ("excelente estado", "muito novo", "todo revisado"). Varie as palavras.
 3. DADOS FALTANTES: Se o cliente pedir um detalhe que NÃO está na ficha (ex: cor dos bancos, número de donos, histórico de revisões), diga que vai verificar com palavras SEMPRE diferentes — nunca repita a mesma frase. Ex: "Vou dar um grito lá no pátio", "Deixa eu checar com a equipe", "Vou confirmar e já te aviso".
    ⚠️ PREÇO E KM NUNCA SÃO DADOS FALTANTES: Se preço ou quilometragem estão na ficha do veículo (em qualquer seção do contexto), você JÁ TEM essa informação. NUNCA diga que vai verificar — responda imediatamente.
