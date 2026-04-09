@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { supabase } from "@/lib/supabase";
-import { ImagePlus, Stamp } from "lucide-react";
+import { ImagePlus, Stamp, GripVertical } from "lucide-react";
 
 interface PhotoGalleryProps {
   veiculoId: string;
@@ -11,7 +11,6 @@ interface PhotoGalleryProps {
   onPhotosUpdated: (newPhotos: string[]) => void;
 }
 
-// Dimensões fixas de saída (16:9) — garante enquadramento consistente
 const OUTPUT_W = 1280;
 const OUTPUT_H = 720;
 
@@ -39,7 +38,6 @@ async function applyWatermark(file: File, logoUrl: string | null | undefined): P
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Canvas não suportado");
 
-  // Saída sempre 16:9 — recorta centralizando (object-cover)
   canvas.width = OUTPUT_W;
   canvas.height = OUTPUT_H;
 
@@ -50,7 +48,6 @@ async function applyWatermark(file: File, logoUrl: string | null | undefined): P
   const offsetY = (OUTPUT_H - drawH) / 2;
   ctx.drawImage(img, offsetX, offsetY, drawW, drawH);
 
-  // Aplica marca d'água apenas se houver logo configurado
   if (logoUrl) {
     try {
       const logo = await loadImageElement(logoUrl);
@@ -81,95 +78,130 @@ export const PhotoGallery = ({
   onPhotosUpdated,
 }: PhotoGalleryProps) => {
   const [selectedPhoto, setSelectedPhoto] = useState(fotos[0] || "");
-  const [isUploading, setIsUploading] = useState(false);
+  const [uploadingCount, setUploadingCount] = useState(0);
   const [watermarkEnabled, setWatermarkEnabled] = useState(true);
 
+  // Drag and drop state
+  const dragIndex = useRef<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
+  const isUploading = uploadingCount > 0;
+
+  async function uploadSingleFile(file: File): Promise<string> {
+    const ext = watermarkEnabled ? "jpg" : (file.name.split(".").pop() || "jpg");
+    const fileName = `foto-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    const uploadBlob: Blob = watermarkEnabled ? await applyWatermark(file, logoUrl) : file;
+
+    const metaRes = await fetch("/api/upload", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fileName, fileType: "image/jpeg" }),
+    });
+    const metaData = await metaRes.json();
+    if (!metaRes.ok || !metaData.signedUrl) throw new Error(metaData.error || "Falha ao obter URL");
+
+    const uploadRes = await fetch(metaData.signedUrl, {
+      method: "PUT",
+      headers: { "Content-Type": "image/jpeg" },
+      body: uploadBlob,
+    });
+    if (!uploadRes.ok) throw new Error("Falha no upload");
+
+    return metaData.publicUrl as string;
+  }
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
     e.target.value = "";
 
-    setIsUploading(true);
-    try {
-      let uploadBlob: Blob = file;
-      const ext = watermarkEnabled ? "jpg" : (file.name.split(".").pop() || "jpg");
-      const fileName = `foto-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    setUploadingCount(files.length);
 
-      if (watermarkEnabled) {
-        uploadBlob = await applyWatermark(file, logoUrl);
+    const newUrls: string[] = [];
+    for (const file of files) {
+      try {
+        const url = await uploadSingleFile(file);
+        newUrls.push(url);
+        setUploadingCount((c) => c - 1);
+      } catch (err) {
+        console.error("Erro ao subir foto:", err);
+        setUploadingCount((c) => c - 1);
       }
-
-      // 1. Pede signed URL
-      const metaRes = await fetch("/api/upload", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fileName, fileType: "image/jpeg" }),
-      });
-      const metaData = await metaRes.json();
-      if (!metaRes.ok || !metaData.signedUrl) throw new Error(metaData.error || "Falha ao obter URL");
-
-      // 2. Upload direto ao Supabase
-      const uploadRes = await fetch(metaData.signedUrl, {
-        method: "PUT",
-        headers: { "Content-Type": "image/jpeg" },
-        body: uploadBlob,
-      });
-      if (!uploadRes.ok) throw new Error("Falha no upload direto");
-
-      const newPhotoUrl: string = metaData.publicUrl;
-      const newPhotos = [...fotos, newPhotoUrl];
-
-      const { error: dbError } = await supabase
-        .from("veiculos")
-        .update({ fotos: newPhotos })
-        .eq("id", veiculoId);
-
-      if (dbError) throw dbError;
-
-      onPhotosUpdated(newPhotos);
-      setSelectedPhoto(newPhotoUrl);
-    } catch (error) {
-      console.error("Upload error:", error);
-      alert("Erro ao subir foto: " + (error instanceof Error ? error.message : "Erro desconhecido"));
-    } finally {
-      setIsUploading(false);
     }
+
+    if (newUrls.length === 0) return;
+
+    const newPhotos = [...fotos, ...newUrls];
+    const { error } = await supabase.from("veiculos").update({ fotos: newPhotos }).eq("id", veiculoId);
+    if (error) { alert("Erro ao salvar fotos"); return; }
+
+    onPhotosUpdated(newPhotos);
+    if (!selectedPhoto) setSelectedPhoto(newUrls[0]);
   };
 
   const handleDeletePhoto = async (e: React.MouseEvent, url: string) => {
     e.stopPropagation();
     if (!confirm("Excluir esta foto?")) return;
 
-    try {
-      const newPhotos = fotos.filter((f) => f !== url);
-      const { error } = await supabase
-        .from("veiculos")
-        .update({ fotos: newPhotos })
-        .eq("id", veiculoId);
-      if (error) throw error;
+    const newPhotos = fotos.filter((f) => f !== url);
+    const { error } = await supabase.from("veiculos").update({ fotos: newPhotos }).eq("id", veiculoId);
+    if (error) { alert("Erro ao excluir foto"); return; }
 
-      const fileName = url.split("/").pop();
-      if (fileName) {
-        await supabase.storage.from("videos-estoque").remove([fileName]);
-      }
+    const fileName = url.split("/").pop();
+    if (fileName) await supabase.storage.from("videos-estoque").remove([fileName]);
 
-      onPhotosUpdated(newPhotos);
-      if (selectedPhoto === url) setSelectedPhoto(newPhotos[0] || "");
-    } catch (error) {
-      alert("Erro ao excluir foto");
-    }
+    onPhotosUpdated(newPhotos);
+    if (selectedPhoto === url) setSelectedPhoto(newPhotos[0] || "");
+  };
+
+  // ── Drag and drop reordering ──────────────────────────────────────────────
+
+  const handleDragStart = (i: number) => {
+    dragIndex.current = i;
+  };
+
+  const handleDragOver = (e: React.DragEvent, i: number) => {
+    e.preventDefault();
+    setDragOverIndex(i);
+  };
+
+  const handleDrop = async (e: React.DragEvent, dropIndex: number) => {
+    e.preventDefault();
+    setDragOverIndex(null);
+    if (dragIndex.current === null || dragIndex.current === dropIndex) return;
+
+    const reordered = [...fotos];
+    const [moved] = reordered.splice(dragIndex.current, 1);
+    reordered.splice(dropIndex, 0, moved);
+    dragIndex.current = null;
+
+    onPhotosUpdated(reordered);
+    setSelectedPhoto(reordered[0]);
+
+    await supabase.from("veiculos").update({ fotos: reordered }).eq("id", veiculoId);
+  };
+
+  const handleDragEnd = () => {
+    dragIndex.current = null;
+    setDragOverIndex(null);
   };
 
   return (
     <div className="bg-[#e2e2de] p-6 rounded-3xl border border-gray-200/50">
       {/* Header */}
       <div className="flex justify-between items-center mb-4 gap-3 flex-wrap">
-        <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
-          Galeria de Mídia
-        </h3>
+        <div>
+          <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+            Galeria de Mídia
+          </h3>
+          {fotos.length > 0 && (
+            <p className="text-[9px] text-gray-400 mt-0.5">
+              Arraste as miniaturas para reordenar · A primeira é a capa
+            </p>
+          )}
+        </div>
 
         <div className="flex items-center gap-3">
-          {/* Toggle Marca d'água */}
           <button
             onClick={() => setWatermarkEnabled((v) => !v)}
             title={watermarkEnabled ? "Marca d'água ativa" : "Marca d'água desativada"}
@@ -183,7 +215,6 @@ export const PhotoGallery = ({
             {watermarkEnabled ? "Marca Ativa" : "Sem Marca"}
           </button>
 
-          {/* Botão upload */}
           <label
             className={`cursor-pointer flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-full border transition-all ${
               isUploading
@@ -194,17 +225,18 @@ export const PhotoGallery = ({
             {isUploading ? (
               <>
                 <div className="w-3 h-3 border-2 border-red-600/40 border-t-red-500 rounded-full animate-spin" />
-                Processando...
+                {uploadingCount > 1 ? `${uploadingCount} restantes...` : "Processando..."}
               </>
             ) : (
               <>
                 <ImagePlus size={12} />
-                Adicionar Foto
+                Adicionar Fotos
               </>
             )}
             <input
               type="file"
               accept="image/*"
+              multiple
               onChange={handleFileUpload}
               className="hidden"
               disabled={isUploading}
@@ -230,7 +262,7 @@ export const PhotoGallery = ({
               Sem fotos no pátio
             </p>
             <p className="text-[9px] text-gray-300 uppercase font-bold max-w-[160px]">
-              Clique em "Adicionar Foto" para iniciar a vitrine
+              Clique em "Adicionar Fotos" para iniciar a vitrine
             </p>
           </div>
         )}
@@ -238,19 +270,40 @@ export const PhotoGallery = ({
         {isUploading && (
           <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center gap-3">
             <div className="w-8 h-8 border-2 border-red-600 border-t-transparent rounded-full animate-spin" />
-            {watermarkEnabled && (
-              <p className="text-[9px] font-black text-red-500 uppercase tracking-widest">
-                Aplicando marca d'água...
-              </p>
-            )}
+            <p className="text-[9px] font-black text-white uppercase tracking-widest">
+              {watermarkEnabled ? "Aplicando marca d'água..." : "Enviando..."}
+              {uploadingCount > 1 ? ` (${uploadingCount} restantes)` : ""}
+            </p>
           </div>
         )}
       </div>
 
-      {/* Miniaturas */}
+      {/* Miniaturas com drag-and-drop */}
       <div className="grid grid-cols-5 gap-3">
         {fotos.map((foto, i) => (
-          <div key={i} className="relative group/thumb">
+          <div
+            key={foto}
+            draggable
+            onDragStart={() => handleDragStart(i)}
+            onDragOver={(e) => handleDragOver(e, i)}
+            onDrop={(e) => handleDrop(e, i)}
+            onDragEnd={handleDragEnd}
+            className={`relative group/thumb transition-all ${
+              dragOverIndex === i ? "scale-105 opacity-70" : ""
+            }`}
+          >
+            {/* Badge CAPA na primeira foto */}
+            {i === 0 && (
+              <span className="absolute -top-1 -left-1 z-10 bg-red-600 text-white text-[7px] font-black uppercase px-1.5 py-0.5 rounded-full shadow">
+                Capa
+              </span>
+            )}
+
+            {/* Ícone de drag */}
+            <div className="absolute top-1 left-1 z-10 opacity-0 group-hover/thumb:opacity-80 transition-opacity cursor-grab">
+              <GripVertical size={12} className="text-white drop-shadow" />
+            </div>
+
             <button
               onClick={() => setSelectedPhoto(foto)}
               className={`w-full h-16 rounded-xl overflow-hidden border-2 transition-all ${
@@ -262,9 +315,10 @@ export const PhotoGallery = ({
               <img
                 src={foto}
                 alt={`Miniatura ${i + 1}`}
-                className="w-full h-full object-cover"
+                className="w-full h-full object-cover pointer-events-none"
               />
             </button>
+
             <button
               onClick={(e) => handleDeletePhoto(e, foto)}
               className="absolute -top-1 -right-1 w-5 h-5 bg-red-600 text-white rounded-full flex items-center justify-center text-[9px] font-bold opacity-0 group-hover/thumb:opacity-100 transition-opacity hover:bg-red-700 shadow-lg z-10"
@@ -273,6 +327,7 @@ export const PhotoGallery = ({
             </button>
           </div>
         ))}
+
         {fotos.length === 0 && (
           <div className="col-span-5 h-16 border-2 border-dashed border-gray-200 rounded-xl flex items-center justify-center text-[10px] text-gray-300 font-bold uppercase tracking-widest">
             Nenhuma foto cadastrada
