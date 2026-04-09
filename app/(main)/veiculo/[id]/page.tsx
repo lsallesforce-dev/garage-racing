@@ -667,7 +667,8 @@ export default function DetalheVeiculo() {
               <div className="grid grid-cols-2 gap-3">
                 {[
                   { label: "Valor", field: "preco_sugerido", format: (v: any) => v ? `R$ ${Number(v/100).toLocaleString("pt-BR")}` : "" },
-                  { label: "Ano", field: "ano_modelo", format: (v: any) => v || "" },
+                  { label: "Ano", field: "ano", format: (v: any) => v || "" },
+                  { label: "Ano Modelo", field: "ano_modelo", format: (v: any) => v || "" },
                   { label: "Modelo", field: "modelo", format: (v: any) => v || "" },
                   { label: "Quilometragem", field: "quilometragem_estimada", format: (v: any) => v ? `${Number(v).toLocaleString("pt-BR")} km` : "" },
                   { label: "Cor", field: "cor", format: (v: any) => v || "" },
