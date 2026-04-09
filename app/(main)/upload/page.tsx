@@ -168,6 +168,30 @@ export default function UploadPage() {
 
   const isLoading = isAnalyzing || igStep === "baixando" || igStep === "analisando";
 
+  const [isDragOver, setIsDragOver] = useState(false);
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isAnalyzing) setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    if (isAnalyzing) return;
+    const file = e.dataTransfer.files?.[0];
+    if (file && file.type.startsWith("video/")) {
+      handleFileUpload(file);
+    }
+  };
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -217,16 +241,21 @@ export default function UploadPage() {
                 <div className="space-y-6">
                   <label className="block cursor-pointer">
                     <div
+                      onDragOver={handleDragOver}
+                      onDragEnter={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleDrop}
                       className={`flex flex-col items-center justify-center w-full h-64 border-2 border-dashed rounded-3xl transition-all group ${
                         isAnalyzing
                           ? "border-gray-100 bg-gray-50 cursor-wait"
-                          : "border-gray-100 bg-gray-50/50 hover:border-red-600/30 hover:bg-white"
+                          : isDragOver
+                            ? "border-red-600 bg-red-50 scale-[1.01]"
+                            : "border-gray-100 bg-gray-50/50 hover:border-red-600/30 hover:bg-white"
                       }`}
                     >
                       <input
                         type="file"
                         accept="video/*"
-                        capture="environment"
                         className="hidden"
                         onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])}
                         disabled={isAnalyzing}
@@ -255,11 +284,11 @@ export default function UploadPage() {
                         </div>
                       ) : (
                         <>
-                          <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mb-6 shadow-sm group-hover:scale-110 transition-transform">
-                            <Video className="w-8 h-8 text-gray-400 group-hover:text-red-600" />
+                          <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-6 shadow-sm transition-all ${isDragOver ? "bg-red-600 scale-110" : "bg-white group-hover:scale-110"}`}>
+                            <Video className={`w-8 h-8 transition-colors ${isDragOver ? "text-white" : "text-gray-400 group-hover:text-red-600"}`} />
                           </div>
-                          <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest text-center px-10 leading-relaxed">
-                            Arraste ou clique para<br />gravar inspeção
+                          <p className={`text-[10px] font-black uppercase tracking-widest text-center px-10 leading-relaxed ${isDragOver ? "text-red-600" : "text-gray-400"}`}>
+                            {isDragOver ? "Solte para enviar" : <>Arraste ou clique para<br />enviar vídeo</>}
                           </p>
                         </>
                       )}
