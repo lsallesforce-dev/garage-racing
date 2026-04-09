@@ -448,17 +448,28 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
             : [];
 
     for (const v of veiculosParaFoto) {
-      const fotoUrl = v.capa_marketing_url ?? (v as any).fotos?.[0] ?? null;
-      if (!fotoUrl) continue;
-      try {
-        const imgResp = await fetch(fotoUrl);
-        if (imgResp.ok) {
-          const base64 = Buffer.from(await imgResp.arrayBuffer()).toString("base64");
-          await sendAvisaImage(phone, base64);
-          fotoEnviada = true;
+      // Se pedindoFotosMultiplos (vários carros), envia só a capa de cada um.
+      // Se for um único carro, envia todas as fotos disponíveis.
+      const todasFotos: string[] = pedindoFotosMultiplos
+        ? [v.capa_marketing_url ?? (v as any).fotos?.[0]].filter(Boolean) as string[]
+        : [
+            ...((v as any).fotos ?? []),
+            ...(v.capa_marketing_url && !(v as any).fotos?.includes(v.capa_marketing_url) ? [v.capa_marketing_url] : []),
+          ].filter(Boolean);
+
+      if (todasFotos.length === 0) continue;
+
+      for (const fotoUrl of todasFotos) {
+        try {
+          const imgResp = await fetch(fotoUrl);
+          if (imgResp.ok) {
+            const base64 = Buffer.from(await imgResp.arrayBuffer()).toString("base64");
+            await sendAvisaImage(phone, base64);
+            fotoEnviada = true;
+          }
+        } catch (e) {
+          console.warn(`⚠️ Falha ao enviar foto de ${v.marca} ${v.modelo}:`, e);
         }
-      } catch (e) {
-        console.warn(`⚠️ Falha ao enviar foto de ${v.marca} ${v.modelo}:`, e);
       }
     }
 
