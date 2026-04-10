@@ -8,7 +8,7 @@ import { Vehicle } from "@/types/vehicle";
 // ─── Stop Words Expandidas ────────────────────────────────────────────────────
 const STOP_WORDS = new Set([
   // Artigos, preposições, conjunções
-  "que", "com", "por", "dos", "das", "mas", "pra", "pro", "para", "pelo", "pela",
+  "um", "que", "com", "por", "dos", "das", "mas", "pra", "pro", "para", "pelo", "pela",
   "num", "numa", "nos", "nas", "nem", "nao", "ate",
   // Pronomes
   "ele", "ela", "eles", "elas", "uns", "uma", "umas", "voce", "voces",
@@ -27,6 +27,13 @@ const STOP_WORDS = new Set([
   "boa", "bom", "ola", "sim", "cor", "ok", "oi",
   // Advérbios e conectivos
   "bem", "mal", "qual", "como", "quando", "onde", "quanto",
+  // Preposições e locuções (nunca são modelos)
+  "sobre", "acerca", "respeito",
+  // Palavras de contexto de anúncio/interesse
+  "anunciado", "anuncio", "anunciei", "anunciada", "anuncios",
+  "interesse", "interessado", "interessada", "procurando", "procura",
+  "queria", "quero", "gostaria", "ver", "saber", "informacao", "informacoes",
+  "disponivel", "disponivel", "comprar", "compra", "adquirir",
   // Indefinidos e quantificadores — nunca são modelos
   "outro", "outra", "outros", "outras", "algum", "alguma", "nenhum", "nenhuma",
   "todo", "toda", "todos", "todas",
@@ -187,6 +194,66 @@ async function textSearch(tokens: string[], tenantUserId: string, modeloContexto
     .map((s) => s.vehicle);
 }
 
+// ─── Distância de Levenshtein ─────────────────────────────────────────────────
+function levenshtein(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, (_, i) =>
+    Array.from({ length: n + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
+  );
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1]
+        ? dp[i - 1][j - 1]
+        : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    }
+  }
+  return dp[m][n];
+}
+
+// ─── Correção Fuzzy de Tokens ─────────────────────────────────────────────────
+// Ativado apenas quando textSearch não retorna nada.
+// Compara cada token contra os nomes reais do estoque e corrige typos.
+async function fuzzyCorrectTokens(tokens: string[], tenantUserId: string): Promise<string[]> {
+  const modelTokens = tokens.filter((t) => !isYearToken(t));
+  if (modelTokens.length === 0) return tokens;
+
+  const { data } = await supabaseAdmin
+    .from("veiculos")
+    .select("modelo, marca")
+    .eq("status_venda", "DISPONIVEL")
+    .eq("user_id", tenantUserId);
+
+  if (!data || data.length === 0) return tokens;
+
+  const knownWords = new Set<string>();
+  for (const v of data as { modelo: string; marca: string }[]) {
+    if (v.modelo) normalizeStr(v.modelo).split(/\s+/).forEach((w) => { if (w.length >= 2) knownWords.add(w); });
+    if (v.marca) normalizeStr(v.marca).split(/\s+/).forEach((w) => { if (w.length >= 2) knownWords.add(w); });
+  }
+
+  return tokens.map((token) => {
+    if (isYearToken(token)) return token;
+
+    // Tolerância: palavras curtas (≤4 chars) → distância 1; mais longas → distância 2
+    const maxDist = token.length <= 4 ? 1 : 2;
+    let bestMatch = token;
+    let bestDist = Infinity;
+
+    for (const known of knownWords) {
+      const dist = levenshtein(token, known);
+      if (dist < bestDist && dist <= maxDist) {
+        bestDist = dist;
+        bestMatch = known;
+      }
+    }
+
+    if (bestMatch !== token) {
+      console.log(`🔤 Fuzzy: "${token}" → "${bestMatch}" (dist=${bestDist})`);
+    }
+    return bestMatch;
+  });
+}
+
 // ─── Busca Semântica pgvector ─────────────────────────────────────────────────
 async function semanticSearch(
   message: string,
@@ -250,7 +317,15 @@ export async function hybridVehicleSearch(
   msgCurta: boolean
 ): Promise<HybridSearchResult> {
   const tokens = extractVehicleTokens(userMessage);
-  const hitsTextuais = tokens.length > 0 ? await textSearch(tokens, tenantUserId, veiculoPrincipal?.modelo, veiculoPrincipal?.marca) : [];
+  let hitsTextuais = tokens.length > 0 ? await textSearch(tokens, tenantUserId, veiculoPrincipal?.modelo, veiculoPrincipal?.marca) : [];
+
+  // Se não achou nada, tenta corrigir typos ("gom" → "gol") e refaz a busca
+  if (hitsTextuais.length === 0 && tokens.length > 0) {
+    const tokensFuzzy = await fuzzyCorrectTokens(tokens, tenantUserId);
+    if (tokensFuzzy.some((t, i) => t !== tokens[i])) {
+      hitsTextuais = await textSearch(tokensFuzzy, tenantUserId, veiculoPrincipal?.modelo, veiculoPrincipal?.marca);
+    }
+  }
   const temHitsTextuais = hitsTextuais.length > 0;
 
   // ── Caso 1: Cliente mencionou um carro DIFERENTE do vinculado ─────────────
