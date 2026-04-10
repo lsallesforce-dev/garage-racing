@@ -122,7 +122,8 @@ export default function UploadPage() {
             uploadOk = true;
             break;
           }
-          lastError = `HTTP ${uploadRes.status}: ${uploadRes.statusText}`;
+          const errBody = await uploadRes.text().catch(() => "");
+          lastError = `HTTP ${uploadRes.status}: ${errBody || uploadRes.statusText}`;
         } catch (err: any) {
           lastError = err.message || "Erro de rede";
         }
