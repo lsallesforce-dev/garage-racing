@@ -76,10 +76,21 @@ export default function UploadPage() {
     try {
       // 1. Pede signed URL ao servidor
       setUploadStep("Preparando upload...");
+
+      // Garante Content-Type válido — celulares Android podem retornar "" ou "application/octet-stream"
+      const ext = file.name.split(".").pop()?.toLowerCase() || "mp4";
+      const mimeMap: Record<string, string> = {
+        mp4: "video/mp4", mov: "video/quicktime", avi: "video/x-msvideo",
+        mkv: "video/x-matroska", webm: "video/webm", "3gp": "video/3gpp",
+      };
+      const fileType = (file.type && file.type !== "application/octet-stream")
+        ? file.type
+        : (mimeMap[ext] ?? "video/mp4");
+
       const metaRes = await fetch("/api/upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fileName: file.name, fileType: file.type }),
+        body: JSON.stringify({ fileName: file.name, fileType }),
       });
 
       const metaData = await metaRes.json();
@@ -103,7 +114,7 @@ export default function UploadPage() {
 
           const uploadRes = await fetch(metaData.signedUrl, {
             method: "PUT",
-            headers: { "Content-Type": file.type },
+            headers: { "Content-Type": fileType },
             body: file,
           });
 
