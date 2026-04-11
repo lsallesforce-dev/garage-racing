@@ -7,7 +7,7 @@ import { geminiFlashSales, geminiFlashFallback } from "@/lib/gemini";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendAvisaMessage, sendAvisaImage, sendAvisaVideo } from "@/lib/avisa";
 import { buscarDadosTransbordo, gerarRelatorioPista } from "@/lib/leads";
-import { hybridVehicleSearch } from "@/lib/hybrid-search";
+import { hybridVehicleSearch, findVehicleForMedia } from "@/lib/hybrid-search";
 import { getCachedHistory, cacheHistory, invalidateHistory } from "@/lib/redis";
 import { Vehicle } from "@/types/vehicle";
 
@@ -454,11 +454,9 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
     if (pedindoFotosMultiplos) {
       veiculosParaFoto = topVeiculos.slice(0, 4);
     } else {
-      const { hitsTextuais: hitsFoto } = await hybridVehicleSearch(
-        userMessage, tenantUserId, null, false
-      );
-      veiculosParaFoto = hitsFoto.length > 0
-        ? [hitsFoto[0]]
+      const veiculoMidia = await findVehicleForMedia(userMessage, tenantUserId);
+      veiculosParaFoto = veiculoMidia
+        ? [veiculoMidia]
         : hitsTextuais.length > 0
           ? [hitsTextuais[0]]
           : veiculoPrincipal

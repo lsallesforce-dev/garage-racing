@@ -375,6 +375,36 @@ async function fallbackSearch(tenantUserId: string): Promise<Vehicle[]> {
   return (data as Vehicle[]) || [];
 }
 
+// ─── Busca Direta para Foto/Vídeo ────────────────────────────────────────────
+// Extrai o veículo mencionado na mensagem sem nenhum viés de contexto.
+// Usado exclusivamente para decidir qual carro aparece numa foto/vídeo.
+// Não passa veiculoPrincipal → sem context boost → sem risco de carro errado.
+export async function findVehicleForMedia(
+  message: string,
+  tenantUserId: string
+): Promise<Vehicle | null> {
+  const rawTokens = extractVehicleTokens(message);
+
+  // Busca por categoria primeiro (ex: "foto da pickup")
+  const categoryAliases: string[] = [];
+  for (const t of rawTokens) {
+    const aliases = getCategoryAliases(t);
+    if (aliases) aliases.forEach((a) => { if (!categoryAliases.includes(a)) categoryAliases.push(a); });
+  }
+
+  if (categoryAliases.length > 0) {
+    const catResults = await categorySearch(categoryAliases, tenantUserId);
+    if (catResults.length > 0) return catResults[0];
+  }
+
+  // Busca textual pura sem veiculoPrincipal (sem context boost)
+  const tokens = expandWithSynonyms(rawTokens);
+  if (tokens.length === 0) return null;
+
+  const results = await textSearch(tokens, tenantUserId, undefined, undefined);
+  return results[0] ?? null;
+}
+
 // ─── Interface de Resultado ───────────────────────────────────────────────────
 export interface HybridSearchResult {
   topVeiculos: Vehicle[];
