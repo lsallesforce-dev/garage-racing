@@ -95,11 +95,15 @@ function formatVehicleCard(v: Vehicle): string {
       (v as any).relatorio_ia || v.detalhes_inspecao,
       v.transcricao_vendedor,
       v.roteiro_pitch,
-      v.pontos_fortes_venda?.join(", "),
       v.opcionais?.join(", "),
     ]
       .filter(Boolean)
       .join(" | ") || "Sem detalhes adicionais.";
+
+  // Pontos fortes separados — o agente deve usá-los como estão, sem reescrever
+  const pontosFortes = v.pontos_fortes_venda?.length
+    ? `  ⚡ Pontos fortes (USE EXATAMENTE ASSIM, sem expandir): ${v.pontos_fortes_venda.join(" | ")}\n`
+    : "";
 
   const ficha = [
     v.motor && `Motor: ${v.motor}`,
@@ -120,6 +124,7 @@ function formatVehicleCard(v: Vehicle): string {
   return (
     `[ID:${v.id}] ${v.marca} ${v.modelo}${versao} (${ano}) | Cor: ${cor} | KM: ${km} | Preço: ${preco} | Foto: ${temFoto} | Vídeo: ${temVideo}\n` +
     (ficha ? `  Ficha: ${ficha}\n` : "") +
+    pontosFortes +
     `  Detalhes: ${detalhes}`
   );
 }
