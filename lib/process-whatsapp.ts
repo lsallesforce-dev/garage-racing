@@ -427,11 +427,17 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   const clientePediuFotoAntes = gatilhosFoto.some((g) => ultimaMsgCliente.includes(g));
   const clientePediuVideoAntes = gatilhosVideo.some((g) => ultimaMsgCliente.includes(g));
 
+  // Continuação implícita: "e da ranger?", "e o gol?", "e a strada?" após pedido de foto anterior
+  // O cliente não repete a palavra "foto" mas está claramente continuando o pedido anterior
+  const continuacaoFoto =
+    clientePediuFotoAntes &&
+    /^(e\b|e\s+(a|o|da|do|de|dos|das|tem)\b)/i.test(userMessage.trim());
+
   // Detecta pedido de fotos de MÚLTIPLOS carros ("foto deles", "de ambos", "dos dois", "de cada um")
   const pedindoFotosMultiplos = /\b(deles|delas|dos dois|das duas|de ambos|de todos|de cada|de cada um)\b/i.test(mensagemLower);
 
   const clientePediuFoto =
-    (gatilhosFoto.some((g) => mensagemLower.includes(g)) || (msgConfirmacao && clientePediuFotoAntes)) &&
+    (gatilhosFoto.some((g) => mensagemLower.includes(g)) || (msgConfirmacao && clientePediuFotoAntes) || continuacaoFoto) &&
     !exclusoesFoto.some((e) => mensagemLower.includes(e));
 
   let fotoEnviada = false;
