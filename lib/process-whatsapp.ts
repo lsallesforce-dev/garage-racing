@@ -442,18 +442,23 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
     // pediu explicitamente um carro diferente (clientePediuCarroDiferente = true).
     // Isso evita que adjetivos de cor ("prata é mais bonito") triggem o carro errado.
     // Lógica de seleção do veículo para foto:
-    // 1. Múltiplos → capa de cada um dos topVeiculos
-    // 2. hitsTextuais[0] → o cliente nomeou um carro específico nesta mensagem
-    // 3. veiculoPrincipal → fallback para o carro em foco na conversa
-    // Não usamos clientePediuCarroDiferente aqui — evita enviar foto do carro errado
-    // quando o estado interno não foi atualizado corretamente.
-    const veiculosParaFoto: Vehicle[] = pedindoFotosMultiplos
-      ? topVeiculos.slice(0, 4)
-      : hitsTextuais.length > 0
-        ? [hitsTextuais[0]]
-        : veiculoPrincipal
-          ? [veiculoPrincipal]
-          : [];
+    // Busca sem context boost (veiculoPrincipal=null) para não contaminar o scoring
+    // quando o cliente nomeia outro carro ("foto da toro" com foco na Strada).
+    let veiculosParaFoto: Vehicle[];
+    if (pedindoFotosMultiplos) {
+      veiculosParaFoto = topVeiculos.slice(0, 4);
+    } else {
+      const { hitsTextuais: hitsFoto } = await hybridVehicleSearch(
+        userMessage, tenantUserId, null, false
+      );
+      veiculosParaFoto = hitsFoto.length > 0
+        ? [hitsFoto[0]]
+        : hitsTextuais.length > 0
+          ? [hitsTextuais[0]]
+          : veiculoPrincipal
+            ? [veiculoPrincipal]
+            : [];
+    }
 
     for (const v of veiculosParaFoto) {
       // Se pedindoFotosMultiplos (vários carros), envia só a capa de cada um.
