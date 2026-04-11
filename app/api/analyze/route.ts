@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
     2. CONDIÇÃO: Identifique se é "0KM" (fala do vendedor, pneus novos, sem placa) ou "USADO".
     3. ESCUTA ATIVA: O vendedor citou valores? (Ex: R$ 488,00 de parcela, consórcio, bônus). Extraia exatamente o que foi dito no áudio.
     4. TÉCNICO: Se for Moto, cite cilindrada, torque, estilo (Naked, Sport). Se for Carro, cite tração, acessórios e opcionais.
-    5. MARKETING: Não diga "não tem riscos". Diga "Pintura com brilho original de fábrica", "Ciclística agressiva", "Oportunidade única".
+    5. PONTOS FORTES: Liste fatos curtos e diretos como um vendedor de garagem falaria. Máximo 4 palavras por item. Sem frases completas, sem predicado, sem floreio. Exemplos corretos: "Pneus novos", "Motor turbo diesel", "Interior impecável", "IPVA 2026 pago", "Único dono", "Sem multas", "Completa de opcionais". Exemplos ERRADOS (não use): "Pneus novos garantindo segurança", "Interior impecavelmente conservado proporcionando conforto".
 
     RETORNE APENAS JSON PURO:
     {
@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
       "estado_pneus": "string (ex: Novos, Bom estado, Desgastados)",
       "segundo_dono": "boolean (true se mencionado que é segundo dono)",
       "final_placa": "string (último dígito da placa se visível, senão null)",
-      "pontos_fortes_venda": ["string", "string", "string"],
+      "pontos_fortes_venda": ["fato curto (máx 4 palavras)", "fato curto", "fato curto"],
       "detalhes_inspecao": "Relatório técnico-comercial rico e persuasivo.",
       "transcricao_vendedor": "string",
       "tags_busca": "string"
