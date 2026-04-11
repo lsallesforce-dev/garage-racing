@@ -856,8 +856,38 @@ export default function DetalheVeiculo() {
                   </div>
                 ))}
 
+                {/* Opcionais */}
+                <div className="col-span-full pt-4 border-t border-gray-100">
+                  <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-3">
+                    Itens do Veículo
+                  </p>
+                  {opcionais.length > 0 ? (
+                    <div className="grid grid-cols-2 gap-1.5 mb-3">
+                      {opcionais.map((item) => (
+                        <div
+                          key={item}
+                          className="text-[10px] font-bold text-gray-700 bg-gray-50 border border-gray-100 rounded-lg px-2.5 py-1.5 truncate"
+                        >
+                          {item}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[10px] text-gray-300 font-bold uppercase tracking-widest italic mb-3">
+                      Nenhum item selecionado
+                    </p>
+                  )}
+                  <button
+                    onClick={() => setShowOpcionaisModal(true)}
+                    className="flex items-center gap-1.5 px-4 py-2 border border-dashed border-gray-300 hover:border-gray-900 hover:bg-gray-900 hover:text-white text-gray-500 text-[9px] font-black uppercase tracking-widest rounded-xl transition-all"
+                  >
+                    <Plus size={10} />
+                    Opcionais
+                  </button>
+                </div>
+
                 {/* Selos da vitrine */}
-                <div className="col-span-full pt-2 border-t border-gray-100">
+                <div className="col-span-full pt-4 border-t border-gray-100">
                   <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-3">Selos da Vitrine</p>
                   <div className="grid grid-cols-2 gap-2">
                     {([
@@ -893,36 +923,6 @@ export default function DetalheVeiculo() {
                       );
                     })}
                   </div>
-                </div>
-
-                {/* Opcionais */}
-                <div className="col-span-full pt-4 border-t border-gray-100">
-                  <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-3">
-                    Itens do Veículo
-                  </p>
-                  {opcionais.length > 0 ? (
-                    <div className="grid grid-cols-2 gap-1.5 mb-3">
-                      {opcionais.map((item) => (
-                        <div
-                          key={item}
-                          className="text-[10px] font-bold text-gray-700 bg-gray-50 border border-gray-100 rounded-lg px-2.5 py-1.5 truncate"
-                        >
-                          {item}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-[10px] text-gray-300 font-bold uppercase tracking-widest italic mb-3">
-                      Nenhum item selecionado
-                    </p>
-                  )}
-                  <button
-                    onClick={() => setShowOpcionaisModal(true)}
-                    className="flex items-center gap-1.5 px-4 py-2 border border-dashed border-gray-300 hover:border-gray-900 hover:bg-gray-900 hover:text-white text-gray-500 text-[9px] font-black uppercase tracking-widest rounded-xl transition-all"
-                  >
-                    <Plus size={10} />
-                    Opcionais
-                  </button>
                 </div>
               </div>
             </SectionCard>
