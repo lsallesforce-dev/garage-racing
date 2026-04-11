@@ -384,25 +384,45 @@ export async function findVehicleForMedia(
   tenantUserId: string
 ): Promise<Vehicle | null> {
   const rawTokens = extractVehicleTokens(message);
+  if (rawTokens.length === 0) return null;
 
-  // Busca por categoria primeiro (ex: "foto da pickup")
-  const categoryAliases: string[] = [];
-  for (const t of rawTokens) {
-    const aliases = getCategoryAliases(t);
-    if (aliases) aliases.forEach((a) => { if (!categoryAliases.includes(a)) categoryAliases.push(a); });
-  }
+  const msgNorm = normalizeStr(message);
 
-  if (categoryAliases.length > 0) {
-    const catResults = await categorySearch(categoryAliases, tenantUserId);
-    if (catResults.length > 0) return catResults[0];
-  }
-
-  // Busca textual pura sem veiculoPrincipal (sem context boost)
+  // 1. Busca textual sem context boost
   const tokens = expandWithSynonyms(rawTokens);
-  if (tokens.length === 0) return null;
+  const textResults = await textSearch(tokens, tenantUserId, undefined, undefined);
+  if (textResults.length > 0) return textResults[0];
 
-  const results = await textSearch(tokens, tenantUserId, undefined, undefined);
-  return results[0] ?? null;
+  // 2. Fallback: busca todos os veículos disponíveis e faz match em JS.
+  //    Garante que encontra mesmo que o campo `modelo` esteja cadastrado de
+  //    forma diferente (ex: "Toro Freedom" vs "Toro" vs "Freedom").
+  const { data: todos } = await supabaseAdmin
+    .from("veiculos")
+    .select("id, marca, modelo, versao, cor, ano, status_venda, user_id")
+    .eq("status_venda", "DISPONIVEL")
+    .eq("user_id", tenantUserId)
+    .limit(100);
+
+  if (!todos || todos.length === 0) return null;
+
+  // Para cada veículo, monta o nome completo normalizado e verifica se
+  // algum token da mensagem está contido nele.
+  for (const v of todos as Vehicle[]) {
+    const nomeCompleto = normalizeStr(
+      `${v.marca ?? ""} ${v.modelo ?? ""} ${v.versao ?? ""} ${v.cor ?? ""}`
+    );
+    if (rawTokens.some((t) => t.length >= 3 && nomeCompleto.includes(t))) {
+      // Busca o registro completo com todos os campos (fotos etc.)
+      const { data: full } = await supabaseAdmin
+        .from("veiculos")
+        .select("*")
+        .eq("id", v.id)
+        .single();
+      if (full) return full as Vehicle;
+    }
+  }
+
+  return null;
 }
 
 // ─── Interface de Resultado ───────────────────────────────────────────────────
