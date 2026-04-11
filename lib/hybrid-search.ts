@@ -11,6 +11,7 @@ const STOP_WORDS = new Set([
   "um", "que", "com", "por", "dos", "das", "mas", "pra", "pro", "para", "pelo", "pela",
   "num", "numa", "nos", "nas", "nem", "nao", "ate",
   // Pronomes
+  "me", "te", "se", "nos", "vos",
   "ele", "ela", "eles", "elas", "uns", "uma", "umas", "voce", "voces",
   "teu", "tua", "seu", "sua", "meu", "minha", "esse", "essa", "esses", "essas", 
   "desse", "dessa", "desses", "dessas", "deste", "desta", "este", "esta", "isto", "isso", "da", "do", "de", "no", "na",

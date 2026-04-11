@@ -441,15 +441,19 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
     // Foto: veiculoPrincipal tem prioridade sobre hitsTextuais — a menos que o cliente
     // pediu explicitamente um carro diferente (clientePediuCarroDiferente = true).
     // Isso evita que adjetivos de cor ("prata é mais bonito") triggem o carro errado.
+    // Lógica de seleção do veículo para foto:
+    // 1. Múltiplos → capa de cada um dos topVeiculos
+    // 2. hitsTextuais[0] → o cliente nomeou um carro específico nesta mensagem
+    // 3. veiculoPrincipal → fallback para o carro em foco na conversa
+    // Não usamos clientePediuCarroDiferente aqui — evita enviar foto do carro errado
+    // quando o estado interno não foi atualizado corretamente.
     const veiculosParaFoto: Vehicle[] = pedindoFotosMultiplos
-      ? topVeiculos.slice(0, 4) // máximo 4 para não spammar
-      : clientePediuCarroDiferente && hitsTextuais.length > 0
+      ? topVeiculos.slice(0, 4)
+      : hitsTextuais.length > 0
         ? [hitsTextuais[0]]
         : veiculoPrincipal
           ? [veiculoPrincipal]
-          : hitsTextuais.length > 0
-            ? [hitsTextuais[0]]
-            : [];
+          : [];
 
     for (const v of veiculosParaFoto) {
       // Se pedindoFotosMultiplos (vários carros), envia só a capa de cada um.
