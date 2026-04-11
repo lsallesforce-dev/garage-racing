@@ -448,20 +448,49 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
     // pediu explicitamente um carro diferente (clientePediuCarroDiferente = true).
     // Isso evita que adjetivos de cor ("prata é mais bonito") triggem o carro errado.
     // Lógica de seleção do veículo para foto:
-    // Busca sem context boost (veiculoPrincipal=null) para não contaminar o scoring
-    // quando o cliente nomeia outro carro ("foto da toro" com foco na Strada).
+    // Prioridade:
+    //   1. Veículo nomeado na mensagem encontrado no contexto atual (topVeiculos + veiculoPrincipal)
+    //   2. Busca direta no DB sem context boost (findVehicleForMedia)
+    //   3. hitsTextuais[0] da busca principal
+    //   4. veiculoPrincipal (carro em foco)
     let veiculosParaFoto: Vehicle[];
     if (pedindoFotosMultiplos) {
       veiculosParaFoto = topVeiculos.slice(0, 4);
     } else {
-      const veiculoMidia = await findVehicleForMedia(userMessage, tenantUserId);
-      veiculosParaFoto = veiculoMidia
-        ? [veiculoMidia]
-        : hitsTextuais.length > 0
-          ? [hitsTextuais[0]]
-          : veiculoPrincipal
-            ? [veiculoPrincipal]
-            : [];
+      // 1. Tenta achar o carro mencionado dentro dos veículos já em contexto
+      const msgNorm = userMessage
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+      const veiculosContexto = [
+        ...topVeiculos,
+        ...(veiculoPrincipal && !topVeiculos.some(v => v.id === veiculoPrincipal.id)
+          ? [veiculoPrincipal] : []),
+      ];
+
+      const veiculoNomeado = veiculosContexto.find((v) => {
+        const modeloNorm = (v.modelo ?? "")
+          .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+        const marcaNorm = (v.marca ?? "")
+          .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+        return (
+          (modeloNorm.length >= 3 && msgNorm.includes(modeloNorm)) ||
+          (marcaNorm.length >= 3 && msgNorm.includes(marcaNorm))
+        );
+      });
+
+      if (veiculoNomeado) {
+        veiculosParaFoto = [veiculoNomeado];
+      } else {
+        // 2. Busca direta no DB sem context boost
+        const veiculoMidia = await findVehicleForMedia(userMessage, tenantUserId);
+        veiculosParaFoto = veiculoMidia
+          ? [veiculoMidia]
+          : hitsTextuais.length > 0
+            ? [hitsTextuais[0]]
+            : veiculoPrincipal
+              ? [veiculoPrincipal]
+              : [];
+      }
     }
 
     for (const v of veiculosParaFoto) {
