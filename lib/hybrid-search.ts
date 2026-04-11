@@ -41,6 +41,48 @@ const STOP_WORDS = new Set([
   "carro", "automovel", "veiculo", "modelo", "marca",
 ]);
 
+// ─── Sinônimos de Categoria ───────────────────────────────────────────────────
+// Quando o cliente usa um termo genérico de categoria, expande para todos os
+// aliases que podem estar cadastrados no banco (campo categoria, modelo ou tags).
+const CATEGORY_SYNONYMS: Record<string, string[]> = {
+  // Pick-up / Caminhonete
+  "caminhonete":  ["pickup", "pick-up", "picape", "caminhonete"],
+  "caminhão":     ["pickup", "pick-up", "picape"],
+  "pickup":       ["pickup", "pick-up", "picape", "caminhonete"],
+  "pick-up":      ["pickup", "pick-up", "picape", "caminhonete"],
+  "picape":       ["pickup", "pick-up", "picape", "caminhonete"],
+  // SUV / Utilitário
+  "suv":          ["suv", "utilitario", "utilitário"],
+  "utilitario":   ["suv", "utilitario", "utilitário"],
+  "utilitário":   ["suv", "utilitario", "utilitário"],
+  // Hatch
+  "hatch":        ["hatch", "hatchback"],
+  "hatchback":    ["hatch", "hatchback"],
+  // Sedan
+  "sedan":        ["sedan", "sedã"],
+  "sedã":         ["sedan", "sedã"],
+  // Minivan / Van
+  "van":          ["van", "minivan"],
+  "minivan":      ["van", "minivan"],
+  // Esportivo
+  "esportivo":    ["esportivo", "coupe", "coupé"],
+  "coupe":        ["esportivo", "coupe", "coupé"],
+};
+
+function expandWithSynonyms(tokens: string[]): string[] {
+  const expanded: string[] = [];
+  for (const token of tokens) {
+    expanded.push(token);
+    const aliases = CATEGORY_SYNONYMS[token];
+    if (aliases) {
+      for (const alias of aliases) {
+        if (!expanded.includes(alias)) expanded.push(alias);
+      }
+    }
+  }
+  return expanded;
+}
+
 // ─── Detecção de ano ─────────────────────────────────────────────────────────
 // Tokens numéricos de 4 dígitos no range de anos de veículos
 function isYearToken(t: string): boolean {
@@ -316,7 +358,7 @@ export async function hybridVehicleSearch(
   veiculoPrincipal: Vehicle | null,
   msgCurta: boolean
 ): Promise<HybridSearchResult> {
-  const tokens = extractVehicleTokens(userMessage);
+  const tokens = expandWithSynonyms(extractVehicleTokens(userMessage));
   let hitsTextuais = tokens.length > 0 ? await textSearch(tokens, tenantUserId, veiculoPrincipal?.modelo, veiculoPrincipal?.marca) : [];
 
   // Se não achou nada, tenta corrigir typos ("gom" → "gol") e refaz a busca
