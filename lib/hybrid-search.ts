@@ -44,13 +44,17 @@ const STOP_WORDS = new Set([
 // ─── Sinônimos de Categoria ───────────────────────────────────────────────────
 // Quando o cliente usa um termo genérico de categoria, expande para todos os
 // aliases que podem estar cadastrados no banco (campo categoria, modelo ou tags).
+const PICKUP_ALIASES = ["pickup", "pick-up", "picape", "caminhonete", "caminhoneta"];
+
 const CATEGORY_SYNONYMS: Record<string, string[]> = {
-  // Pick-up / Caminhonete
-  "caminhonete":  ["pickup", "pick-up", "picape", "caminhonete"],
-  "caminhão":     ["pickup", "pick-up", "picape"],
-  "pickup":       ["pickup", "pick-up", "picape", "caminhonete"],
-  "pick-up":      ["pickup", "pick-up", "picape", "caminhonete"],
-  "picape":       ["pickup", "pick-up", "picape", "caminhonete"],
+  // Pick-up / Caminhonete (todas as grafias possíveis)
+  "caminhonete":  PICKUP_ALIASES,
+  "caminhoneta":  PICKUP_ALIASES,
+  "caminhao":     PICKUP_ALIASES,
+  "caminhão":     PICKUP_ALIASES,
+  "pickup":       PICKUP_ALIASES,
+  "pick-up":      PICKUP_ALIASES,
+  "picape":       PICKUP_ALIASES,
   // SUV / Utilitário
   "suv":          ["suv", "utilitario", "utilitário"],
   "utilitario":   ["suv", "utilitario", "utilitário"],
