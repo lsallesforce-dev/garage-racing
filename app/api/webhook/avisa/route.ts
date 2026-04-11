@@ -143,7 +143,7 @@ export async function POST(req: NextRequest) {
     if (token) {
       const { data } = await supabaseAdmin
         .from("config_garage")
-        .select("user_id, nome_empresa, nome_agente, endereco, whatsapp")
+        .select("user_id, nome_empresa, nome_agente, endereco, whatsapp, vitrine_slug")
         .eq("webhook_token", token)
         .maybeSingle();
 
@@ -160,14 +160,14 @@ export async function POST(req: NextRequest) {
       if (tenantUserId) {
         const { data } = await supabaseAdmin
           .from("config_garage")
-          .select("user_id, nome_empresa, nome_agente, endereco, whatsapp")
+          .select("user_id, nome_empresa, nome_agente, endereco, whatsapp, vitrine_slug")
           .eq("user_id", tenantUserId)
           .maybeSingle();
         garageConfig = data || null;
       } else {
         const { data } = await supabaseAdmin
           .from("config_garage")
-          .select("user_id, nome_empresa, nome_agente, endereco, whatsapp")
+          .select("user_id, nome_empresa, nome_agente, endereco, whatsapp, vitrine_slug")
           .limit(1)
           .maybeSingle();
         tenantUserId = data?.user_id || null;

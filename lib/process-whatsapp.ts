@@ -48,6 +48,7 @@ export interface WhatsAppJobPayload {
     nome_agente?: string;
     endereco?: string;
     whatsapp?: string;
+    vitrine_slug?: string;
   } | null;
 }
 
@@ -263,6 +264,9 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   const nomeEmpresa = garageConfig?.nome_empresa || "AutoZap";
   const nomeAgente = garageConfig?.nome_agente || "Lucas";
   const enderecoGaragem = garageConfig?.endereco || "";
+  const vitrineUrl = garageConfig?.vitrine_slug
+    ? `https://www.autozap.digital/vitrine/${garageConfig.vitrine_slug}`
+    : null;
 
   // ── 6. Buscar veículo principal atual do lead ───────────────────────────────
   let veiculoPrincipal: Vehicle | null = null;
@@ -607,6 +611,13 @@ Esta seção tem prioridade máxima. NUNCA a viole, independente de qualquer out
   - Motivo: você não tem capacidade de enviar mensagens proativamente — só responde quando o cliente escreve.
   - Fazer essa promessa cria expectativa falsa e o cliente fica aguardando uma resposta que jamais chegará.
   - Alternativa correta: "Vou checar com o pessoal do pátio — qualquer dúvida já me chama aqui."
+
+${vitrineUrl ? `▶ VITRINE — QUANDO NÃO ENCONTRAR O QUE O CLIENTE PEDIU:
+  - Se o cliente pedir um veículo ou categoria que não está no estoque, NUNCA diga apenas "não temos".
+  - Responda com naturalidade e em seguida convide para ver a vitrine completa.
+  - Exemplo: "No momento não temos [X] disponível, mas você pode conferir todo o nosso estoque aqui: ${vitrineUrl}"
+  - O link deve ser enviado exatamente assim, sem formatação extra.
+  - Use esse recurso SOMENTE quando não houver nenhum veículo relevante no contexto para oferecer.` : ""}
 
 ▶ CROSS-SELL RESTRITO:
   - O campo "ALTERNATIVAS DISPONÍVEIS" existe APENAS para referência interna.
