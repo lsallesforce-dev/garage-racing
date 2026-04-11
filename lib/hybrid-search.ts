@@ -87,6 +87,38 @@ function expandWithSynonyms(tokens: string[]): string[] {
   return expanded;
 }
 
+// Retorna os aliases de categoria quando o token é um termo de categoria
+function getCategoryAliases(token: string): string[] | null {
+  return CATEGORY_SYNONYMS[token] ?? null;
+}
+
+// ─── Busca por Categoria ──────────────────────────────────────────────────────
+// Busca dedicada no campo `categoria` usando todos os aliases.
+// Mais confiável que textSearch para perguntas do tipo "tem pickup?", "tem SUV?".
+async function categorySearch(aliases: string[], tenantUserId: string): Promise<Vehicle[]> {
+  // Normaliza aliases removendo hífens para cobrir "Pick-up", "Pick up", "Pickup"
+  const allForms = new Set<string>();
+  for (const a of aliases) {
+    allForms.add(a);
+    allForms.add(a.replace(/-/g, " ")); // "pick-up" → "pick up"
+    allForms.add(a.replace(/-/g, ""));  // "pick-up" → "pickup"
+  }
+
+  const orClauses = [...allForms]
+    .map((a) => `categoria.ilike.%${a}%,tags_busca.ilike.%${a}%`)
+    .join(",");
+
+  const { data } = await supabaseAdmin
+    .from("veiculos")
+    .select("*")
+    .eq("status_venda", "DISPONIVEL")
+    .eq("user_id", tenantUserId)
+    .or(orClauses)
+    .limit(15);
+
+  return (data as Vehicle[]) || [];
+}
+
 // ─── Detecção de ano ─────────────────────────────────────────────────────────
 // Tokens numéricos de 4 dígitos no range de anos de veículos
 function isYearToken(t: string): boolean {
@@ -362,8 +394,31 @@ export async function hybridVehicleSearch(
   veiculoPrincipal: Vehicle | null,
   msgCurta: boolean
 ): Promise<HybridSearchResult> {
-  const tokens = expandWithSynonyms(extractVehicleTokens(userMessage));
-  let hitsTextuais = tokens.length > 0 ? await textSearch(tokens, tenantUserId, veiculoPrincipal?.modelo, veiculoPrincipal?.marca) : [];
+  const rawTokens = extractVehicleTokens(userMessage);
+  const tokens = expandWithSynonyms(rawTokens);
+
+  // Detecta se a mensagem contém um termo de categoria (pickup, suv, hatch…)
+  // e roda busca dedicada no campo `categoria` em paralelo com a textual
+  const categoryAliases: string[] = [];
+  for (const t of rawTokens) {
+    const aliases = getCategoryAliases(normalizeStr(t));
+    if (aliases) aliases.forEach((a) => { if (!categoryAliases.includes(a)) categoryAliases.push(a); });
+  }
+  const isCategoryQuery = categoryAliases.length > 0;
+
+  // Busca textual e (se for query de categoria) busca por categoria em paralelo
+  const [hitsTextuaisRaw, hitsCategoriaRaw] = await Promise.all([
+    tokens.length > 0 ? textSearch(tokens, tenantUserId, veiculoPrincipal?.modelo, veiculoPrincipal?.marca) : Promise.resolve([]),
+    isCategoryQuery ? categorySearch(categoryAliases, tenantUserId) : Promise.resolve([]),
+  ]);
+
+  // Mescla: categoria tem prioridade, textual complementa
+  let hitsTextuais = hitsTextuaisRaw;
+  if (isCategoryQuery && hitsCategoriaRaw.length > 0) {
+    const seenIds = new Set(hitsCategoriaRaw.map((v) => v.id));
+    const complemento = hitsTextuaisRaw.filter((v) => !seenIds.has(v.id));
+    hitsTextuais = [...hitsCategoriaRaw, ...complemento];
+  }
 
   // Se não achou nada, tenta corrigir typos ("gom" → "gol") e refaz a busca
   if (hitsTextuais.length === 0 && tokens.length > 0) {
@@ -376,7 +431,7 @@ export async function hybridVehicleSearch(
 
   // ── Caso 1: Cliente mencionou um carro DIFERENTE do vinculado ─────────────
   // Ex: vinculado = Strada, cliente diz "quero ver o Gol"
-  const pedindoOutro = /\boutro\b|\bo outro\b|\besse outro\b|\baquele outro\b/i.test(userMessage);
+  const pedindoOutro = /\boutro[as]?\b|\bo outro\b|\ba outra\b|\besse outro\b|\bessa outra\b|\baquele outro\b|\balgum[ao]?\s+outr[oa]\b/i.test(userMessage);
 
   // Pergunta de inventário: "só esse?", "tem mais?", "mais opções?", "só tem esse?"
   // → mostra variantes do mesmo modelo sem trocar o carro em foco
@@ -440,11 +495,19 @@ export async function hybridVehicleSearch(
       // Sem variantes do mesmo modelo → deixa cair no fluxo normal (semântica)
     }
 
-    // Se há hits textuais que incluem o principal + outras variantes do mesmo modelo
-    // (ex: "tem outro corolla" → encontra Corolla 2016 E 2017)
-    // → mostra TODAS as variantes como contexto (o principal fica primeiro)
+    // Se há hits textuais que incluem o principal + outras variantes
     if (temHitsTextuais) {
       const variantes = hitsTextuais.filter((v) => v.id !== veiculoPrincipal.id);
+
+      // Cliente pediu "outro/outra X" e há alternativas → é troca de veículo
+      if (pedindoOutro && variantes.length > 0) {
+        return {
+          topVeiculos: [...variantes, veiculoPrincipal].slice(0, 5),
+          hitsTextuais,
+          clientePediuCarroDiferente: true,
+        };
+      }
+
       return {
         topVeiculos: [veiculoPrincipal, ...variantes].slice(0, 5),
         hitsTextuais,
