@@ -6,9 +6,157 @@ import { useParams, useRouter } from "next/navigation";
 import { PhotoGallery } from "@/components/PhotoGallery";
 import {
   ArrowLeft, Save, Edit2, X, Check, Video, Plus,
-  ChevronDown, ChevronUp, Instagram, Download, Loader2,
+  ChevronDown, ChevronUp, Instagram, Download, Loader2, Settings2,
 } from "lucide-react";
 import Link from "next/link";
+
+// ─── Opcionais: lista mestre por categoria ────────────────────────────────────
+export const OPCIONAIS_CATEGORIAS: { categoria: string; itens: string[] }[] = [
+  {
+    categoria: "Segurança",
+    itens: [
+      "Airbag motorista", "Airbag passageiro", "Airbag lateral", "Airbag de cortina",
+      "Freio ABS", "Controle de estabilidade (ESP)", "Controle de tração",
+      "Assistente de partida em rampa", "Câmera de ré", "Sensor de ré",
+      "Sensor dianteiro", "Alerta de ponto cego", "Alerta de colisão frontal",
+      "Frenagem autônoma de emergência", "Alarme", "Trava elétrica",
+    ],
+  },
+  {
+    categoria: "Conforto",
+    itens: [
+      "Ar condicionado", "Ar condicionado dual zone", "Ar quente",
+      "Bancos em couro", "Bancos em tecido", "Bancos esportivos",
+      "Banco do motorista elétrico", "Banco com ajuste lombar",
+      "Volante multifuncional", "Volante com ajuste de altura",
+      "Retrovisores elétricos", "Retrovisores com rebatimento elétrico",
+      "Vidros elétricos", "Teto solar", "Teto panorâmico",
+      "Desembaçador traseiro", "Limpador traseiro",
+      "Direção hidráulica", "Direção elétrica",
+    ],
+  },
+  {
+    categoria: "Tecnologia",
+    itens: [
+      "Central multimídia", "Tela touch", "Apple CarPlay", "Android Auto",
+      "GPS / Navegação", "Bluetooth", "Entrada USB", "Entrada auxiliar",
+      "Cruise control", "Cruise control adaptativo",
+      "Chave presencial (keyless)", "Partida por botão (push start)",
+      "Carregamento wireless", "Som premium", "Câmera 360°",
+    ],
+  },
+  {
+    categoria: "Performance / Mecânica",
+    itens: [
+      "Tração 4x4", "Tração integral", "Tração dianteira", "Tração traseira",
+      "Reduzida", "Diferencial traseiro bloqueável", "Modo off-road",
+      "Suspensão a ar", "Freio a disco nas 4 rodas", "Pneus novos",
+    ],
+  },
+  {
+    categoria: "Visual / Exterior",
+    itens: [
+      "Rodas de liga leve", "Faróis de LED", "Faróis de xenônio",
+      "Lâmpadas de neblina", "Rack de teto", "Estribo lateral",
+      "Capota marítima", "Para-brisa térmico", "Grade cromada",
+      "Pintura metálica", "Engate reboque",
+    ],
+  },
+];
+
+// ─── Modal de Opcionais ───────────────────────────────────────────────────────
+function OpcionaisModal({
+  selecionados,
+  onClose,
+  onSave,
+}: {
+  selecionados: string[];
+  onClose: () => void;
+  onSave: (lista: string[]) => void;
+}) {
+  const [atual, setAtual] = useState<string[]>(selecionados);
+
+  const toggle = (item: string) => {
+    setAtual((prev) =>
+      prev.includes(item) ? prev.filter((i) => i !== item) : [...prev, item]
+    );
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-[2.5rem] w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl">
+        {/* Header */}
+        <div className="flex items-center justify-between px-8 py-6 border-b border-gray-100">
+          <div>
+            <p className="text-sm font-black uppercase italic tracking-tight text-gray-900">
+              Itens do Veículo
+            </p>
+            <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mt-0.5">
+              {atual.length} selecionado{atual.length !== 1 ? "s" : ""}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-9 h-9 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors"
+          >
+            <X size={14} className="text-gray-600" />
+          </button>
+        </div>
+
+        {/* Lista */}
+        <div className="overflow-y-auto flex-1 px-8 py-6 space-y-6">
+          {OPCIONAIS_CATEGORIAS.map(({ categoria, itens }) => (
+            <div key={categoria}>
+              <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-3">
+                {categoria}
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {itens.map((item) => {
+                  const checked = atual.includes(item);
+                  return (
+                    <label
+                      key={item}
+                      className={`flex items-center gap-2.5 border rounded-xl px-3 py-2.5 cursor-pointer transition-all select-none ${
+                        checked
+                          ? "bg-gray-900 border-gray-900 text-white"
+                          : "bg-gray-50 border-gray-100 text-gray-600 hover:border-gray-300"
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggle(item)}
+                        className="hidden"
+                      />
+                      {checked && <Check size={11} className="flex-shrink-0" />}
+                      <span className="text-[11px] font-bold">{item}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Footer */}
+        <div className="px-8 py-5 border-t border-gray-100 flex justify-end gap-3">
+          <button
+            onClick={onClose}
+            className="px-5 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest text-gray-500 hover:bg-gray-100 transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={() => { onSave(atual); onClose(); }}
+            className="px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-[11px] font-black uppercase tracking-widest transition-colors"
+          >
+            Salvar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ─── Sub-componentes ──────────────────────────────────────────────────────────
 
@@ -79,6 +227,10 @@ export default function DetalheVeiculo() {
   const [vendedores, setVendedores] = useState<any[]>([]);
   const [vendedorId, setVendedorId] = useState("");
 
+  // Opcionais
+  const [opcionais, setOpcionais] = useState<string[]>([]);
+  const [showOpcionaisModal, setShowOpcionaisModal] = useState(false);
+
   // Leads
   const [leadsDoVeiculo, setLeadsDoVeiculo] = useState<any[]>([]);
 
@@ -115,6 +267,7 @@ export default function DetalheVeiculo() {
     setTranscricao(veiculo.transcricao_vendedor || "");
     setDetalhes(veiculo.detalhes_inspecao || "");
     setPontosFortes(veiculo.pontos_fortes_venda || []);
+    setOpcionais(veiculo.opcionais || []);
     setRoteiro(veiculo.roteiro_pitch || "");
     setVendedorId(veiculo.vendedor_responsavel_id || "");
   }, [veiculo]);
@@ -741,6 +894,38 @@ export default function DetalheVeiculo() {
                     })}
                   </div>
                 </div>
+
+                {/* Opcionais */}
+                <div className="col-span-full pt-4 border-t border-gray-100">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-[8px] font-black uppercase tracking-widest text-gray-400">
+                      Itens do Veículo
+                    </p>
+                    <button
+                      onClick={() => setShowOpcionaisModal(true)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 hover:bg-gray-800 text-white text-[9px] font-black uppercase tracking-widest rounded-xl transition-colors"
+                    >
+                      <Settings2 size={10} />
+                      Opcionais
+                    </button>
+                  </div>
+                  {opcionais.length > 0 ? (
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {opcionais.map((item) => (
+                        <div
+                          key={item}
+                          className="text-[10px] font-bold text-gray-700 bg-gray-50 border border-gray-100 rounded-lg px-2.5 py-1.5 truncate"
+                        >
+                          {item}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[10px] text-gray-300 font-bold uppercase tracking-widest italic">
+                      Nenhum item selecionado
+                    </p>
+                  )}
+                </div>
               </div>
             </SectionCard>
           </div>
@@ -942,6 +1127,19 @@ export default function DetalheVeiculo() {
           </div>
         </div>
       </div>
+
+      {/* Modal de Opcionais */}
+      {showOpcionaisModal && (
+        <OpcionaisModal
+          selecionados={opcionais}
+          onClose={() => setShowOpcionaisModal(false)}
+          onSave={async (lista) => {
+            setOpcionais(lista);
+            setVeiculo((p: any) => ({ ...p, opcionais: lista }));
+            await patch({ opcionais: lista });
+          }}
+        />
+      )}
     </main>
   );
 }
