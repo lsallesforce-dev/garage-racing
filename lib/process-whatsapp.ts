@@ -467,14 +467,18 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
           ? [veiculoPrincipal] : []),
       ];
 
+      const toNorm = (s: string) =>
+        s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
       const veiculoNomeado = veiculosContexto.find((v) => {
-        const modeloNorm = (v.modelo ?? "")
-          .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-        const marcaNorm = (v.marca ?? "")
-          .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+        // Divide modelo e marca em palavras individuais (≥3 chars)
+        // e verifica se ALGUMA delas aparece na mensagem.
+        // Ex: modelo "Toro Freedom" → ["toro", "freedom"] → "toro" match ✓
+        const modeloWords = toNorm(v.modelo ?? "").split(/\s+/).filter(w => w.length >= 3);
+        const marcaWords  = toNorm(v.marca  ?? "").split(/\s+/).filter(w => w.length >= 3);
         return (
-          (modeloNorm.length >= 3 && msgNorm.includes(modeloNorm)) ||
-          (marcaNorm.length >= 3 && msgNorm.includes(marcaNorm))
+          modeloWords.some(w => msgNorm.includes(w)) ||
+          marcaWords.some(w => msgNorm.includes(w))
         );
       });
 
