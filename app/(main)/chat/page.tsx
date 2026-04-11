@@ -45,6 +45,13 @@ type Filtro = typeof FILTROS[number];
 const FILTRO_LABELS: Record<string, string> = {
   Todos: "Todos", QUENTE: "Quente", MORNO: "Morno", FRIO: "Frio", PROBLEMA: "Pós-venda",
 };
+const FILTRO_COLORS: Record<string, { active: string; inactive: string }> = {
+  Todos:    { active: "bg-gray-900 text-white",          inactive: "bg-gray-50 text-gray-400 hover:bg-gray-100" },
+  QUENTE:   { active: "bg-red-500 text-white",           inactive: "bg-red-50 text-red-500 hover:bg-red-100 border border-red-100" },
+  MORNO:    { active: "bg-amber-400 text-white",         inactive: "bg-amber-50 text-amber-500 hover:bg-amber-100 border border-amber-100" },
+  FRIO:     { active: "bg-blue-400 text-white",          inactive: "bg-blue-50 text-blue-500 hover:bg-blue-100 border border-blue-100" },
+  PROBLEMA: { active: "bg-red-600 text-white",           inactive: "bg-red-50 text-red-700 hover:bg-red-100 border border-red-200" },
+};
 
 function formatTime(dateStr: string) {
   const date = new Date(dateStr);
@@ -218,15 +225,21 @@ export default function CentralChat() {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); }
   };
 
-  // Filtragem
-  const leadsFiltrados = leads.filter((l) => {
-    const matchFiltro = filtro === "Todos" || l.status === filtro;
-    const termo = busca.toLowerCase();
-    const matchBusca = !termo
-      || (l.nome ?? "").toLowerCase().includes(termo)
-      || l.wa_id.includes(termo);
-    return matchFiltro && matchBusca;
-  });
+  // Filtragem + ordenação por atividade mais recente
+  const leadsFiltrados = leads
+    .filter((l) => {
+      const matchFiltro = filtro === "Todos" || l.status === filtro;
+      const termo = busca.toLowerCase();
+      const matchBusca = !termo
+        || (l.nome ?? "").toLowerCase().includes(termo)
+        || l.wa_id.includes(termo);
+      return matchFiltro && matchBusca;
+    })
+    .sort((a, b) => {
+      const aTime = new Date(a.ultimaMensagem?.created_at ?? a.updated_at).getTime();
+      const bTime = new Date(b.ultimaMensagem?.created_at ?? b.updated_at).getTime();
+      return bTime - aTime;
+    });
 
   const statusCfg = selectedLead?.status
     ? (STATUS_CONFIG[selectedLead.status] ?? STATUS_CONFIG.FRIO)
@@ -263,19 +276,20 @@ export default function CentralChat() {
 
           {/* Filtros */}
           <div className="flex gap-1 overflow-x-auto pb-0.5 scrollbar-none">
-            {FILTROS.map((f) => (
-              <button
-                key={f}
-                onClick={() => setFiltro(f)}
-                className={`flex-shrink-0 px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all ${
-                  filtro === f
-                    ? "bg-gray-900 text-white"
-                    : "bg-gray-50 text-gray-400 hover:bg-gray-100"
-                }`}
-              >
-                {FILTRO_LABELS[f]}
-              </button>
-            ))}
+            {FILTROS.map((f) => {
+              const colors = FILTRO_COLORS[f];
+              return (
+                <button
+                  key={f}
+                  onClick={() => setFiltro(f)}
+                  className={`flex-shrink-0 px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all ${
+                    filtro === f ? colors.active : colors.inactive
+                  }`}
+                >
+                  {FILTRO_LABELS[f]}
+                </button>
+              );
+            })}
           </div>
         </div>
 
