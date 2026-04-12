@@ -71,7 +71,7 @@ function buildBriefingVendedor(
     .join("\n");
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://garage-racing.vercel.app";
-  const assumirLink = `${appUrl}/api/assumir?wa_id=${phone}${webhookToken ? `&token=${webhookToken}` : ""}`;
+  const assumirLink = `${appUrl}/api/ir/${phone}`;
 
   return (
     `${emoji} *LEAD ${temperatura} — AUTOZAP*\n\n` +
@@ -387,7 +387,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
         `👤 Cliente: ${lead?.nome || phone}\n` +
         `🚗 Interesse: ${veiculoAlerta}\n` +
         `💬 Mensagem: "${userMessage}"\n\n` +
-        `👇 *Toque para parar a IA e falar com o cliente:*\n${process.env.NEXT_PUBLIC_APP_URL || "https://garage-racing.vercel.app"}/api/assumir?wa_id=${phone}${garageConfig?.webhook_token ? `&token=${garageConfig.webhook_token}` : ""}`
+        `👇 *Toque para parar a IA e falar com o cliente:*\n${process.env.NEXT_PUBLIC_APP_URL || "https://garage-racing.vercel.app"}/api/ir/${phone}`
     ).catch(() => {});
   }
 
@@ -412,7 +412,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
           `👤 Cliente: ${lead.nome || phone}\n` +
           `💬 Mensagem: "${userMessage}"\n\n` +
           `⚠️ Agente em stand-by automaticamente.\n` +
-          `👇 *Toque para falar com o cliente:*\n${process.env.NEXT_PUBLIC_APP_URL || "https://garage-racing.vercel.app"}/api/assumir?wa_id=${phone}${garageConfig?.webhook_token ? `&token=${garageConfig.webhook_token}` : ""}`
+          `👇 *Toque para falar com o cliente:*\n${process.env.NEXT_PUBLIC_APP_URL || "https://garage-racing.vercel.app"}/api/ir/${phone}`
       ).catch(() => {});
     }
   }
