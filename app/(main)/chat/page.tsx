@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import {
   Send, MessageSquare, Phone, Bot, ArrowLeft,
@@ -72,6 +73,7 @@ function previewMensagem(msg: UltimaMensagem | null | undefined): string {
 }
 
 export default function CentralChat() {
+  const searchParams = useSearchParams();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [mensagens, setMensagens] = useState<Mensagem[]>([]);
@@ -144,6 +146,14 @@ export default function CentralChat() {
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [carregarLeads]);
+
+  // Auto-seleciona conversa via ?wa_id= (deep link do alerta do gerente)
+  useEffect(() => {
+    const waId = searchParams.get("wa_id");
+    if (!waId || leads.length === 0 || selectedLead) return;
+    const lead = leads.find((l) => l.wa_id === waId);
+    if (lead) { setSelectedLead(lead); setShowChat(true); }
+  }, [leads, searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sincroniza selectedLead quando leads são recarregados (ex: em_atendimento_humano mudou)
   useEffect(() => {

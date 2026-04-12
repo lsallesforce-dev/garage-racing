@@ -68,13 +68,16 @@ function buildBriefingVendedor(
     .map((l) => `  ${l}`)
     .join("\n");
 
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://app.autozap.digital";
+  const chatLink = `${appUrl}/chat?wa_id=${phone}`;
+
   return (
     `${emoji} *LEAD ${temperatura} — AUTOZAP*\n\n` +
     `👤 *Cliente:* ${phone}\n` +
     `🚗 *Interesse:* ${carro}\n` +
     `💬 *Intenção:* ${resumo || "Sem resumo disponível"}\n\n` +
     `📋 *Contexto da conversa:*\n${linhasHistorico}\n\n` +
-    `👉 Acesse o painel para assumir: /chat`
+    `👇 *Toque para assumir o atendimento:*\n${chatLink}`
   );
 }
 
@@ -382,7 +385,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
         `👤 Cliente: ${lead?.nome || phone}\n` +
         `🚗 Interesse: ${veiculoAlerta}\n` +
         `💬 Mensagem: "${userMessage}"\n\n` +
-        `👉 Assuma o atendimento: /chat`
+        `👇 *Toque para assumir:*\n${process.env.NEXT_PUBLIC_APP_URL || "https://app.autozap.digital"}/chat?wa_id=${phone}`
     ).catch(() => {});
   }
 
@@ -407,7 +410,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
           `👤 Cliente: ${lead.nome || phone}\n` +
           `💬 Mensagem: "${userMessage}"\n\n` +
           `⚠️ Agente em stand-by automaticamente.\n` +
-          `👉 Assuma o atendimento: /chat`
+          `👇 *Toque para assumir:*\n${process.env.NEXT_PUBLIC_APP_URL || "https://app.autozap.digital"}/chat?wa_id=${phone}`
       ).catch(() => {});
     }
   }

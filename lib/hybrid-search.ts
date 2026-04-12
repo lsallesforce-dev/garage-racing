@@ -407,7 +407,7 @@ export async function findVehicleForMedia(
 
   // Para cada veículo, monta o nome completo normalizado e verifica se
   // algum token da mensagem está contido nele.
-  for (const v of todos as Vehicle[]) {
+  for (const v of todos as unknown as Vehicle[]) {
     const nomeCompleto = normalizeStr(
       `${v.marca ?? ""} ${v.modelo ?? ""} ${v.versao ?? ""} ${v.cor ?? ""}`
     );
