@@ -106,6 +106,30 @@ export async function sendAvisaImage(phone: string, imageBase64: string, message
   return sendWithRetry(`${baseUrl}/actions/sendImage`, payload);
 }
 
+export async function sendAvisaPreview(
+  phone: string,
+  message: string,
+  urlSite: string,
+  title: string,
+  description: string,
+  imageBase64?: string
+) {
+  const baseUrl = process.env.AVISA_BASE_URL;
+  const token = process.env.AVISA_TOKEN;
+  if (!baseUrl || !token) { console.warn("Avisa credentials missing"); return; }
+
+  const payload: any = {
+    number: formatPhone(phone),
+    message,
+    urlSite,
+    title,
+    description,
+  };
+  if (imageBase64) payload.image = imageBase64;
+
+  return sendWithRetry(`${baseUrl}/actions/sendPreview`, payload);
+}
+
 export async function sendAvisaVideo(phone: string, videoUrl: string, caption?: string) {
   const baseUrl = process.env.AVISA_BASE_URL;
   const token = process.env.AVISA_TOKEN;

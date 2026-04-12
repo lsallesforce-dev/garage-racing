@@ -5,7 +5,7 @@
 import { createDecipheriv, hkdfSync } from "node:crypto";
 import { geminiFlashSales, geminiFlashFallback } from "@/lib/gemini";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { sendAvisaMessage, sendAvisaImage, sendAvisaVideo } from "@/lib/avisa";
+import { sendAvisaMessage, sendAvisaImage, sendAvisaVideo, sendAvisaPreview } from "@/lib/avisa";
 import { buscarDadosTransbordo, gerarRelatorioPista } from "@/lib/leads";
 import { hybridVehicleSearch, findVehicleForMedia } from "@/lib/hybrid-search";
 import { getCachedHistory, cacheHistory, invalidateHistory } from "@/lib/redis";
@@ -63,7 +63,7 @@ function buildBriefingVendedor(
   historico: string,
   temperatura: Temperatura,
   webhookToken?: string
-): string {
+): { texto: string; url: string; titulo: string; descricao: string } {
   const emoji = temperatura === "QUENTE" ? "🔥" : "⚠️";
   const linhasHistorico = historico
     .split("\n")
@@ -74,14 +74,19 @@ function buildBriefingVendedor(
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://garage-racing.vercel.app";
   const assumirLink = `${appUrl}/api/assumir?wa_id=${phone}${webhookToken ? `&token=${webhookToken}` : ""}`;
 
-  return (
+  const texto =
     `${emoji} *LEAD ${temperatura} — AUTOZAP*\n\n` +
     `👤 *Cliente:* ${phone}\n` +
     `🚗 *Interesse:* ${carro}\n` +
     `💬 *Intenção:* ${resumo || "Sem resumo disponível"}\n\n` +
-    `📋 *Contexto da conversa:*\n${linhasHistorico}\n\n` +
-    `👇 *Toque para parar a IA e falar com o cliente:*\n${assumirLink}`
-  );
+    `📋 *Contexto:*\n${linhasHistorico}`;
+
+  return {
+    texto,
+    url: assumirLink,
+    titulo: `${emoji} Toque para parar a IA e falar com o cliente`,
+    descricao: `${carro} · ${resumo?.slice(0, 80) || "Lead quente"}`,
+  };
 }
 
 function formatVehicleCard(v: Vehicle): string {
@@ -383,13 +388,13 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
     const veiculoAlerta = topVeiculos[0]
       ? `${topVeiculos[0].marca} ${topVeiculos[0].modelo}`
       : "veículo";
-    sendAvisaMessage(
+    const _assumirUrl = `${process.env.NEXT_PUBLIC_APP_URL || "https://garage-racing.vercel.app"}/api/assumir?wa_id=${phone}${garageConfig?.webhook_token ? `&token=${garageConfig.webhook_token}` : ""}`;
+    sendAvisaPreview(
       gerentePhone,
-      `🚨 *LEAD QUENTE NA MESA!*\n\n` +
-        `👤 Cliente: ${lead?.nome || phone}\n` +
-        `🚗 Interesse: ${veiculoAlerta}\n` +
-        `💬 Mensagem: "${userMessage}"\n\n` +
-        `👇 *Toque para parar a IA e falar com o cliente:*\n${process.env.NEXT_PUBLIC_APP_URL || "https://garage-racing.vercel.app"}/api/assumir?wa_id=${phone}${garageConfig?.webhook_token ? `&token=${garageConfig.webhook_token}` : ""}`
+      `🚨 *LEAD QUENTE NA MESA!*\n\n👤 ${lead?.nome || phone}\n🚗 ${veiculoAlerta}\n💬 "${userMessage}"`,
+      _assumirUrl,
+      `🔥 Toque para parar a IA e falar com o cliente`,
+      `${veiculoAlerta} · ${lead?.nome || phone}`
     ).catch(() => {});
   }
 
@@ -408,13 +413,13 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
       .eq("id", lead.id);
 
     if (gerentePhone) {
-      sendAvisaMessage(
+      const _posvUrl = `${process.env.NEXT_PUBLIC_APP_URL || "https://garage-racing.vercel.app"}/api/assumir?wa_id=${phone}${garageConfig?.webhook_token ? `&token=${garageConfig.webhook_token}` : ""}`;
+      sendAvisaPreview(
         gerentePhone,
-        `🔴 *ALERTA PÓS-VENDA!*\n\n` +
-          `👤 Cliente: ${lead.nome || phone}\n` +
-          `💬 Mensagem: "${userMessage}"\n\n` +
-          `⚠️ Agente em stand-by automaticamente.\n` +
-          `👇 *Toque para falar com o cliente:*\n${process.env.NEXT_PUBLIC_APP_URL || "https://garage-racing.vercel.app"}/api/assumir?wa_id=${phone}${garageConfig?.webhook_token ? `&token=${garageConfig.webhook_token}` : ""}`
+        `🔴 *ALERTA PÓS-VENDA!*\n\n👤 ${lead.nome || phone}\n💬 "${userMessage}"\n⚠️ Agente em stand-by automaticamente.`,
+        _posvUrl,
+        `🔴 Toque para falar com o cliente`,
+        `Problema relatado · ${lead.nome || phone}`
       ).catch(() => {});
     }
   }
@@ -876,7 +881,13 @@ CRITÉRIOS DE TEMPERATURA:
         temperatura,
         garageConfig?.webhook_token
       );
-      await sendAvisaMessage(destinoWa, briefing);
+      await sendAvisaPreview(
+        destinoWa,
+        briefing.texto,
+        briefing.url,
+        briefing.titulo,
+        briefing.descricao
+      );
     }
   }
 
