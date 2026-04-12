@@ -11,6 +11,7 @@ interface GarageConfig {
   nome_empresa: string;
   nome_agente: string;
   endereco: string;
+  endereco_complemento?: string;
   whatsapp: string;
   whatsapp_agente?: string;
   logo_url: string | null;
@@ -36,6 +37,7 @@ export default function ConfiguracoesPage() {
     nome_empresa: "",
     nome_agente: "",
     endereco: "",
+    endereco_complemento: "",
     whatsapp: "",
     whatsapp_agente: "",
     vitrine_slug: "",
@@ -64,6 +66,7 @@ export default function ConfiguracoesPage() {
               nome_empresa: row.nome_empresa ?? "",
               nome_agente: row.nome_agente ?? "",
               endereco: row.endereco ?? "",
+              endereco_complemento: row.endereco_complemento ?? "",
               whatsapp: row.whatsapp ?? "",
               whatsapp_agente: row.whatsapp_agente ?? "",
               vitrine_slug: row.vitrine_slug ?? "",
@@ -195,6 +198,7 @@ export default function ConfiguracoesPage() {
             nome_empresa: config.nome_empresa,
             nome_agente: config.nome_agente,
             endereco: config.endereco,
+            endereco_complemento: config.endereco_complemento || null,
             whatsapp: config.whatsapp,
             whatsapp_agente: config.whatsapp_agente || null,
             vitrine_slug: config.vitrine_slug || null,
@@ -287,6 +291,19 @@ export default function ConfiguracoesPage() {
                 value={config.endereco}
                 onChange={e => setConfig(c => ({ ...c, endereco: e.target.value }))}
                 placeholder="Ex: Rua das Garagens, 100 — São Paulo, SP"
+                className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+                Complemento
+              </label>
+              <input
+                type="text"
+                value={config.endereco_complemento ?? ""}
+                onChange={e => setConfig(c => ({ ...c, endereco_complemento: e.target.value }))}
+                placeholder="perto de onde"
                 className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
               />
             </div>

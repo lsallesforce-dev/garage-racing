@@ -47,6 +47,7 @@ export interface WhatsAppJobPayload {
     nome_empresa?: string;
     nome_agente?: string;
     endereco?: string;
+    endereco_complemento?: string;
     whatsapp?: string;
     vitrine_slug?: string;
     webhook_token?: string;
@@ -280,6 +281,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   const nomeEmpresa = garageConfig?.nome_empresa || "AutoZap";
   const nomeAgente = garageConfig?.nome_agente || "Lucas";
   const enderecoGaragem = garageConfig?.endereco || "";
+  const enderecoComplemento = garageConfig?.endereco_complemento || "";
   const vitrineUrl = garageConfig?.vitrine_slug
     ? `https://www.autozap.digital/vitrine/${garageConfig.vitrine_slug}`
     : null;
@@ -691,7 +693,7 @@ ${vitrineUrl ? `▶ VITRINE — QUANDO NÃO ENCONTRAR O QUE O CLIENTE PEDIU:
 
 [DADOS DE CONTEXTO]
 NOME DO CLIENTE: ${nomeCliente ?? "Não informado"}
-${enderecoGaragem ? `ENDEREÇO DA LOJA: ${enderecoGaragem}` : ""}
+${enderecoGaragem ? `ENDEREÇO DA LOJA: ${enderecoGaragem}${enderecoComplemento ? ` (${enderecoComplemento})` : ""}` : ""}
 ESTOQUE ESTRUTURADO:
 ${context}
 
