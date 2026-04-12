@@ -49,6 +49,7 @@ export interface WhatsAppJobPayload {
     endereco?: string;
     whatsapp?: string;
     vitrine_slug?: string;
+    webhook_token?: string;
   } | null;
 }
 
@@ -59,7 +60,8 @@ function buildBriefingVendedor(
   carro: string,
   resumo: string,
   historico: string,
-  temperatura: Temperatura
+  temperatura: Temperatura,
+  webhookToken?: string
 ): string {
   const emoji = temperatura === "QUENTE" ? "🔥" : "⚠️";
   const linhasHistorico = historico
@@ -68,8 +70,8 @@ function buildBriefingVendedor(
     .map((l) => `  ${l}`)
     .join("\n");
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://app.autozap.digital";
-  const chatLink = `${appUrl}/chat?wa_id=${phone}`;
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://garage-racing.vercel.app";
+  const assumirLink = `${appUrl}/api/assumir?wa_id=${phone}${webhookToken ? `&token=${webhookToken}` : ""}`;
 
   return (
     `${emoji} *LEAD ${temperatura} — AUTOZAP*\n\n` +
@@ -77,7 +79,7 @@ function buildBriefingVendedor(
     `🚗 *Interesse:* ${carro}\n` +
     `💬 *Intenção:* ${resumo || "Sem resumo disponível"}\n\n` +
     `📋 *Contexto da conversa:*\n${linhasHistorico}\n\n` +
-    `👇 *Toque para assumir o atendimento:*\n${chatLink}`
+    `👇 *Toque para parar a IA e falar com o cliente:*\n${assumirLink}`
   );
 }
 
@@ -385,7 +387,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
         `👤 Cliente: ${lead?.nome || phone}\n` +
         `🚗 Interesse: ${veiculoAlerta}\n` +
         `💬 Mensagem: "${userMessage}"\n\n` +
-        `👇 *Toque para assumir:*\n${process.env.NEXT_PUBLIC_APP_URL || "https://app.autozap.digital"}/chat?wa_id=${phone}`
+        `👇 *Toque para parar a IA e falar com o cliente:*\n${process.env.NEXT_PUBLIC_APP_URL || "https://garage-racing.vercel.app"}/api/assumir?wa_id=${phone}${garageConfig?.webhook_token ? `&token=${garageConfig.webhook_token}` : ""}`
     ).catch(() => {});
   }
 
@@ -410,7 +412,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
           `👤 Cliente: ${lead.nome || phone}\n` +
           `💬 Mensagem: "${userMessage}"\n\n` +
           `⚠️ Agente em stand-by automaticamente.\n` +
-          `👇 *Toque para assumir:*\n${process.env.NEXT_PUBLIC_APP_URL || "https://app.autozap.digital"}/chat?wa_id=${phone}`
+          `👇 *Toque para falar com o cliente:*\n${process.env.NEXT_PUBLIC_APP_URL || "https://garage-racing.vercel.app"}/api/assumir?wa_id=${phone}${garageConfig?.webhook_token ? `&token=${garageConfig.webhook_token}` : ""}`
       ).catch(() => {});
     }
   }
@@ -869,7 +871,8 @@ CRITÉRIOS DE TEMPERATURA:
         nomeCarro,
         resumo,
         historicoFormatado,
-        temperatura
+        temperatura,
+        garageConfig?.webhook_token
       );
       await sendAvisaMessage(destinoWa, briefing);
     }
