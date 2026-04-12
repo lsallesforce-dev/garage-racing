@@ -19,6 +19,8 @@ interface GarageConfig {
   webhook_token?: string;
   nome_usuario?: string;
   cargo_usuario?: string;
+  tom_venda?: string;
+  instrucoes_adicionais?: string;
 }
 
 export default function ConfiguracoesPage() {
@@ -45,6 +47,8 @@ export default function ConfiguracoesPage() {
     webhook_token: "",
     nome_usuario: "",
     cargo_usuario: "",
+    tom_venda: "",
+    instrucoes_adicionais: "",
   });
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -74,6 +78,8 @@ export default function ConfiguracoesPage() {
               webhook_token: row.webhook_token ?? "",
               nome_usuario: row.nome_usuario ?? "",
               cargo_usuario: row.cargo_usuario ?? "",
+              tom_venda: row.tom_venda ?? "",
+              instrucoes_adicionais: row.instrucoes_adicionais ?? "",
             });
             if (row.logo_url) {
               setCurrentLogo(row.logo_url);
@@ -205,6 +211,8 @@ export default function ConfiguracoesPage() {
             webhook_token: config.webhook_token || null,
             nome_usuario: config.nome_usuario || null,
             cargo_usuario: config.cargo_usuario || null,
+            tom_venda: config.tom_venda || null,
+            instrucoes_adicionais: config.instrucoes_adicionais || null,
           },
           { onConflict: "user_id" }
         )
@@ -392,6 +400,36 @@ export default function ConfiguracoesPage() {
                 placeholder="Ex: Gerente de Pátio"
                 className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
               />
+            </div>
+
+            <div className="flex flex-col gap-4 mt-2 bg-amber-50/60 p-4 border border-amber-100 rounded-2xl">
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-widest text-amber-800 block mb-1.5">
+                  Tom de Venda do Agente
+                </label>
+                <input
+                  type="text"
+                  value={config.tom_venda || ""}
+                  onChange={e => setConfig(c => ({ ...c, tom_venda: e.target.value }))}
+                  placeholder="Ex: descontraído e jovem, formal e técnico..."
+                  className="w-full bg-white border border-amber-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-400 transition"
+                />
+                <p className="text-[10px] text-amber-700 mt-1">Descreva o jeito que o agente deve falar com os clientes.</p>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-widest text-amber-800 block mb-1.5">
+                  Instruções Personalizadas
+                </label>
+                <textarea
+                  value={config.instrucoes_adicionais || ""}
+                  onChange={e => setConfig(c => ({ ...c, instrucoes_adicionais: e.target.value }))}
+                  placeholder="Ex: Nunca ofereça desconto sem perguntar ao gerente. Sempre mencione que fazemos vistoria gratuita."
+                  rows={4}
+                  className="w-full bg-white border border-amber-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-400 transition resize-none"
+                />
+                <p className="text-[10px] text-amber-700 mt-1">Regras específicas da sua loja. O agente seguirá com prioridade alta.</p>
+              </div>
             </div>
 
             <button

@@ -120,7 +120,7 @@ export default function VitrineDetalheClient({ veiculo, relacionados, nomeEmpres
   const fotos: string[] = veiculo.fotos ?? [];
   const pontos: string[] = veiculo.pontos_fortes_venda ?? [];
   const vendido = veiculo.status_venda === "VENDIDO";
-  const nomeGaragem = nomeEmpresa ?? "AutoZap";
+  const nomeGaragem = nomeEmpresa ?? "nossa loja";
   const numeroWhats = whatsapp || WHATSAPP_DEFAULT;
   const msgWhats = `Oi! Vi o *${titulo}${veiculo.versao ? " " + veiculo.versao : ""}${veiculo.ano_modelo ? " " + veiculo.ano_modelo : ""}* na vitrine da ${nomeGaragem} e tenho interesse. Ainda disponível?`;
 
@@ -277,7 +277,7 @@ export default function VitrineDetalheClient({ veiculo, relacionados, nomeEmpres
           <Link href={`/vitrine/${tenant}`} className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-gray-400 hover:text-gray-900 transition-colors">
             <ChevronLeft size={11} /> Ver todo o estoque
           </Link>
-          <p className="text-[9px] font-bold uppercase tracking-widest text-gray-300">© 2026 AutoZap</p>
+          <p className="text-[9px] font-bold uppercase tracking-widest text-gray-300">© {new Date().getFullYear()} {nomeGaragem}</p>
         </div>
       </div>
 

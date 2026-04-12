@@ -48,7 +48,7 @@ export async function buscarLeadsOrfaos(veiculoId: string) {
 /**
  * Flash: Gera um relatório executivo do pátio em tempo real para o WhatsApp do Admin
  */
-export async function gerarRelatorioPista() {
+export async function gerarRelatorioPista(nomeEmpresa = "nossa loja", nomeAgente = "IA") {
   // 1. Busca dados de estoque
   const { data: statsVeiculos } = await supabaseAdmin
     .from('veiculos')
@@ -89,10 +89,10 @@ export async function gerarRelatorioPista() {
     maximumFractionDigits: 0 
   }).format(totalEstoque);
 
-  return `⚡ *AUTOZAP - STATUS DO PÁTIO* ⚡\n\n` +
+  return `⚡ *${nomeEmpresa.toUpperCase()} - STATUS DO PÁTIO* ⚡\n\n` +
          `🚗 *ESTOQUE:* ${numCarros} máquinas (${faturamentoFormatado})\n` +
          `🔥 *LEADS QUENTES:* ${quentes || 0} aguardando fechamento!\n` +
          `👀 *DESTAQUE:* A ${carroDaSemana} é a mais procurada.\n\n` +
-         `💡 *DICA DO LUCAS (IA):* O pátio está aquecido! Não esqueça de conferir os leads que estão sem resposta há mais de 4h. Bora vender! ☕️`;
+         `💡 *DICA DO ${nomeAgente.toUpperCase()} (IA):* O pátio está aquecido! Não esqueça de conferir os leads que estão sem resposta há mais de 4h. Bora vender! ☕️`;
 }
 

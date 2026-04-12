@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 import VitrineClient from "./VitrineClient";
 
 const supabaseAdmin = createClient(
@@ -9,6 +10,17 @@ const supabaseAdmin = createClient(
 
 interface Props {
   params: Promise<{ tenant: string }>;
+}
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { tenant } = await params;
+  let garagem = (await supabaseAdmin.from("config_garage").select("nome_empresa").eq("vitrine_slug", tenant).maybeSingle()).data;
+  if (!garagem) garagem = (await supabaseAdmin.from("config_garage").select("nome_empresa").eq("webhook_token", tenant).maybeSingle()).data;
+  const nome = garagem?.nome_empresa ?? "Vitrine";
+  return {
+    title: `${nome} — Estoque`,
+    description: `Confira o estoque disponível da ${nome}. Veículos verificados com análise de IA.`,
+  };
 }
 
 export default async function VitrineTenantPage({ params }: Props) {

@@ -12,7 +12,7 @@ export default function VendedoresPage() {
   const [uploading, setUploading] = useState(false);
   
   // Estado Unificado do Formulário
-  const [form, setForm] = useState({ nome: '', especialidade: '', whatsapp: '', foto_url: '' });
+  const [form, setForm] = useState({ nome: '', especialidade: '', whatsapp: '', foto_url: '', role: 'vendedor' });
 
   const carregarEquipe = async () => {
     setLoading(true);
@@ -91,7 +91,7 @@ export default function VendedoresPage() {
     }
 
     // Reset geral
-    setForm({ nome: '', especialidade: '', whatsapp: '', foto_url: '' });
+    setForm({ nome: '', especialidade: '', whatsapp: '', foto_url: '', role: 'vendedor' });
     setIsModalOpen(false);
     carregarEquipe();
   };
@@ -115,11 +115,12 @@ export default function VendedoresPage() {
   // ✍️ Preparar Modal para Edição
   const abrirEdicao = (vendedor: any) => {
     setEditingVendedor(vendedor);
-    setForm({ 
-      nome: vendedor.nome, 
-      especialidade: vendedor.especialidade, 
-      whatsapp: vendedor.whatsapp, 
-      foto_url: vendedor.foto_url 
+    setForm({
+      nome: vendedor.nome,
+      especialidade: vendedor.especialidade,
+      whatsapp: vendedor.whatsapp,
+      foto_url: vendedor.foto_url,
+      role: vendedor.role || 'vendedor',
     });
     setIsModalOpen(true);
   };
@@ -135,8 +136,8 @@ export default function VendedoresPage() {
           
           <button 
             onClick={() => { 
-                setEditingVendedor(null); 
-                setForm({ nome: '', especialidade: '', whatsapp: '', foto_url: '' }); 
+                setEditingVendedor(null);
+                setForm({ nome: '', especialidade: '', whatsapp: '', foto_url: '', role: 'vendedor' });
                 setIsModalOpen(true); 
             }}
             className="flex items-center gap-2 px-6 py-3 bg-gray-900 text-white font-black uppercase text-[10px] tracking-widest rounded-xl hover:bg-black transition-all shadow-xl shadow-gray-900/10"
@@ -184,7 +185,13 @@ export default function VendedoresPage() {
                   </div>
                   
                   <h3 className="font-black uppercase tracking-tight text-xl leading-tight text-gray-900 mb-1">{v.nome}</h3>
-                  <p className="text-[10px] font-black text-red-600 uppercase tracking-[0.3em] mb-8">{v.especialidade || "Geral"}</p>
+                  <div className="flex items-center gap-2 mb-2">
+                    <p className="text-[10px] font-black text-red-600 uppercase tracking-[0.3em]">{v.especialidade || "Geral"}</p>
+                    {v.role === 'master' && (
+                      <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[8px] font-black uppercase tracking-widest rounded-full border border-amber-200">Master</span>
+                    )}
+                  </div>
+                  <div className="mb-8" />
                   
                   <div className="w-full space-y-4 mb-10 text-left bg-gray-50/50 p-6 rounded-[2rem] border border-gray-100/10">
                     <div className="flex items-center gap-4 text-gray-600">
@@ -278,25 +285,48 @@ export default function VendedoresPage() {
                 <div className="grid grid-cols-2 gap-6">
                   <div>
                     <label className="text-[10px] font-black uppercase text-gray-400 ml-4 mb-2 block tracking-widest">Especialidade</label>
-                    <input 
-                      type="text" 
-                      value={form.especialidade} 
-                      onChange={e => setForm({...form, especialidade: e.target.value})} 
-                      className="w-full p-5 bg-gray-50 rounded-[1.5rem] border border-gray-100 outline-none focus:ring-4 focus:ring-red-500/10 font-bold text-gray-900 transition-all placeholder:text-gray-300" 
+                    <input
+                      type="text"
+                      value={form.especialidade}
+                      onChange={e => setForm({...form, especialidade: e.target.value})}
+                      className="w-full p-5 bg-gray-50 rounded-[1.5rem] border border-gray-100 outline-none focus:ring-4 focus:ring-red-500/10 font-bold text-gray-900 transition-all placeholder:text-gray-300"
                       placeholder="Ex: Motos Esportivas"
                     />
                   </div>
                   <div>
                     <label className="text-[10px] font-black uppercase text-gray-400 ml-4 mb-2 block tracking-widest">WhatsApp (com DDD)</label>
-                    <input 
-                      required 
-                      type="text" 
-                      value={form.whatsapp} 
-                      onChange={e => setForm({...form, whatsapp: e.target.value})} 
-                      className="w-full p-5 bg-gray-50 rounded-[1.5rem] border border-gray-100 outline-none focus:ring-4 focus:ring-red-500/10 font-bold text-gray-900 font-mono transition-all placeholder:text-gray-300" 
-                      placeholder="17991234567" 
+                    <input
+                      required
+                      type="text"
+                      value={form.whatsapp}
+                      onChange={e => setForm({...form, whatsapp: e.target.value})}
+                      className="w-full p-5 bg-gray-50 rounded-[1.5rem] border border-gray-100 outline-none focus:ring-4 focus:ring-red-500/10 font-bold text-gray-900 font-mono transition-all placeholder:text-gray-300"
+                      placeholder="17991234567"
                     />
                   </div>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-black uppercase text-gray-400 ml-4 mb-2 block tracking-widest">Nível de Acesso</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    {(['vendedor', 'master'] as const).map(r => (
+                      <button
+                        key={r}
+                        type="button"
+                        onClick={() => setForm({...form, role: r})}
+                        className={`p-4 rounded-[1.5rem] border-2 font-black uppercase text-[10px] tracking-widest transition-all ${
+                          form.role === r
+                            ? r === 'master'
+                              ? 'border-amber-500 bg-amber-50 text-amber-700'
+                              : 'border-gray-900 bg-gray-900 text-white'
+                            : 'border-gray-100 bg-gray-50 text-gray-400 hover:border-gray-300'
+                        }`}
+                      >
+                        {r === 'master' ? '⭐ Master' : '👤 Vendedor'}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[9px] text-gray-400 mt-2 ml-1">Master pode ver todos os leads e configurações.</p>
                 </div>
                 
                 <button 

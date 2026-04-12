@@ -27,7 +27,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const imagem = data.capa_marketing_url ?? data.fotos?.[0] ?? null;
 
   return {
-    title: `${titulo} — AutoZap`,
+    title: titulo,
     description: `${titulo} por ${preco}. Confira fotos, vídeo e detalhes completos.`,
     openGraph: {
       title: `${titulo} • ${preco}`,
@@ -79,7 +79,7 @@ export default async function VitrineDetalhePage({ params }: Props) {
     <VitrineDetalheClient
       veiculo={veiculo}
       relacionados={relacionados ?? []}
-      nomeEmpresa={garagem?.nome_empresa ?? "AutoZap"}
+      nomeEmpresa={garagem?.nome_empresa ?? ""}
       whatsapp={garagem?.whatsapp_agente ?? garagem?.whatsapp ?? process.env.NEXT_PUBLIC_ZAPI_PHONE ?? ""}
       logoUrl={garagem?.logo_url ?? null}
       tenant={tenant}

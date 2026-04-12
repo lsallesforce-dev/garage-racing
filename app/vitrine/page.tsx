@@ -138,7 +138,7 @@ function VitrinePublicaInner() {
   const tenantToken = searchParams.get("t");
 
   const [estoque, setEstoque] = useState<any[]>([]);
-  const [nomeEmpresa, setNomeEmpresa] = useState("AutoZap");
+  const [nomeEmpresa, setNomeEmpresa] = useState("");
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [whatsapp, setWhatsapp] = useState(
     process.env.NEXT_PUBLIC_ZAPI_PHONE ?? "5521999999999"
