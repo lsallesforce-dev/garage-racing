@@ -1,30 +1,36 @@
 // app/api/ir/[phone]/route.ts
-//
-// URL curta para o gerente assumir um atendimento via WhatsApp.
-// Exemplo: https://garage-racing.vercel.app/api/ir/5517991141010
-//
-// 1 toque → para a IA → abre WhatsApp direto na conversa com o cliente.
+// URL curta enviada ao gerente no alerta de lead.
+// Requer ?token= para validar que quem clica pertence ao tenant correto.
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: { phone: string } }
 ) {
   const phone = params.phone.replace(/\D/g, "");
+  if (!phone) return new NextResponse("Número inválido", { status: 400 });
 
-  if (!phone) {
-    return new NextResponse("Número inválido", { status: 400 });
-  }
+  // Token obrigatório — identifica o tenant e autentica a requisição
+  const token = req.nextUrl.searchParams.get("token");
+  if (!token) return new NextResponse("Token obrigatório", { status: 401 });
 
-  // Para a IA para este lead
+  const { data: cfg } = await supabaseAdmin
+    .from("config_garage")
+    .select("user_id")
+    .eq("webhook_token", token)
+    .maybeSingle();
+
+  if (!cfg) return new NextResponse("Token inválido", { status: 403 });
+
+  // Para a IA apenas para leads deste tenant
   await supabaseAdmin
     .from("leads")
     .update({ em_atendimento_humano: true })
-    .eq("wa_id", phone);
+    .eq("wa_id", phone)
+    .eq("user_id", cfg.user_id);
 
-  // HTML que abre o WhatsApp diretamente via deep link
   const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -50,9 +56,7 @@ export async function GET(
   </div>
   <script>
     window.location.href = "whatsapp://send?phone=${phone}";
-    setTimeout(function() {
-      window.location.href = "https://wa.me/${phone}";
-    }, 1500);
+    setTimeout(function() { window.location.href = "https://wa.me/${phone}"; }, 1500);
   </script>
 </body>
 </html>`;

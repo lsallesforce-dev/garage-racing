@@ -13,28 +13,24 @@ export async function GET(req: NextRequest) {
   const waId  = searchParams.get("wa_id");
   const token = searchParams.get("token");
 
-  if (!waId) {
-    return new NextResponse("wa_id obrigatório", { status: 400 });
-  }
+  if (!waId) return new NextResponse("wa_id obrigatório", { status: 400 });
+  if (!token) return new NextResponse("Token obrigatório", { status: 401 });
 
-  // Valida o token
-  if (token) {
-    const { data: cfg } = await supabaseAdmin
-      .from("config_garage")
-      .select("user_id")
-      .eq("webhook_token", token)
-      .maybeSingle();
+  // Valida o token e identifica o tenant
+  const { data: cfg } = await supabaseAdmin
+    .from("config_garage")
+    .select("user_id")
+    .eq("webhook_token", token)
+    .maybeSingle();
 
-    if (!cfg) {
-      return new NextResponse("Token inválido", { status: 403 });
-    }
-  }
+  if (!cfg) return new NextResponse("Token inválido", { status: 403 });
 
-  // Para a IA para este lead
+  // Para a IA apenas para leads deste tenant
   await supabaseAdmin
     .from("leads")
     .update({ em_atendimento_humano: true })
-    .eq("wa_id", waId);
+    .eq("wa_id", waId)
+    .eq("user_id", cfg.user_id);
 
   const phone = waId.replace(/\D/g, "");
 

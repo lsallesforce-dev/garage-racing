@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
   ] = await Promise.all([
     supabaseAdmin
       .from("config_garage")
-      .select("user_id, nome_empresa, nome_agente, whatsapp, endereco, vitrine_slug, webhook_token, logo_url, created_at")
+      .select("user_id, nome_empresa, nome_agente, whatsapp, endereco, vitrine_slug, webhook_token, logo_url, created_at, plano_ativo, plano, trial_ends_at, plano_vence_em")
       .order("created_at", { ascending: false }),
 
     supabaseAdmin

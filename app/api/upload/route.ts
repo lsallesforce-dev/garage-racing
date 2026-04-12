@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { requireAuth } from "@/lib/api-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +24,9 @@ const PUBLIC_URL = process.env.R2_PUBLIC_URL!;
 // Sem limite de tamanho (diferente do Supabase free que tem 50 MB)
 export async function POST(req: NextRequest) {
   try {
+    const { error: authError } = await requireAuth();
+    if (authError) return authError;
+
     const { fileName, fileType } = await req.json();
 
     if (!fileName || !fileType) {

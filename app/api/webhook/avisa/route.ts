@@ -143,7 +143,7 @@ export async function POST(req: NextRequest) {
     if (token) {
       const { data } = await supabaseAdmin
         .from("config_garage")
-        .select("user_id, nome_empresa, nome_agente, endereco, endereco_complemento, whatsapp, vitrine_slug, webhook_token, tom_venda, instrucoes_adicionais")
+        .select("user_id, nome_empresa, nome_agente, endereco, endereco_complemento, whatsapp, vitrine_slug, webhook_token, tom_venda, instrucoes_adicionais, plano_ativo, trial_ends_at, plano_vence_em")
         .eq("webhook_token", token)
         .maybeSingle();
 
@@ -160,14 +160,14 @@ export async function POST(req: NextRequest) {
       if (tenantUserId) {
         const { data } = await supabaseAdmin
           .from("config_garage")
-          .select("user_id, nome_empresa, nome_agente, endereco, endereco_complemento, whatsapp, vitrine_slug, webhook_token, tom_venda, instrucoes_adicionais")
+          .select("user_id, nome_empresa, nome_agente, endereco, endereco_complemento, whatsapp, vitrine_slug, webhook_token, tom_venda, instrucoes_adicionais, plano_ativo, trial_ends_at, plano_vence_em")
           .eq("user_id", tenantUserId)
           .maybeSingle();
         garageConfig = data || null;
       } else {
         const { data } = await supabaseAdmin
           .from("config_garage")
-          .select("user_id, nome_empresa, nome_agente, endereco, endereco_complemento, whatsapp, vitrine_slug, webhook_token, tom_venda, instrucoes_adicionais")
+          .select("user_id, nome_empresa, nome_agente, endereco, endereco_complemento, whatsapp, vitrine_slug, webhook_token, tom_venda, instrucoes_adicionais, plano_ativo, trial_ends_at, plano_vence_em")
           .limit(1)
           .maybeSingle();
         tenantUserId = data?.user_id || null;
@@ -178,6 +178,19 @@ export async function POST(req: NextRequest) {
     if (!tenantUserId) {
       console.error("❌ Nenhum tenant configurado para este webhook.");
       return NextResponse.json({ status: "no_tenant" }, { status: 500 });
+    }
+
+    // ── Gate de Assinatura ────────────────────────────────────────────────────
+    // Bloqueia silenciosamente se trial expirou e plano não está ativo.
+    // Retorna 200 para não gerar retry na Avisa, mas não processa a mensagem.
+    if (garageConfig) {
+      const agora = new Date();
+      const trialValido = garageConfig.trial_ends_at && new Date(garageConfig.trial_ends_at) > agora;
+      const planoValido = garageConfig.plano_ativo && garageConfig.plano_vence_em && new Date(garageConfig.plano_vence_em) > agora;
+      if (!trialValido && !planoValido) {
+        console.warn(`⏸️ Tenant ${tenantUserId} com acesso expirado — mensagem ignorada.`);
+        return NextResponse.json({ status: "subscription_expired" });
+      }
     }
 
     // ── Validação Básica ──────────────────────────────────────────────────────

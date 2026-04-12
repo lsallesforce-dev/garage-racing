@@ -1,5 +1,6 @@
 import { geminiFlashSales } from "@/lib/gemini";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { requireVehicleOwner } from "@/lib/api-auth";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
@@ -9,6 +10,9 @@ export async function POST(req: NextRequest) {
     if (!id) {
       return NextResponse.json({ error: "Missing vehicle ID" }, { status: 400 });
     }
+
+    const { error: authError } = await requireVehicleOwner(id);
+    if (authError) return authError;
 
     // 1. Buscar dados do veículo para contexto
     const { data: veiculo, error: fetchError } = await supabaseAdmin

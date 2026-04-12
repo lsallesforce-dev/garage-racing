@@ -1,5 +1,6 @@
 import { sendAvisaMessage } from "@/lib/avisa";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { requireLeadOwner } from "@/lib/api-auth";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
@@ -10,9 +11,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
+    // Verifica que o lead pertence ao tenant autenticado
+    const { error: authError } = await requireLeadOwner(lead_id);
+    if (authError) return authError;
+
     await sendAvisaMessage(phone, message);
 
-    // Salva a mensagem e ativa o stand-by do Lucas simultaneamente
     await Promise.all([
       supabaseAdmin.from("mensagens").insert({
         lead_id,

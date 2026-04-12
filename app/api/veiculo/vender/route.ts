@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendAvisaMessage } from "@/lib/avisa";
 import { buscarLeadsOrfaos } from "@/lib/leads";
+import { requireVehicleOwner } from "@/lib/api-auth";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
@@ -10,6 +11,10 @@ export async function POST(req: NextRequest) {
     if (!id) {
       return NextResponse.json({ success: false, error: "ID do veículo não fornecido." }, { status: 400 });
     }
+
+    // Verifica que o veículo pertence ao tenant autenticado
+    const { error: authError } = await requireVehicleOwner(id);
+    if (authError) return authError;
 
     // 1. Buscar dados do carro para o histórico e notificações
     const { data: veiculo, error: fetchError } = await supabaseAdmin

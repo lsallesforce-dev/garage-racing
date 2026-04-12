@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Building2, Car, Users, MessageSquare, Zap, CheckCircle2, AlertTriangle, XCircle, ExternalLink, Copy, Plus, X, Loader2, RefreshCw } from "lucide-react";
 
 type StatusBadge = "ativo" | "sem_estoque" | "sem_webhook";
+type PlanoStatus = "trial" | "ativo" | "expirado";
 type ServiceStatus = "ok" | "degraded" | "error" | "loading";
 
 interface Tenant {
@@ -19,6 +20,10 @@ interface Tenant {
   veiculos: number;
   leads: number;
   status: StatusBadge;
+  plano_ativo: boolean;
+  plano?: string;
+  trial_ends_at?: string | null;
+  plano_vence_em?: string | null;
 }
 
 interface Stats {
@@ -73,6 +78,43 @@ function StatusBadge({ status }: { status: StatusBadge }) {
 
 function copyToClipboard(text: string) {
   navigator.clipboard.writeText(text).catch(() => {});
+}
+
+function planoStatus(t: Tenant): PlanoStatus {
+  const agora = new Date();
+  if (t.plano_ativo && t.plano_vence_em && new Date(t.plano_vence_em) > agora) return "ativo";
+  if (t.trial_ends_at && new Date(t.trial_ends_at) > agora) return "trial";
+  return "expirado";
+}
+
+function diasRestantes(dataISO?: string | null): number {
+  if (!dataISO) return 0;
+  return Math.max(0, Math.ceil((new Date(dataISO).getTime() - Date.now()) / 86400000));
+}
+
+function PlanoBadge({ tenant }: { tenant: Tenant }) {
+  const ps = planoStatus(tenant);
+  if (ps === "ativo") {
+    const dias = diasRestantes(tenant.plano_vence_em);
+    return (
+      <span className="flex items-center gap-1 text-blue-700 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest whitespace-nowrap">
+        ✅ Pro · {dias}d
+      </span>
+    );
+  }
+  if (ps === "trial") {
+    const dias = diasRestantes(tenant.trial_ends_at);
+    return (
+      <span className="flex items-center gap-1 text-purple-700 bg-purple-50 border border-purple-100 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest whitespace-nowrap">
+        🕐 Trial · {dias}d
+      </span>
+    );
+  }
+  return (
+    <span className="flex items-center gap-1 text-red-700 bg-red-50 border border-red-100 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest">
+      ❌ Expirado
+    </span>
+  );
 }
 
 // ─── Modal Novo Tenant ────────────────────────────────────────────────────────
@@ -165,6 +207,18 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [search, setSearch] = useState("");
+  const [ativando, setAtivando] = useState<string | null>(null);
+
+  async function ativarTenant(user_id: string, acao: "ativar" | "desativar") {
+    setAtivando(user_id);
+    await fetch("/api/admin/ativar-tenant", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-admin-secret": secret },
+      body: JSON.stringify({ user_id, acao, dias: 30 }),
+    });
+    setAtivando(null);
+    carregar(secret);
+  }
 
   async function carregar(s: string) {
     setLoading(true);
@@ -308,7 +362,7 @@ export default function AdminPage() {
             <table className="w-full text-left">
               <thead>
                 <tr className="border-b border-gray-100">
-                  {["Garagem", "Token / Vitrine", "Veículos", "Leads", "Status", "Cadastro", "Ações"].map(h => (
+                  {["Garagem", "Token / Vitrine", "Veículos", "Leads", "Status", "Plano", "Cadastro", "Ações"].map(h => (
                     <th key={h} className="px-4 py-3 text-[9px] font-black uppercase tracking-widest text-gray-400">{h}</th>
                   ))}
                 </tr>
@@ -361,6 +415,10 @@ export default function AdminPage() {
                     <td className="px-4 py-4">
                       <StatusBadge status={t.status} />
                     </td>
+                    {/* Plano */}
+                    <td className="px-4 py-4">
+                      <PlanoBadge tenant={t} />
+                    </td>
                     {/* Cadastro */}
                     <td className="px-4 py-4">
                       <span className="text-[11px] text-gray-400 font-bold">
@@ -375,6 +433,23 @@ export default function AdminPage() {
                             className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="Ver vitrine">
                             <ExternalLink size={13} />
                           </a>
+                        )}
+                        {planoStatus(t) !== "ativo" ? (
+                          <button
+                            onClick={() => ativarTenant(t.user_id, "ativar")}
+                            disabled={ativando === t.user_id}
+                            className="px-2.5 py-1 bg-green-600 hover:bg-green-700 text-white text-[9px] font-black uppercase tracking-widest rounded-lg transition-all disabled:opacity-50"
+                          >
+                            {ativando === t.user_id ? "..." : "Ativar"}
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => ativarTenant(t.user_id, "desativar")}
+                            disabled={ativando === t.user_id}
+                            className="px-2.5 py-1 bg-gray-200 hover:bg-red-100 hover:text-red-700 text-gray-500 text-[9px] font-black uppercase tracking-widest rounded-lg transition-all disabled:opacity-50"
+                          >
+                            {ativando === t.user_id ? "..." : "Pausar"}
+                          </button>
                         )}
                       </div>
                     </td>
