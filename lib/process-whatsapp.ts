@@ -404,8 +404,9 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
     return;
   }
 
-  // !reset — limpa cache Redis + veiculo_id do lead (útil para testes)
-  if (isAuthorized && userMessage.trim().toLowerCase() === "!reset") {
+  // !reset — qualquer usuário pode resetar sua própria conversa
+  // (só afeta o lead do próprio remetente — sem risco de segurança)
+  if (userMessage.trim().toLowerCase() === "!reset") {
     const { data: leadReset } = await supabaseAdmin
       .from("leads")
       .select("id")
@@ -417,10 +418,15 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
       await supabaseAdmin.from("mensagens").delete().eq("lead_id", leadReset.id);
       await supabaseAdmin
         .from("leads")
-        .update({ veiculo_id: null, status: "FRIO", resumo_negociacao: null })
+        .update({
+          veiculo_id: null,
+          status: "FRIO",
+          resumo_negociacao: null,
+          em_atendimento_humano: false,  // libera stand-by
+        })
         .eq("id", leadReset.id);
     }
-    await sendAvisaMessage(phone, "✅ Reset completo. Cache Redis, mensagens e foco do lead limpos.");
+    await sendAvisaMessage(phone, "✅ Reset completo. Conversa reiniciada.");
     return;
   }
 
