@@ -92,22 +92,17 @@ export const PhotoGallery = ({
     const fileName = `foto-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
     const uploadBlob: Blob = watermarkEnabled ? await applyWatermark(file, logoUrl) : file;
 
-    const metaRes = await fetch("/api/upload", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fileName, fileType: "image/jpeg" }),
-    });
-    const metaData = await metaRes.json();
-    if (!metaRes.ok || !metaData.signedUrl) throw new Error(metaData.error || "Falha ao obter URL");
+    const { data, error } = await supabase.storage
+      .from("fotos-veiculos")
+      .upload(fileName, uploadBlob, { contentType: "image/jpeg", upsert: false });
 
-    const uploadRes = await fetch(metaData.signedUrl, {
-      method: "PUT",
-      headers: { "Content-Type": "image/jpeg" },
-      body: uploadBlob,
-    });
-    if (!uploadRes.ok) throw new Error("Falha no upload");
+    if (error) throw new Error(error.message);
 
-    return metaData.publicUrl as string;
+    const { data: { publicUrl } } = supabase.storage
+      .from("fotos-veiculos")
+      .getPublicUrl(data.path);
+
+    return publicUrl;
   }
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -148,7 +143,7 @@ export const PhotoGallery = ({
     if (error) { alert("Erro ao excluir foto"); return; }
 
     const fileName = url.split("/").pop();
-    if (fileName) await supabase.storage.from("videos-estoque").remove([fileName]);
+    if (fileName) await supabase.storage.from("fotos-veiculos").remove([fileName]);
 
     onPhotosUpdated(newPhotos);
     if (selectedPhoto === url) setSelectedPhoto(newPhotos[0] || "");
