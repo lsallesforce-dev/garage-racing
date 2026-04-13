@@ -143,7 +143,7 @@ export async function POST(req: NextRequest) {
     if (token) {
       const { data } = await supabaseAdmin
         .from("config_garage")
-        .select("user_id, nome_empresa, nome_agente, endereco, endereco_complemento, whatsapp, vitrine_slug, webhook_token, tom_venda, instrucoes_adicionais, plano_ativo, trial_ends_at, plano_vence_em")
+        .select("user_id, nome_empresa, nome_agente, endereco, endereco_complemento, whatsapp, vitrine_slug, webhook_token, avisa_base_url, avisa_token, tom_venda, instrucoes_adicionais, plano_ativo, trial_ends_at, plano_vence_em")
         .eq("webhook_token", token)
         .maybeSingle();
 
@@ -160,14 +160,14 @@ export async function POST(req: NextRequest) {
       if (tenantUserId) {
         const { data } = await supabaseAdmin
           .from("config_garage")
-          .select("user_id, nome_empresa, nome_agente, endereco, endereco_complemento, whatsapp, vitrine_slug, webhook_token, tom_venda, instrucoes_adicionais, plano_ativo, trial_ends_at, plano_vence_em")
+          .select("user_id, nome_empresa, nome_agente, endereco, endereco_complemento, whatsapp, vitrine_slug, webhook_token, avisa_base_url, avisa_token, tom_venda, instrucoes_adicionais, plano_ativo, trial_ends_at, plano_vence_em")
           .eq("user_id", tenantUserId)
           .maybeSingle();
         garageConfig = data || null;
       } else {
         const { data } = await supabaseAdmin
           .from("config_garage")
-          .select("user_id, nome_empresa, nome_agente, endereco, endereco_complemento, whatsapp, vitrine_slug, webhook_token, tom_venda, instrucoes_adicionais, plano_ativo, trial_ends_at, plano_vence_em")
+          .select("user_id, nome_empresa, nome_agente, endereco, endereco_complemento, whatsapp, vitrine_slug, webhook_token, avisa_base_url, avisa_token, tom_venda, instrucoes_adicionais, plano_ativo, trial_ends_at, plano_vence_em")
           .limit(1)
           .maybeSingle();
         tenantUserId = data?.user_id || null;

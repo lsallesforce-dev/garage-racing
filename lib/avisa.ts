@@ -7,21 +7,29 @@ function formatPhone(phone: string): string {
   return cleaned;
 }
 
-function getAuthHeader(): string {
-  return `Bearer ${process.env.AVISA_TOKEN || ""}`;
+interface AvisaCreds {
+  baseUrl: string;
+  token: string;
+}
+
+function resolveCreds(creds?: Partial<AvisaCreds>): AvisaCreds | null {
+  const baseUrl = creds?.baseUrl || process.env.AVISA_BASE_URL || "";
+  const token = creds?.token || process.env.AVISA_TOKEN || "";
+  if (!baseUrl || !token) return null;
+  return { baseUrl, token };
 }
 
 export async function enviarMensagemAvisa(telefone: string, texto: string) {
   return sendAvisaMessage(telefone, texto);
 }
 
-async function sendWithRetry(url: string, payload: any, retries = 2): Promise<any> {
+async function sendWithRetry(url: string, payload: any, token: string, retries = 2): Promise<any> {
   for (let i = 0; i < retries; i++) {
     try {
       const isFormData = payload instanceof FormData;
-      
+
       const headers: Record<string, string> = {
-        Authorization: getAuthHeader(),
+        Authorization: `Bearer ${token}`,
       };
       
       if (!isFormData) {
@@ -59,12 +67,12 @@ function typingDelay(text: string): number {
   return Math.min(1500 + Math.floor(text.length / 50) * 500, 7000);
 }
 
-async function sendAvisaTyping(baseUrl: string, phone: string, action: "start" | "stop") {
+async function sendAvisaTyping(baseUrl: string, token: string, phone: string, action: "start" | "stop") {
   try {
     const chat = `${formatPhone(phone)}@s.whatsapp.net`;
     await fetch(`${baseUrl}/chat/typing/${action}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: getAuthHeader() },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ chat }),
     });
   } catch {
@@ -72,38 +80,28 @@ async function sendAvisaTyping(baseUrl: string, phone: string, action: "start" |
   }
 }
 
-export async function sendAvisaMessage(phone: string, message: string) {
-  const baseUrl = process.env.AVISA_BASE_URL;
-  const token = process.env.AVISA_TOKEN;
-  if (!baseUrl || !token) { console.warn("Avisa credentials missing"); return; }
+export async function sendAvisaMessage(phone: string, message: string, creds?: Partial<AvisaCreds>) {
+  const c = resolveCreds(creds);
+  if (!c) { console.warn("Avisa credentials missing"); return; }
 
   const delay = typingDelay(message);
   console.log(`📤 Avisa sendMessage → ${formatPhone(phone)} (${message.length} chars, delay ${delay}ms)`);
 
-  await sendAvisaTyping(baseUrl, phone, "start");
+  await sendAvisaTyping(c.baseUrl, c.token, phone, "start");
   await new Promise((r) => setTimeout(r, delay));
-  await sendAvisaTyping(baseUrl, phone, "stop");
+  await sendAvisaTyping(c.baseUrl, c.token, phone, "stop");
 
-  const payload = {
-    number: formatPhone(phone),
-    message: message
-  };
-
-  return sendWithRetry(`${baseUrl}/actions/sendMessage`, payload);
+  const payload = { number: formatPhone(phone), message };
+  return sendWithRetry(`${c.baseUrl}/actions/sendMessage`, payload, c.token);
 }
 
-export async function sendAvisaImage(phone: string, imageBase64: string, message?: string) {
-  const baseUrl = process.env.AVISA_BASE_URL;
-  const token = process.env.AVISA_TOKEN;
-  if (!baseUrl || !token) { console.warn("Avisa credentials missing"); return; }
+export async function sendAvisaImage(phone: string, imageBase64: string, message?: string, creds?: Partial<AvisaCreds>) {
+  const c = resolveCreds(creds);
+  if (!c) { console.warn("Avisa credentials missing"); return; }
 
-  const payload: any = {
-    number: formatPhone(phone),
-    image: imageBase64
-  };
+  const payload: any = { number: formatPhone(phone), image: imageBase64 };
   if (message) payload.message = message;
-
-  return sendWithRetry(`${baseUrl}/actions/sendImage`, payload);
+  return sendWithRetry(`${c.baseUrl}/actions/sendImage`, payload, c.token);
 }
 
 export async function sendAvisaPreview(
@@ -112,28 +110,20 @@ export async function sendAvisaPreview(
   urlSite: string,
   title: string,
   description: string,
-  imageBase64?: string
+  imageBase64?: string,
+  creds?: Partial<AvisaCreds>
 ) {
-  const baseUrl = process.env.AVISA_BASE_URL;
-  const token = process.env.AVISA_TOKEN;
-  if (!baseUrl || !token) { console.warn("Avisa credentials missing"); return; }
+  const c = resolveCreds(creds);
+  if (!c) { console.warn("Avisa credentials missing"); return; }
 
-  const payload: any = {
-    number: formatPhone(phone),
-    message,
-    urlSite,
-    title,
-    description,
-  };
+  const payload: any = { number: formatPhone(phone), message, urlSite, title, description };
   if (imageBase64) payload.image = imageBase64;
-
-  return sendWithRetry(`${baseUrl}/actions/sendPreview`, payload);
+  return sendWithRetry(`${c.baseUrl}/actions/sendPreview`, payload, c.token);
 }
 
-export async function sendAvisaVideo(phone: string, videoUrl: string, caption?: string) {
-  const baseUrl = process.env.AVISA_BASE_URL;
-  const token = process.env.AVISA_TOKEN;
-  if (!baseUrl || !token) { console.warn("Avisa credentials missing"); return; }
+export async function sendAvisaVideo(phone: string, videoUrl: string, caption?: string, creds?: Partial<AvisaCreds>) {
+  const c = resolveCreds(creds);
+  if (!c) { console.warn("Avisa credentials missing"); return; }
 
   console.log(`📹 Avisa sendVideo → ${formatPhone(phone)}`);
 
@@ -145,5 +135,5 @@ export async function sendAvisaVideo(phone: string, videoUrl: string, caption?: 
   };
   if (caption) payload.message = caption;
 
-  return sendWithRetry(`${baseUrl}/actions/sendMedia`, payload);
+  return sendWithRetry(`${c.baseUrl}/actions/sendMedia`, payload, c.token);
 }

@@ -44,6 +44,8 @@ export interface GarageConfig {
   whatsapp?: string;
   vitrine_slug?: string;
   webhook_token?: string;
+  avisa_base_url?: string;
+  avisa_token?: string;
   // Day 2: prompt customization
   tom_venda?: string;               // ex: "descontraído", "formal", "apressado"
   instrucoes_adicionais?: string;   // bloco livre de instruções do dono
@@ -347,6 +349,12 @@ function buildStockContext(topVeiculos: Vehicle[], veiculoPrincipal: Vehicle | n
 export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<void> {
   const { phone, rawMessage, audioUrl, audioMediaKey, tenantUserId, garageConfig } = job;
 
+  // Credenciais Avisa do tenant — disponível globalmente na função
+  const avisaCreds = {
+    baseUrl: garageConfig?.avisa_base_url || process.env.AVISA_BASE_URL || "",
+    token: garageConfig?.avisa_token || process.env.AVISA_TOKEN || "",
+  };
+
   let userMessage = rawMessage;
   let audioData: { data: string; mimeType: string } | null = null;
 
@@ -400,7 +408,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
       garageConfig?.nome_empresa || "nossa loja",
       garageConfig?.nome_agente || "IA"
     );
-    await sendAvisaMessage(phone, relatorio);
+    await sendAvisaMessage(phone, relatorio, avisaCreds);
     return;
   }
 
@@ -426,7 +434,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
         })
         .eq("id", leadReset.id);
     }
-    await sendAvisaMessage(phone, "✅ Reset completo. Conversa reiniciada.");
+    await sendAvisaMessage(phone, "✅ Reset completo. Conversa reiniciada.", avisaCreds);
     return;
   }
 
@@ -568,7 +576,9 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
       `🚨 *LEAD QUENTE NA MESA!*\n\n👤 ${lead?.nome || phone}\n🚗 ${veiculoAlerta}\n💬 "${userMessage}"`,
       _assumirUrl,
       `🔥 Toque para parar a IA e falar com o cliente`,
-      `${veiculoAlerta} · ${lead?.nome || phone}`
+      `${veiculoAlerta} · ${lead?.nome || phone}`,
+      undefined,
+      avisaCreds
     ).catch(() => {});
   }
 
@@ -593,7 +603,9 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
         `🔴 *ALERTA PÓS-VENDA!*\n\n👤 ${lead.nome || phone}\n💬 "${userMessage}"\n⚠️ Agente em stand-by automaticamente.`,
         _posvUrl,
         `🔴 Toque para falar com o cliente`,
-        `Problema relatado · ${lead.nome || phone}`
+        `Problema relatado · ${lead.nome || phone}`,
+        undefined,
+        avisaCreds
       ).catch(() => {});
     }
   }
@@ -711,7 +723,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
           const imgResp = await fetch(fotoUrl);
           if (imgResp.ok) {
             const base64 = Buffer.from(await imgResp.arrayBuffer()).toString("base64");
-            await sendAvisaImage(phone, base64);
+            await sendAvisaImage(phone, base64, undefined, avisaCreds);
             fotoEnviada = true;
           }
         } catch (e) {
@@ -744,7 +756,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
       const videoUrl = (veiculoParaVideo as any).video_url ?? null;
       if (videoUrl) {
         try {
-          await sendAvisaVideo(phone, videoUrl);
+          await sendAvisaVideo(phone, videoUrl, undefined, avisaCreds);
           videoEnviado = true;
           if (lead && veiculoParaVideo.id !== veiculoIdAnterior) {
             await supabaseAdmin
@@ -882,7 +894,8 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
               `👤 Cliente: ${nomeLead}\n` +
               `🚗 Veículo: ${veiculoAlert}\n\n` +
               `💬 Dúvida: ${precisaInstrucao}\n\n` +
-              `👉 Responda a esta mensagem com a instrução para o agente continuar.`
+              `👉 Responda a esta mensagem com a instrução para o agente continuar.`,
+              avisaCreds
             ).catch(() => {});
           }
         }
@@ -955,12 +968,14 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
         briefing.texto,
         briefing.url,
         briefing.titulo,
-        briefing.descricao
+        briefing.descricao,
+        undefined,
+        avisaCreds
       );
     }
   }
 
   // ── 15. Enviar resposta ao cliente ────────────────────────────────────────────
-  await sendAvisaMessage(phone, aiResponse);
+  await sendAvisaMessage(phone, aiResponse, avisaCreds);
   console.log(`✅ Mensagem processada para ${phone} | temperatura: ${temperatura}`);
 }

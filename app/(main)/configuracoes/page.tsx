@@ -17,6 +17,8 @@ interface GarageConfig {
   logo_url: string | null;
   vitrine_slug?: string;
   webhook_token?: string;
+  avisa_base_url?: string;
+  avisa_token?: string;
   nome_usuario?: string;
   cargo_usuario?: string;
   tom_venda?: string;
@@ -45,6 +47,8 @@ export default function ConfiguracoesPage() {
     vitrine_slug: "",
     logo_url: null,
     webhook_token: "",
+    avisa_base_url: "",
+    avisa_token: "",
     nome_usuario: "",
     cargo_usuario: "",
     tom_venda: "",
@@ -76,6 +80,8 @@ export default function ConfiguracoesPage() {
               vitrine_slug: row.vitrine_slug ?? "",
               logo_url: row.logo_url ?? null,
               webhook_token: row.webhook_token ?? "",
+              avisa_base_url: row.avisa_base_url ?? "",
+              avisa_token: row.avisa_token ?? "",
               nome_usuario: row.nome_usuario ?? "",
               cargo_usuario: row.cargo_usuario ?? "",
               tom_venda: row.tom_venda ?? "",
@@ -209,6 +215,8 @@ export default function ConfiguracoesPage() {
             whatsapp_agente: config.whatsapp_agente || null,
             vitrine_slug: config.vitrine_slug || null,
             webhook_token: config.webhook_token || null,
+            avisa_base_url: config.avisa_base_url || null,
+            avisa_token: config.avisa_token || null,
             nome_usuario: config.nome_usuario || null,
             cargo_usuario: config.cargo_usuario || null,
             tom_venda: config.tom_venda || null,
@@ -355,6 +363,29 @@ export default function ConfiguracoesPage() {
                 className="bg-white border flex-1 border-blue-200 rounded-xl px-4 py-2.5 font-mono text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
               />
               <p className="text-[10px] text-blue-600 mt-1">Configure na Avisa: <a href={`https://autozap.digital/api/webhook/avisa?token=${config.webhook_token || "SEU_TOKEN"}`} className="font-mono break-all select-all hover:underline" onClick={e => { e.preventDefault(); navigator.clipboard.writeText(`https://autozap.digital/api/webhook/avisa?token=${config.webhook_token || ""}`); }}><strong>https://autozap.digital/api/webhook/avisa?token={config.webhook_token || "SEU_TOKEN"}</strong></a></p>
+
+              <label className="text-[10px] font-black uppercase tracking-widest text-blue-800 mt-3 block">
+                URL Base da Avisa (API)
+              </label>
+              <input
+                type="text"
+                value={config.avisa_base_url || ""}
+                onChange={e => setConfig(c => ({ ...c, avisa_base_url: e.target.value }))}
+                placeholder="Ex: https://api.avisa.app/instance/SuaInstancia"
+                className="bg-white border border-blue-200 rounded-xl px-4 py-2.5 font-mono text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
+              />
+
+              <label className="text-[10px] font-black uppercase tracking-widest text-blue-800 mt-3 block">
+                Token da Avisa (API Key)
+              </label>
+              <input
+                type="text"
+                value={config.avisa_token || ""}
+                onChange={e => setConfig(c => ({ ...c, avisa_token: e.target.value }))}
+                placeholder="Token de autenticação da Avisa"
+                className="bg-white border border-blue-200 rounded-xl px-4 py-2.5 font-mono text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
+              />
+              <p className="text-[10px] text-blue-500 mt-1">Credenciais exclusivas desta instância. Cada garagem usa sua própria conexão Avisa.</p>
 
               <label className="text-[10px] font-black uppercase tracking-widest text-blue-800 mt-3 block">
                 Slug da Vitrine (URL curta)
