@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
-const staticMenuItems = [
+const adminMenuItems = [
   { icon: LayoutDashboard, label: "Pátio Digital", href: "/" },
   { icon: Car, label: "Estoque Inteligente", href: "/estoque" },
   { icon: PlusSquare, label: "Adicionar Estoque", href: "/upload" },
@@ -16,7 +16,18 @@ const staticMenuItems = [
   { icon: Settings, label: "Configurações", href: "/configuracoes" },
 ];
 
-export const Sidebar = ({ onClose }: { onClose?: () => void }) => {
+const vendedorMenuItems = [
+  { icon: Car, label: "Estoque Inteligente", href: "/estoque" },
+  { icon: MessageSquare, label: "Central de Chat", href: "/chat" },
+];
+
+interface SidebarProps {
+  onClose?: () => void;
+  isVendedor?: boolean;
+  effectiveUserId?: string;
+}
+
+export const Sidebar = ({ onClose, isVendedor = false, effectiveUserId = "" }: SidebarProps) => {
   const pathname = usePathname();
   const router = useRouter();
   const [nomeUsuario, setNomeUsuario] = useState("");
@@ -27,6 +38,40 @@ export const Sidebar = ({ onClose }: { onClose?: () => void }) => {
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) return;
+
+      if (isVendedor) {
+        // Vendor: pull name from vendedores table, company from owner's config_garage
+        const ownerId = effectiveUserId;
+        supabase
+          .from("vendedores")
+          .select("nome, especialidade")
+          .eq("auth_user_id", user.id)
+          .maybeSingle()
+          .then(({ data: v }) => {
+            if (v) {
+              setNomeUsuario(v.nome || "");
+              setCargoUsuario(v.especialidade || "Vendedor");
+            }
+          });
+
+        if (ownerId) {
+          supabase
+            .from("config_garage")
+            .select("nome_empresa, vitrine_slug, webhook_token")
+            .eq("user_id", ownerId)
+            .limit(1)
+            .then(({ data }) => {
+              const row = data?.[0];
+              if (row) {
+                setNomeEmpresa(row.nome_empresa || "");
+                setVitrineSlug(row.vitrine_slug || row.webhook_token || null);
+              }
+            });
+        }
+        return;
+      }
+
+      // Admin: pull from config_garage
       supabase
         .from("config_garage")
         .select("nome_usuario, cargo_usuario, nome_empresa, vitrine_slug, webhook_token")
@@ -43,7 +88,7 @@ export const Sidebar = ({ onClose }: { onClose?: () => void }) => {
           }
         });
     });
-  }, []);
+  }, [isVendedor, effectiveUserId]);
 
   const iniciais = nomeUsuario
     .split(" ")
@@ -57,6 +102,8 @@ export const Sidebar = ({ onClose }: { onClose?: () => void }) => {
     router.push("/login");
     router.refresh();
   }
+
+  const menuItems = isVendedor ? vendedorMenuItems : adminMenuItems;
 
   return (
     <aside className="w-64 h-screen bg-[#e2e2de] border-r border-gray-300 p-6 flex flex-col">
@@ -76,7 +123,9 @@ export const Sidebar = ({ onClose }: { onClose?: () => void }) => {
         </h2>
         <div className="flex items-center gap-1 mt-2 text-red-600">
           <ShieldCheck size={10} />
-          <p className="text-[9px] font-black uppercase tracking-[0.2em]">Painel Operacional</p>
+          <p className="text-[9px] font-black uppercase tracking-[0.2em]">
+            {isVendedor ? "Acesso Vendedor" : "Painel Operacional"}
+          </p>
         </div>
         </div>
         {onClose && (
@@ -85,9 +134,9 @@ export const Sidebar = ({ onClose }: { onClose?: () => void }) => {
           </button>
         )}
       </div>
-      
+
       <nav className="flex-1 space-y-2">
-        {staticMenuItems.map((item) => (
+        {menuItems.map((item) => (
           <Link
             key={item.label}
             href={item.href}
@@ -102,17 +151,19 @@ export const Sidebar = ({ onClose }: { onClose?: () => void }) => {
             </div>
           </Link>
         ))}
-        {/* Vitrine Pública — link externo com slug do tenant */}
-        <a
-          href={vitrineSlug ? `/vitrine/${vitrineSlug}` : "/vitrine"}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={onClose}
-          className="flex items-center gap-3 p-3 rounded-xl transition-all text-gray-600 hover:bg-white/50"
-        >
-          <Store size={18} />
-          <span className="font-bold text-[11px] uppercase tracking-wider">Vitrine Pública</span>
-        </a>
+        {/* Vitrine Pública — somente para admin */}
+        {!isVendedor && (
+          <a
+            href={vitrineSlug ? `/vitrine/${vitrineSlug}` : "/vitrine"}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={onClose}
+            className="flex items-center gap-3 p-3 rounded-xl transition-all text-gray-600 hover:bg-white/50"
+          >
+            <Store size={18} />
+            <span className="font-bold text-[11px] uppercase tracking-wider">Vitrine Pública</span>
+          </a>
+        )}
       </nav>
 
       {/* Perfil do Usuário */}

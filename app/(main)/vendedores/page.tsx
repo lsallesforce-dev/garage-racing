@@ -12,7 +12,8 @@ export default function VendedoresPage() {
   const [uploading, setUploading] = useState(false);
   
   // Estado Unificado do Formulário
-  const [form, setForm] = useState({ nome: '', especialidade: '', whatsapp: '', foto_url: '', role: 'vendedor' });
+  const [form, setForm] = useState({ nome: '', especialidade: '', whatsapp: '', foto_url: '', role: 'vendedor', email: '', senha: '' });
+  const [savingLogin, setSavingLogin] = useState(false);
 
   const carregarEquipe = async () => {
     setLoading(true);
@@ -64,34 +65,61 @@ export default function VendedoresPage() {
   // 💾 Salvar ou Atualizar no Supabase
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (editingVendedor) {
-      // Modo Edição (UPDATE)
-      const { error } = await supabase
-        .from('vendedores')
-        .update(form)
-        .eq('id', editingVendedor.id);
-        
-      if (error) {
-        alert("Erro ao atualizar vendedor.");
-        return;
+    setSavingLogin(true);
+
+    const { nome, especialidade, whatsapp, foto_url, role, email, senha } = form;
+    const dadosBase = { nome, especialidade, whatsapp, foto_url, role };
+
+    try {
+      if (editingVendedor) {
+        // Modo Edição (UPDATE)
+        const { error } = await supabase
+          .from('vendedores')
+          .update(dadosBase)
+          .eq('id', editingVendedor.id);
+
+        if (error) { alert("Erro ao atualizar vendedor."); return; }
+
+        // Se admin informou email (novo ou alteração de credenciais)
+        if (email) {
+          const res = await fetch('/api/vendedores/criar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ vendedorId: editingVendedor.id, email, senha: senha || undefined, authUserId: editingVendedor.auth_user_id }),
+          });
+          const data = await res.json();
+          if (!res.ok) { alert("Erro ao atualizar acesso: " + data.error); return; }
+        }
+
+        setEditingVendedor(null);
+      } else {
+        // Modo Novo (INSERT)
+        const { data: { user } } = await supabase.auth.getUser();
+        const { data: inserted, error } = await supabase
+          .from('vendedores')
+          .insert([{ ...dadosBase, user_id: user?.id }])
+          .select('id')
+          .single();
+
+        if (error || !inserted) { alert("Erro ao cadastrar vendedor."); return; }
+
+        // Criar login se email foi informado
+        if (email && senha) {
+          const res = await fetch('/api/vendedores/criar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ vendedorId: inserted.id, email, senha }),
+          });
+          const data = await res.json();
+          if (!res.ok) { alert("Vendedor cadastrado, mas erro ao criar login: " + data.error); }
+        }
       }
-      setEditingVendedor(null);
-    } else {
-      // Modo Novo (INSERT)
-      const { data: { user } } = await supabase.auth.getUser();
-      const { error } = await supabase
-        .from('vendedores')
-        .insert([{ ...form, user_id: user?.id }]);
-        
-      if (error) {
-        alert("Erro ao cadastrar vendedor.");
-        return;
-      }
+    } finally {
+      setSavingLogin(false);
     }
 
     // Reset geral
-    setForm({ nome: '', especialidade: '', whatsapp: '', foto_url: '', role: 'vendedor' });
+    setForm({ nome: '', especialidade: '', whatsapp: '', foto_url: '', role: 'vendedor', email: '', senha: '' });
     setIsModalOpen(false);
     carregarEquipe();
   };
@@ -121,6 +149,8 @@ export default function VendedoresPage() {
       whatsapp: vendedor.whatsapp,
       foto_url: vendedor.foto_url,
       role: vendedor.role || 'vendedor',
+      email: vendedor.email || '',
+      senha: '',
     });
     setIsModalOpen(true);
   };
@@ -135,10 +165,10 @@ export default function VendedoresPage() {
           </div>
           
           <button 
-            onClick={() => { 
+            onClick={() => {
                 setEditingVendedor(null);
-                setForm({ nome: '', especialidade: '', whatsapp: '', foto_url: '', role: 'vendedor' });
-                setIsModalOpen(true); 
+                setForm({ nome: '', especialidade: '', whatsapp: '', foto_url: '', role: 'vendedor', email: '', senha: '' });
+                setIsModalOpen(true);
             }}
             className="flex items-center gap-2 px-6 py-3 bg-gray-900 text-white font-black uppercase text-[10px] tracking-widest rounded-xl hover:bg-black transition-all shadow-xl shadow-gray-900/10"
           >
@@ -229,96 +259,80 @@ export default function VendedoresPage() {
         {/* 🚪 Modal Dual (Cadastrar e Editar) */}
         {isModalOpen && (
           <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
-            <div className="bg-white w-full max-w-lg rounded-[3rem] p-12 shadow-2xl relative animate-in fade-in zoom-in duration-200 border border-gray-100">
-              <button 
-                onClick={() => setIsModalOpen(false)} 
-                className="absolute top-10 right-10 text-gray-400 hover:text-black transition-all p-2 hover:bg-gray-50 rounded-2xl"
+            <div className="bg-white w-full max-w-md rounded-2xl p-6 shadow-2xl relative animate-in fade-in zoom-in duration-200 border border-gray-100 max-h-[90vh] overflow-y-auto">
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="absolute top-4 right-4 text-gray-400 hover:text-black transition-all p-1.5 hover:bg-gray-50 rounded-xl"
               >
-                <X size={26} />
+                <X size={20} />
               </button>
-              
-              <h2 className="text-4xl font-black uppercase tracking-tighter italic text-gray-900 mb-2">
-                {editingVendedor ? 'Editar Perfil' : 'Novo Closer'}
+
+              <h2 className="text-xl font-black uppercase tracking-tight text-gray-900 mb-1">
+                {editingVendedor ? 'Editar Perfil' : 'Novo Vendedor'}
               </h2>
-              <p className="text-gray-400 text-[10px] font-black uppercase tracking-[0.3em] mb-10 pb-6 border-b border-gray-100">
-                {editingVendedor ? 'Atualizar dados do vendedor' : 'Registrar Vendedor no Pátio Digital'}
+              <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest mb-4 pb-4 border-b border-gray-100">
+                {editingVendedor ? 'Atualizar dados do vendedor' : 'Registrar vendedor no painel'}
               </p>
 
-              <form onSubmit={handleSave} className="space-y-6">
-                
-                {/* Área de Upload de Foto com Cache Buster */}
-                <div className="flex flex-col items-center gap-5 bg-gray-50/80 p-8 rounded-[2.5rem] border border-gray-100 mb-8">
+              <form onSubmit={handleSave} className="space-y-4">
+
+                {/* Foto */}
+                <div className="flex items-center gap-4 bg-gray-50 p-4 rounded-xl border border-gray-100">
                   {form.foto_url ? (
-                    <img 
-                      src={`${form.foto_url}?t=${new Date().getTime()}`} 
-                      alt="Preview" 
-                      className="w-28 h-28 rounded-full object-cover border-4 border-white shadow-xl ring-1 ring-gray-100" 
+                    <img
+                      src={`${form.foto_url}?t=${new Date().getTime()}`}
+                      alt="Preview"
+                      className="w-16 h-16 rounded-full object-cover border-2 border-white shadow"
                     />
                   ) : (
-                    <div className="w-28 h-28 rounded-full bg-white flex items-center justify-center text-gray-100 shadow-inner">
-                      <UserCircle size={112} strokeWidth={1} />
+                    <div className="w-16 h-16 rounded-full bg-white flex items-center justify-center text-gray-200 shadow-inner">
+                      <UserCircle size={64} strokeWidth={1} />
                     </div>
                   )}
-                  <label className="flex items-center gap-2 px-6 py-3 bg-white rounded-xl border border-gray-200 text-gray-600 font-black uppercase text-[10px] tracking-widest cursor-pointer hover:border-red-600 hover:text-red-600 transition-all shadow-sm">
-                    {uploading ? (
-                      <span className="w-4 h-4 border-2 border-red-600 border-t-transparent animate-spin rounded-full"></span>
-                    ) : (
-                      <Upload size={14} />
-                    )}
-                    {uploading ? "Sincronizando..." : "Trocar Foto Perfil"}
+                  <label className="flex items-center gap-2 px-4 py-2 bg-white rounded-xl border border-gray-200 text-gray-600 font-black uppercase text-[10px] tracking-widest cursor-pointer hover:border-red-600 hover:text-red-600 transition-all shadow-sm">
+                    {uploading ? <span className="w-3 h-3 border-2 border-red-600 border-t-transparent animate-spin rounded-full" /> : <Upload size={12} />}
+                    {uploading ? "Enviando..." : "Trocar Foto"}
                     <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" disabled={uploading} />
                   </label>
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-black uppercase text-gray-400 ml-4 mb-2 block tracking-widest">Nome Completo</label>
-                  <input 
-                    required 
-                    type="text" 
-                    value={form.nome} 
-                    onChange={e => setForm({...form, nome: e.target.value})} 
-                    className="w-full p-5 bg-gray-50 rounded-[1.5rem] border border-gray-100 outline-none focus:ring-4 focus:ring-red-500/10 font-bold text-gray-900 transition-all placeholder:text-gray-300"
+                  <label className="text-[10px] font-black uppercase text-gray-400 mb-1 block tracking-widest">Nome Completo</label>
+                  <input
+                    required type="text" value={form.nome}
+                    onChange={e => setForm({...form, nome: e.target.value})}
+                    className="w-full px-4 py-2.5 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:border-red-500 text-sm font-bold text-gray-900 placeholder:text-gray-300"
                     placeholder="Ex: Beto Martins"
                   />
                 </div>
-                
-                <div className="grid grid-cols-2 gap-6">
+
+                <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-[10px] font-black uppercase text-gray-400 ml-4 mb-2 block tracking-widest">Especialidade</label>
-                    <input
-                      type="text"
-                      value={form.especialidade}
+                    <label className="text-[10px] font-black uppercase text-gray-400 mb-1 block tracking-widest">Especialidade</label>
+                    <input type="text" value={form.especialidade}
                       onChange={e => setForm({...form, especialidade: e.target.value})}
-                      className="w-full p-5 bg-gray-50 rounded-[1.5rem] border border-gray-100 outline-none focus:ring-4 focus:ring-red-500/10 font-bold text-gray-900 transition-all placeholder:text-gray-300"
-                      placeholder="Ex: Motos Esportivas"
+                      className="w-full px-4 py-2.5 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:border-red-500 text-sm font-bold text-gray-900 placeholder:text-gray-300"
+                      placeholder="Ex: SUVs"
                     />
                   </div>
                   <div>
-                    <label className="text-[10px] font-black uppercase text-gray-400 ml-4 mb-2 block tracking-widest">WhatsApp (com DDD)</label>
-                    <input
-                      required
-                      type="text"
-                      value={form.whatsapp}
+                    <label className="text-[10px] font-black uppercase text-gray-400 mb-1 block tracking-widest">WhatsApp (DDI+DDD)</label>
+                    <input required type="text" value={form.whatsapp}
                       onChange={e => setForm({...form, whatsapp: e.target.value})}
-                      className="w-full p-5 bg-gray-50 rounded-[1.5rem] border border-gray-100 outline-none focus:ring-4 focus:ring-red-500/10 font-bold text-gray-900 font-mono transition-all placeholder:text-gray-300"
-                      placeholder="17991234567"
+                      className="w-full px-4 py-2.5 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:border-red-500 text-sm font-mono text-gray-900 placeholder:text-gray-300"
+                      placeholder="5517991234567"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-black uppercase text-gray-400 ml-4 mb-2 block tracking-widest">Nível de Acesso</label>
-                  <div className="grid grid-cols-2 gap-3">
+                  <label className="text-[10px] font-black uppercase text-gray-400 mb-1 block tracking-widest">Nível de Acesso</label>
+                  <div className="grid grid-cols-2 gap-2">
                     {(['vendedor', 'master'] as const).map(r => (
-                      <button
-                        key={r}
-                        type="button"
-                        onClick={() => setForm({...form, role: r})}
-                        className={`p-4 rounded-[1.5rem] border-2 font-black uppercase text-[10px] tracking-widest transition-all ${
+                      <button key={r} type="button" onClick={() => setForm({...form, role: r})}
+                        className={`py-2.5 rounded-xl border-2 font-black uppercase text-[10px] tracking-widest transition-all ${
                           form.role === r
-                            ? r === 'master'
-                              ? 'border-amber-500 bg-amber-50 text-amber-700'
-                              : 'border-gray-900 bg-gray-900 text-white'
+                            ? r === 'master' ? 'border-amber-500 bg-amber-50 text-amber-700' : 'border-gray-900 bg-gray-900 text-white'
                             : 'border-gray-100 bg-gray-50 text-gray-400 hover:border-gray-300'
                         }`}
                       >
@@ -326,15 +340,40 @@ export default function VendedoresPage() {
                       </button>
                     ))}
                   </div>
-                  <p className="text-[9px] text-gray-400 mt-2 ml-1">Master pode ver todos os leads e configurações.</p>
                 </div>
-                
-                <button 
-                  type="submit" 
-                  disabled={uploading} 
-                  className="w-full py-6 mt-6 bg-red-600 text-white font-black uppercase tracking-[0.2em] text-[11px] rounded-[1.5rem] shadow-xl shadow-red-600/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50"
+
+                {/* Acesso ao Painel */}
+                <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 space-y-3">
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-gray-400 mb-1 block tracking-widest">
+                      {editingVendedor ? 'Email de Acesso' : 'Email de Acesso (opcional)'}
+                    </label>
+                    <input type="email" value={form.email}
+                      onChange={e => setForm({...form, email: e.target.value})}
+                      className="w-full px-4 py-2.5 bg-white rounded-xl border border-gray-200 outline-none focus:border-red-500 text-sm font-mono text-gray-900 placeholder:text-gray-300"
+                      placeholder="vendedor@garagem.com"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-gray-400 mb-1 block tracking-widest">
+                      {editingVendedor ? 'Nova Senha (deixe em branco para manter)' : 'Senha de Acesso'}
+                    </label>
+                    <input type="password" value={form.senha}
+                      onChange={e => setForm({...form, senha: e.target.value})}
+                      className="w-full px-4 py-2.5 bg-white rounded-xl border border-gray-200 outline-none focus:border-red-500 text-sm font-mono text-gray-900 placeholder:text-gray-300"
+                      placeholder={editingVendedor ? '••••••••' : 'Mínimo 6 caracteres'}
+                      minLength={form.senha ? 6 : undefined}
+                    />
+                  </div>
+                  <p className="text-[9px] text-gray-400 uppercase tracking-widest font-bold">
+                    Acesso restrito a Chat + Estoque Inteligente
+                  </p>
+                </div>
+
+                <button type="submit" disabled={uploading || savingLogin}
+                  className="w-full py-3 bg-red-600 text-white font-black uppercase tracking-widest text-[11px] rounded-xl shadow-lg shadow-red-600/20 hover:bg-red-700 transition-all disabled:opacity-50"
                 >
-                  {uploading ? "Aguarde o Upload..." : editingVendedor ? 'Salvar Edição' : 'Finalizar Cadastro'}
+                  {savingLogin ? "Criando acesso..." : uploading ? "Aguarde..." : editingVendedor ? 'Salvar' : 'Cadastrar'}
                 </button>
               </form>
             </div>

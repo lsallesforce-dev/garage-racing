@@ -3,9 +3,11 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
+import { useUserRole } from "@/components/SidebarWrapper";
 import { Edit3, Plus, Car, Zap, Search, ArrowRight, Trash2 } from "lucide-react";
 
 export default function ListaEstoque() {
+  const { effectiveUserId } = useUserRole();
   const [carros, setCarros] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [confirmandoId, setConfirmandoId] = useState<string | null>(null);
@@ -20,20 +22,19 @@ export default function ListaEstoque() {
 
   useEffect(() => {
     const buscarEstoque = async () => {
+      if (!effectiveUserId) return;
       setLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { setLoading(false); return; }
       const { data } = await supabase
         .from('veiculos')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('user_id', effectiveUserId)
         .order('status_venda', { ascending: true })
         .order('created_at', { ascending: false });
       if (data) setCarros(data);
       setLoading(false);
     };
     buscarEstoque();
-  }, []);
+  }, [effectiveUserId]);
 
   return (
     <div className="p-10 bg-[#f4f4f2] min-h-screen font-sans overflow-y-auto w-full">

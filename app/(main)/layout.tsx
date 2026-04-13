@@ -8,6 +8,20 @@ export default async function MainLayout({ children }: { children: React.ReactNo
 
   if (!user) redirect("/login");
 
+  // Detect vendor role from user metadata
+  const meta = user.user_metadata as { role?: string; owner_user_id?: string } | undefined;
+  const isVendedor = meta?.role === "vendedor";
+  const effectiveUserId = isVendedor ? (meta?.owner_user_id ?? user.id) : user.id;
+
+  if (isVendedor) {
+    // Vendor users skip config/subscription checks — they belong to an admin's garage
+    return (
+      <SidebarWrapper isVendedor={true} effectiveUserId={effectiveUserId}>
+        {children}
+      </SidebarWrapper>
+    );
+  }
+
   const { data: config } = await supabase
     .from("config_garage")
     .select("nome_empresa, plano_ativo, trial_ends_at, plano_vence_em")
@@ -25,5 +39,9 @@ export default async function MainLayout({ children }: { children: React.ReactNo
 
   if (trialConfigurado && !trialValido && !planoValido) redirect("/assinar");
 
-  return <SidebarWrapper>{children}</SidebarWrapper>;
+  return (
+    <SidebarWrapper isVendedor={false} effectiveUserId={user.id}>
+      {children}
+    </SidebarWrapper>
+  );
 }

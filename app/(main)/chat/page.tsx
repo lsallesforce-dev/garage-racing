@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { useUserRole } from "@/components/SidebarWrapper";
 import {
   Send, MessageSquare, Phone, Bot, ArrowLeft,
   Search, User, Zap, ChevronDown,
@@ -73,6 +74,7 @@ function previewMensagem(msg: UltimaMensagem | null | undefined): string {
 }
 
 export default function CentralChat() {
+  const { effectiveUserId } = useUserRole();
   const searchParams = useSearchParams();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
@@ -86,13 +88,12 @@ export default function CentralChat() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const carregarLeads = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!effectiveUserId) return;
 
     const { data: leadsData } = await supabase
       .from("leads")
       .select("*, veiculos(marca, modelo)")
-      .eq("user_id", user.id)
+      .eq("user_id", effectiveUserId)
       .order("updated_at", { ascending: false });
 
     if (!leadsData) return;
