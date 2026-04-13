@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { sendAvisaMessage } from "@/lib/avisa";
 
 export async function POST(req: NextRequest) {
   // Verify caller is authenticated admin
@@ -18,10 +19,10 @@ export async function POST(req: NextRequest) {
 
   if (!email) return NextResponse.json({ error: "Email obrigatório" }, { status: 400 });
 
-  // Ensure the vendedor row belongs to the caller
+  // Ensure the vendedor row belongs to the caller, also grab whatsapp for notification
   const { data: vendedor } = await supabaseAdmin
     .from("vendedores")
-    .select("id, user_id, auth_user_id")
+    .select("id, user_id, auth_user_id, nome, whatsapp")
     .eq("id", vendedorId)
     .eq("user_id", user.id)
     .maybeSingle();
@@ -59,6 +60,29 @@ export async function POST(req: NextRequest) {
     .from("vendedores")
     .update({ auth_user_id: newAuthUserId, email })
     .eq("id", vendedorId);
+
+  // Enviar credenciais via WhatsApp para o número do vendedor
+  if (vendedor.whatsapp && senha) {
+    const { data: garageConfig } = await supabaseAdmin
+      .from("config_garage")
+      .select("nome_empresa, avisa_base_url, avisa_token")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    const avisaCreds = {
+      baseUrl: garageConfig?.avisa_base_url || undefined,
+      token: garageConfig?.avisa_token || undefined,
+    };
+
+    const nomeLoja = garageConfig?.nome_empresa || "AutoZap";
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://autozap.digital";
+
+    const msg = `Olá, ${vendedor.nome}! 👋\n\nSeu acesso ao painel *${nomeLoja}* foi criado.\n\n📧 *Email:* ${email}\n🔑 *Senha:* ${senha}\n🔗 *Link:* ${siteUrl}/login\n\nVocê tem acesso ao Estoque Inteligente e à Central de Chat.`;
+
+    await sendAvisaMessage(vendedor.whatsapp, msg, avisaCreds).catch((e) =>
+      console.warn("Avisa: falha ao notificar vendedor:", e)
+    );
+  }
 
   return NextResponse.json({ ok: true, authUserId: newAuthUserId });
 }
