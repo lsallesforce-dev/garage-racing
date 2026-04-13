@@ -18,7 +18,8 @@ export const geminiFlashFallback = genAI.getGenerativeModel(
 export async function generateEmbedding(text: string) {
   // text-embedding-004 só existe na v1, não na v1beta
   const model = genAI.getGenerativeModel(
-    { model: "text-embedding-004" }
+    { model: "text-embedding-004" },
+    { apiVersion: "v1" }
   );
 
   for (let attempt = 0; attempt < 3; attempt++) {
