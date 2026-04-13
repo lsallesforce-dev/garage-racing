@@ -31,12 +31,17 @@ export async function POST(req: NextRequest) {
 
   let newAuthUserId = authUserId ?? vendedor.auth_user_id;
 
+  console.log(`🧑‍💼 [criar-vendedor] vendedorId=${vendedorId} email=${email} newAuthUserId=${newAuthUserId} temSenha=${!!senha}`);
+
   if (newAuthUserId) {
     // Update existing user: change email and/or password
     const updates: { email?: string; password?: string } = { email };
     if (senha) updates.password = senha;
     const { error } = await supabaseAdmin.auth.admin.updateUserById(newAuthUserId, updates);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) {
+      console.error("❌ [criar-vendedor] updateUserById error:", error.message);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
   } else {
     // Create new auth user
     if (!senha) return NextResponse.json({ error: "Senha obrigatória para novo acesso" }, { status: 400 });
@@ -51,8 +56,12 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) {
+      console.error("❌ [criar-vendedor] createUser error:", error.message, error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
     newAuthUserId = created.user.id;
+    console.log(`✅ [criar-vendedor] usuário criado: ${newAuthUserId}`);
   }
 
   // Update vendedores row with auth link
