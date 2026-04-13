@@ -112,7 +112,7 @@ export default function LoginPage() {
     if (error) {
       setError(error.message === "User already registered"
         ? "Este e-mail já está cadastrado."
-        : "Erro ao criar conta. Tente novamente.");
+        : error.message);
       return;
     }
 
