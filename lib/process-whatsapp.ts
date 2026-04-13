@@ -481,7 +481,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   // Mensagens de mídia ("Foto", "Video") são intencionalmente curtas — não tratar como msgCurta
   const isMidiaRequest = /^(foto|fotos|video|vídeo|imagem)s?$/i.test(userMessage.trim());
   const msgCurta = !isMidiaRequest && userMessage.trim().length < 8;
-  const { topVeiculos, hitsTextuais, clientePediuCarroDiferente } = await hybridVehicleSearch(
+  const { topVeiculos, clientePediuCarroDiferente } = await hybridVehicleSearch(
     userMessage,
     tenantUserId,
     veiculoPrincipal,
@@ -682,15 +682,15 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
       if (veiculoNomeado) {
         veiculosParaFoto = [veiculoNomeado];
       } else {
-        // 2. Busca direta no DB sem context boost
+        // 2. Busca direta no DB — só quando a mensagem nomeia um carro específico
+        // Para mensagens vagas ("tem foto dela?", "manda"), usa veiculoPrincipal direto
+        // hitsTextuais NUNCA é usado aqui: com embedding falho retornava carro errado
         const veiculoMidia = await findVehicleForMedia(userMessage, tenantUserId);
         veiculosParaFoto = veiculoMidia
           ? [veiculoMidia]
-          : hitsTextuais.length > 0
-            ? [hitsTextuais[0]]
-            : veiculoPrincipal
-              ? [veiculoPrincipal]
-              : [];
+          : veiculoPrincipal
+            ? [veiculoPrincipal]
+            : [];
       }
     }
 
@@ -734,10 +734,11 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   let videoEnviado = false;
 
   if (clientePediuVideo) {
-    // Vídeo: mesma lógica da foto — veiculoPrincipal tem prioridade, salvo troca explícita.
-    const veiculoParaVideo = clientePediuCarroDiferente && hitsTextuais.length > 0
-      ? hitsTextuais[0]
-      : veiculoPrincipal ?? (hitsTextuais.length > 0 ? hitsTextuais[0] : null);
+    // Vídeo: veiculoPrincipal tem prioridade absoluta para mensagens vagas.
+    // Se o cliente pediu um carro diferente, usa findVehicleForMedia (nunca hitsTextuais).
+    const veiculoParaVideo = clientePediuCarroDiferente
+      ? (await findVehicleForMedia(userMessage, tenantUserId)) ?? veiculoPrincipal
+      : veiculoPrincipal;
 
     if (veiculoParaVideo) {
       const videoUrl = (veiculoParaVideo as any).video_url ?? null;
