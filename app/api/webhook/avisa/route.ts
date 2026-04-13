@@ -181,13 +181,14 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Gate de Assinatura ────────────────────────────────────────────────────
-    // Bloqueia silenciosamente se trial expirou e plano não está ativo.
-    // Retorna 200 para não gerar retry na Avisa, mas não processa a mensagem.
+    // Fail-open: se as colunas ainda não existem (null), deixa passar.
+    // Só bloqueia se trial_ends_at existir E já tiver vencido, sem plano ativo válido.
     if (garageConfig) {
       const agora = new Date();
-      const trialValido = garageConfig.trial_ends_at && new Date(garageConfig.trial_ends_at) > agora;
-      const planoValido = garageConfig.plano_ativo && garageConfig.plano_vence_em && new Date(garageConfig.plano_vence_em) > agora;
-      if (!trialValido && !planoValido) {
+      const trialConfigurado = garageConfig.trial_ends_at != null;
+      const trialValido = trialConfigurado && new Date(garageConfig.trial_ends_at) > agora;
+      const planoValido = garageConfig.plano_ativo === true && garageConfig.plano_vence_em && new Date(garageConfig.plano_vence_em) > agora;
+      if (trialConfigurado && !trialValido && !planoValido) {
         console.warn(`⏸️ Tenant ${tenantUserId} com acesso expirado — mensagem ignorada.`);
         return NextResponse.json({ status: "subscription_expired" });
       }

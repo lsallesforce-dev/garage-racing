@@ -17,12 +17,13 @@ export default async function MainLayout({ children }: { children: React.ReactNo
   // Novo usuário sem config → onboarding
   if (!config?.nome_empresa) redirect("/onboarding");
 
-  // Verifica acesso: trial ainda válido OU plano ativo e não vencido
+  // Verifica acesso — fail-open se colunas ainda não existem (null)
   const agora = new Date();
-  const trialValido = config.trial_ends_at && new Date(config.trial_ends_at) > agora;
-  const planoValido = config.plano_ativo && config.plano_vence_em && new Date(config.plano_vence_em) > agora;
+  const trialConfigurado = config.trial_ends_at != null;
+  const trialValido = trialConfigurado && new Date(config.trial_ends_at) > agora;
+  const planoValido = config.plano_ativo === true && config.plano_vence_em && new Date(config.plano_vence_em) > agora;
 
-  if (!trialValido && !planoValido) redirect("/assinar");
+  if (trialConfigurado && !trialValido && !planoValido) redirect("/assinar");
 
   return <SidebarWrapper>{children}</SidebarWrapper>;
 }
