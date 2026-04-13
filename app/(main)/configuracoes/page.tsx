@@ -352,9 +352,9 @@ export default function ConfiguracoesPage() {
                 value={config.webhook_token || ""}
                 onChange={e => setConfig(c => ({ ...c, webhook_token: e.target.value }))}
                 placeholder="Ex: autozap ou aprove"
-                className="bg-white border flex-1 border-blue-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
+                className="bg-white border flex-1 border-blue-200 rounded-xl px-4 py-2.5 font-mono text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
               />
-              <p className="text-[10px] text-blue-600 mt-1">Configure na Avisa: <strong>https://autozap.digital/api/webhook/avisa?token={config.webhook_token || "SEU_TOKEN"}</strong></p>
+              <p className="text-[10px] text-blue-600 mt-1">Configure na Avisa: <a href={`https://autozap.digital/api/webhook/avisa?token=${config.webhook_token || "SEU_TOKEN"}`} className="font-mono break-all select-all hover:underline" onClick={e => { e.preventDefault(); navigator.clipboard.writeText(`https://autozap.digital/api/webhook/avisa?token=${config.webhook_token || ""}`); }}><strong>https://autozap.digital/api/webhook/avisa?token={config.webhook_token || "SEU_TOKEN"}</strong></a></p>
 
               <label className="text-[10px] font-black uppercase tracking-widest text-blue-800 mt-3 block">
                 Slug da Vitrine (URL curta)
