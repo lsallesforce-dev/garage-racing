@@ -349,10 +349,12 @@ function buildStockContext(topVeiculos: Vehicle[], veiculoPrincipal: Vehicle | n
 export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<void> {
   const { phone, rawMessage, audioUrl, audioMediaKey, tenantUserId, garageConfig } = job;
 
-  // Credenciais Avisa do tenant — disponível globalmente na função
+  // Credenciais Avisa exclusivas do tenant — sem fallback global
+  // Se o tenant não configurou avisa_base_url/avisa_token, sendAvisaMessage
+  // retorna silenciosamente (log de warning) sem usar outro número.
   const avisaCreds = {
-    baseUrl: garageConfig?.avisa_base_url || process.env.AVISA_BASE_URL || "",
-    token: garageConfig?.avisa_token || process.env.AVISA_TOKEN || "",
+    baseUrl: garageConfig?.avisa_base_url ?? "",
+    token: garageConfig?.avisa_token ?? "",
   };
 
   let userMessage = rawMessage;

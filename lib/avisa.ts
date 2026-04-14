@@ -13,15 +13,12 @@ interface AvisaCreds {
 }
 
 function resolveCreds(creds?: Partial<AvisaCreds>): AvisaCreds | null {
-  const baseUrl = creds?.baseUrl || process.env.AVISA_BASE_URL || "";
-  const token = creds?.token || process.env.AVISA_TOKEN || "";
+  const baseUrl = creds?.baseUrl ?? "";
+  const token = creds?.token ?? "";
   if (!baseUrl || !token) return null;
   return { baseUrl, token };
 }
 
-export async function enviarMensagemAvisa(telefone: string, texto: string) {
-  return sendAvisaMessage(telefone, texto);
-}
 
 async function sendWithRetry(url: string, payload: any, token: string, retries = 2): Promise<any> {
   for (let i = 0; i < retries; i++) {
