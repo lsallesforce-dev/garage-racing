@@ -26,7 +26,8 @@ export const maxDuration = 300;
 // Autenticação via CRON_SECRET (adicione ao .env e às variáveis da Vercel)
 function isAuthorized(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET;
-  if (!secret) return true; // sem secret configurado = desenvolvimento local
+  // Sem secret: permite apenas em desenvolvimento local (fail-secure em produção)
+  if (!secret) return process.env.NODE_ENV !== "production";
   const auth = req.headers.get("authorization");
   return auth === `Bearer ${secret}`;
 }
@@ -84,13 +85,13 @@ export async function GET(req: NextRequest) {
   const limite24h = new Date(agora.getTime() - 24 * 60 * 60 * 1000).toISOString();
   const limite7d = new Date(agora.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-  // Busca leads elegíveis para follow-up
+  // Busca leads elegíveis para follow-up (inclui creds Avisa por tenant)
   const { data: leads, error } = await supabaseAdmin
     .from("leads")
     .select(`
       id, wa_id, nome, user_id, veiculo_id, status,
       resumo_negociacao, ultimo_followup,
-      config_garagem:user_id (nome_empresa, nome_agente, whatsapp)
+      config_garagem:user_id (nome_empresa, nome_agente, whatsapp, avisa_base_url, avisa_token)
     `)
     .in("status", ["MORNO", "QUENTE"])
     .eq("em_atendimento_humano", false)
@@ -130,6 +131,11 @@ export async function GET(req: NextRequest) {
         : lead.config_garagem;
       const nomeAgente = (garagem as any)?.nome_agente || "André";
       const nomeEmpresa = (garagem as any)?.nome_empresa || "a loja";
+      // Credenciais Avisa do próprio tenant — nunca usar fallback global
+      const avisaCreds = {
+        baseUrl: (garagem as any)?.avisa_base_url || undefined,
+        token: (garagem as any)?.avisa_token || undefined,
+      };
 
       let carro = "veículo de interesse";
       let preco = "";
@@ -209,8 +215,8 @@ export async function GET(req: NextRequest) {
         alternativa,
       });
 
-      // Envia via Avisa
-      await sendAvisaMessage(lead.wa_id, mensagem);
+      // Envia via Avisa com credenciais do próprio tenant
+      await sendAvisaMessage(lead.wa_id, mensagem, avisaCreds);
 
       // Salva mensagem no histórico
       await supabaseAdmin.from("mensagens").insert({

@@ -1,6 +1,34 @@
 // lib/api-auth.ts
 // Helper para validar autenticação em API routes e verificar posse de recursos
 
+import { NextRequest, NextResponse } from "next/server";
+import { rateLimit } from "@/lib/redis";
+
+/**
+ * Valida o ADMIN_SECRET de forma segura.
+ * - Retorna 429 se o IP excedeu 30 tentativas/minuto (anti brute-force)
+ * - Retorna 401 se o secret não estiver configurado (evita fail-open com string vazia)
+ * - Retorna 401 se o header não bater
+ */
+export async function requireAdminSecret(req: NextRequest): Promise<NextResponse | null> {
+  // Rate limit por IP — 30 req/min para dificultar brute-force
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
+  const rl = await rateLimit(`admin:${ip}`, 30, 60);
+  if (!rl.allowed) {
+    return NextResponse.json({ error: "Muitas tentativas" }, { status: 429 });
+  }
+
+  const configured = process.env.ADMIN_SECRET;
+  if (!configured) {
+    return NextResponse.json({ error: "Admin não configurado" }, { status: 401 });
+  }
+  const provided = req.headers.get("x-admin-secret");
+  if (!provided || provided !== configured) {
+    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+  }
+  return null; // autorizado
+}
+
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { NextResponse } from "next/server";
 

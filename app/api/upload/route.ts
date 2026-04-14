@@ -24,7 +24,7 @@ const PUBLIC_URL = process.env.R2_PUBLIC_URL!;
 // Sem limite de tamanho (diferente do Supabase free que tem 50 MB)
 export async function POST(req: NextRequest) {
   try {
-    const { error: authError } = await requireAuth();
+    const { user, error: authError } = await requireAuth();
     if (authError) return authError;
 
     const { fileName, fileType } = await req.json();
@@ -35,7 +35,8 @@ export async function POST(req: NextRequest) {
 
     const ext = fileName.split(".").pop() || "mp4";
     const baseName = fileName.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9]/g, "_");
-    const storageName = `${Date.now()}-${baseName}.${ext}`;
+    // Prefixo por tenant — permite auditoria e isolamento no bucket
+    const storageName = `${user!.id}/${Date.now()}-${baseName}.${ext}`;
 
     const command = new PutObjectCommand({
       Bucket: BUCKET,

@@ -157,6 +157,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!tenantUserId) {
+      // Fallback mono-tenant via env var (instalações legadas com WEBHOOK_USER_ID)
       tenantUserId = process.env.WEBHOOK_USER_ID || null;
       if (tenantUserId) {
         const { data } = await supabaseAdmin
@@ -165,20 +166,14 @@ export async function POST(req: NextRequest) {
           .eq("user_id", tenantUserId)
           .maybeSingle();
         garageConfig = data || null;
-      } else {
-        const { data } = await supabaseAdmin
-          .from("config_garage")
-          .select("user_id, nome_empresa, nome_agente, endereco, endereco_complemento, whatsapp, vitrine_slug, webhook_token, avisa_base_url, avisa_token, tom_venda, instrucoes_adicionais, plano_ativo, trial_ends_at, plano_vence_em")
-          .limit(1)
-          .maybeSingle();
-        tenantUserId = data?.user_id || null;
-        garageConfig = data || null;
       }
     }
 
     if (!tenantUserId) {
-      console.error("❌ Nenhum tenant configurado para este webhook.");
-      return NextResponse.json({ status: "no_tenant" }, { status: 500 });
+      // Token inválido e sem WEBHOOK_USER_ID — rejeitar explicitamente
+      // (nunca usar primeira linha do banco como fallback — risco de cross-tenant)
+      console.warn(`⛔ Webhook recebido sem token válido — rejeitado.`);
+      return NextResponse.json({ status: "invalid_token" }, { status: 400 });
     }
 
     // ── Gate de Assinatura ────────────────────────────────────────────────────

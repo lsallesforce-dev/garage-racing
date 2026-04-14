@@ -131,6 +131,37 @@ export async function redisPing(): Promise<string> {
   return getClient().ping();
 }
 
+// ─── Rate Limiter (Sliding Window via INCR + EXPIRE) ─────────────────────────
+//
+// Usa INCR atômico do Redis. Na primeira chamada da janela, seta o TTL.
+// Retorna { allowed: true } se abaixo do limite, { allowed: false } se excedeu.
+// Fail-open: se o Redis estiver offline, permite a requisição.
+//
+// Uso:
+//   const rl = await rateLimit(`analyze:${userId}`, 10, 60);
+//   if (!rl.allowed) return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+//
+export async function rateLimit(
+  key: string,
+  limit: number,
+  windowSeconds: number
+): Promise<{ allowed: boolean; remaining: number }> {
+  try {
+    const client = getClient();
+    const redisKey = `rl:${key}`;
+    const count = await client.incr(redisKey);
+    if (count === 1) {
+      // Primeira requisição da janela — define o TTL
+      await client.expire(redisKey, windowSeconds);
+    }
+    const remaining = Math.max(0, limit - count);
+    return { allowed: count <= limit, remaining };
+  } catch (e) {
+    console.warn("⚠️ [Redis] rateLimit falhou — requisição permitida (fail-open):", e);
+    return { allowed: true, remaining: 0 };
+  }
+}
+
 // ─── Cache de Slug da Vitrine (usado pelo Middleware Multi-Tenant) ────────────
 //
 // O middleware.ts roda no Edge Runtime e valida slugs via Redis REST API.

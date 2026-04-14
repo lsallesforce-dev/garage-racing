@@ -1,11 +1,10 @@
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { NextRequest, NextResponse } from "next/server";
+import { requireAdminSecret } from "@/lib/api-auth";
 
 export async function POST(req: NextRequest) {
-  const secret = req.headers.get("x-admin-secret");
-  if (secret !== process.env.ADMIN_SECRET) {
-    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
-  }
+  const authError = await requireAdminSecret(req);
+  if (authError) return authError;
 
   const { email, senha, nome_empresa, nome_agente, endereco, whatsapp, webhook_token } = await req.json();
 

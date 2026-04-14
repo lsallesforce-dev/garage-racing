@@ -1,6 +1,7 @@
 import { geminiFlashSales, generateEmbedding } from "@/lib/gemini";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { rateLimit } from "@/lib/redis";
 import { NextRequest, NextResponse } from "next/server";
 
 // Vercel Pro: 300s | Hobby: 60s
@@ -25,6 +26,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
     }
     const userId = user.id;
+
+    // Rate limit: 10 análises por minuto por usuário (Gemini é caro)
+    const rl = await rateLimit(`analyze:${userId}`, 10, 60);
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Muitas requisições. Aguarde antes de analisar outro vídeo." },
+        { status: 429 }
+      );
+    }
 
     // 1. Fetch video from URL
     const videoResp = await fetch(videoUrl);

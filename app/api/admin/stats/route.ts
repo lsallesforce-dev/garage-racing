@@ -3,12 +3,11 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { requireAdminSecret } from "@/lib/api-auth";
 
 export async function GET(req: NextRequest) {
-  const secret = req.headers.get("x-admin-secret");
-  if (secret !== process.env.ADMIN_SECRET) {
-    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
-  }
+  const authError = await requireAdminSecret(req);
+  if (authError) return authError;
 
   const [
     { data: garagens },

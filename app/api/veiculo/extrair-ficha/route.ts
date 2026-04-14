@@ -1,11 +1,15 @@
 import { geminiFlashSales } from "@/lib/gemini";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { requireVehicleOwner } from "@/lib/api-auth";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
   try {
     const { id } = await req.json();
     if (!id) return NextResponse.json({ error: "ID obrigatório" }, { status: 400 });
+
+    const { error: authError } = await requireVehicleOwner(id);
+    if (authError) return authError;
 
     const { data: veiculo } = await supabaseAdmin
       .from("veiculos")

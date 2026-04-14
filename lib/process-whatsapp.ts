@@ -406,7 +406,8 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   if (isAuthorized && userMessage.trim().toLowerCase() === "!status") {
     const relatorio = await gerarRelatorioPista(
       garageConfig?.nome_empresa || "nossa loja",
-      garageConfig?.nome_agente || "IA"
+      garageConfig?.nome_agente || "IA",
+      tenantUserId
     );
     await sendAvisaMessage(phone, relatorio, avisaCreds);
     return;

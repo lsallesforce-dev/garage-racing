@@ -47,28 +47,35 @@ export async function buscarLeadsOrfaos(veiculoId: string) {
 
 /**
  * Flash: Gera um relatório executivo do pátio em tempo real para o WhatsApp do Admin
+ * tenantUserId é obrigatório — nunca agregar dados de múltiplos tenants
  */
-export async function gerarRelatorioPista(nomeEmpresa = "nossa loja", nomeAgente = "IA") {
-  // 1. Busca dados de estoque
-  const { data: statsVeiculos } = await supabaseAdmin
+export async function gerarRelatorioPista(nomeEmpresa = "nossa loja", nomeAgente = "IA", tenantUserId?: string) {
+  // 1. Busca dados de estoque do tenant
+  let veiculosQuery = supabaseAdmin
     .from('veiculos')
     .select('preco_sugerido')
     .eq('status_venda', 'DISPONIVEL');
+  if (tenantUserId) veiculosQuery = veiculosQuery.eq('user_id', tenantUserId);
+  const { data: statsVeiculos } = await veiculosQuery;
 
   const totalEstoque = statsVeiculos?.reduce((acc, curr) => acc + (curr.preco_sugerido || 0), 0) || 0;
   const numCarros = statsVeiculos?.length || 0;
 
-  // 2. Busca leads quentes
-  const { count: quentes } = await supabaseAdmin
+  // 2. Busca leads quentes do tenant
+  let leadsQuery = supabaseAdmin
     .from('leads')
     .select('*', { count: 'exact', head: true })
     .eq('status', 'QUENTE');
+  if (tenantUserId) leadsQuery = leadsQuery.eq('user_id', tenantUserId);
+  const { count: quentes } = await leadsQuery;
 
-  // 3. Busca o carro mais procurado (Baseado no vínculo com leads)
-  const { data: popular } = await supabaseAdmin
+  // 3. Busca o carro mais procurado do tenant
+  let popularQuery = supabaseAdmin
     .from('leads')
     .select('veiculo_id, veiculos(marca, modelo)')
     .not('veiculo_id', 'is', null);
+  if (tenantUserId) popularQuery = popularQuery.eq('user_id', tenantUserId);
+  const { data: popular } = await popularQuery;
   
   const counts: Record<string, { count: number, name: string }> = {};
   popular?.forEach((p: any) => {

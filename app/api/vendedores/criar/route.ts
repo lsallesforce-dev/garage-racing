@@ -70,8 +70,8 @@ export async function POST(req: NextRequest) {
     .update({ auth_user_id: newAuthUserId, email })
     .eq("id", vendedorId);
 
-  // Enviar credenciais via WhatsApp para o número do vendedor
-  if (vendedor.whatsapp && senha) {
+  // Enviar link de acesso via WhatsApp — nunca enviar senha em plaintext
+  if (vendedor.whatsapp) {
     const { data: garageConfig } = await supabaseAdmin
       .from("config_garage")
       .select("nome_empresa, avisa_base_url, avisa_token")
@@ -86,7 +86,25 @@ export async function POST(req: NextRequest) {
     const nomeLoja = garageConfig?.nome_empresa || "AutoZap";
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://autozap.digital";
 
-    const msg = `Olá, ${vendedor.nome}! 👋\n\nSeu acesso ao painel *${nomeLoja}* foi criado.\n\n📧 *Email:* ${email}\n🔑 *Senha:* ${senha}\n🔗 *Link:* ${siteUrl}/login\n\nVocê tem acesso ao Estoque Inteligente e à Central de Chat.`;
+    // Gera link de acesso único (expira em 24h) — sem senha no WhatsApp
+    let acessoUrl = `${siteUrl}/login`;
+    try {
+      const { data: linkData } = await supabaseAdmin.auth.admin.generateLink({
+        type: "recovery",
+        email,
+        options: { redirectTo: `${siteUrl}/estoque` },
+      });
+      if (linkData?.properties?.action_link) {
+        acessoUrl = linkData.properties.action_link;
+      }
+    } catch (e) {
+      console.warn("Avisa: falha ao gerar link de acesso, enviando link de login padrão:", e);
+    }
+
+    const isNovo = !authUserId && !vendedor.auth_user_id;
+    const msg = isNovo
+      ? `Olá, ${vendedor.nome}! 👋\n\nSeu acesso ao painel *${nomeLoja}* foi criado.\n\n📧 *Email:* ${email}\n🔗 *Clique para acessar (válido por 24h):*\n${acessoUrl}\n\nVocê terá acesso ao Estoque Inteligente e à Central de Chat.`
+      : `Olá, ${vendedor.nome}! A sua senha foi redefinida.\n\n📧 *Email:* ${email}\n🔗 *Clique para acessar (válido por 24h):*\n${acessoUrl}`;
 
     await sendAvisaMessage(vendedor.whatsapp, msg, avisaCreds).catch((e) =>
       console.warn("Avisa: falha ao notificar vendedor:", e)
