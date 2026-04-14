@@ -110,7 +110,12 @@ export async function proxy(request: NextRequest) {
   }
 
   // ── 2. Auth Supabase (somente para domínio principal) ─────────────────────
-  let supabaseResponse = NextResponse.next({ request });
+  // Injeta x-pathname nos headers da request para que Server Layouts possam lê-lo
+  // (necessário para proteger rotas de vendedores no MainLayout)
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-pathname", pathname);
+
+  let supabaseResponse = NextResponse.next({ request: { headers: requestHeaders } });
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
