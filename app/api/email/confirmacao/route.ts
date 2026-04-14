@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
   }
 
   const { error } = await resend.emails.send({
-    from: "AutoZap <autozap@autozap.digital>",
+    from: process.env.RESEND_FROM ?? "AutoZap <onboarding@resend.dev>",
     to: email,
     subject: "Confirme seu cadastro — AutoZap",
     html: `

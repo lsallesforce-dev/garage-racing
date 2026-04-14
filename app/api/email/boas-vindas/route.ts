@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
   const { nome_empresa, nome_usuario } = await req.json();
 
   const { error } = await resend.emails.send({
-    from: "AutoZap <autozap@autozap.digital>",
+    from: process.env.RESEND_FROM ?? "AutoZap <onboarding@resend.dev>",
     to: user.email!,
     subject: `Bem-vindo à AutoZap, ${nome_empresa}! 🚗`,
     html: `
