@@ -24,14 +24,14 @@ export async function POST(req: NextRequest) {
   }
 
   // Cria o usuário no Supabase Auth
-  const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+  const { data: authData, error: createError } = await supabaseAdmin.auth.admin.createUser({
     email,
     password: senha,
     email_confirm: true,
   });
 
-  if (authError || !authData.user) {
-    return NextResponse.json({ error: authError?.message || "Erro ao criar usuário" }, { status: 500 });
+  if (createError || !authData.user) {
+    return NextResponse.json({ error: createError?.message || "Erro ao criar usuário" }, { status: 500 });
   }
 
   const userId = authData.user.id;
