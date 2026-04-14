@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { useUserRole } from "@/components/SidebarWrapper";
 import { Vehicle } from "@/types/vehicle";
 import { supabase } from "@/lib/supabase";
@@ -14,7 +13,6 @@ import Link from "next/link";
 type InputMode = "dispositivo" | "instagram";
 
 export default function UploadPage() {
-  const { isVendedor } = useUserRole();
   const [mode, setMode] = useState<InputMode>("dispositivo");
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -28,12 +26,6 @@ export default function UploadPage() {
   const [igErro, setIgErro] = useState("");
 
   const router = useRouter();
-
-  useEffect(() => {
-    if (isVendedor) router.replace("/estoque");
-  }, [isVendedor, router]);
-
-  if (isVendedor) return null;
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 
