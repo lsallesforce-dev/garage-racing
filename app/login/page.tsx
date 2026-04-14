@@ -116,6 +116,13 @@ export default function LoginPage() {
       return;
     }
 
+    // Envia email de confirmação branded (fire-and-forget)
+    fetch("/api/email/confirmacao", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    }).catch(() => {});
+
     setSuccess("Conta criada! Verifique seu e-mail para confirmar o cadastro.");
   }
 
