@@ -7,7 +7,7 @@ import { useUserRole } from "@/components/SidebarWrapper";
 import { Edit3, Plus, Car, Zap, Search, ArrowRight, Trash2 } from "lucide-react";
 
 export default function ListaEstoque() {
-  const { effectiveUserId } = useUserRole();
+  const { effectiveUserId, isVendedor } = useUserRole();
   const [carros, setCarros] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [confirmandoId, setConfirmandoId] = useState<string | null>(null);
@@ -44,9 +44,11 @@ export default function ListaEstoque() {
                 <h1 className="text-6xl font-black italic uppercase text-gray-300 leading-none mb-2 tracking-tighter">Estoque Inteligente</h1>
                 <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-gray-400">Gerenciamento completo do pátio digital.</p>
             </div>
-            <Link href="/upload" className="px-8 py-4 bg-red-600 text-white font-black uppercase italic rounded-2xl shadow-xl shadow-red-200 flex items-center gap-2 hover:scale-105 transition-all tracking-widest text-[10px]">
-            <Plus size={18} strokeWidth={3} /> Cadastrar Nova Máquina
-            </Link>
+            {!isVendedor && (
+              <Link href="/upload" className="px-8 py-4 bg-red-600 text-white font-black uppercase italic rounded-2xl shadow-xl shadow-red-200 flex items-center gap-2 hover:scale-105 transition-all tracking-widest text-[10px]">
+                <Plus size={18} strokeWidth={3} /> Cadastrar Nova Máquina
+              </Link>
+            )}
         </div>
 
         <div className="grid gap-4">
