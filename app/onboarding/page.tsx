@@ -55,6 +55,13 @@ export default function OnboardingPage() {
         }).catch(() => {});
       }
 
+      // E-mail de boas-vindas — fire and forget
+      fetch("/api/email/boas-vindas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nome_empresa: form.nome_empresa }),
+      }).catch(() => {});
+
       router.push("/");
     } catch (err: any) {
       alert("Erro ao salvar: " + err.message);
