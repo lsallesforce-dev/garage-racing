@@ -15,6 +15,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { processWhatsAppMessage } from "@/lib/process-whatsapp";
 import { isDuplicateMessage } from "@/lib/redis";
+import { logWebhookError } from "@/lib/error-log";
 
 // Vercel Pro: 300s | Hobby: 60s
 // O after() usa o mesmo budget de tempo — resposta vai em ~50ms, sobra tudo para a IA
@@ -216,18 +217,33 @@ export async function POST(req: NextRequest) {
     // after() retorna imediatamente — o 200 OK vai para a Avisa em < 100ms
     // O processamento pesado (Gemini + busca + envio) roda após a resposta HTTP
     after(async () => {
+      const job = {
+        phone,
+        rawMessage,
+        audioUrl,
+        audioMediaKey,
+        messageId,
+        tenantUserId: tenantUserId!,
+        garageConfig,
+      };
+
       try {
-        await processWhatsAppMessage({
-          phone,
-          rawMessage,
-          audioUrl,
-          audioMediaKey,
-          messageId,
-          tenantUserId: tenantUserId!,
-          garageConfig,
-        });
-      } catch (e) {
-        console.error("❌ Erro no processamento background:", e);
+        await processWhatsAppMessage(job);
+      } catch (firstError) {
+        // Retry único após 3s — cobre falhas transitórias de Gemini/Avisa
+        console.warn("⚠️ Processamento falhou, tentando novamente em 3s...");
+        await new Promise(r => setTimeout(r, 3000));
+        try {
+          await processWhatsAppMessage(job);
+        } catch (finalError) {
+          await logWebhookError({
+            tenantUserId: tenantUserId,
+            phone,
+            messageId,
+            etapa: "processamento",
+            erro: finalError,
+          });
+        }
       }
     });
 

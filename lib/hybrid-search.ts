@@ -341,7 +341,10 @@ async function semanticSearch(
   count = 5
 ): Promise<Vehicle[]> {
   const queryEmbedding = await generateEmbedding(message);
-  if (queryEmbedding.every((v: number) => v === 0)) return [];
+  if (!queryEmbedding) {
+    console.warn("⚠️ semanticSearch: embedding indisponível, pulando pgvector");
+    return [];
+  }
 
   const { data: matched } = await supabaseAdmin.rpc("match_veiculos", {
     query_embedding: queryEmbedding,

@@ -15,8 +15,10 @@ export const geminiFlashFallback = genAI.getGenerativeModel(
   { apiVersion: "v1beta" }
 );
 
-export async function generateEmbedding(text: string) {
-  // text-embedding-004 só existe na v1, não na v1beta
+// Retorna o vetor de embedding ou null se indisponível.
+// null sinaliza explicitamente "busca semântica indisponível" — nunca retorna zeros
+// para não poluir o pgvector com vetores nulos que parecem válidos.
+export async function generateEmbedding(text: string): Promise<number[] | null> {
   const model = genAI.getGenerativeModel(
     { model: "embedding-001" },
     { apiVersion: "v1beta" }
@@ -26,6 +28,8 @@ export async function generateEmbedding(text: string) {
     try {
       const result = await model.embedContent(text);
       const embedding = result.embedding.values;
+      if (!embedding || embedding.length === 0) return null;
+      // Padding para 1536 dims se necessário (embedding-001 retorna 768)
       if (embedding.length < 1536) {
         return [...embedding, ...new Array(1536 - embedding.length).fill(0)];
       }
@@ -38,9 +42,9 @@ export async function generateEmbedding(text: string) {
         await new Promise(r => setTimeout(r, wait));
         continue;
       }
-      console.error("❌ Erro no embedding:", error);
-      return new Array(1536).fill(0);
+      console.warn(`⚠️ Embedding indisponível (tentativa ${attempt + 1}/3):`, String(error).slice(0, 200));
+      return null;
     }
   }
-  return new Array(1536).fill(0);
+  return null;
 }
