@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { UserPlus, MoreHorizontal, X, UserCircle, Upload, Zap, Phone, Edit, Trash2 } from "lucide-react";
+import { UserPlus, MoreHorizontal, X, UserCircle, Upload, Zap, Phone, Edit, Trash2, KeyRound } from "lucide-react";
 
 export default function VendedoresPage() {
   const [vendedores, setVendedores] = useState<any[]>([]);
@@ -14,6 +14,9 @@ export default function VendedoresPage() {
   // Estado Unificado do Formulário
   const [form, setForm] = useState({ nome: '', especialidade: '', whatsapp: '', foto_url: '', role: 'vendedor', email: '', senha: '' });
   const [savingLogin, setSavingLogin] = useState(false);
+  const [resetVendedor, setResetVendedor] = useState<any>(null);
+  const [resetSenha, setResetSenha] = useState('');
+  const [savingReset, setSavingReset] = useState(false);
 
   const carregarEquipe = async () => {
     setLoading(true);
@@ -140,6 +143,27 @@ export default function VendedoresPage() {
     }
   };
 
+  // 🔑 Reset de Senha
+  const handleResetSenha = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetSenha || resetSenha.length < 6) { alert("Senha deve ter ao menos 6 caracteres."); return; }
+    setSavingReset(true);
+    try {
+      const res = await fetch('/api/vendedores/criar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vendedorId: resetVendedor.id, email: resetVendedor.email, senha: resetSenha, authUserId: resetVendedor.auth_user_id }),
+      });
+      const data = await res.json();
+      if (!res.ok) { alert("Erro ao redefinir senha: " + data.error); return; }
+      alert(`Senha redefinida! Credenciais enviadas via WhatsApp para ${resetVendedor.nome}.`);
+      setResetVendedor(null);
+      setResetSenha('');
+    } finally {
+      setSavingReset(false);
+    }
+  };
+
   // ✍️ Preparar Modal para Edição
   const abrirEdicao = (vendedor: any) => {
     setEditingVendedor(vendedor);
@@ -186,14 +210,23 @@ export default function VendedoresPage() {
                 
                 {/* 🛠️ Menu de Ações (Flutuante ao passar o mouse) */}
                 <div className="absolute top-6 right-6 flex gap-2 opacity-30 group-hover:opacity-100 transition-all">
-                  <button 
+                  {v.auth_user_id && (
+                    <button
+                      onClick={() => { setResetVendedor(v); setResetSenha(''); }}
+                      className="p-2 text-gray-400 hover:text-amber-600 bg-gray-50 hover:bg-amber-50 rounded-full shadow-sm border border-transparent hover:border-amber-100 transition-all"
+                      title="Redefinir Senha"
+                    >
+                      <KeyRound size={16} />
+                    </button>
+                  )}
+                  <button
                     onClick={() => abrirEdicao(v)}
                     className="p-2 text-gray-400 hover:text-gray-900 bg-gray-50 hover:bg-white rounded-full shadow-sm border border-transparent hover:border-gray-100 transition-all"
                     title="Editar Vendedor"
                   >
                     <Edit size={16} />
                   </button>
-                  <button 
+                  <button
                     onClick={() => handleExcluir(v.id)}
                     className="p-2 text-gray-400 hover:text-red-600 bg-gray-50 hover:bg-red-50 rounded-full shadow-sm border border-transparent hover:border-red-100 transition-all"
                     title="Excluir Vendedor"
@@ -374,6 +407,57 @@ export default function VendedoresPage() {
                   className="w-full py-3 bg-red-600 text-white font-black uppercase tracking-widest text-[11px] rounded-xl shadow-lg shadow-red-600/20 hover:bg-red-700 transition-all disabled:opacity-50"
                 >
                   {savingLogin ? "Criando acesso..." : uploading ? "Aguarde..." : editingVendedor ? 'Salvar' : 'Cadastrar'}
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+        {/* 🔑 Modal Reset de Senha */}
+        {resetVendedor && (
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
+            <div className="bg-white w-full max-w-sm rounded-2xl p-6 shadow-2xl relative animate-in fade-in zoom-in duration-200 border border-gray-100">
+              <button
+                onClick={() => setResetVendedor(null)}
+                className="absolute top-4 right-4 text-gray-400 hover:text-black transition-all p-1.5 hover:bg-gray-50 rounded-xl"
+              >
+                <X size={20} />
+              </button>
+
+              <div className="flex items-center gap-3 mb-4 pb-4 border-b border-gray-100">
+                <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
+                  <KeyRound size={18} className="text-amber-600" />
+                </div>
+                <div>
+                  <h2 className="text-base font-black uppercase tracking-tight text-gray-900">Redefinir Senha</h2>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">{resetVendedor.nome}</p>
+                </div>
+              </div>
+
+              <form onSubmit={handleResetSenha} className="space-y-4">
+                <div>
+                  <label className="text-[10px] font-black uppercase text-gray-400 mb-1 block tracking-widest">Email</label>
+                  <input
+                    type="email" value={resetVendedor.email || ''} readOnly
+                    className="w-full px-4 py-2.5 bg-gray-50 rounded-xl border border-gray-100 text-sm font-mono text-gray-500 cursor-not-allowed"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black uppercase text-gray-400 mb-1 block tracking-widest">Nova Senha</label>
+                  <input
+                    type="password" required minLength={6}
+                    value={resetSenha} onChange={e => setResetSenha(e.target.value)}
+                    autoFocus
+                    className="w-full px-4 py-2.5 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:border-amber-500 text-sm font-mono text-gray-900 placeholder:text-gray-300"
+                    placeholder="Mínimo 6 caracteres"
+                  />
+                </div>
+                <p className="text-[9px] text-gray-400 uppercase tracking-widest font-bold">
+                  A nova senha será enviada via WhatsApp para o vendedor.
+                </p>
+                <button type="submit" disabled={savingReset}
+                  className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-white font-black uppercase tracking-widest text-[11px] rounded-xl shadow-lg shadow-amber-500/20 transition-all disabled:opacity-50"
+                >
+                  {savingReset ? "Redefinindo..." : "Redefinir e Enviar"}
                 </button>
               </form>
             </div>

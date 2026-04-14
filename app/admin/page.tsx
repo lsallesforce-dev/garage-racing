@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Building2, Car, Users, MessageSquare, Zap, CheckCircle2, AlertTriangle, XCircle, ExternalLink, Copy, Plus, X, Loader2, RefreshCw } from "lucide-react";
+import { Building2, Car, Users, MessageSquare, Zap, CheckCircle2, AlertTriangle, XCircle, ExternalLink, Copy, Plus, X, Loader2, RefreshCw, Activity } from "lucide-react";
 
 type StatusBadge = "ativo" | "sem_estoque" | "sem_webhook";
 type PlanoStatus = "trial" | "ativo" | "expirado";
@@ -24,10 +24,12 @@ interface Tenant {
   plano?: string;
   trial_ends_at?: string | null;
   plano_vence_em?: string | null;
+  ultima_msg_at?: string | null;
+  ativo_7d: boolean;
 }
 
 interface Stats {
-  totais: { garagens: number; veiculos: number; leads: number; mensagens_hoje: number };
+  totais: { garagens: number; veiculos: number; leads: number; mensagens_hoje: number; ativos_7d: number };
   tenants: Tenant[];
 }
 
@@ -312,11 +314,12 @@ export default function AdminPage() {
         {/* ── Métricas ───────────────────────────────────────────────────── */}
         <section>
           <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4">Visão Geral da Plataforma</p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <StatCard icon={Building2} label="Garagens" value={stats?.totais.garagens ?? 0} />
+            <StatCard icon={Activity} label="Ativos 7 dias" value={stats?.totais.ativos_7d ?? 0} color="text-green-600" />
             <StatCard icon={Car} label="Veículos no Ar" value={stats?.totais.veiculos ?? 0} color="text-red-600" />
             <StatCard icon={Users} label="Leads Totais" value={stats?.totais.leads ?? 0} />
-            <StatCard icon={MessageSquare} label="Mensagens Hoje" value={stats?.totais.mensagens_hoje ?? 0} color="text-green-600" />
+            <StatCard icon={MessageSquare} label="Mensagens Hoje" value={stats?.totais.mensagens_hoje ?? 0} color="text-blue-600" />
           </div>
         </section>
 
@@ -362,7 +365,7 @@ export default function AdminPage() {
             <table className="w-full text-left">
               <thead>
                 <tr className="border-b border-gray-100">
-                  {["Garagem", "Token / Vitrine", "Veículos", "Leads", "Status", "Plano", "Cadastro", "Ações"].map(h => (
+                  {["Garagem", "Token / Vitrine", "Veículos", "Leads", "Status", "Plano", "Última msg", "Ações"].map(h => (
                     <th key={h} className="px-4 py-3 text-[9px] font-black uppercase tracking-widest text-gray-400">{h}</th>
                   ))}
                 </tr>
@@ -419,11 +422,26 @@ export default function AdminPage() {
                     <td className="px-4 py-4">
                       <PlanoBadge tenant={t} />
                     </td>
-                    {/* Cadastro */}
+                    {/* Última mensagem */}
                     <td className="px-4 py-4">
-                      <span className="text-[11px] text-gray-400 font-bold">
-                        {new Date(t.created_at).toLocaleDateString("pt-BR")}
-                      </span>
+                      {t.ultima_msg_at ? (
+                        <div className="flex flex-col gap-1">
+                          <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full w-fit ${
+                            t.ativo_7d
+                              ? "bg-green-50 text-green-700 border border-green-100"
+                              : "bg-gray-100 text-gray-400 border border-gray-200"
+                          }`}>
+                            {t.ativo_7d ? "● Ativo" : "○ Fantasma"}
+                          </span>
+                          <span className="text-[10px] text-gray-400 font-bold">
+                            {new Date(t.ultima_msg_at).toLocaleDateString("pt-BR")}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-gray-100 text-gray-400 border border-gray-200">
+                          Sem msgs
+                        </span>
+                      )}
                     </td>
                     {/* Ações */}
                     <td className="px-4 py-4">
