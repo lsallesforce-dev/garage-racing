@@ -1,6 +1,6 @@
 "use client";
 
-import { LayoutDashboard, PlusSquare, MessageSquare, DollarSign, Users, ShieldCheck, Car, Store, Settings, LogOut, X } from "lucide-react";
+import { LayoutDashboard, MessageSquare, DollarSign, Users, ShieldCheck, Car, Store, Settings, LogOut, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -9,7 +9,6 @@ import { supabase } from "@/lib/supabase";
 const adminMenuItems = [
   { icon: LayoutDashboard, label: "Pátio Digital", href: "/" },
   { icon: Car, label: "Estoque Inteligente", href: "/estoque" },
-  { icon: PlusSquare, label: "Adicionar Estoque", href: "/upload" },
   { icon: MessageSquare, label: "Central de Chat", href: "/chat" },
   { icon: DollarSign, label: "Vendas / Financeiro", href: "/vendas" },
   { icon: Users, label: "Equipe de Vendas", href: "/vendedores" },
