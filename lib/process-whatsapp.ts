@@ -79,7 +79,7 @@ function buildBriefingVendedor(
     .map((l) => `  ${l}`)
     .join("\n");
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://garage-racing.vercel.app";
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://autozap.digital";
   const assumirLink = `${appUrl}/api/assumir?wa_id=${phone}${webhookToken ? `&token=${webhookToken}` : ""}`;
 
   const texto =
@@ -571,7 +571,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
     const veiculoAlerta = topVeiculos[0]
       ? `${topVeiculos[0].marca} ${topVeiculos[0].modelo}`
       : "veículo";
-    const _assumirUrl = `${process.env.NEXT_PUBLIC_APP_URL || "https://garage-racing.vercel.app"}/api/assumir?wa_id=${phone}${garageConfig?.webhook_token ? `&token=${garageConfig.webhook_token}` : ""}`;
+    const _assumirUrl = `${process.env.NEXT_PUBLIC_APP_URL || "https://autozap.digital"}/api/assumir?wa_id=${phone}${garageConfig?.webhook_token ? `&token=${garageConfig.webhook_token}` : ""}`;
     sendMetaPreview(
       gerentePhone,
       `🚨 *LEAD QUENTE NA MESA!*\n\n👤 ${lead?.nome || phone}\n🚗 ${veiculoAlerta}\n💬 "${userMessage}"`,
@@ -598,7 +598,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
       .eq("id", lead.id);
 
     if (gerentePhone) {
-      const _posvUrl = `${process.env.NEXT_PUBLIC_APP_URL || "https://garage-racing.vercel.app"}/api/assumir?wa_id=${phone}${garageConfig?.webhook_token ? `&token=${garageConfig.webhook_token}` : ""}`;
+      const _posvUrl = `${process.env.NEXT_PUBLIC_APP_URL || "https://autozap.digital"}/api/assumir?wa_id=${phone}${garageConfig?.webhook_token ? `&token=${garageConfig.webhook_token}` : ""}`;
       sendMetaPreview(
         gerentePhone,
         `🔴 *ALERTA PÓS-VENDA!*\n\n👤 ${lead.nome || phone}\n💬 "${userMessage}"\n⚠️ Agente em stand-by automaticamente.`,
