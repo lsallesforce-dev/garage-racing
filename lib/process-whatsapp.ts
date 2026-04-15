@@ -1,11 +1,11 @@
 // lib/process-whatsapp.ts
 // Processamento assíncrono de mensagens WhatsApp
-// Executado via after() no webhook — não bloqueia o 200 OK para a Avisa
+// Executado via after() no webhook — não bloqueia o 200 OK para a Meta
 
 import { createDecipheriv, hkdfSync } from "node:crypto";
 import { geminiFlashSales, geminiFlashFallback } from "@/lib/gemini";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { sendAvisaMessage, sendAvisaImage, sendAvisaVideo, sendAvisaPreview } from "@/lib/avisa";
+import { sendMetaMessage, sendMetaImage, sendMetaVideo, sendMetaPreview } from "@/lib/meta";
 import { buscarDadosTransbordo, gerarRelatorioPista } from "@/lib/leads";
 import { hybridVehicleSearch, findVehicleForMedia } from "@/lib/hybrid-search";
 import { getCachedHistory, cacheHistory, invalidateHistory } from "@/lib/redis";
@@ -44,8 +44,8 @@ export interface GarageConfig {
   whatsapp?: string;
   vitrine_slug?: string;
   webhook_token?: string;
-  avisa_base_url?: string;
-  avisa_token?: string;
+  meta_phone_id?: string;
+  meta_access_token?: string;
   // Day 2: prompt customization
   tom_venda?: string;               // ex: "descontraído", "formal", "apressado"
   instrucoes_adicionais?: string;   // bloco livre de instruções do dono
@@ -349,12 +349,10 @@ function buildStockContext(topVeiculos: Vehicle[], veiculoPrincipal: Vehicle | n
 export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<void> {
   const { phone, rawMessage, audioUrl, audioMediaKey, tenantUserId, garageConfig } = job;
 
-  // Credenciais Avisa exclusivas do tenant — sem fallback global
-  // Se o tenant não configurou avisa_base_url/avisa_token, sendAvisaMessage
-  // retorna silenciosamente (log de warning) sem usar outro número.
-  const avisaCreds = {
-    baseUrl: garageConfig?.avisa_base_url ?? "",
-    token: garageConfig?.avisa_token ?? "",
+  // Credenciais Meta exclusivas do tenant — sem fallback global
+  const metaCreds = {
+    phoneNumberId: garageConfig?.meta_phone_id ?? "",
+    accessToken: garageConfig?.meta_access_token ?? "",
   };
 
   let userMessage = rawMessage;
@@ -411,7 +409,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
       garageConfig?.nome_agente || "IA",
       tenantUserId
     );
-    await sendAvisaMessage(phone, relatorio, avisaCreds);
+    await sendMetaMessage(phone, relatorio, metaCreds);
     return;
   }
 
@@ -437,7 +435,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
         })
         .eq("id", leadReset.id);
     }
-    await sendAvisaMessage(phone, "✅ Reset completo. Conversa reiniciada.", avisaCreds);
+    await sendMetaMessage(phone, "✅ Reset completo. Conversa reiniciada.", metaCreds);
     return;
   }
 
@@ -574,14 +572,14 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
       ? `${topVeiculos[0].marca} ${topVeiculos[0].modelo}`
       : "veículo";
     const _assumirUrl = `${process.env.NEXT_PUBLIC_APP_URL || "https://garage-racing.vercel.app"}/api/assumir?wa_id=${phone}${garageConfig?.webhook_token ? `&token=${garageConfig.webhook_token}` : ""}`;
-    sendAvisaPreview(
+    sendMetaPreview(
       gerentePhone,
       `🚨 *LEAD QUENTE NA MESA!*\n\n👤 ${lead?.nome || phone}\n🚗 ${veiculoAlerta}\n💬 "${userMessage}"`,
       _assumirUrl,
       `🔥 Toque para parar a IA e falar com o cliente`,
       `${veiculoAlerta} · ${lead?.nome || phone}`,
       undefined,
-      avisaCreds
+      metaCreds
     ).catch(() => {});
   }
 
@@ -601,14 +599,14 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
 
     if (gerentePhone) {
       const _posvUrl = `${process.env.NEXT_PUBLIC_APP_URL || "https://garage-racing.vercel.app"}/api/assumir?wa_id=${phone}${garageConfig?.webhook_token ? `&token=${garageConfig.webhook_token}` : ""}`;
-      sendAvisaPreview(
+      sendMetaPreview(
         gerentePhone,
         `🔴 *ALERTA PÓS-VENDA!*\n\n👤 ${lead.nome || phone}\n💬 "${userMessage}"\n⚠️ Agente em stand-by automaticamente.`,
         _posvUrl,
         `🔴 Toque para falar com o cliente`,
         `Problema relatado · ${lead.nome || phone}`,
         undefined,
-        avisaCreds
+        metaCreds
       ).catch(() => {});
     }
   }
@@ -726,7 +724,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
           const imgResp = await fetch(fotoUrl);
           if (imgResp.ok) {
             const base64 = Buffer.from(await imgResp.arrayBuffer()).toString("base64");
-            await sendAvisaImage(phone, base64, undefined, avisaCreds);
+            await sendMetaImage(phone, base64, undefined, metaCreds);
             fotoEnviada = true;
           }
         } catch (e) {
@@ -759,7 +757,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
       const videoUrl = (veiculoParaVideo as any).video_url ?? null;
       if (videoUrl) {
         try {
-          await sendAvisaVideo(phone, videoUrl, undefined, avisaCreds);
+          await sendMetaVideo(phone, videoUrl, undefined, metaCreds);
           videoEnviado = true;
           if (lead && veiculoParaVideo.id !== veiculoIdAnterior) {
             await supabaseAdmin
@@ -891,14 +889,14 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
             const veiculoAlert = topVeiculos[0]
               ? `${topVeiculos[0].marca} ${topVeiculos[0].modelo}`
               : "veículo em negociação";
-            sendAvisaMessage(
+            sendMetaMessage(
               gerentePhone,
               `❓ *AGENTE PRECISA DE INSTRUÇÃO*\n\n` +
               `👤 Cliente: ${nomeLead}\n` +
               `🚗 Veículo: ${veiculoAlert}\n\n` +
               `💬 Dúvida: ${precisaInstrucao}\n\n` +
               `👉 Responda a esta mensagem com a instrução para o agente continuar.`,
-              avisaCreds
+              metaCreds
             ).catch(() => {});
           }
         }
@@ -966,19 +964,19 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
         garageConfig?.webhook_token,
         nomeEmpresa
       );
-      await sendAvisaPreview(
+      await sendMetaPreview(
         destinoWa,
         briefing.texto,
         briefing.url,
         briefing.titulo,
         briefing.descricao,
         undefined,
-        avisaCreds
+        metaCreds
       );
     }
   }
 
   // ── 15. Enviar resposta ao cliente ────────────────────────────────────────────
-  await sendAvisaMessage(phone, aiResponse, avisaCreds);
+  await sendMetaMessage(phone, aiResponse, metaCreds);
   console.log(`✅ Mensagem processada para ${phone} | temperatura: ${temperatura}`);
 }

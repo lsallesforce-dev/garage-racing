@@ -16,9 +16,8 @@ interface GarageConfig {
   whatsapp_agente?: string;
   logo_url: string | null;
   vitrine_slug?: string;
-  webhook_token?: string;
-  avisa_base_url?: string;
-  avisa_token?: string;
+  meta_phone_id?: string;
+  meta_access_token?: string;
   nome_usuario?: string;
   cargo_usuario?: string;
   tom_venda?: string;
@@ -46,9 +45,8 @@ export default function ConfiguracoesPage() {
     whatsapp_agente: "",
     vitrine_slug: "",
     logo_url: null,
-    webhook_token: "",
-    avisa_base_url: "",
-    avisa_token: "",
+    meta_phone_id: "",
+    meta_access_token: "",
     nome_usuario: "",
     cargo_usuario: "",
     tom_venda: "",
@@ -79,9 +77,8 @@ export default function ConfiguracoesPage() {
               whatsapp_agente: row.whatsapp_agente ?? "",
               vitrine_slug: row.vitrine_slug ?? "",
               logo_url: row.logo_url ?? null,
-              webhook_token: row.webhook_token ?? "",
-              avisa_base_url: row.avisa_base_url ?? "",
-              avisa_token: row.avisa_token ?? "",
+              meta_phone_id: row.meta_phone_id ?? "",
+              meta_access_token: row.meta_access_token ?? "",
               nome_usuario: row.nome_usuario ?? "",
               cargo_usuario: row.cargo_usuario ?? "",
               tom_venda: row.tom_venda ?? "",
@@ -214,9 +211,8 @@ export default function ConfiguracoesPage() {
             whatsapp: config.whatsapp,
             whatsapp_agente: config.whatsapp_agente || null,
             vitrine_slug: config.vitrine_slug || null,
-            webhook_token: config.webhook_token || null,
-            avisa_base_url: config.avisa_base_url || null,
-            avisa_token: config.avisa_token || null,
+            meta_phone_id: config.meta_phone_id || null,
+            meta_access_token: config.meta_access_token || null,
             nome_usuario: config.nome_usuario || null,
             cargo_usuario: config.cargo_usuario || null,
             tom_venda: config.tom_venda || null,
@@ -337,55 +333,46 @@ export default function ConfiguracoesPage() {
               />
             </div>
 
-            <div className="flex flex-col gap-1.5">
-              <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
-                WhatsApp do Agente IA (com DDI)
-              </label>
-              <input
-                type="text"
-                value={config.whatsapp_agente || ""}
-                onChange={e => setConfig(c => ({ ...c, whatsapp_agente: e.target.value }))}
-                placeholder="Ex: 5521999999999"
-                className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
-              />
-              <p className="text-[10px] text-gray-400 mt-0.5">Número conectado ao Z-API. Os leads da vitrine cairão neste WhatsApp.</p>
-            </div>
-
             <div className="flex flex-col gap-1.5 mt-2 bg-blue-50/50 p-4 border border-blue-100 rounded-2xl">
-              <label className="text-[10px] font-black uppercase tracking-widest text-blue-800">
-                Token do Webhook (Identificador do Cliente)
-              </label>
-              <input
-                type="text"
-                value={config.webhook_token || ""}
-                onChange={e => setConfig(c => ({ ...c, webhook_token: e.target.value }))}
-                placeholder="Ex: autozap ou aprove"
-                className="bg-white border flex-1 border-blue-200 rounded-xl px-4 py-2.5 font-mono text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
-              />
-              <p className="text-[10px] text-blue-600 mt-1">Configure na Avisa: <a href={`https://autozap.digital/api/webhook/avisa?token=${config.webhook_token || "SEU_TOKEN"}`} className="font-mono break-all select-all hover:underline" onClick={e => { e.preventDefault(); navigator.clipboard.writeText(`https://autozap.digital/api/webhook/avisa?token=${config.webhook_token || ""}`); }}><strong>https://autozap.digital/api/webhook/avisa?token={config.webhook_token || "SEU_TOKEN"}</strong></a></p>
+              <p className="text-[10px] font-black uppercase tracking-widest text-blue-800 mb-1">
+                WhatsApp Business (Meta Cloud API)
+              </p>
+              <p className="text-[10px] text-blue-600 mb-3">
+                Configure no <strong>Meta for Developers</strong> → seu app → WhatsApp → Configuração.
+                URL do webhook:{" "}
+                <button
+                  type="button"
+                  onClick={() => navigator.clipboard.writeText("https://autozap.digital/api/webhook/meta")}
+                  className="font-mono text-blue-700 hover:underline cursor-pointer"
+                >
+                  <strong>https://autozap.digital/api/webhook/meta</strong>
+                </button>
+                {" "}· Token de verificação: <strong className="font-mono">autozap_webhook_2026</strong>
+              </p>
 
-              <label className="text-[10px] font-black uppercase tracking-widest text-blue-800 mt-3 block">
-                URL Base da Avisa (API)
+              <label className="text-[10px] font-black uppercase tracking-widest text-blue-800 block">
+                Phone Number ID
               </label>
               <input
                 type="text"
-                value={config.avisa_base_url || ""}
-                onChange={e => setConfig(c => ({ ...c, avisa_base_url: e.target.value }))}
-                placeholder="Ex: https://api.avisa.app/instance/SuaInstancia"
+                value={config.meta_phone_id || ""}
+                onChange={e => setConfig(c => ({ ...c, meta_phone_id: e.target.value.trim() }))}
+                placeholder="Ex: 390538797515329"
                 className="bg-white border border-blue-200 rounded-xl px-4 py-2.5 font-mono text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
               />
+              <p className="text-[10px] text-blue-500">Encontrado em: Meta for Developers → WhatsApp → Configuração → Número de telefone.</p>
 
               <label className="text-[10px] font-black uppercase tracking-widest text-blue-800 mt-3 block">
-                Token da Avisa (API Key)
+                Token de Acesso Permanente
               </label>
               <input
-                type="text"
-                value={config.avisa_token || ""}
-                onChange={e => setConfig(c => ({ ...c, avisa_token: e.target.value }))}
-                placeholder="Token de autenticação da Avisa"
+                type="password"
+                value={config.meta_access_token || ""}
+                onChange={e => setConfig(c => ({ ...c, meta_access_token: e.target.value.trim() }))}
+                placeholder="EAAxxxxx..."
                 className="bg-white border border-blue-200 rounded-xl px-4 py-2.5 font-mono text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
               />
-              <p className="text-[10px] text-blue-500 mt-1">Credenciais exclusivas desta instância. Cada garagem usa sua própria conexão Avisa.</p>
+              <p className="text-[10px] text-blue-500">Gere um token permanente em: Meta Business Suite → Configurações → Usuários do sistema.</p>
 
               <label className="text-[10px] font-black uppercase tracking-widest text-blue-800 mt-3 block">
                 Slug da Vitrine (URL curta)

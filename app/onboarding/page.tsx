@@ -16,10 +16,9 @@ export default function OnboardingPage() {
     nome_agente: "",
     whatsapp: "",
     endereco: "",
-    webhook_token: "",
     vitrine_slug: "",
-    avisa_base_url: "",
-    avisa_token: "",
+    meta_phone_id: "",
+    meta_access_token: "",
   });
 
   function set(key: keyof typeof form, value: string) {
@@ -42,10 +41,9 @@ export default function OnboardingPage() {
             nome_agente: form.nome_agente || "Assistente",
             whatsapp: form.whatsapp,
             endereco: form.endereco || null,
-            webhook_token: form.webhook_token || null,
             vitrine_slug: form.vitrine_slug || null,
-            avisa_base_url: form.avisa_base_url || null,
-            avisa_token: form.avisa_token || null,
+            meta_phone_id: form.meta_phone_id || null,
+            meta_access_token: form.meta_access_token || null,
           },
           { onConflict: "user_id" }
         );
@@ -73,7 +71,7 @@ export default function OnboardingPage() {
     }
   }
 
-  const stepLabels = ["Identidade", "Integração", "WhatsApp Bot"];
+  const stepLabels = ["Identidade", "Integração", "WhatsApp Business"];
 
   return (
     <div className="min-h-screen bg-[#efefed] flex items-center justify-center px-4 py-12">
@@ -169,29 +167,18 @@ export default function OnboardingPage() {
                 />
               </div>
 
-              <div className="flex flex-col gap-4 bg-blue-50/50 p-4 border border-blue-100 rounded-2xl">
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-blue-800">Token do Webhook</label>
-                  <input type="text" value={form.webhook_token}
-                    onChange={e => set("webhook_token", e.target.value.toLowerCase().replace(/\s/g, ""))}
-                    placeholder="Ex: garageracing"
-                    className="bg-white border border-blue-200 rounded-xl px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
-                  />
-                  <p className="text-[10px] text-blue-600">
-                    URL do webhook:{" "}
-                    <strong>https://autozap.digital/api/webhook/avisa?token={form.webhook_token || "SEU_TOKEN"}</strong>
-                  </p>
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-blue-800">Slug da Vitrine</label>
-                  <input type="text" value={form.vitrine_slug}
-                    onChange={e => set("vitrine_slug", e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
-                    placeholder="Ex: garageracing"
-                    className="bg-white border border-blue-200 rounded-xl px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
-                  />
-                  <p className="text-[10px] text-blue-600">Pode deixar em branco e configurar depois.</p>
-                </div>
+              <div className="flex flex-col gap-1.5 bg-blue-50/50 p-4 border border-blue-100 rounded-2xl">
+                <label className="text-[10px] font-black uppercase tracking-widest text-blue-800">Slug da Vitrine</label>
+                <input type="text" value={form.vitrine_slug}
+                  onChange={e => set("vitrine_slug", e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
+                  placeholder="Ex: garageracing"
+                  className="bg-white border border-blue-200 rounded-xl px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
+                />
+                <p className="text-[10px] text-blue-600">
+                  Vitrine pública:{" "}
+                  <strong>{form.vitrine_slug ? `${form.vitrine_slug}.autozap.digital` : "SEU_SLUG.autozap.digital"}</strong>
+                  {" "}· Pode deixar em branco e configurar depois.
+                </p>
               </div>
 
               <div className="flex gap-3 mt-2">
@@ -207,38 +194,42 @@ export default function OnboardingPage() {
             </form>
           )}
 
-          {/* ── Step 3: WhatsApp Bot (Avisa) ───────────────────────────── */}
+          {/* ── Step 3: WhatsApp Business (Meta) ──────────────────────── */}
           {step === 3 && (
             <form onSubmit={handleFinish} className="flex flex-col gap-5">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">
-                  Passo 3 — Conectar o WhatsApp Bot
+                  Passo 3 — Conectar o WhatsApp Business
                 </p>
                 <p className="text-[11px] text-gray-500 leading-relaxed">
-                  Configure sua instância Avisa para ativar o agente de IA. Pode pular e configurar depois em <strong>Configurações</strong>.
+                  Conecte seu número via <strong>Meta WhatsApp Cloud API</strong>. Pode pular e configurar depois em <strong>Configurações</strong>.
                 </p>
               </div>
 
-              <div className="flex flex-col gap-4 bg-green-50/50 p-4 border border-green-100 rounded-2xl">
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-green-800">URL Base da Avisa</label>
-                  <input type="text" value={form.avisa_base_url}
-                    onChange={e => set("avisa_base_url", e.target.value.trim())}
-                    placeholder="https://www.avisaapi.com.br/api"
-                    className="bg-white border border-green-200 rounded-xl px-4 py-3 text-sm font-mono text-gray-900 placeholder-gray-400 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition"
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-green-800">Token da Instância Avisa</label>
-                  <input type="password" value={form.avisa_token}
-                    onChange={e => set("avisa_token", e.target.value.trim())}
-                    placeholder="Token da sua instância"
-                    className="bg-white border border-green-200 rounded-xl px-4 py-3 text-sm font-mono text-gray-900 placeholder-gray-400 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition"
-                  />
-                </div>
-                <p className="text-[10px] text-green-700 font-bold">
-                  Encontre o token no painel da Avisa → Instâncias → sua instância → Token API.
+              <div className="flex flex-col gap-4 bg-blue-50/50 p-4 border border-blue-100 rounded-2xl">
+                <p className="text-[10px] text-blue-600">
+                  Configure o webhook no <strong>Meta for Developers</strong>:
+                  <br />URL: <strong className="font-mono">https://autozap.digital/api/webhook/meta</strong>
+                  <br />Token: <strong className="font-mono">autozap_webhook_2026</strong>
                 </p>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-blue-800">Phone Number ID</label>
+                  <input type="text" value={form.meta_phone_id}
+                    onChange={e => set("meta_phone_id", e.target.value.trim())}
+                    placeholder="Ex: 390538797515329"
+                    className="bg-white border border-blue-200 rounded-xl px-4 py-3 text-sm font-mono text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
+                  />
+                  <p className="text-[10px] text-blue-500">Meta for Developers → WhatsApp → Configuração → Número de telefone.</p>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-blue-800">Token de Acesso Permanente</label>
+                  <input type="password" value={form.meta_access_token}
+                    onChange={e => set("meta_access_token", e.target.value.trim())}
+                    placeholder="EAAxxxxx..."
+                    className="bg-white border border-blue-200 rounded-xl px-4 py-3 text-sm font-mono text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
+                  />
+                  <p className="text-[10px] text-blue-500">Meta Business Suite → Configurações → Usuários do sistema → token permanente.</p>
+                </div>
               </div>
 
               <div className="flex gap-3 mt-2">
@@ -252,7 +243,7 @@ export default function OnboardingPage() {
                 </button>
               </div>
 
-              <button type="button" onClick={() => { setForm(f => ({ ...f, avisa_base_url: "", avisa_token: "" })); handleFinish({ preventDefault: () => {} } as any); }}
+              <button type="button" onClick={() => { setForm(f => ({ ...f, meta_phone_id: "", meta_access_token: "" })); handleFinish({ preventDefault: () => {} } as any); }}
                 className="text-[10px] text-gray-400 hover:text-gray-600 font-black uppercase tracking-widest transition-colors text-center">
                 Pular por agora →
               </button>
