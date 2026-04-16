@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useUserRole } from "@/components/SidebarWrapper";
 import { Vehicle } from "@/types/vehicle";
 import { supabase } from "@/lib/supabase";
@@ -24,8 +24,6 @@ export default function UploadPage() {
   const [igUrl, setIgUrl] = useState("");
   const [igStep, setIgStep] = useState<"idle" | "baixando" | "analisando" | "erro">("idle");
   const [igErro, setIgErro] = useState("");
-
-  const router = useRouter();
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 
