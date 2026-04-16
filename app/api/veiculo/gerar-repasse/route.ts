@@ -45,6 +45,7 @@ function gerarTextoRepasse(
   carro: any,
   fipe: string | null,
   mediaWeb: string | null,
+  botPhone?: string | null,
 ): string {
   const cidade = carro.local || "Interior";
   const cambio = carro.cambio || "";
@@ -96,6 +97,13 @@ function gerarTextoRepasse(
   linhas.push(``);
   linhas.push(`✅ Garantia somente da Documentação do Veículo`);
 
+  if (botPhone) {
+    const phoneClean = botPhone.replace(/\D/g, "");
+    linhas.push(``);
+    linhas.push(`💬 Falar com Vendedor:`);
+    linhas.push(`https://wa.me/${phoneClean}`);
+  }
+
   return linhas.join("\n");
 }
 
@@ -128,7 +136,7 @@ export async function POST(req: NextRequest) {
     buscarMediaWeb(carro.marca, carro.modelo, carro.versao || "", carro.ano_modelo),
   ]);
 
-  const texto = gerarTextoRepasse(carro, fipe, mediaWeb);
+  const texto = gerarTextoRepasse(carro, fipe, mediaWeb, botPhone);
   const capaUrl = carro.capa_marketing_url || carro.fotos?.[0] || null;
 
   return NextResponse.json({ texto, capaUrl, fipe, mediaWeb, botPhone });
