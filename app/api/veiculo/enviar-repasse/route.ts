@@ -37,8 +37,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Credenciais Meta não configuradas" }, { status: 400 });
   }
 
-  // Destino: número do agente de IA (o gerente recebe pelo número do bot e encaminha pro grupo)
-  const destino = cfg.whatsapp_agente || cfg.whatsapp;
+  // Destino: número pessoal do gerente — o bot envia pra você, você encaminha pro grupo
+  // (whatsapp_agente É o próprio bot; a Meta não permite enviar de um número pra ele mesmo)
+  const destino = cfg.whatsapp;
   if (!destino) {
     return NextResponse.json({ error: "Número do gerente não configurado em Configurações" }, { status: 400 });
   }

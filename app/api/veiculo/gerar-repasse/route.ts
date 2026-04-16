@@ -18,7 +18,7 @@ async function buscarPrecos(marca: string, modelo: string, versao: string, anoMo
 }> {
   try {
     const model = genAI.getGenerativeModel(
-      { model: "gemini-2.0-flash", tools: [{ googleSearch: {} } as any] },
+      { model: "gemini-2.5-flash", tools: [{ googleSearch: {} } as any] },
       { apiVersion: "v1beta" }
     );
 
