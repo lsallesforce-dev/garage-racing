@@ -209,12 +209,14 @@ export async function sendMetaPreview(
 }
 
 // ─── Enviar mensagem com botão CTA (link) ─────────────────────────────────────
+// imageUrl opcional: se fornecido, aparece como header da mensagem (foto + texto + botão num único corpo)
 export async function sendMetaCtaButton(
   phone: string,
   body: string,
   buttonText: string,
   buttonUrl: string,
-  creds?: Partial<MetaCreds>
+  creds?: Partial<MetaCreds>,
+  imageUrl?: string
 ): Promise<any> {
   const c = resolveCreds(creds);
   if (!c) {
@@ -222,21 +224,27 @@ export async function sendMetaCtaButton(
     return;
   }
 
+  const interactive: any = {
+    type: "cta_url",
+    body: { text: body },
+    action: {
+      name: "cta_url",
+      parameters: {
+        display_text: buttonText,
+        url: buttonUrl,
+      },
+    },
+  };
+
+  if (imageUrl) {
+    interactive.header = { type: "image", image: { link: imageUrl } };
+  }
+
   return post(`/${c.phoneNumberId}/messages`, {
     messaging_product: "whatsapp",
     recipient_type: "individual",
     to: formatPhone(phone),
     type: "interactive",
-    interactive: {
-      type: "cta_url",
-      body: { text: body },
-      action: {
-        name: "cta_url",
-        parameters: {
-          display_text: buttonText,
-          url: buttonUrl,
-        },
-      },
-    },
+    interactive,
   }, c.accessToken);
 }

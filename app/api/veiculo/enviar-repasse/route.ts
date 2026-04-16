@@ -1,14 +1,17 @@
 // app/api/veiculo/enviar-repasse/route.ts
 //
 // Envia o anúncio de repasse via Meta WhatsApp para o número do gerente.
-// Sequência: imagem (se tiver) → texto → botão CTA "Falar com Vendedor"
+// Uma única mensagem: foto (header) + texto (body) + botão CTA "Falar com Vendedor"
+// Limite Meta: body até 1024 chars. Se ultrapassar, envia texto separado + botão.
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireAuth } from "@/lib/api-auth";
-import { sendMetaMessage, sendMetaImage, sendMetaCtaButton } from "@/lib/meta";
+import { sendMetaMessage, sendMetaCtaButton } from "@/lib/meta";
 
 export const maxDuration = 30;
+
+const BODY_LIMIT = 1024;
 
 export async function POST(req: NextRequest) {
   const { error: authError } = await requireAuth();
@@ -37,8 +40,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Credenciais Meta não configuradas" }, { status: 400 });
   }
 
-  // Destino: número pessoal do gerente — o bot envia pra você, você encaminha pro grupo
-  // (whatsapp_agente É o próprio bot; a Meta não permite enviar de um número pra ele mesmo)
   const destino = cfg.whatsapp;
   if (!destino) {
     return NextResponse.json({ error: "Número do gerente não configurado em Configurações" }, { status: 400 });
@@ -46,37 +47,29 @@ export async function POST(req: NextRequest) {
 
   const creds = { phoneNumberId: cfg.meta_phone_id, accessToken: cfg.meta_access_token };
 
-  // Número do bot (para o botão CTA "Falar com Vendedor")
   const botPhone = (cfg.whatsapp_agente || cfg.whatsapp || "").replace(/\D/g, "");
   const ctaUrl = botPhone ? `https://wa.me/${botPhone}` : null;
 
-  // 1. Envia imagem de capa (se disponível)
-  if (capaUrl) {
-    try {
-      await sendMetaImage(destino, capaUrl, undefined, creds);
-    } catch (e) {
-      console.warn("⚠️ Não foi possível enviar capa:", e);
-    }
-  }
-
-  // 2. Envia texto do repasse (sem quebrar — deve chegar como mensagem única)
-  await sendMetaMessage(destino, texto, creds, { split: false });
-
-  // 3. Envia botão CTA "Falar com Vendedor"
   if (ctaUrl) {
-    await new Promise(r => setTimeout(r, 800));
-    try {
+    if (texto.length <= BODY_LIMIT) {
+      // ✅ Mensagem única: foto (header) + texto (body) + botão
       await sendMetaCtaButton(
         destino,
-        "💬",
+        texto,
         "Falar com Vendedor",
         ctaUrl,
-        creds
+        creds,
+        capaUrl ?? undefined
       );
-    } catch (e) {
-      console.warn("⚠️ CTA button falhou, enviando link como texto:", e);
-      await sendMetaMessage(destino, `💬 Falar com Vendedor:\n${ctaUrl}`, creds);
+    } else {
+      // Fallback: texto longo → envia separado + botão
+      await sendMetaMessage(destino, texto, creds, { split: false });
+      await new Promise(r => setTimeout(r, 600));
+      await sendMetaCtaButton(destino, "💬", "Falar com Vendedor", ctaUrl, creds, capaUrl ?? undefined);
     }
+  } else {
+    // Sem botão: envia texto puro
+    await sendMetaMessage(destino, texto, creds, { split: false });
   }
 
   return NextResponse.json({ ok: true });
