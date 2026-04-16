@@ -213,9 +213,12 @@ export default function ListaEstoque() {
 
                 {/* Texto */}
                 <div className="flex-1 overflow-y-auto px-8 pb-4">
-                  <pre className="whitespace-pre-wrap font-sans text-sm text-gray-800 bg-gray-50 rounded-2xl p-5 leading-relaxed border border-gray-100">
-                    {repasseTexto}
-                  </pre>
+                  <textarea
+                    value={repasseTexto}
+                    onChange={e => setRepasseTexto(e.target.value)}
+                    className="w-full whitespace-pre-wrap font-sans text-sm text-gray-800 bg-gray-50 rounded-2xl p-5 leading-relaxed border border-gray-100 resize-none focus:outline-none focus:border-green-400 focus:ring-2 focus:ring-green-100 transition-all"
+                    rows={18}
+                  />
                 </div>
 
                 {/* Actions */}
