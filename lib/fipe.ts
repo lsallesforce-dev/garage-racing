@@ -72,20 +72,23 @@ export async function buscarFipe(
       console.warn(`⚠️ FIPE: modelo não encontrado para "${modelo} ${versao}"`);
       return null;
     }
+    console.log(`🔍 FIPE modelo encontrado: "${modeloMatch.nome}" (código ${modeloMatch.codigo})`);
 
     // 3. Anos — filtra pelo ano_modelo
     const anos: FipeItem[] = await fetchJson(
       `${BASE}/carros/marcas/${marcaMatch.codigo}/modelos/${modeloMatch.codigo}/anos`
     );
-    // Ex: "2016-1" (gasolina), "2016-3" (flex), "2016-2" (álcool)
-    // Prioriza flex (3), depois gasolina (1), depois qualquer
+    console.log(`🔍 FIPE anos disponíveis para "${modeloMatch.nome}":`, anos.map(a => a.codigo).join(", "));
+
     const anoStr = String(anoModelo);
     const anoMatch =
-      anos.find(a => a.codigo === `${anoStr}-3`) ??
-      anos.find(a => a.codigo === `${anoStr}-1`) ??
-      anos.find(a => a.nome.startsWith(anoStr));
+      anos.find(a => a.codigo === `${anoStr}-3`) ??   // flex
+      anos.find(a => a.codigo === `${anoStr}-1`) ??   // gasolina
+      anos.find(a => a.codigo === `${anoStr}-2`) ??   // álcool
+      anos.find(a => a.nome.startsWith(anoStr)) ??    // "2016 Flex" etc
+      anos.find(a => a.codigo.startsWith(anoStr));    // fallback pelo código
     if (!anoMatch) {
-      console.warn(`⚠️ FIPE: ano ${anoModelo} não encontrado`);
+      console.warn(`⚠️ FIPE: ano ${anoModelo} não encontrado. Anos disponíveis: ${anos.map(a => a.nome).join(", ")}`);
       return null;
     }
 
