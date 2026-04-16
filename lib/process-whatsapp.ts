@@ -595,13 +595,24 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
     const veiculoAlerta = topVeiculos[0]
       ? `${topVeiculos[0].marca} ${topVeiculos[0].modelo}`
       : "veículo";
-    const assumirUrl = `${process.env.NEXT_PUBLIC_APP_URL || "https://autozap.digital"}/api/assumir?wa_id=${phone}&uid=${tenantUserId}`;
     const nomeCliente = lead?.nome || phone;
+    const clientePhone = phone.replace(/\D/g, "");
+
+    // Para a IA automaticamente — gerente assume a partir daqui
+    if (lead) {
+      supabaseAdmin
+        .from("leads")
+        .update({ em_atendimento_humano: true })
+        .eq("id", lead.id)
+        .catch(() => {});
+    }
+
+    // Botão com wa.me — o WhatsApp intercepta e abre a conversa direto no app
     sendMetaCtaButton(
       gerentePhone,
-      `🔥 *LEAD QUENTE — ${garageConfig?.nome_empresa || "MINHA GARAGEM"}*\n\n👤 Cliente: ${nomeCliente}\n🚗 Interesse: ${veiculoAlerta}\n💬 "${userMessage.slice(0, 100)}"`,
-      "Assumir Conversa",
-      assumirUrl,
+      `🔥 *LEAD QUENTE — ${garageConfig?.nome_empresa || "MINHA GARAGEM"}*\n\n👤 Cliente: ${nomeCliente}\n🚗 Interesse: ${veiculoAlerta}\n💬 "${userMessage.slice(0, 100)}"\n\n⚡ IA pausada. Toque para assumir:`,
+      "Abrir Conversa",
+      `https://wa.me/${clientePhone}`,
       metaCreds
     ).catch(() => {});
   }
@@ -621,12 +632,12 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
       .eq("id", lead.id);
 
     if (gerentePhone) {
-      const posvUrl = `${process.env.NEXT_PUBLIC_APP_URL || "https://autozap.digital"}/api/assumir?wa_id=${phone}&uid=${tenantUserId}`;
+      const clientePhone = phone.replace(/\D/g, "");
       sendMetaCtaButton(
         gerentePhone,
         `🔴 *ALERTA PÓS-VENDA!*\n\n👤 ${lead.nome || phone}\n💬 "${userMessage.slice(0, 100)}"\n⚠️ Agente em stand-by automaticamente.`,
-        "Falar com Cliente",
-        posvUrl,
+        "Abrir Conversa",
+        `https://wa.me/${clientePhone}`,
         metaCreds
       ).catch(() => {});
     }
