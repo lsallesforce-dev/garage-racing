@@ -619,10 +619,14 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
     // Tenta botão CTA; se Meta rejeitar (app não publicado etc.), envia texto com link
     const msgBody = `🔥 *LEAD QUENTE — ${garageConfig?.nome_empresa || "MINHA GARAGEM"}*\n\n👤 Cliente: ${nomeCliente}\n🚗 Interesse: ${veiculoAlerta}\n💬 "${userMessage.slice(0, 100)}"\n\n⚡ IA pausada.`;
     const waLink = `https://wa.me/${clientePhone}`;
+    console.log(`🔥 Lead quente detectado — enviando alerta para gerente ${gerentePhone}`);
     sendMetaCtaButton(gerentePhone, msgBody, "Abrir Conversa", waLink, metaCreds)
+      .then(() => console.log("✅ CTA button enviado ao gerente"))
       .catch(async (err: any) => {
-        console.warn("⚠️ CTA button falhou, enviando texto simples:", err?.message?.slice(0, 100));
-        await sendMetaMessage(gerentePhone, `${msgBody}\n\n${waLink}`, metaCreds).catch(() => {});
+        console.warn("⚠️ CTA button falhou, enviando texto simples:", err?.message?.slice(0, 200));
+        await sendMetaMessage(gerentePhone, `${msgBody}\n\n${waLink}`, metaCreds)
+          .then(() => console.log("✅ Fallback texto+link enviado ao gerente"))
+          .catch((e: any) => console.error("❌ Fallback também falhou:", e?.message?.slice(0, 100)));
       });
   }
 
