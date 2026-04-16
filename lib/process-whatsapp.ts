@@ -56,6 +56,7 @@ export interface WhatsAppJobPayload {
   rawMessage: string;
   audioUrl?: string;
   audioMediaKey?: string;
+  audioMediaId?: string;  // Meta Cloud API: media ID para resolver via Graph API
   messageId?: string | null;
   tenantUserId: string;
   garageConfig: GarageConfig | null;
@@ -347,7 +348,7 @@ function buildStockContext(topVeiculos: Vehicle[], veiculoPrincipal: Vehicle | n
 // ─── Processamento Principal ──────────────────────────────────────────────────
 
 export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<void> {
-  const { phone, rawMessage, audioUrl, audioMediaKey, tenantUserId, garageConfig } = job;
+  const { phone, rawMessage, audioUrl, audioMediaKey, audioMediaId, tenantUserId, garageConfig } = job;
 
   // Credenciais Meta exclusivas do tenant — sem fallback global
   const metaCreds = {
@@ -359,20 +360,38 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   let audioData: { data: string; mimeType: string } | null = null;
 
   // ── 1. Transcrever Áudio ────────────────────────────────────────────────────
-  if (audioUrl) {
+  const hasAudio = audioMediaId || audioUrl;
+  if (hasAudio) {
     try {
       let audioBuffer: Buffer | null = null;
 
-      // Áudio WhatsApp vem criptografado — decripta se tiver a mediaKey
-      if (audioMediaKey) {
-        audioBuffer = await decryptWhatsAppAudio(audioUrl, audioMediaKey);
-        if (audioBuffer) console.log(`🔓 Áudio decriptado: ${audioBuffer.length} bytes`);
+      // Meta Cloud API: resolve media ID → download URL via Graph API
+      if (audioMediaId && metaCreds.accessToken) {
+        const metaRes = await fetch(
+          `https://graph.facebook.com/v19.0/${audioMediaId}`,
+          { headers: { Authorization: `Bearer ${metaCreds.accessToken}` } }
+        );
+        if (metaRes.ok) {
+          const { url } = await metaRes.json() as { url: string };
+          if (url) {
+            const dlRes = await fetch(url, {
+              headers: { Authorization: `Bearer ${metaCreds.accessToken}` },
+            });
+            if (dlRes.ok) audioBuffer = Buffer.from(await dlRes.arrayBuffer());
+          }
+        }
       }
 
-      // Fallback: tenta baixar direto (para APIs que já entregam decriptado)
-      if (!audioBuffer) {
-        const audioResp = await fetch(audioUrl);
-        if (audioResp.ok) audioBuffer = Buffer.from(await audioResp.arrayBuffer());
+      // Legado Avisa: URL direta com possível criptografia
+      if (!audioBuffer && audioUrl) {
+        if (audioMediaKey) {
+          audioBuffer = await decryptWhatsAppAudio(audioUrl, audioMediaKey);
+          if (audioBuffer) console.log(`🔓 Áudio decriptado: ${audioBuffer.length} bytes`);
+        }
+        if (!audioBuffer) {
+          const audioResp = await fetch(audioUrl);
+          if (audioResp.ok) audioBuffer = Buffer.from(await audioResp.arrayBuffer());
+        }
       }
 
       if (audioBuffer) {

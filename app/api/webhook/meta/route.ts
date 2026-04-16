@@ -55,6 +55,7 @@ function extractFields(payload: any): {
   fromMe: boolean;
   messageId: string | null;
   phoneNumberId: string;
+  audioMediaId: string | null;
 } {
   try {
     const entry   = payload?.entry?.[0];
@@ -62,29 +63,32 @@ function extractFields(payload: any): {
     const value   = change?.value;
 
     if (change?.field !== "messages") {
-      return { phone: "", userMessage: "", fromMe: true, messageId: null, phoneNumberId: "" };
+      return { phone: "", userMessage: "", fromMe: true, messageId: null, phoneNumberId: "", audioMediaId: null };
     }
 
     const phoneNumberId: string = value?.metadata?.phone_number_id ?? "";
     const msg  = value?.messages?.[0];
 
     if (!msg) {
-      return { phone: "", userMessage: "", fromMe: true, messageId: null, phoneNumberId };
+      return { phone: "", userMessage: "", fromMe: true, messageId: null, phoneNumberId, audioMediaId: null };
     }
 
     const phone      = msg.from ?? "";
     const messageId  = msg.id ?? null;
     const userMessage = msg.text?.body ?? msg.interactive?.button_reply?.title ?? "";
 
+    // Áudio (voice note ou arquivo de áudio)
+    const audioMediaId: string | null = msg.type === "audio" ? (msg.audio?.id ?? null) : null;
+
     // Ignorar status updates (delivered, read, sent) — não são mensagens
     if (value?.statuses?.length && !value?.messages?.length) {
-      return { phone: "", userMessage: "", fromMe: true, messageId: null, phoneNumberId };
+      return { phone: "", userMessage: "", fromMe: true, messageId: null, phoneNumberId, audioMediaId: null };
     }
 
-    return { phone, userMessage: userMessage.trim(), fromMe: false, messageId, phoneNumberId };
+    return { phone, userMessage: userMessage.trim(), fromMe: false, messageId, phoneNumberId, audioMediaId };
   } catch (e) {
     console.error("❌ Erro ao extrair campos do payload Meta:", e);
-    return { phone: "", userMessage: "", fromMe: true, messageId: null, phoneNumberId: "" };
+    return { phone: "", userMessage: "", fromMe: true, messageId: null, phoneNumberId: "", audioMediaId: null };
   }
 }
 
@@ -107,7 +111,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
     }
 
-    const { phone, userMessage, fromMe, messageId, phoneNumberId } = extractFields(payload);
+    const { phone, userMessage, fromMe, messageId, phoneNumberId, audioMediaId } = extractFields(payload);
 
     // Responde 200 imediatamente (Meta requer resposta em < 20s ou vai reenviar)
     if (fromMe || !phone) {
@@ -144,7 +148,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ status: "duplicate" });
     }
 
-    if (!userMessage) {
+    if (!userMessage && !audioMediaId) {
       return NextResponse.json({ status: "empty_content" });
     }
 
@@ -153,6 +157,7 @@ export async function POST(req: NextRequest) {
       const job = {
         phone,
         rawMessage: userMessage,
+        ...(audioMediaId ? { audioMediaId } : {}),
         messageId,
         tenantUserId,
         garageConfig,
