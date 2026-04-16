@@ -5,7 +5,7 @@
 import { createDecipheriv, hkdfSync } from "node:crypto";
 import { geminiFlashSales, geminiFlashFallback } from "@/lib/gemini";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { sendMetaMessage, sendMetaImage, sendMetaVideo, sendMetaPreview, sendMetaCtaButton, markMetaRead, typingDelay } from "@/lib/meta";
+import { sendMetaMessage, sendMetaImage, sendMetaVideo, sendMetaPreview, sendMetaCtaButton, markMetaRead } from "@/lib/meta";
 import { buscarDadosTransbordo, gerarRelatorioPista } from "@/lib/leads";
 import { hybridVehicleSearch, findVehicleForMedia } from "@/lib/hybrid-search";
 import { getCachedHistory, cacheHistory, invalidateHistory } from "@/lib/redis";
@@ -483,9 +483,6 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
     return;
   }
 
-  // Flag local: evita que a IA responda na mesma mensagem que aciona o stand-by
-  let assumidoPorHumano = false;
-
   // ── 5. Config da Garagem ────────────────────────────────────────────────────
   const nomeEmpresa = garageConfig?.nome_empresa || "nossa loja";
   const nomeAgente = garageConfig?.nome_agente || "Assistente";
@@ -604,15 +601,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
     const nomeCliente = lead?.nome || phone;
     const clientePhone = phone.replace(/\D/g, "");
 
-    // Para a IA automaticamente — gerente assume a partir daqui
-    assumidoPorHumano = true;
-    if (lead) {
-      supabaseAdmin
-        .from("leads")
-        .update({ em_atendimento_humano: true })
-        .eq("id", lead.id)
-        .catch(() => {});
-    }
+    // IA continua ativa — gerente atende em paralelo pelo WhatsApp
 
     // Tenta botão CTA; se Meta rejeitar (app não publicado etc.), envia texto com link
     const msgBody = `🔥 *LEAD QUENTE — ${garageConfig?.nome_empresa || "MINHA GARAGEM"}*\n\n👤 Cliente: ${nomeCliente}\n🚗 Interesse: ${veiculoAlerta}\n💬 "${userMessage.slice(0, 100)}"\n\n⚡ IA pausada.`;
@@ -1015,11 +1004,6 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   }
 
   // ── 15. Enviar resposta ao cliente ────────────────────────────────────────────
-  if (assumidoPorHumano) {
-    console.log(`🔇 Resposta suprimida — gerente assumiu na mesma mensagem`);
-    return;
-  }
-  await new Promise(r => setTimeout(r, typingDelay(aiResponse)));
   await sendMetaMessage(phone, aiResponse, metaCreds);
   console.log(`✅ Mensagem processada para ${phone} | temperatura: ${temperatura}`);
 }

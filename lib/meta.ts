@@ -70,12 +70,39 @@ export async function markMetaRead(
 }
 
 // ─── Delay humanizado (simula digitação) ──────────────────────────────────────
-// Meta Cloud API não tem indicador de typing nativo — delay proporcional ao texto
 export function typingDelay(text: string): number {
-  return Math.min(1500 + Math.floor(text.length / 50) * 500, 7000);
+  return Math.min(1200 + Math.floor(text.length / 60) * 400, 5000);
 }
 
-// ─── Enviar texto ─────────────────────────────────────────────────────────────
+// ─── Quebra mensagem em partes naturais ───────────────────────────────────────
+// Simula digitação enviando 2-3 mensagens em sequência com delay entre elas.
+// Só quebra se a mensagem for longa o suficiente para valer a pena.
+function splitMessage(text: string): string[] {
+  if (text.length < 180) return [text];
+
+  // Tenta quebrar em blocos de parágrafo (\n\n)
+  const porParagrafo = text.split(/\n\n+/).map(p => p.trim()).filter(Boolean);
+  if (porParagrafo.length >= 2 && porParagrafo.length <= 4) {
+    return porParagrafo.slice(0, 3);
+  }
+
+  // Tenta quebrar em sentenças (. ! ?)
+  const sentencas = text.match(/[^.!?]*[.!?]+["']?/g) ?? [];
+  if (sentencas.length >= 2) {
+    const meio = Math.ceil(sentencas.length / 2);
+    const parte1 = sentencas.slice(0, meio).join("").trim();
+    const parte2 = sentencas.slice(meio).join("").trim();
+    if (parte1 && parte2) return [parte1, parte2];
+  }
+
+  // Fallback: divide no meio no espaço mais próximo
+  const meio = Math.floor(text.length / 2);
+  const corte = text.indexOf(" ", meio);
+  if (corte === -1) return [text];
+  return [text.slice(0, corte).trim(), text.slice(corte).trim()];
+}
+
+// ─── Enviar texto (com quebra simulando digitação) ────────────────────────────
 export async function sendMetaMessage(
   phone: string,
   message: string,
@@ -87,15 +114,21 @@ export async function sendMetaMessage(
     return;
   }
 
-  console.log(`📤 Meta sendMessage → ${formatPhone(phone)} (${message.length} chars)`);
+  const partes = splitMessage(message);
+  console.log(`📤 Meta sendMessage → ${formatPhone(phone)} (${message.length} chars, ${partes.length} parte(s))`);
 
-  return post(`/${c.phoneNumberId}/messages`, {
-    messaging_product: "whatsapp",
-    recipient_type: "individual",
-    to: formatPhone(phone),
-    type: "text",
-    text: { body: message, preview_url: false },
-  }, c.accessToken);
+  let last: any;
+  for (let i = 0; i < partes.length; i++) {
+    if (i > 0) await new Promise(r => setTimeout(r, typingDelay(partes[i])));
+    last = await post(`/${c.phoneNumberId}/messages`, {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: formatPhone(phone),
+      type: "text",
+      text: { body: partes[i], preview_url: false },
+    }, c.accessToken);
+  }
+  return last;
 }
 
 // ─── Enviar imagem ────────────────────────────────────────────────────────────
