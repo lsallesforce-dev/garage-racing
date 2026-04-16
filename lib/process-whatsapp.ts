@@ -721,12 +721,8 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
 
       for (const fotoUrl of todasFotos) {
         try {
-          const imgResp = await fetch(fotoUrl);
-          if (imgResp.ok) {
-            const base64 = Buffer.from(await imgResp.arrayBuffer()).toString("base64");
-            await sendMetaImage(phone, base64, undefined, metaCreds);
-            fotoEnviada = true;
-          }
+          await sendMetaImage(phone, fotoUrl, undefined, metaCreds);
+          fotoEnviada = true;
         } catch (e) {
           console.warn(`⚠️ Falha ao enviar foto de ${v.marca} ${v.modelo}:`, e);
         }
