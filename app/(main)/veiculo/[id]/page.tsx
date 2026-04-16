@@ -8,6 +8,7 @@ import {
   ArrowLeft, Save, Edit2, X, Check, Video, Plus,
   ChevronDown, ChevronUp, Instagram, Download, Loader2,
 } from "lucide-react";
+import { GenerateMarketingVideoButton } from "@/components/GenerateMarketingVideoButton";
 import Link from "next/link";
 
 // ─── Opcionais: lista mestre por categoria ────────────────────────────────────
@@ -1082,6 +1083,18 @@ export default function DetalheVeiculo() {
                   </pre>
                 </div>
               )}
+
+              {/* Gerador de Vídeo IA */}
+              <div className="mt-6 pt-6 border-t border-black/10 relative z-10">
+                <p className="text-[9px] font-black uppercase tracking-widest text-gray-500 mb-3">
+                  Vídeo Editado pela IA
+                </p>
+                <GenerateMarketingVideoButton
+                  veiculoId={veiculo.id}
+                  statusInicial={veiculo.marketing_status ?? null}
+                  videoFinalUrl={veiculo.video_marketing_url ?? null}
+                />
+              </div>
             </div>
 
             {/* Leads interessados */}
