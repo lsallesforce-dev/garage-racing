@@ -18,6 +18,8 @@ export default function ListaEstoque() {
   const [repasseCapaUrl, setRepasseCapaUrl] = useState<string | null>(null);
   const [repasseLoading, setRepasseLoading] = useState(false);
   const [copiado, setCopiado] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+  const [enviado, setEnviado] = useState(false);
 
   const handleDelete = async (id: string) => {
     await supabase.from("vendas_concluidas").update({ veiculo_id: null }).eq("veiculo_id", id);
@@ -47,6 +49,7 @@ export default function ListaEstoque() {
     setRepasseCarroId(id);
     setRepasseTexto("");
     setRepasseCapaUrl(null);
+    setEnviado(false);
     setRepasseLoading(true);
     try {
       const res = await fetch("/api/veiculo/gerar-repasse", {
@@ -61,6 +64,22 @@ export default function ListaEstoque() {
       setRepasseTexto("Erro ao gerar repasse. Tente novamente.");
     } finally {
       setRepasseLoading(false);
+    }
+  };
+
+  const exportarRepasse = async () => {
+    if (!repasseCarroId || !repasseTexto) return;
+    setEnviando(true);
+    try {
+      await fetch("/api/veiculo/enviar-repasse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ veiculoId: repasseCarroId, texto: repasseTexto, capaUrl: repasseCapaUrl }),
+      });
+      setEnviado(true);
+      setTimeout(() => setEnviado(false), 3000);
+    } finally {
+      setEnviando(false);
     }
   };
 
@@ -202,16 +221,31 @@ export default function ListaEstoque() {
                 {/* Actions */}
                 <div className="px-8 pb-8 pt-4 flex gap-3">
                   <button
-                    onClick={copiarTexto}
-                    className="flex-1 flex items-center justify-center gap-2 py-4 bg-green-600 text-white font-black uppercase italic text-[10px] tracking-widest rounded-2xl hover:bg-green-700 transition-all shadow-lg shadow-green-200"
+                    onClick={exportarRepasse}
+                    disabled={enviando}
+                    className="flex-1 flex items-center justify-center gap-2 py-4 bg-green-600 text-white font-black uppercase italic text-[10px] tracking-widest rounded-2xl hover:bg-green-700 transition-all shadow-lg shadow-green-200 disabled:opacity-60"
                   >
-                    {copiado ? <><Check size={14} /> Copiado!</> : <><Copy size={14} /> Copiar Texto</>}
+                    {enviando ? (
+                      <><Loader2 size={14} className="animate-spin" /> Enviando...</>
+                    ) : enviado ? (
+                      <><Check size={14} /> Enviado pro seu WhatsApp!</>
+                    ) : (
+                      <><Share2 size={14} /> Exportar pro WhatsApp</>
+                    )}
+                  </button>
+                  <button
+                    onClick={copiarTexto}
+                    className="px-5 py-4 bg-gray-100 text-gray-600 font-black uppercase italic text-[10px] tracking-widest rounded-2xl hover:bg-gray-200 transition-all flex items-center gap-2"
+                  >
+                    {copiado ? <Check size={14} /> : <Copy size={14} />}
+                    {copiado ? "Copiado" : "Copiar"}
                   </button>
                   <button
                     onClick={() => gerarRepasse(repasseCarroId)}
-                    className="px-6 py-4 bg-gray-100 text-gray-600 font-black uppercase italic text-[10px] tracking-widest rounded-2xl hover:bg-gray-200 transition-all"
+                    className="px-4 py-4 bg-gray-100 text-gray-400 font-black uppercase italic text-[10px] tracking-widest rounded-2xl hover:bg-gray-200 transition-all"
+                    title="Gerar novamente"
                   >
-                    Gerar novamente
+                    ↺
                   </button>
                 </div>
               </>

@@ -101,13 +101,6 @@ function gerarTextoRepasse(
   linhas.push(``);
   linhas.push(`✅ Garantia somente da Documentação do Veículo`);
 
-  if (botPhone) {
-    const phoneClean = botPhone.replace(/\D/g, "");
-    linhas.push(``);
-    linhas.push(`💬 Falar com o Assistente IA:`);
-    linhas.push(`https://wa.me/${phoneClean}`);
-  }
-
   return linhas.join("\n");
 }
 
@@ -143,8 +136,8 @@ export async function POST(req: NextRequest) {
     carro.ano_modelo
   );
 
-  const texto = gerarTextoRepasse(carro, fipe, mediaWeb, botPhone);
+  const texto = gerarTextoRepasse(carro, fipe, mediaWeb, null);
   const capaUrl = carro.capa_marketing_url || carro.fotos?.[0] || null;
 
-  return NextResponse.json({ texto, capaUrl, fipe, mediaWeb });
+  return NextResponse.json({ texto, capaUrl, fipe, mediaWeb, botPhone });
 }
