@@ -20,7 +20,7 @@ export const geminiFlashFallback = genAI.getGenerativeModel(
 // para não poluir o pgvector com vetores nulos que parecem válidos.
 export async function generateEmbedding(text: string): Promise<number[] | null> {
   const model = genAI.getGenerativeModel(
-    { model: "embedding-001" },
+    { model: "text-embedding-004" },
     { apiVersion: "v1beta" }
   );
 
@@ -29,7 +29,7 @@ export async function generateEmbedding(text: string): Promise<number[] | null> 
       const result = await model.embedContent(text);
       const embedding = result.embedding.values;
       if (!embedding || embedding.length === 0) return null;
-      // Padding para 1536 dims se necessário (embedding-001 retorna 768)
+      // text-embedding-004 retorna 768 dims — padding para 1536
       if (embedding.length < 1536) {
         return [...embedding, ...new Array(1536 - embedding.length).fill(0)];
       }
