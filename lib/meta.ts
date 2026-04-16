@@ -106,7 +106,8 @@ function splitMessage(text: string): string[] {
 export async function sendMetaMessage(
   phone: string,
   message: string,
-  creds?: Partial<MetaCreds>
+  creds?: Partial<MetaCreds>,
+  options?: { split?: boolean }
 ): Promise<any> {
   const c = resolveCreds(creds);
   if (!c) {
@@ -114,7 +115,7 @@ export async function sendMetaMessage(
     return;
   }
 
-  const partes = splitMessage(message);
+  const partes = options?.split === false ? [message] : splitMessage(message);
   console.log(`📤 Meta sendMessage → ${formatPhone(phone)} (${message.length} chars, ${partes.length} parte(s))`);
 
   let last: any;

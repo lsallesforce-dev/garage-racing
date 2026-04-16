@@ -59,8 +59,8 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 2. Envia texto do repasse
-  await sendMetaMessage(destino, texto, creds);
+  // 2. Envia texto do repasse (sem quebrar — deve chegar como mensagem única)
+  await sendMetaMessage(destino, texto, creds, { split: false });
 
   // 3. Envia botão CTA "Falar com Vendedor"
   if (ctaUrl) {
