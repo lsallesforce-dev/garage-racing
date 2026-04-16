@@ -577,45 +577,6 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   // Usa o WhatsApp do gerente configurado no painel; fallback para variável de ambiente
   const gerentePhone = garageConfig?.whatsapp || process.env.NEXT_PUBLIC_ZAPI_PHONE;
 
-  // Lead Quente → alerta gerente (fire-and-forget)
-  const gatilhosQuente = [
-    // Negociação de preço
-    "desconto", "à vista", "a vista", "menor valor", "faz quanto",
-    "tem como baixar", "última proposta", "última oferta", "fecha hoje",
-    "quanto de entrada", "aceita troca", "quero fechar", "vou comprar",
-    "tira", "tirar", "abaixa", "baixa o preço", "faz por",
-    // Intenção de pagamento
-    "faço o pagamento", "fazer o pagamento", "vou pagar", "pagar hoje",
-    "dar entrada", "dou entrada", "entrada de", "financiamento",
-    // Intenção de visita / fechar negócio
-    "vou aí", "vou até", "posso ir", "quero ir", "vou visitar",
-    "quando posso", "que horas", "endereço", "como chego", "onde fica",
-    "test drive", "quero ver pessoalmente", "ver o carro",
-  ];
-  const isLeadQuente = gatilhosQuente.some((g) => mensagemLower.includes(g));
-
-  if (isLeadQuente && gerentePhone) {
-    const veiculoAlerta = topVeiculos[0]
-      ? `${topVeiculos[0].marca} ${topVeiculos[0].modelo}`
-      : "veículo";
-    const nomeCliente = lead?.nome || phone;
-    const clientePhone = phone.replace(/\D/g, "");
-
-    // IA continua ativa — gerente atende em paralelo pelo WhatsApp
-
-    // Tenta botão CTA; se Meta rejeitar (app não publicado etc.), envia texto com link
-    const msgBody = `🔥 *LEAD QUENTE — ${garageConfig?.nome_empresa || "MINHA GARAGEM"}*\n\n👤 Cliente: ${nomeCliente}\n🚗 Interesse: ${veiculoAlerta}\n💬 "${userMessage.slice(0, 100)}"\n\n⚡ IA pausada.`;
-    const waLink = `https://wa.me/${clientePhone}`;
-    console.log(`🔥 Lead quente detectado — enviando alerta para gerente ${gerentePhone}`);
-    sendMetaCtaButton(gerentePhone, msgBody, "Abrir Conversa", waLink, metaCreds)
-      .then(() => console.log("✅ CTA button enviado ao gerente"))
-      .catch(async (err: any) => {
-        console.warn("⚠️ CTA button falhou, enviando texto simples:", err?.message?.slice(0, 200));
-        await sendMetaMessage(gerentePhone, `${msgBody}\n\n${waLink}`, metaCreds)
-          .then(() => console.log("✅ Fallback texto+link enviado ao gerente"))
-          .catch((e: any) => console.error("❌ Fallback também falhou:", e?.message?.slice(0, 100)));
-      });
-  }
 
   // Pós-venda → stand-by automático
   const gatilhosProblema = [
