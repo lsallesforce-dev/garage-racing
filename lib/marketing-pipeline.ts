@@ -89,21 +89,23 @@ async function criarRender(params: {
   const titulo = `${veiculo.marca} ${veiculo.modelo} ${veiculo.ano_modelo}`.toUpperCase();
   const subtitulo = `${veiculo.versao || ""} • ${veiculo.quilometragem_estimada?.toLocaleString("pt-BR") ?? "—"} KM`.trim();
 
-  const body = {
-    template_id: CREATOMATE_TEMPLATE_ID,
-    // Creatomate chama o webhook quando o render termina
-    webhook_url: webhookUrl,
-    modifications: [
-      { name: "video-principal", source: videoUrl },
-      { name: "audio-locucao",   source: audioUrl },
-      { name: "texto-titulo",    text: titulo },
-      { name: "texto-subtitulo", text: subtitulo },
-      { name: "texto-preco",     text: preco },
-      ...(logoUrl ? [{ name: "logo-loja", source: logoUrl }] : []),
-    ],
+  // Slots do template "Quick Promo" padrão do Creatomate
+  const modifications: Record<string, string> = {
+    "Video.source":  videoUrl,
+    "Music.source":  audioUrl,                                    // áudio/locução
+    "Text-1.text":   titulo,                                      // ex: TOYOTA COROLLA 2016
+    "Text-2.text":   `${subtitulo}\n[size 130%]${preco}[/size]`, // ex: ALTIS 2.0 • 159.409 KM \n R$ 79.900
   };
 
-  const res = await fetch("https://api.creatomate.com/v1/renders", {
+  if (logoUrl) modifications["Logo.source"] = logoUrl;
+
+  const body = {
+    template_id: CREATOMATE_TEMPLATE_ID,
+    webhook_url: webhookUrl,
+    modifications,
+  };
+
+  const res = await fetch("https://api.creatomate.com/v2/renders", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${CREATOMATE_API_KEY}`,
