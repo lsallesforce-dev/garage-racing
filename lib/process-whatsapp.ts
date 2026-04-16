@@ -70,18 +70,14 @@ function buildBriefingVendedor(
   resumo: string,
   historico: string,
   temperatura: Temperatura,
-  webhookToken?: string,
   nomeEmpresa = "nossa loja"
-): { texto: string; url: string; titulo: string; descricao: string } {
+): { texto: string; waLink: string } {
   const emoji = temperatura === "QUENTE" ? "🔥" : "⚠️";
   const linhasHistorico = historico
     .split("\n")
     .slice(-6)
     .map((l) => `  ${l}`)
     .join("\n");
-
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://autozap.digital";
-  const assumirLink = `${appUrl}/api/assumir?wa_id=${phone}${webhookToken ? `&token=${webhookToken}` : ""}`;
 
   const texto =
     `${emoji} *LEAD ${temperatura} — ${nomeEmpresa.toUpperCase()}*\n\n` +
@@ -92,9 +88,7 @@ function buildBriefingVendedor(
 
   return {
     texto,
-    url: assumirLink,
-    titulo: `${emoji} Toque para parar a IA e falar com o cliente`,
-    descricao: `${carro} · ${resumo?.slice(0, 80) || "Lead quente"}`,
+    waLink: `https://wa.me/${phone.replace(/\D/g, "")}`,
   };
 }
 
@@ -1002,18 +996,17 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
         resumo,
         historicoFormatado,
         temperatura,
-        garageConfig?.webhook_token,
         nomeEmpresa
       );
-      await sendMetaPreview(
-        destinoWa,
-        briefing.texto,
-        briefing.url,
-        briefing.titulo,
-        briefing.descricao,
-        undefined,
-        metaCreds
-      );
+      console.log(`🔥 Lead ${temperatura} — enviando alerta para ${destinoWa}`);
+      sendMetaCtaButton(destinoWa, briefing.texto, "Abrir Conversa", briefing.waLink, metaCreds)
+        .then(() => console.log("✅ CTA button enviado ao vendedor"))
+        .catch(async (err: any) => {
+          console.warn("⚠️ CTA button falhou, enviando texto simples:", err?.message?.slice(0, 200));
+          await sendMetaMessage(destinoWa, `${briefing.texto}\n\n${briefing.waLink}`, metaCreds)
+            .then(() => console.log("✅ Fallback texto+link enviado ao vendedor"))
+            .catch((e: any) => console.error("❌ Fallback também falhou:", e?.message?.slice(0, 100)));
+        });
     }
   }
 
