@@ -25,7 +25,8 @@ function score(a: string, b: string): number {
   if (a.startsWith(b) || b.startsWith(a)) return 0.9;
   const wordsA = new Set(a.split(" "));
   const wordsB = b.split(" ");
-  const matches = wordsB.filter(w => w.length > 1 && wordsA.has(w)).length;
+  // inclui dígitos mesmo sendo 1 char (ex: "2" e "0" de "2.0") — crítico pro match de motorização
+  const matches = wordsB.filter(w => wordsA.has(w) && (w.length > 1 || /^\d+$/.test(w))).length;
   return matches / Math.max(wordsA.size, wordsB.length);
 }
 
