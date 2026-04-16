@@ -4,13 +4,20 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import { useUserRole } from "@/components/SidebarWrapper";
-import { Edit3, Plus, Car, Zap, Search, ArrowRight, Trash2 } from "lucide-react";
+import { Edit3, Plus, Car, Zap, Search, ArrowRight, Trash2, Share2, Copy, Check, X, Loader2 } from "lucide-react";
 
 export default function ListaEstoque() {
   const { effectiveUserId, isVendedor } = useUserRole();
   const [carros, setCarros] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [confirmandoId, setConfirmandoId] = useState<string | null>(null);
+
+  // Repasse state
+  const [repasseCarroId, setRepasseCarroId] = useState<string | null>(null);
+  const [repasseTexto, setRepasseTexto] = useState<string>("");
+  const [repasseCapaUrl, setRepasseCapaUrl] = useState<string | null>(null);
+  const [repasseLoading, setRepasseLoading] = useState(false);
+  const [copiado, setCopiado] = useState(false);
 
   const handleDelete = async (id: string) => {
     await supabase.from("vendas_concluidas").update({ veiculo_id: null }).eq("veiculo_id", id);
@@ -35,6 +42,34 @@ export default function ListaEstoque() {
     };
     buscarEstoque();
   }, [effectiveUserId]);
+
+  const gerarRepasse = async (id: string) => {
+    setRepasseCarroId(id);
+    setRepasseTexto("");
+    setRepasseCapaUrl(null);
+    setRepasseLoading(true);
+    try {
+      const res = await fetch("/api/veiculo/gerar-repasse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ veiculoId: id }),
+      });
+      const data = await res.json();
+      setRepasseTexto(data.texto ?? "");
+      setRepasseCapaUrl(data.capaUrl ?? null);
+    } catch {
+      setRepasseTexto("Erro ao gerar repasse. Tente novamente.");
+    } finally {
+      setRepasseLoading(false);
+    }
+  };
+
+  const copiarTexto = async () => {
+    if (!repasseTexto) return;
+    await navigator.clipboard.writeText(repasseTexto);
+    setCopiado(true);
+    setTimeout(() => setCopiado(false), 2000);
+  };
 
   return (
     <div className="p-10 bg-[#f4f4f2] min-h-screen font-sans overflow-y-auto w-full">
@@ -100,6 +135,12 @@ export default function ListaEstoque() {
                             <Trash2 size={16} />
                           </button>
                         )}
+                        <button
+                            onClick={() => gerarRepasse(carro.id)}
+                            className="flex items-center gap-2 px-6 py-4 bg-green-600 text-white text-[10px] font-black uppercase italic rounded-2xl hover:bg-green-700 transition-all tracking-widest shadow-lg shadow-green-200"
+                        >
+                            <Share2 size={14} /> Repasse
+                        </button>
                         <Link
                             href={`/veiculo/${carro.id}`}
                             className="flex items-center gap-2 px-8 py-4 bg-slate-900 text-white text-[10px] font-black uppercase italic rounded-2xl hover:bg-red-600 transition-all tracking-widest shadow-lg shadow-slate-200"
@@ -118,6 +159,66 @@ export default function ListaEstoque() {
             )}
         </div>
       </div>
+
+      {/* Modal Repasse */}
+      {repasseCarroId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh]">
+            {/* Header */}
+            <div className="flex items-center justify-between px-8 pt-8 pb-4">
+              <div>
+                <h2 className="text-xl font-black uppercase italic tracking-tight text-gray-900">Anúncio de Repasse</h2>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mt-0.5">Copie e cole no WhatsApp</p>
+              </div>
+              <button
+                onClick={() => { setRepasseCarroId(null); setRepasseTexto(""); setRepasseCapaUrl(null); }}
+                className="p-2 rounded-xl hover:bg-gray-100 transition-all text-gray-400 hover:text-gray-700"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {repasseLoading ? (
+              <div className="flex-1 flex flex-col items-center justify-center gap-4 py-16">
+                <Loader2 size={32} className="animate-spin text-green-600" />
+                <p className="text-[11px] font-black uppercase tracking-widest text-gray-400">Buscando FIPE e média web...</p>
+              </div>
+            ) : (
+              <>
+                {/* Capa */}
+                {repasseCapaUrl && (
+                  <div className="px-8 pb-4">
+                    <img src={repasseCapaUrl} alt="Capa" className="w-full h-48 object-cover rounded-2xl" />
+                  </div>
+                )}
+
+                {/* Texto */}
+                <div className="flex-1 overflow-y-auto px-8 pb-4">
+                  <pre className="whitespace-pre-wrap font-sans text-sm text-gray-800 bg-gray-50 rounded-2xl p-5 leading-relaxed border border-gray-100">
+                    {repasseTexto}
+                  </pre>
+                </div>
+
+                {/* Actions */}
+                <div className="px-8 pb-8 pt-4 flex gap-3">
+                  <button
+                    onClick={copiarTexto}
+                    className="flex-1 flex items-center justify-center gap-2 py-4 bg-green-600 text-white font-black uppercase italic text-[10px] tracking-widest rounded-2xl hover:bg-green-700 transition-all shadow-lg shadow-green-200"
+                  >
+                    {copiado ? <><Check size={14} /> Copiado!</> : <><Copy size={14} /> Copiar Texto</>}
+                  </button>
+                  <button
+                    onClick={() => gerarRepasse(repasseCarroId)}
+                    className="px-6 py-4 bg-gray-100 text-gray-600 font-black uppercase italic text-[10px] tracking-widest rounded-2xl hover:bg-gray-200 transition-all"
+                  >
+                    Gerar novamente
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
