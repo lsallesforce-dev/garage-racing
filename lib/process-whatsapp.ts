@@ -5,7 +5,7 @@
 import { createDecipheriv, hkdfSync } from "node:crypto";
 import { geminiFlashSales, geminiFlashFallback } from "@/lib/gemini";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { sendMetaMessage, sendMetaImage, sendMetaVideo, sendMetaPreview, markMetaRead, typingDelay } from "@/lib/meta";
+import { sendMetaMessage, sendMetaImage, sendMetaVideo, sendMetaPreview, sendMetaCtaButton, markMetaRead, typingDelay } from "@/lib/meta";
 import { buscarDadosTransbordo, gerarRelatorioPista } from "@/lib/leads";
 import { hybridVehicleSearch, findVehicleForMedia } from "@/lib/hybrid-search";
 import { getCachedHistory, cacheHistory, invalidateHistory } from "@/lib/redis";
@@ -595,14 +595,13 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
     const veiculoAlerta = topVeiculos[0]
       ? `${topVeiculos[0].marca} ${topVeiculos[0].modelo}`
       : "veículo";
-    const _assumirUrl = `${process.env.NEXT_PUBLIC_APP_URL || "https://autozap.digital"}/api/assumir?wa_id=${phone}${garageConfig?.webhook_token ? `&token=${garageConfig.webhook_token}` : ""}`;
-    sendMetaPreview(
+    const assumirUrl = `${process.env.NEXT_PUBLIC_APP_URL || "https://autozap.digital"}/api/assumir?wa_id=${phone}&uid=${tenantUserId}`;
+    const nomeCliente = lead?.nome || phone;
+    sendMetaCtaButton(
       gerentePhone,
-      `🚨 *LEAD QUENTE NA MESA!*\n\n👤 ${lead?.nome || phone}\n🚗 ${veiculoAlerta}\n💬 "${userMessage}"`,
-      _assumirUrl,
-      `🔥 Toque para parar a IA e falar com o cliente`,
-      `${veiculoAlerta} · ${lead?.nome || phone}`,
-      undefined,
+      `🔥 *LEAD QUENTE — ${garageConfig?.nome_empresa || "MINHA GARAGEM"}*\n\n👤 Cliente: ${nomeCliente}\n🚗 Interesse: ${veiculoAlerta}\n💬 "${userMessage.slice(0, 100)}"`,
+      "Assumir Conversa",
+      assumirUrl,
       metaCreds
     ).catch(() => {});
   }
@@ -622,14 +621,12 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
       .eq("id", lead.id);
 
     if (gerentePhone) {
-      const _posvUrl = `${process.env.NEXT_PUBLIC_APP_URL || "https://autozap.digital"}/api/assumir?wa_id=${phone}${garageConfig?.webhook_token ? `&token=${garageConfig.webhook_token}` : ""}`;
-      sendMetaPreview(
+      const posvUrl = `${process.env.NEXT_PUBLIC_APP_URL || "https://autozap.digital"}/api/assumir?wa_id=${phone}&uid=${tenantUserId}`;
+      sendMetaCtaButton(
         gerentePhone,
-        `🔴 *ALERTA PÓS-VENDA!*\n\n👤 ${lead.nome || phone}\n💬 "${userMessage}"\n⚠️ Agente em stand-by automaticamente.`,
-        _posvUrl,
-        `🔴 Toque para falar com o cliente`,
-        `Problema relatado · ${lead.nome || phone}`,
-        undefined,
+        `🔴 *ALERTA PÓS-VENDA!*\n\n👤 ${lead.nome || phone}\n💬 "${userMessage.slice(0, 100)}"\n⚠️ Agente em stand-by automaticamente.`,
+        "Falar com Cliente",
+        posvUrl,
         metaCreds
       ).catch(() => {});
     }

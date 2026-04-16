@@ -173,3 +173,36 @@ export async function sendMetaPreview(
     text: { body: message, preview_url: true },
   }, c.accessToken);
 }
+
+// ─── Enviar mensagem com botão CTA (link) ─────────────────────────────────────
+export async function sendMetaCtaButton(
+  phone: string,
+  body: string,
+  buttonText: string,
+  buttonUrl: string,
+  creds?: Partial<MetaCreds>
+): Promise<any> {
+  const c = resolveCreds(creds);
+  if (!c) {
+    console.warn("⚠️ Meta credentials missing — CTA não enviado");
+    return;
+  }
+
+  return post(`/${c.phoneNumberId}/messages`, {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to: formatPhone(phone),
+    type: "interactive",
+    interactive: {
+      type: "cta_url",
+      body: { text: body },
+      action: {
+        name: "cta_url",
+        parameters: {
+          display_text: buttonText,
+          url: buttonUrl,
+        },
+      },
+    },
+  }, c.accessToken);
+}

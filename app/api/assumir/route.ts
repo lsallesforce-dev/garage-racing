@@ -11,26 +11,31 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const waId  = searchParams.get("wa_id");
-  const token = searchParams.get("token");
+  const uid   = searchParams.get("uid");   // user_id direto (Meta)
+  const token = searchParams.get("token"); // webhook_token legado (Avisa)
 
   if (!waId) return new NextResponse("wa_id obrigatório", { status: 400 });
-  if (!token) return new NextResponse("Token obrigatório", { status: 401 });
+  if (!uid && !token) return new NextResponse("Identificação obrigatória", { status: 401 });
 
-  // Valida o token e identifica o tenant
-  const { data: cfg } = await supabaseAdmin
-    .from("config_garage")
-    .select("user_id")
-    .eq("webhook_token", token)
-    .maybeSingle();
+  let tenantUserId: string | null = uid ?? null;
 
-  if (!cfg) return new NextResponse("Token inválido", { status: 403 });
+  // Legado: resolve user_id pelo webhook_token
+  if (!tenantUserId && token) {
+    const { data: cfg } = await supabaseAdmin
+      .from("config_garage")
+      .select("user_id")
+      .eq("webhook_token", token)
+      .maybeSingle();
+    if (!cfg) return new NextResponse("Token inválido", { status: 403 });
+    tenantUserId = cfg.user_id;
+  }
 
   // Para a IA apenas para leads deste tenant
   await supabaseAdmin
     .from("leads")
     .update({ em_atendimento_humano: true })
     .eq("wa_id", waId)
-    .eq("user_id", cfg.user_id);
+    .eq("user_id", tenantUserId);
 
   const phone = waId.replace(/\D/g, "");
 
