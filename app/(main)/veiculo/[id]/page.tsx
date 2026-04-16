@@ -392,6 +392,7 @@ export default function DetalheVeiculo() {
         parcelas: veiculo.parcelas,
         motor: veiculo.motor,
         combustivel: veiculo.combustivel,
+        cambio: veiculo.cambio,
         tipo_banco: veiculo.tipo_banco,
         estado_pneus: veiculo.estado_pneus,
         segundo_dono: veiculo.segundo_dono,
@@ -1012,12 +1013,34 @@ export default function DetalheVeiculo() {
               {/* Combustível + Câmbio */}
               <div className="grid grid-cols-2 gap-4 pt-2">
                 <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
-                  <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-1">Combustível</p>
-                  <p className="text-xs font-black text-gray-900 uppercase">{veiculo.combustivel || "—"}</p>
+                  <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-2">Combustível</p>
+                  <select
+                    value={veiculo.combustivel || ""}
+                    onChange={(e) => setVeiculo({ ...veiculo, combustivel: e.target.value || null })}
+                    className="w-full bg-transparent text-xs font-black text-gray-900 uppercase outline-none cursor-pointer"
+                  >
+                    <option value="">—</option>
+                    <option value="Flex">Flex</option>
+                    <option value="Gasolina">Gasolina</option>
+                    <option value="Diesel">Diesel</option>
+                    <option value="Elétrico">Elétrico</option>
+                    <option value="Híbrido">Híbrido</option>
+                    <option value="GNV">GNV</option>
+                  </select>
                 </div>
                 <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
-                  <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-1">Câmbio</p>
-                  <p className="text-xs font-black text-gray-900 uppercase">{veiculo.cambio || "Automático"}</p>
+                  <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-2">Câmbio</p>
+                  <select
+                    value={veiculo.cambio || ""}
+                    onChange={(e) => setVeiculo({ ...veiculo, cambio: e.target.value || null })}
+                    className="w-full bg-transparent text-xs font-black text-gray-900 uppercase outline-none cursor-pointer"
+                  >
+                    <option value="">—</option>
+                    <option value="Manual">Manual</option>
+                    <option value="Automático">Automático</option>
+                    <option value="CVT">CVT</option>
+                    <option value="Semi-automático">Semi-automático</option>
+                  </select>
                 </div>
               </div>
             </div>
