@@ -20,6 +20,7 @@ export default function ListaEstoque() {
   const [copiado, setCopiado] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [enviado, setEnviado] = useState(false);
+  const [repasseTipo, setRepasseTipo] = useState<"repasse" | "promocao">("repasse");
 
   const handleDelete = async (id: string) => {
     await supabase.from("vendas_concluidas").update({ veiculo_id: null }).eq("veiculo_id", id);
@@ -46,6 +47,7 @@ export default function ListaEstoque() {
   }, [effectiveUserId]);
 
   const gerarRepasse = async (id: string, tipo: "repasse" | "promocao" = "repasse") => {
+    setRepasseTipo(tipo);
     setRepasseCarroId(id);
     setRepasseTexto("");
     setRepasseCapaUrl(null);
@@ -192,7 +194,9 @@ export default function ListaEstoque() {
             {/* Header */}
             <div className="flex items-center justify-between px-8 pt-8 pb-4">
               <div>
-                <h2 className="text-xl font-black uppercase italic tracking-tight text-gray-900">Anúncio de Repasse</h2>
+                <h2 className="text-xl font-black uppercase italic tracking-tight text-gray-900">
+                  {repasseTipo === "repasse" ? "Anúncio de Repasse" : "Envio Direto"}
+                </h2>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mt-0.5">Copie e cole no WhatsApp</p>
               </div>
               <button
