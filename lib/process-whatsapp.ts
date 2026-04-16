@@ -585,9 +585,18 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
 
   // Lead Quente → alerta gerente (fire-and-forget)
   const gatilhosQuente = [
+    // Negociação de preço
     "desconto", "à vista", "a vista", "menor valor", "faz quanto",
     "tem como baixar", "última proposta", "última oferta", "fecha hoje",
     "quanto de entrada", "aceita troca", "quero fechar", "vou comprar",
+    "tira", "tirar", "abaixa", "baixa o preço", "faz por",
+    // Intenção de pagamento
+    "faço o pagamento", "fazer o pagamento", "vou pagar", "pagar hoje",
+    "dar entrada", "dou entrada", "entrada de", "financiamento",
+    // Intenção de visita / fechar negócio
+    "vou aí", "vou até", "posso ir", "quero ir", "vou visitar",
+    "quando posso", "que horas", "endereço", "como chego", "onde fica",
+    "test drive", "quero ver pessoalmente", "ver o carro",
   ];
   const isLeadQuente = gatilhosQuente.some((g) => mensagemLower.includes(g));
 
@@ -607,14 +616,14 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
         .catch(() => {});
     }
 
-    // Botão com wa.me — o WhatsApp intercepta e abre a conversa direto no app
-    sendMetaCtaButton(
-      gerentePhone,
-      `🔥 *LEAD QUENTE — ${garageConfig?.nome_empresa || "MINHA GARAGEM"}*\n\n👤 Cliente: ${nomeCliente}\n🚗 Interesse: ${veiculoAlerta}\n💬 "${userMessage.slice(0, 100)}"\n\n⚡ IA pausada. Toque para assumir:`,
-      "Abrir Conversa",
-      `https://wa.me/${clientePhone}`,
-      metaCreds
-    ).catch(() => {});
+    // Tenta botão CTA; se Meta rejeitar (app não publicado etc.), envia texto com link
+    const msgBody = `🔥 *LEAD QUENTE — ${garageConfig?.nome_empresa || "MINHA GARAGEM"}*\n\n👤 Cliente: ${nomeCliente}\n🚗 Interesse: ${veiculoAlerta}\n💬 "${userMessage.slice(0, 100)}"\n\n⚡ IA pausada.`;
+    const waLink = `https://wa.me/${clientePhone}`;
+    sendMetaCtaButton(gerentePhone, msgBody, "Abrir Conversa", waLink, metaCreds)
+      .catch(async (err: any) => {
+        console.warn("⚠️ CTA button falhou, enviando texto simples:", err?.message?.slice(0, 100));
+        await sendMetaMessage(gerentePhone, `${msgBody}\n\n${waLink}`, metaCreds).catch(() => {});
+      });
   }
 
   // Pós-venda → stand-by automático
@@ -633,13 +642,13 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
 
     if (gerentePhone) {
       const clientePhone = phone.replace(/\D/g, "");
-      sendMetaCtaButton(
-        gerentePhone,
-        `🔴 *ALERTA PÓS-VENDA!*\n\n👤 ${lead.nome || phone}\n💬 "${userMessage.slice(0, 100)}"\n⚠️ Agente em stand-by automaticamente.`,
-        "Abrir Conversa",
-        `https://wa.me/${clientePhone}`,
-        metaCreds
-      ).catch(() => {});
+      const posvBody = `🔴 *ALERTA PÓS-VENDA!*\n\n👤 ${lead.nome || phone}\n💬 "${userMessage.slice(0, 100)}"\n⚠️ Agente em stand-by automaticamente.`;
+      const posvLink = `https://wa.me/${clientePhone}`;
+      sendMetaCtaButton(gerentePhone, posvBody, "Abrir Conversa", posvLink, metaCreds)
+        .catch(async (err: any) => {
+          console.warn("⚠️ CTA button (pós-venda) falhou:", err?.message?.slice(0, 100));
+          await sendMetaMessage(gerentePhone, `${posvBody}\n\n${posvLink}`, metaCreds).catch(() => {});
+        });
     }
   }
 
