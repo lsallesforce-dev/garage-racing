@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
     try {
       await sendMetaCtaButton(
         destino,
-        "💬 Entre em contato com o vendedor pelo link abaixo:",
+        "💬",
         "Falar com Vendedor",
         ctaUrl,
         creds
