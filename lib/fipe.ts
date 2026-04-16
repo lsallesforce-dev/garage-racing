@@ -41,6 +41,16 @@ function bestMatch(list: FipeItem[], query: string): FipeItem | null {
   return bestScore >= 0.3 ? best : null;
 }
 
+// Retorna todos os candidatos ordenados por score decrescente
+function topMatches(list: FipeItem[], query: string, minScore = 0.25): FipeItem[] {
+  const q = norm(query);
+  return list
+    .map(item => ({ item, s: score(norm(item.nome), q) }))
+    .filter(x => x.s >= minScore)
+    .sort((a, b) => b.s - a.s)
+    .map(x => x.item);
+}
+
 async function fetchJson(url: string): Promise<any> {
   const res = await fetch(url, { next: { revalidate: 86400 } } as any);
   if (!res.ok) throw new Error(`FIPE HTTP ${res.status}: ${url}`);
@@ -63,33 +73,49 @@ export async function buscarFipe(
       return null;
     }
 
-    // 2. Modelos — tenta modelo+versão, depois só modelo
+    // 2. Modelos — pega top candidatos e escolhe o primeiro que tiver o ano disponível
     const modelosRes = await fetchJson(`${BASE}/carros/marcas/${marcaMatch.codigo}/modelos`);
     const modelos: FipeItem[] = modelosRes.modelos ?? modelosRes;
-    const modeloMatch =
-      bestMatch(modelos, `${modelo} ${versao}`) ??
-      bestMatch(modelos, modelo);
-    if (!modeloMatch) {
+
+    const candidatos = topMatches(modelos, `${modelo} ${versao}`).length
+      ? topMatches(modelos, `${modelo} ${versao}`)
+      : topMatches(modelos, modelo);
+
+    if (!candidatos.length) {
       console.warn(`⚠️ FIPE: modelo não encontrado para "${modelo} ${versao}"`);
       return null;
     }
-    console.log(`🔍 FIPE modelo encontrado: "${modeloMatch.nome}" (código ${modeloMatch.codigo})`);
-
-    // 3. Anos — filtra pelo ano_modelo
-    const anos: FipeItem[] = await fetchJson(
-      `${BASE}/carros/marcas/${marcaMatch.codigo}/modelos/${modeloMatch.codigo}/anos`
-    );
-    console.log(`🔍 FIPE anos disponíveis para "${modeloMatch.nome}":`, anos.map(a => a.codigo).join(", "));
 
     const anoStr = String(anoModelo);
-    const anoMatch =
-      anos.find(a => a.codigo === `${anoStr}-3`) ??   // flex
-      anos.find(a => a.codigo === `${anoStr}-1`) ??   // gasolina
-      anos.find(a => a.codigo === `${anoStr}-2`) ??   // álcool
-      anos.find(a => a.nome.startsWith(anoStr)) ??    // "2016 Flex" etc
-      anos.find(a => a.codigo.startsWith(anoStr));    // fallback pelo código
-    if (!anoMatch) {
-      console.warn(`⚠️ FIPE: ano ${anoModelo} não encontrado. Anos disponíveis: ${anos.map(a => a.nome).join(", ")}`);
+
+    function encontrarAno(anos: FipeItem[]): FipeItem | undefined {
+      return (
+        anos.find(a => a.codigo === `${anoStr}-3`) ??
+        anos.find(a => a.codigo === `${anoStr}-1`) ??
+        anos.find(a => a.codigo === `${anoStr}-2`) ??
+        anos.find(a => a.nome.startsWith(anoStr)) ??
+        anos.find(a => a.codigo.startsWith(anoStr))
+      );
+    }
+
+    let modeloMatch: FipeItem | null = null;
+    let anoMatch: FipeItem | undefined;
+
+    for (const candidato of candidatos.slice(0, 6)) {
+      const anos: FipeItem[] = await fetchJson(
+        `${BASE}/carros/marcas/${marcaMatch.codigo}/modelos/${candidato.codigo}/anos`
+      );
+      const found = encontrarAno(anos);
+      if (found) {
+        modeloMatch = candidato;
+        anoMatch = found;
+        console.log(`✅ FIPE modelo+ano: "${candidato.nome}" → ${found.nome}`);
+        break;
+      }
+    }
+
+    if (!modeloMatch || !anoMatch) {
+      console.warn(`⚠️ FIPE: nenhum candidato tem o ano ${anoModelo} para "${modelo} ${versao}"`);
       return null;
     }
 
