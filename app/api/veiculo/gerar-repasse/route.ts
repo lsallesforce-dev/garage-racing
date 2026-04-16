@@ -1,28 +1,27 @@
 // app/api/veiculo/gerar-repasse/route.ts
 //
 // Gera o texto de anúncio de repasse formatado para WhatsApp.
-// Busca preço FIPE e média web via Gemini com Google Search Grounding.
+// FIPE: API oficial parallelum (gratuita, valor exato da tabela).
+// Média web: Gemini 2.5 Flash com Google Search Grounding.
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireAuth } from "@/lib/api-auth";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { buscarFipe } from "@/lib/fipe";
 
 export const maxDuration = 60;
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
-async function buscarPrecos(marca: string, modelo: string, versao: string, anoModelo: number): Promise<{
-  fipe: string | null;
-  mediaWeb: string | null;
-}> {
+async function buscarMediaWeb(marca: string, modelo: string, versao: string, anoModelo: number): Promise<string | null> {
   try {
     const model = genAI.getGenerativeModel(
       { model: "gemini-2.5-flash", tools: [{ googleSearch: {} } as any] },
       { apiVersion: "v1beta" }
     );
 
-    const query = `Qual o preço tabela FIPE e média de venda na web de um ${marca} ${modelo} ${versao} ${anoModelo} no Brasil em ${new Date().getFullYear()}? Responda APENAS com JSON: {"fipe": "R$ XX.XXX", "mediaWeb": "R$ XX.XXX"}`;
+    const query = `Qual a média de preço de venda na web (OLX, iCarros, Webmotors) de um ${marca} ${modelo} ${versao} ${anoModelo} no Brasil em ${new Date().getFullYear()}? Responda APENAS com JSON: {"mediaWeb": "R$ XX.XXX"}`;
 
     const result = await model.generateContent(query);
     const text = result.response.text();
@@ -30,15 +29,12 @@ async function buscarPrecos(marca: string, modelo: string, versao: string, anoMo
     const match = text.match(/\{[^}]+\}/);
     if (match) {
       const parsed = JSON.parse(match[0]);
-      return {
-        fipe: parsed.fipe ?? null,
-        mediaWeb: parsed.mediaWeb ?? null,
-      };
+      return parsed.mediaWeb ?? null;
     }
   } catch (e) {
-    console.warn("⚠️ Busca de preços falhou:", e);
+    console.warn("⚠️ Busca de média web falhou:", e);
   }
-  return { fipe: null, mediaWeb: null };
+  return null;
 }
 
 function formatarMoeda(valor: number): string {
@@ -49,7 +45,6 @@ function gerarTextoRepasse(
   carro: any,
   fipe: string | null,
   mediaWeb: string | null,
-  botPhone: string | null
 ): string {
   const cidade = carro.local || "Interior";
   const cambio = carro.cambio || "";
@@ -119,7 +114,6 @@ export async function POST(req: NextRequest) {
 
   if (!carro) return NextResponse.json({ error: "Veículo não encontrado" }, { status: 404 });
 
-  // Busca número do bot (whatsapp do agente ou gerente)
   const { data: cfg } = await supabaseAdmin
     .from("config_garage")
     .select("whatsapp_agente, whatsapp")
@@ -128,15 +122,13 @@ export async function POST(req: NextRequest) {
 
   const botPhone = cfg?.whatsapp_agente || cfg?.whatsapp || null;
 
-  // Busca FIPE e média web via Gemini Search
-  const { fipe, mediaWeb } = await buscarPrecos(
-    carro.marca,
-    carro.modelo,
-    carro.versao || "",
-    carro.ano_modelo
-  );
+  // Busca em paralelo: FIPE oficial + média web via Gemini
+  const [fipe, mediaWeb] = await Promise.all([
+    buscarFipe(carro.marca, carro.modelo, carro.versao || "", carro.ano_modelo),
+    buscarMediaWeb(carro.marca, carro.modelo, carro.versao || "", carro.ano_modelo),
+  ]);
 
-  const texto = gerarTextoRepasse(carro, fipe, mediaWeb, null);
+  const texto = gerarTextoRepasse(carro, fipe, mediaWeb);
   const capaUrl = carro.capa_marketing_url || carro.fotos?.[0] || null;
 
   return NextResponse.json({ texto, capaUrl, fipe, mediaWeb, botPhone });
