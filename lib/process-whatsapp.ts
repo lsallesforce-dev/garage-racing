@@ -483,6 +483,9 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
     return;
   }
 
+  // Flag local: evita que a IA responda na mesma mensagem que aciona o stand-by
+  let assumidoPorHumano = false;
+
   // ── 5. Config da Garagem ────────────────────────────────────────────────────
   const nomeEmpresa = garageConfig?.nome_empresa || "nossa loja";
   const nomeAgente = garageConfig?.nome_agente || "Assistente";
@@ -602,6 +605,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
     const clientePhone = phone.replace(/\D/g, "");
 
     // Para a IA automaticamente — gerente assume a partir daqui
+    assumidoPorHumano = true;
     if (lead) {
       supabaseAdmin
         .from("leads")
@@ -1011,6 +1015,10 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   }
 
   // ── 15. Enviar resposta ao cliente ────────────────────────────────────────────
+  if (assumidoPorHumano) {
+    console.log(`🔇 Resposta suprimida — gerente assumiu na mesma mensagem`);
+    return;
+  }
   await new Promise(r => setTimeout(r, typingDelay(aiResponse)));
   await sendMetaMessage(phone, aiResponse, metaCreds);
   console.log(`✅ Mensagem processada para ${phone} | temperatura: ${temperatura}`);
