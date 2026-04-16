@@ -118,9 +118,9 @@ export function GenerateMarketingVideoButton({ veiculoId, statusInicial, videoFi
   return (
     <button
       onClick={handleGenerate}
-      className="w-full py-4 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-black uppercase italic text-[10px] tracking-widest rounded-2xl hover:opacity-90 transition-all shadow-lg shadow-indigo-200 flex items-center justify-center gap-2"
+      className="w-full py-4 bg-gray-900 text-white font-black uppercase italic text-[10px] tracking-widest rounded-2xl hover:bg-red-600 transition-all flex items-center justify-center gap-2"
     >
-      <Video size={16} /> Transformar em Reel (Mágica da IA)
+      <Video size={16} /> Gerar Vídeo de Vendas
     </button>
   );
 }

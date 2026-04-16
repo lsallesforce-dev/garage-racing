@@ -149,6 +149,9 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith("/vitrine") ||
     pathname.startsWith("/loja-nao-encontrada") ||
     pathname.startsWith("/api/webhook") ||
+    pathname.startsWith("/api/marketing/worker") ||
+    pathname.startsWith("/api/marketing/webhook") ||
+    pathname.startsWith("/api/assumir") ||
     pathname.startsWith("/api/health");
 
   if (!user && !isPublic) {
