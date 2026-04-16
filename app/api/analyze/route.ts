@@ -121,18 +121,21 @@ export async function POST(req: NextRequest) {
       parcelas: String(carData.parcelas || ""),
     };
 
-    // 5. Gerar Embedding para RAG
+    // 5. Gerar Embedding para RAG (não-bloqueante — falha não impede o cadastro)
     const summaryForEmbedding = `${parsedData.categoria} ${parsedData.marca} ${parsedData.modelo} ${parsedData.versao} de cor ${parsedData.cor} ${parsedData.condicao} | opcionais: ${parsedData.pontos_fortes_venda?.join(", ")} | ${parsedData.detalhes_inspecao} ${parsedData.tags_busca}`;
     const embedding = await generateEmbedding(summaryForEmbedding);
-    if (!embedding) throw new Error("Falha ao gerar embedding — tente novamente");
-    console.log("Final Embedding Length to Supabase:", embedding.length);
+    if (embedding) {
+      console.log("Final Embedding Length to Supabase:", embedding.length);
+    } else {
+      console.warn("⚠️ Embedding indisponível — veículo será cadastrado sem busca semântica");
+    }
 
     // 6. Inserir no Supabase
     const vehicleToInsert = {
       ...parsedData,
       video_url: videoUrl,
       vendedor_id: vendedorId,
-      embedding: embedding,
+      ...(embedding ? { embedding } : {}),
       user_id: userId,
     };
 
