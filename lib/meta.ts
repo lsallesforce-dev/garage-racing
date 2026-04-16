@@ -69,6 +69,12 @@ export async function markMetaRead(
   }
 }
 
+// ─── Delay humanizado (simula digitação) ──────────────────────────────────────
+// Meta Cloud API não tem indicador de typing nativo — delay proporcional ao texto
+export function typingDelay(text: string): number {
+  return Math.min(1500 + Math.floor(text.length / 50) * 500, 7000);
+}
+
 // ─── Enviar texto ─────────────────────────────────────────────────────────────
 export async function sendMetaMessage(
   phone: string,

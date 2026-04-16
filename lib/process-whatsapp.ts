@@ -5,7 +5,7 @@
 import { createDecipheriv, hkdfSync } from "node:crypto";
 import { geminiFlashSales, geminiFlashFallback } from "@/lib/gemini";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { sendMetaMessage, sendMetaImage, sendMetaVideo, sendMetaPreview } from "@/lib/meta";
+import { sendMetaMessage, sendMetaImage, sendMetaVideo, sendMetaPreview, markMetaRead, typingDelay } from "@/lib/meta";
 import { buscarDadosTransbordo, gerarRelatorioPista } from "@/lib/leads";
 import { hybridVehicleSearch, findVehicleForMedia } from "@/lib/hybrid-search";
 import { getCachedHistory, cacheHistory, invalidateHistory } from "@/lib/redis";
@@ -412,6 +412,11 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   }
 
   if (!userMessage && !audioData) return;
+
+  // Marca mensagem como lida (ticks azuis) — fire-and-forget
+  if (job.messageId && metaCreds.phoneNumberId && metaCreds.accessToken) {
+    markMetaRead(job.messageId, metaCreds).catch(() => {});
+  }
 
   // ── 2. Modo Diretor (!status) ───────────────────────────────────────────────
   const adminPhone = process.env.NEXT_PUBLIC_ZAPI_PHONE;
@@ -992,6 +997,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   }
 
   // ── 15. Enviar resposta ao cliente ────────────────────────────────────────────
+  await new Promise(r => setTimeout(r, typingDelay(aiResponse)));
   await sendMetaMessage(phone, aiResponse, metaCreds);
   console.log(`✅ Mensagem processada para ${phone} | temperatura: ${temperatura}`);
 }
