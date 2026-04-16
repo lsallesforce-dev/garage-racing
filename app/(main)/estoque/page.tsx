@@ -45,7 +45,7 @@ export default function ListaEstoque() {
     buscarEstoque();
   }, [effectiveUserId]);
 
-  const gerarRepasse = async (id: string) => {
+  const gerarRepasse = async (id: string, tipo: "repasse" | "promocao" = "repasse") => {
     setRepasseCarroId(id);
     setRepasseTexto("");
     setRepasseCapaUrl(null);
@@ -55,13 +55,13 @@ export default function ListaEstoque() {
       const res = await fetch("/api/veiculo/gerar-repasse", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ veiculoId: id }),
+        body: JSON.stringify({ veiculoId: id, tipo }),
       });
       const data = await res.json();
       setRepasseTexto(data.texto ?? "");
       setRepasseCapaUrl(data.capaUrl ?? null);
     } catch {
-      setRepasseTexto("Erro ao gerar repasse. Tente novamente.");
+      setRepasseTexto("Erro ao gerar. Tente novamente.");
     } finally {
       setRepasseLoading(false);
     }
@@ -154,6 +154,12 @@ export default function ListaEstoque() {
                             <Trash2 size={16} />
                           </button>
                         )}
+                        <button
+                            onClick={() => gerarRepasse(carro.id, "promocao")}
+                            className="flex items-center gap-2 px-6 py-4 bg-blue-600 text-white text-[10px] font-black uppercase italic rounded-2xl hover:bg-blue-700 transition-all tracking-widest shadow-lg shadow-blue-200"
+                        >
+                            <Share2 size={14} /> Envio Whats
+                        </button>
                         <button
                             onClick={() => gerarRepasse(carro.id)}
                             className="flex items-center gap-2 px-6 py-4 bg-green-600 text-white text-[10px] font-black uppercase italic rounded-2xl hover:bg-green-700 transition-all tracking-widest shadow-lg shadow-green-200"

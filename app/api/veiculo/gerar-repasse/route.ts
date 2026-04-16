@@ -46,6 +46,7 @@ function gerarTextoRepasse(
   fipe: string | null,
   mediaWeb: string | null,
   botPhone?: string | null,
+  tipo: "repasse" | "promocao" = "repasse",
 ): string {
   const cidade = carro.local || "Interior";
   const cambio = carro.cambio || "";
@@ -91,11 +92,13 @@ function gerarTextoRepasse(
   linhas.push(``);
   linhas.push(`🎯 Veículo comigo`);
   linhas.push(``);
-  linhas.push(`Veículo vendido na Modalidade REPASSE, *nas condições e estado em que se encontra de conservação e sem Garantia*`);
-  linhas.push(``);
-  linhas.push(`🚨 Lembrando que Veículos de Repasse não têm garantia`);
-  linhas.push(``);
-  linhas.push(`✅ Garantia somente da Documentação do Veículo`);
+  if (tipo === "repasse") {
+    linhas.push(`Veículo vendido na Modalidade REPASSE, *nas condições e estado em que se encontra de conservação e sem Garantia*`);
+    linhas.push(``);
+    linhas.push(`🚨 Lembrando que Veículos de Repasse não têm garantia`);
+    linhas.push(``);
+    linhas.push(`✅ Garantia somente da Documentação do Veículo`);
+  }
 
   if (botPhone) {
     const phoneClean = botPhone.replace(/\D/g, "");
@@ -111,7 +114,7 @@ export async function POST(req: NextRequest) {
   const { error: authError } = await requireAuth();
   if (authError) return authError;
 
-  const { veiculoId } = await req.json();
+  const { veiculoId, tipo = "repasse" } = await req.json();
   if (!veiculoId) return NextResponse.json({ error: "veiculoId obrigatório" }, { status: 400 });
 
   const { data: carro } = await supabaseAdmin
@@ -136,7 +139,7 @@ export async function POST(req: NextRequest) {
     buscarMediaWeb(carro.marca, carro.modelo, carro.versao || "", carro.ano_modelo),
   ]);
 
-  const texto = gerarTextoRepasse(carro, fipe, mediaWeb, botPhone);
+  const texto = gerarTextoRepasse(carro, fipe, mediaWeb, botPhone, tipo);
   const capaUrl = carro.capa_marketing_url || carro.fotos?.[0] || null;
 
   return NextResponse.json({ texto, capaUrl, fipe, mediaWeb, botPhone });
