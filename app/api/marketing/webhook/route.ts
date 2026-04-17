@@ -17,22 +17,28 @@ export async function POST(req: NextRequest) {
   }
 
   if (status === "succeeded" && url) {
-    await supabaseAdmin
+    const { error, count } = await supabaseAdmin
       .from("veiculos")
       .update({
         video_marketing_url: url,
         marketing_status: "pronto",
       })
-      .eq("marketing_render_id", renderId);
+      .eq("marketing_render_id", renderId)
+      .select("id", { count: "exact" });
 
-    console.log(`✅ Marketing render concluído: ${renderId} → ${url}`);
+    if (error) {
+      console.error(`❌ Erro ao salvar render ${renderId}:`, error.message);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    console.log(`✅ Marketing render concluído: ${renderId} → ${url} (${count} linha(s) atualizada(s))`);
   } else if (status === "failed") {
-    await supabaseAdmin
+    const { error } = await supabaseAdmin
       .from("veiculos")
       .update({ marketing_status: "erro" })
       .eq("marketing_render_id", renderId);
 
-    console.error(`❌ Marketing render falhou: ${renderId}`, payload);
+    if (error) console.error(`❌ Erro ao marcar falha do render ${renderId}:`, error.message);
+    else console.error(`❌ Marketing render falhou: ${renderId}`, payload);
   }
 
   return NextResponse.json({ received: true });
