@@ -1,4 +1,4 @@
-import { sendAvisaMessage } from "@/lib/avisa";
+import { sendMetaMessage } from "@/lib/meta";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireLeadOwner } from "@/lib/api-auth";
 import { NextRequest, NextResponse } from "next/server";
@@ -12,10 +12,22 @@ export async function POST(req: NextRequest) {
     }
 
     // Verifica que o lead pertence ao tenant autenticado
-    const { error: authError } = await requireLeadOwner(lead_id);
+    const { user, error: authError } = await requireLeadOwner(lead_id);
     if (authError) return authError;
 
-    await sendAvisaMessage(phone, message);
+    // Busca credenciais Meta do tenant
+    const { data: cfg } = await supabaseAdmin
+      .from("config_garage")
+      .select("meta_phone_id, meta_access_token")
+      .eq("user_id", user!.id)
+      .single();
+
+    const metaCreds = {
+      phoneNumberId: cfg?.meta_phone_id ?? "",
+      accessToken: cfg?.meta_access_token ?? "",
+    };
+
+    await sendMetaMessage(phone, message, metaCreds);
 
     await Promise.all([
       supabaseAdmin.from("mensagens").insert({

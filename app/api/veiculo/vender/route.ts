@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { sendAvisaMessage } from "@/lib/avisa";
+import { sendMetaMessage } from "@/lib/meta";
 import { buscarLeadsOrfaos } from "@/lib/leads";
 import { requireVehicleOwner } from "@/lib/api-auth";
 import { NextRequest, NextResponse } from "next/server";
@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     // 1. Buscar dados do carro para o histórico e notificações
     const { data: veiculo, error: fetchError } = await supabaseAdmin
       .from("veiculos")
-      .select("marca, modelo, vendedor_responsavel_id, preco_sugerido")
+      .select("marca, modelo, vendedor_responsavel_id, preco_sugerido, user_id")
       .eq("id", id)
       .single();
 
@@ -51,11 +51,22 @@ export async function POST(req: NextRequest) {
     // 4. Buscar leads órfãos (interessados que não compraram)
     const leads = await buscarLeadsOrfaos(id);
 
-    // 3. Notificar cada lead via Z-API
+    // Credenciais Meta do tenant
+    const { data: cfg } = await supabaseAdmin
+      .from("config_garage")
+      .select("meta_phone_id, meta_access_token")
+      .eq("user_id", veiculo.user_id)
+      .single();
+    const metaCreds = {
+      phoneNumberId: cfg?.meta_phone_id ?? "",
+      accessToken: cfg?.meta_access_token ?? "",
+    };
+
+    // 3. Notificar cada lead via Meta
     const nomeCarro = `${veiculo.marca} ${veiculo.modelo}`;
     const notificationPromises = leads.map((lead: any) => {
       const message = `Olá ${lead.nome || "Cliente"}! Passando para avisar que a ${nomeCarro} que você estava de olho acabou de ser vendida. Mas não se preocupe, o Lucas (IA) já está buscando outras opções parecidas para você no nosso estoque!`;
-      return sendAvisaMessage(lead.wa_id, message);
+      return sendMetaMessage(lead.wa_id, message, metaCreds);
     });
 
     // Executa as notificações em paralelo

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { sendAvisaMessage } from "@/lib/avisa";
+import { sendMetaMessage } from "@/lib/meta";
 
 export async function POST(req: NextRequest) {
   // Verify caller is authenticated admin
@@ -74,13 +74,13 @@ export async function POST(req: NextRequest) {
   if (vendedor.whatsapp) {
     const { data: garageConfig } = await supabaseAdmin
       .from("config_garage")
-      .select("nome_empresa, avisa_base_url, avisa_token")
+      .select("nome_empresa, meta_phone_id, meta_access_token")
       .eq("user_id", user.id)
       .maybeSingle();
 
-    const avisaCreds = {
-      baseUrl: garageConfig?.avisa_base_url || undefined,
-      token: garageConfig?.avisa_token || undefined,
+    const metaCreds = {
+      phoneNumberId: garageConfig?.meta_phone_id ?? "",
+      accessToken: garageConfig?.meta_access_token ?? "",
     };
 
     const nomeLoja = garageConfig?.nome_empresa || "AutoZap";
@@ -106,8 +106,8 @@ export async function POST(req: NextRequest) {
       ? `Olá, ${vendedor.nome}! 👋\n\nSeu acesso ao painel *${nomeLoja}* foi criado.\n\n📧 *Email:* ${email}\n🔗 *Clique para acessar (válido por 24h):*\n${acessoUrl}\n\nVocê terá acesso ao Estoque Inteligente e à Central de Chat.`
       : `Olá, ${vendedor.nome}! A sua senha foi redefinida.\n\n📧 *Email:* ${email}\n🔗 *Clique para acessar (válido por 24h):*\n${acessoUrl}`;
 
-    await sendAvisaMessage(vendedor.whatsapp, msg, avisaCreds).catch((e) =>
-      console.warn("Avisa: falha ao notificar vendedor:", e)
+    await sendMetaMessage(vendedor.whatsapp, msg, metaCreds).catch((e) =>
+      console.warn("Meta: falha ao notificar vendedor:", e)
     );
   }
 
