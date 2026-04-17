@@ -96,12 +96,18 @@ async function criarRender(params: {
   // Slots do template "Quick Promo" padrão do Creatomate
   const modifications: Record<string, string> = {
     "Video.source":  videoUrl,
-    "Music.source":  audioUrl,                                    // áudio/locução
-    "Text-1.text":   titulo,                                      // ex: TOYOTA COROLLA 2016
-    "Text-2.text":   `${subtitulo}\n[size 130%]${preco}[/size]`, // ex: ALTIS 2.0 • 159.409 KM \n R$ 79.900
+    "Audio.source":  audioUrl,
+    "Audio.duration": "auto",   // segue a duração do voiceover (~60s)
+    "Text-1.text":   titulo,
+    "Text-2.text":   `${subtitulo}\n[size 130%]${preco}[/size]`,
   };
 
-  if (logoUrl) modifications["logo.source"] = logoUrl;
+  if (logoUrl) {
+    modifications["logo.source"] = logoUrl;
+    console.log(`🖼️ Logo incluída: ${logoUrl}`);
+  } else {
+    console.warn(`⚠️ Sem logo — cfg.logo_url não definida`);
+  }
 
   const body = {
     template_id: CREATOMATE_TEMPLATE_ID,
