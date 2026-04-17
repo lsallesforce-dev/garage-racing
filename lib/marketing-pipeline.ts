@@ -124,8 +124,10 @@ async function criarRender(params: {
   }
 
   const data = await res.json();
-  // Creatomate retorna array de renders
-  return data[0]?.id as string;
+  // v1 retorna array, v2 pode retornar objeto único
+  const render = Array.isArray(data) ? data[0] : data;
+  console.log(`🎬 Creatomate render response:`, JSON.stringify(render));
+  return render?.id as string;
 }
 
 // ─── Pipeline principal ───────────────────────────────────────────────────────
@@ -179,6 +181,7 @@ export async function executarPipelineMarketing(veiculoId: string): Promise<void
       .update({ marketing_render_id: renderId, marketing_roteiro: roteiro })
       .eq("id", veiculoId);
 
+    if (!renderId) throw new Error("Creatomate não retornou render ID");
     console.log(`⏳ [${veiculoId}] Render iniciado: ${renderId}`);
   } catch (e) {
     await supabaseAdmin
