@@ -109,6 +109,8 @@ async function criarRender(params: {
     modifications,
   };
 
+  console.log(`📤 Creatomate request body:`, JSON.stringify(body, null, 2));
+
   const res = await fetch("https://api.creatomate.com/v2/renders", {
     method: "POST",
     headers: {
@@ -124,9 +126,9 @@ async function criarRender(params: {
   }
 
   const data = await res.json();
+  console.log(`🎬 Creatomate full response:`, JSON.stringify(data, null, 2));
   // v1 retorna array, v2 pode retornar objeto único
   const render = Array.isArray(data) ? data[0] : data;
-  console.log(`🎬 Creatomate render response:`, JSON.stringify(render));
   return render?.id as string;
 }
 
