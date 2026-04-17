@@ -20,14 +20,18 @@ async function gerarRoteiro(veiculo: any): Promise<string> {
   );
 
   const prompt = `Você é um locutor de vídeos de carros para Reels e TikTok.
-Crie um roteiro de locução de exatamente 45 segundos (aprox. 110 palavras) para o veículo abaixo.
-Tom: empolgante, direto, linguagem jovem brasileira. Sem hashtags. Só o texto falado.
+Crie um roteiro de locução de exatamente 60 segundos (aprox. 150 palavras) para o veículo abaixo.
+Tom: empolgante, direto, linguagem jovem brasileira. Destaque os diferenciais, o preço e chame pra ação no final.
+Sem hashtags. Só o texto falado — sem indicações de cena, sem colchetes, sem estágios.
 
 Veículo: ${veiculo.marca} ${veiculo.modelo} ${veiculo.versao || ""} ${veiculo.ano_modelo}
 KM: ${veiculo.quilometragem_estimada?.toLocaleString("pt-BR") ?? "—"}
 Preço: R$ ${Number(veiculo.preco_sugerido).toLocaleString("pt-BR")}
 Diferenciais: ${(veiculo.pontos_fortes_venda ?? []).join(", ")}
-Local: ${veiculo.local ?? ""}`;
+Opcionais: ${(veiculo.opcionais ?? []).slice(0, 8).join(", ")}
+Local: ${veiculo.local ?? ""}
+Câmbio: ${veiculo.cambio ?? ""}
+Cor: ${veiculo.cor ?? ""}`;
 
   const result = await model.generateContent(prompt);
   return result.response.text().trim();
@@ -97,7 +101,7 @@ async function criarRender(params: {
     "Text-2.text":   `${subtitulo}\n[size 130%]${preco}[/size]`, // ex: ALTIS 2.0 • 159.409 KM \n R$ 79.900
   };
 
-  if (logoUrl) modifications["Logo.source"] = logoUrl;
+  if (logoUrl) modifications["logo.source"] = logoUrl;
 
   const body = {
     template_id: CREATOMATE_TEMPLATE_ID,
