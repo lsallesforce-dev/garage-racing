@@ -9,8 +9,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 const CREATOMATE_API_KEY = process.env.CREATOMATE_API_KEY!;
 const CREATOMATE_TEMPLATE_ID = process.env.CREATOMATE_TEMPLATE_ID!;
-const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY!;
-const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID ?? "pNInz6obpgDQGcFmaJgB"; // Adam
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY!;
 
 // ─── 1. Roteiro via Gemini ────────────────────────────────────────────────────
 async function gerarRoteiro(veiculo: any): Promise<string> {
@@ -37,27 +36,26 @@ Cor: ${veiculo.cor ?? ""}`;
   return result.response.text().trim();
 }
 
-// ─── 2. Voiceover via ElevenLabs ─────────────────────────────────────────────
+// ─── 2. Voiceover via OpenAI TTS ─────────────────────────────────────────────
 async function gerarVoiceover(roteiro: string): Promise<ArrayBuffer> {
-  const res = await fetch(
-    `https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`,
-    {
-      method: "POST",
-      headers: {
-        "xi-api-key": ELEVENLABS_API_KEY,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        text: roteiro,
-        model_id: "eleven_multilingual_v2",
-        voice_settings: { stability: 0.4, similarity_boost: 0.8, style: 0.3, use_speaker_boost: true },
-      }),
-    }
-  );
+  const res = await fetch("https://api.openai.com/v1/audio/speech", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "tts-1",
+      input: roteiro,
+      voice: "onyx",           // voz grave masculina, boa para anúncios de carros
+      response_format: "mp3",
+      speed: 1.0,
+    }),
+  });
 
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`ElevenLabs error ${res.status}: ${err.slice(0, 200)}`);
+    throw new Error(`OpenAI TTS error ${res.status}: ${err.slice(0, 200)}`);
   }
 
   return res.arrayBuffer();
