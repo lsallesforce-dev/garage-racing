@@ -106,52 +106,50 @@ async function criarRender(params: {
   const clipCount = Math.ceil(audioDuration / CLIP_SECS);
   const step = clipCount > 1 ? (SOURCE_MAX - CLIP_SECS) / (clipCount - 1) : 0;
 
+  // Creatomate JSON source usa camelCase
   const videoClips = Array.from({ length: clipCount }, (_, i) => ({
     type: "video",
     track: 1,
     time: i * CLIP_SECS,
     duration: CLIP_SECS,
-    trim_start: Math.round(i * step),
+    trimStart: Math.round(i * step),
     source: videoUrl,
     fit: "cover",
   }));
 
   const elements: object[] = [
     ...videoClips,
-    // Narração
     { type: "audio", track: 2, time: 0, source: audioUrl },
-    // Título (primeiros 6s)
     {
       type: "text",
       track: 3,
       time: 0,
       duration: 6,
       text: titulo,
-      font_family: "Montserrat",
-      font_weight: "900",
-      font_size: "8 vmin",
-      fill_color: "#ffffff",
-      shadow_color: "rgba(0,0,0,0.6)",
-      shadow_blur: 8,
-      x_alignment: "50%",
-      y_alignment: "82%",
+      fontFamily: "Montserrat",
+      fontWeight: "900",
+      fontSize: "8 vmin",
+      fillColor: "#ffffff",
+      shadowColor: "rgba(0,0,0,0.6)",
+      shadowBlur: 8,
+      xAlignment: "50%",
+      yAlignment: "82%",
       width: "90%",
     },
-    // Subtítulo + preço (segundos 6–12)
     {
       type: "text",
       track: 3,
       time: 6,
       duration: 6,
       text: `${subtitulo}\n${preco}`,
-      font_family: "Montserrat",
-      font_weight: "700",
-      font_size: "5 vmin",
-      fill_color: "#ffffff",
-      shadow_color: "rgba(0,0,0,0.6)",
-      shadow_blur: 8,
-      x_alignment: "50%",
-      y_alignment: "82%",
+      fontFamily: "Montserrat",
+      fontWeight: "700",
+      fontSize: "5 vmin",
+      fillColor: "#ffffff",
+      shadowColor: "rgba(0,0,0,0.6)",
+      shadowBlur: 8,
+      xAlignment: "50%",
+      yAlignment: "82%",
       width: "90%",
     },
   ];
@@ -173,13 +171,13 @@ async function criarRender(params: {
 
   const body = {
     source: {
-      output_format: "mp4",
+      outputFormat: "mp4",
       width: 1080,
       height: 1920,
       duration: audioDuration,
       elements,
     },
-    webhook_url: webhookUrl,
+    webhookUrl,
   };
 
   console.log(`📤 Creatomate: ${clipCount} clips × ${CLIP_SECS}s = ${audioDuration}s total`);
