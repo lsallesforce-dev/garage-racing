@@ -14,11 +14,18 @@ export function GenerateMarketingVideoButton({ veiculoId, statusInicial, videoFi
   const [status, setStatus] = useState<string | null>(statusInicial);
   const [videoUrl, setVideoUrl] = useState<string | null>(videoFinalUrl);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Polling enquanto processando — para automaticamente quando concluir
+  const resetStatus = async () => {
+    await supabase.from("veiculos").update({ marketing_status: null }).eq("id", veiculoId);
+    setStatus(null);
+  };
+
+  // Polling enquanto processando — timeout de 5 min vira erro automaticamente
   useEffect(() => {
     if (status !== "processando") {
       if (intervalRef.current) clearInterval(intervalRef.current);
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
       return;
     }
 
@@ -35,7 +42,15 @@ export function GenerateMarketingVideoButton({ veiculoId, statusInicial, videoFi
       }
     }, 5000);
 
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+    // Após 5 minutos sem resposta, reseta para permitir nova tentativa
+    timeoutRef.current = setTimeout(() => {
+      resetStatus();
+    }, 5 * 60 * 1000);
+
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
   }, [status, veiculoId]);
 
   const handleGenerate = async () => {
@@ -63,6 +78,12 @@ export function GenerateMarketingVideoButton({ veiculoId, statusInicial, videoFi
           <div className="h-full bg-gradient-to-r from-indigo-500 to-purple-600 rounded-full animate-pulse w-2/3" />
         </div>
         <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest">Pode fechar essa página — avisa quando ficar pronto</p>
+        <button
+          onClick={resetStatus}
+          className="text-[9px] text-gray-400 hover:text-red-500 underline underline-offset-2 transition-colors"
+        >
+          Cancelar e tentar novamente
+        </button>
       </div>
     );
   }
