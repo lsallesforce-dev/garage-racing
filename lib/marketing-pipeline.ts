@@ -77,7 +77,7 @@ async function uploadAudio(veiculoId: string, audioBuffer: ArrayBuffer): Promise
   return data.publicUrl;
 }
 
-// ─── 4. Render via Creatomate ─────────────────────────────────────────────────
+// ─── 4. Render via Creatomate (Source API — sem template) ────────────────────
 async function criarRender(params: {
   videoUrl: string;
   audioUrl: string;
@@ -88,39 +88,101 @@ async function criarRender(params: {
 }): Promise<string> {
   const { videoUrl, audioUrl, audioBuffer, logoUrl, veiculo, webhookUrl } = params;
 
-  // Estima duração pelo tamanho do MP3 (ElevenLabs ~128kbps CBR) + 12s das animações de texto
+  // Estima duração do áudio pelo buffer MP3 (~128kbps CBR, OpenAI TTS padrão)
   const audioDuration = Math.ceil((audioBuffer.byteLength * 8) / 128_000);
-  const totalDuration = audioDuration + 12;
-  console.log(`⏱️ Duração estimada: áudio=${audioDuration}s, total=${totalDuration}s`);
+  console.log(`⏱️ Duração estimada do áudio: ${audioDuration}s`);
 
   const preco = `R$ ${Number(veiculo.preco_sugerido).toLocaleString("pt-BR")}`;
   const titulo = `${veiculo.marca} ${veiculo.modelo} ${veiculo.ano_modelo}`.toUpperCase();
   const subtitulo = `${veiculo.versao || ""} • ${veiculo.quilometragem_estimada?.toLocaleString("pt-BR") ?? "—"} KM`.trim();
+  const cleanLogoUrl = logoUrl ? logoUrl.split("?")[0] : null;
 
-  const modifications: Record<string, string> = {
-    "Video.source":   videoUrl,
-    "Audio.source":   audioUrl,
-    "Audio.duration": "auto",
-    "Text-1.text":    titulo,
-    "Text-2.text":    `${subtitulo}\n[size 130%]${preco}[/size]`,
-  };
+  if (cleanLogoUrl) console.log(`🖼️ Logo: ${cleanLogoUrl}`);
+  else console.warn(`⚠️ Sem logo`);
 
-  if (logoUrl) {
-    modifications["logo.source"] = logoUrl;
-    console.log(`🖼️ Logo incluída: ${logoUrl}`);
-  } else {
-    modifications["logo.visible"] = "false";
-    console.warn(`⚠️ Sem logo — escondendo elemento no template`);
+  // Distribui clips de 8s pelo vídeo bruto (primeiros 150s) para cobrir o áudio
+  const CLIP_SECS = 8;
+  const SOURCE_MAX = 150;
+  const clipCount = Math.ceil(audioDuration / CLIP_SECS);
+  const step = clipCount > 1 ? (SOURCE_MAX - CLIP_SECS) / (clipCount - 1) : 0;
+
+  const videoClips = Array.from({ length: clipCount }, (_, i) => ({
+    type: "video",
+    track: 1,
+    time: i * CLIP_SECS,
+    duration: CLIP_SECS,
+    trim_start: Math.round(i * step),
+    source: videoUrl,
+    fit: "cover",
+  }));
+
+  const elements: object[] = [
+    ...videoClips,
+    // Narração
+    { type: "audio", track: 2, time: 0, source: audioUrl },
+    // Título (primeiros 6s)
+    {
+      type: "text",
+      track: 3,
+      time: 0,
+      duration: 6,
+      text: titulo,
+      font_family: "Montserrat",
+      font_weight: "900",
+      font_size: "8 vmin",
+      fill_color: "#ffffff",
+      shadow_color: "rgba(0,0,0,0.6)",
+      shadow_blur: 8,
+      x_alignment: "50%",
+      y_alignment: "82%",
+      width: "90%",
+    },
+    // Subtítulo + preço (segundos 6–12)
+    {
+      type: "text",
+      track: 3,
+      time: 6,
+      duration: 6,
+      text: `${subtitulo}\n${preco}`,
+      font_family: "Montserrat",
+      font_weight: "700",
+      font_size: "5 vmin",
+      fill_color: "#ffffff",
+      shadow_color: "rgba(0,0,0,0.6)",
+      shadow_blur: 8,
+      x_alignment: "50%",
+      y_alignment: "82%",
+      width: "90%",
+    },
+  ];
+
+  if (cleanLogoUrl) {
+    elements.push({
+      type: "image",
+      track: 4,
+      time: 0,
+      duration: audioDuration,
+      source: cleanLogoUrl,
+      x: "82%",
+      y: "6%",
+      width: "22%",
+      height: "10%",
+      fit: "contain",
+    });
   }
 
   const body = {
-    template_id: CREATOMATE_TEMPLATE_ID,
-    duration: totalDuration,
+    source: {
+      output_format: "mp4",
+      width: 1080,
+      height: 1920,
+      duration: audioDuration,
+      elements,
+    },
     webhook_url: webhookUrl,
-    modifications,
   };
 
-  console.log(`📤 Creatomate request body:`, JSON.stringify(body, null, 2));
+  console.log(`📤 Creatomate: ${clipCount} clips × ${CLIP_SECS}s = ${audioDuration}s total`);
 
   const res = await fetch("https://api.creatomate.com/v2/renders", {
     method: "POST",
@@ -133,12 +195,11 @@ async function criarRender(params: {
 
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`Creatomate error ${res.status}: ${err.slice(0, 200)}`);
+    throw new Error(`Creatomate error ${res.status}: ${err.slice(0, 500)}`);
   }
 
   const data = await res.json();
-  console.log(`🎬 Creatomate full response:`, JSON.stringify(data, null, 2));
-  // v1 retorna array, v2 pode retornar objeto único
+  console.log(`🎬 Creatomate response:`, JSON.stringify(data));
   const render = Array.isArray(data) ? data[0] : data;
   return render?.id as string;
 }
