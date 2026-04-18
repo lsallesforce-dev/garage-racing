@@ -172,6 +172,7 @@ async function criarRender(params: {
   const body = {
     source: {
       "output-format": "mp4",
+      format: "mp4",
       width: 1080,
       height: 1920,
       duration: audioDuration,
