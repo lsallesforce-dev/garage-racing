@@ -171,18 +171,18 @@ async function criarRender(params: {
 
   const body = {
     source: {
-      "output_format": "mp4",
+      "output-format": "mp4",
       width: 1080,
       height: 1920,
       duration: audioDuration,
       elements,
     },
-    webhookUrl,
+    webhook_url: webhookUrl,
   };
 
   console.log(`📤 Creatomate: ${clipCount} clips × ${CLIP_SECS}s = ${audioDuration}s total`);
 
-  const res = await fetch("https://api.creatomate.com/v2/renders", {
+  const res = await fetch("https://api.creatomate.com/v1/renders", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${CREATOMATE_API_KEY}`,
