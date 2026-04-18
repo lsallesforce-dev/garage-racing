@@ -9,7 +9,8 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 export async function POST(req: NextRequest) {
   const payload = await req.json();
 
-  // Payload Creatomate: { id, status, url, template_id, ... }
+  console.log(`📥 Creatomate webhook:`, JSON.stringify(payload));
+
   const { id: renderId, status, url } = payload;
 
   if (!renderId) {
@@ -17,6 +18,12 @@ export async function POST(req: NextRequest) {
   }
 
   if (status === "succeeded" && url) {
+    // Ignora snapshots (.jpg) — aguarda o payload com o vídeo real (.mp4)
+    if (!url.includes(".mp4")) {
+      console.log(`⏭️ Ignorando snapshot não-MP4: ${url}`);
+      return NextResponse.json({ received: true });
+    }
+
     const { error, count } = await supabaseAdmin
       .from("veiculos")
       .update({
