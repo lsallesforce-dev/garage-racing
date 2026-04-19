@@ -59,59 +59,129 @@ async function gerarVoiceover(roteiro: string): Promise<ArrayBuffer> {
   return res.arrayBuffer();
 }
 
-// ─── 3. Extrai clips + combina com áudio via FFmpeg ──────────────────────────
-async function combinarVideoAudio(
-  veiculoId: string,
-  videoUrl: string,
-  audioBuffer: ArrayBuffer
-): Promise<string> {
+// ─── 3. Pipeline FFmpeg estilo Reels ─────────────────────────────────────────
+// Jump cuts + texto animado + audio ducking (se música configurada)
+async function combinarVideoAudio(params: {
+  veiculoId: string;
+  videoUrl: string;
+  audioBuffer: ArrayBuffer;
+  titulo: string;
+  preco: string;
+  musicaUrl: string | null;
+}): Promise<string> {
+  const { veiculoId, videoUrl, audioBuffer, titulo, preco, musicaUrl } = params;
+
   const { execFile } = await import("child_process");
   const { promisify } = await import("util");
   const fs = await import("fs/promises");
   const path = await import("path");
-  const { path: ffmpegPath } = await import("@ffmpeg-installer/ffmpeg");
 
   const execFileAsync = promisify(execFile);
-  const tmpDir = "/tmp";
-  const videoIn  = path.join(tmpDir, `${veiculoId}_in.mp4`);
-  const audioIn  = path.join(tmpDir, `${veiculoId}_audio.mp3`);
+
+  // Copy ffmpeg binary to /tmp so it's executable in Lambda (read-only fs except /tmp)
+  const { path: ffmpegSrc } = await import("@ffmpeg-installer/ffmpeg");
+  const ffmpegPath = "/tmp/ffmpeg";
+  try {
+    await fs.access(ffmpegPath);
+  } catch {
+    await fs.copyFile(ffmpegSrc, ffmpegPath);
+    await fs.chmod(ffmpegPath, 0o755);
+  }
+
+  const tmpDir  = "/tmp";
+  const videoIn = path.join(tmpDir, `${veiculoId}_in.mp4`);
+  const audioIn = path.join(tmpDir, `${veiculoId}_voice.mp3`);
+  const musicIn = path.join(tmpDir, `${veiculoId}_music.mp3`);
   const videoOut = path.join(tmpDir, `${veiculoId}_out.mp4`);
 
-  try {
-    console.log(`⬇️ Baixando vídeo: ${videoUrl}`);
-    const videoRes = await fetch(videoUrl);
-    if (!videoRes.ok) throw new Error(`Falha ao baixar vídeo: ${videoRes.status}`);
-    await fs.writeFile(videoIn, Buffer.from(await videoRes.arrayBuffer()));
-    await fs.writeFile(audioIn, Buffer.from(audioBuffer));
+  // Fonte incluída no projeto (copiada para /tmp pois Lambda é read-only)
+  const fontSrc = path.join(process.cwd(), "public", "fonts", "Montserrat-Black.ttf");
+  const fontTmp = path.join(tmpDir, "Montserrat-Black.ttf");
 
-    // Estima duração do áudio e calcula pontos de corte
+  try {
+    // Downloads em paralelo
+    console.log(`⬇️ Baixando assets...`);
+    const [videoRes, fontBuf] = await Promise.all([
+      fetch(videoUrl).then(r => { if (!r.ok) throw new Error(`Vídeo ${r.status}`); return r.arrayBuffer(); }),
+      fs.readFile(fontSrc),
+    ]);
+    await Promise.all([
+      fs.writeFile(videoIn, Buffer.from(videoRes)),
+      fs.writeFile(audioIn, Buffer.from(audioBuffer)),
+      fs.writeFile(fontTmp, fontBuf),
+    ]);
+
+    if (musicaUrl) {
+      const mr = await fetch(musicaUrl);
+      if (mr.ok) await fs.writeFile(musicIn, Buffer.from(await mr.arrayBuffer()));
+    }
+
+    const hasMusicFile = musicaUrl ? await fs.access(musicIn).then(() => true).catch(() => false) : false;
+
+    // Duração do áudio e cálculo de clips
     const audioDuration = Math.ceil((audioBuffer.byteLength * 8) / 128_000);
-    const CLIP_SECS  = 8;
-    const SOURCE_MAX = 150; // primeiros 2:30 do vídeo bruto
+    const CLIP_SECS  = 4;   // cortes rápidos estilo Reels
+    const SOURCE_MAX = 150;
     const clipCount  = Math.ceil(audioDuration / CLIP_SECS);
     const step       = clipCount > 1 ? (SOURCE_MAX - CLIP_SECS) / (clipCount - 1) : 0;
 
-    console.log(`✂️ ${clipCount} clips × ${CLIP_SECS}s distribuídos em ${SOURCE_MAX}s de fonte`);
+    console.log(`✂️ ${clipCount} jump cuts × ${CLIP_SECS}s | áudio ${audioDuration}s | música: ${hasMusicFile}`);
 
-    // Monta args do FFmpeg com N entradas do mesmo vídeo em pontos diferentes
+    // ── Monta args do FFmpeg ──────────────────────────────────────────────────
     const args: string[] = [];
 
+    // Entradas: N clips do vídeo bruto
     for (let i = 0; i < clipCount; i++) {
-      const start = Math.round(i * step);
-      args.push("-ss", String(start), "-t", String(CLIP_SECS), "-i", videoIn);
+      args.push("-ss", String(Math.round(i * step)), "-t", String(CLIP_SECS), "-i", videoIn);
+    }
+    // Voz narrada
+    args.push("-i", audioIn);
+    // Música (opcional)
+    if (hasMusicFile) args.push("-i", musicIn);
+
+    const voiceIdx = clipCount;
+    const musicIdx = clipCount + 1;
+
+    // ── filter_complex ────────────────────────────────────────────────────────
+    // Escapa texto para drawtext (sem shell — só escapa chars especiais do filtro)
+    const esc = (s: string) => s.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\u2019");
+
+    const concatIn = Array.from({ length: clipCount }, (_, i) => `[${i}:v]`).join("");
+
+    // Overlay de texto: título no topo + preço embaixo
+    // box=1 cria fundo semitransparente atrás do texto
+    const textFilters = [
+      // Título (aparece do início ao fim)
+      `drawtext=fontfile=${fontTmp}:text='${esc(titulo)}':fontsize=52:fontcolor=white` +
+      `:x=(w-text_w)/2:y=h*0.06:box=1:boxcolor=black@0.45:boxborderw=14`,
+      // Preço (aparece a partir de 3s)
+      `drawtext=fontfile=${fontTmp}:text='${esc(preco)}':fontsize=58:fontcolor='#FFD700'` +
+      `:x=(w-text_w)/2:y=h*0.84:box=1:boxcolor=black@0.55:boxborderw=14:enable='gte(t,3)'`,
+    ].join(",");
+
+    let filterComplex: string;
+
+    if (hasMusicFile) {
+      // Audio ducking: música toca sozinha nos 2s de intro, depois abaixa para 12%
+      filterComplex =
+        `${concatIn}concat=n=${clipCount}:v=1:a=0[raw];` +
+        `[raw]${textFilters}[vout];` +
+        `[${musicIdx}:a]volume=volume='if(lt(t,2),0.9,0.12)':eval=frame[music];` +
+        `[${voiceIdx}:a]adelay=2000|2000[voice];` +
+        `[music][voice]amix=inputs=2:duration=first[aout]`;
+    } else {
+      filterComplex =
+        `${concatIn}concat=n=${clipCount}:v=1:a=0[raw];` +
+        `[raw]${textFilters}[vout];` +
+        `[${voiceIdx}:a]acopy[aout]`;
     }
 
-    // Áudio como última entrada
-    args.push("-i", audioIn);
-
-    // filter_complex: concatena os N clips de vídeo
-    const concatInputs = Array.from({ length: clipCount }, (_, i) => `[${i}:v]`).join("");
     args.push(
-      "-filter_complex", `${concatInputs}concat=n=${clipCount}:v=1:a=0[outv]`,
-      "-map", "[outv]",
-      "-map", `${clipCount}:a`,
+      "-filter_complex", filterComplex,
+      "-map", "[vout]",
+      "-map", "[aout]",
       "-c:v", "libx264",
-      "-preset", "ultrafast", // rápido o suficiente para Vercel (300s limit)
+      "-preset", "ultrafast",
       "-crf", "23",
       "-c:a", "aac",
       "-shortest",
@@ -119,29 +189,25 @@ async function combinarVideoAudio(
       videoOut,
     );
 
-    console.log(`🎞️ FFmpeg processando ${clipCount} clips...`);
-    await execFileAsync(ffmpegPath, args, { maxBuffer: 100 * 1024 * 1024 });
+    console.log(`🎞️ FFmpeg renderizando...`);
+    await execFileAsync(ffmpegPath, args, { maxBuffer: 200 * 1024 * 1024 });
 
     // Upload para Supabase Storage
     const outputBuffer = await fs.readFile(videoOut);
     const storagePath = `marketing/${veiculoId}/video_final.mp4`;
-
     const { error } = await supabaseAdmin.storage
       .from("veiculos")
       .upload(storagePath, outputBuffer, { contentType: "video/mp4", upsert: true });
-
-    if (error) throw new Error(`Upload vídeo final falhou: ${error.message}`);
+    if (error) throw new Error(`Upload falhou: ${error.message}`);
 
     const { data } = supabaseAdmin.storage.from("veiculos").getPublicUrl(storagePath);
-    console.log(`✅ Vídeo final pronto: ${data.publicUrl}`);
+    console.log(`✅ Vídeo final: ${data.publicUrl}`);
     return data.publicUrl;
 
   } finally {
-    await Promise.allSettled([
-      fs.unlink(videoIn).catch(() => {}),
-      fs.unlink(audioIn).catch(() => {}),
-      fs.unlink(videoOut).catch(() => {}),
-    ]);
+    await Promise.allSettled(
+      [videoIn, audioIn, musicIn, videoOut, fontTmp].map(f => fs.unlink(f).catch(() => {}))
+    );
   }
 }
 
@@ -154,6 +220,12 @@ export async function executarPipelineMarketing(veiculoId: string): Promise<void
     .single();
 
   if (!veiculo) throw new Error(`Veículo ${veiculoId} não encontrado`);
+
+  const { data: cfg } = await supabaseAdmin
+    .from("config_garage")
+    .select("musica_fundo_url")
+    .eq("user_id", veiculo.user_id)
+    .maybeSingle();
 
   await supabaseAdmin
     .from("veiculos")
@@ -170,8 +242,18 @@ export async function executarPipelineMarketing(veiculoId: string): Promise<void
     const videoUrl = veiculo.video_url;
     if (!videoUrl) throw new Error("Veículo sem vídeo bruto vinculado");
 
+    const titulo = `${veiculo.marca} ${veiculo.modelo} ${veiculo.ano_modelo}`.toUpperCase();
+    const preco  = `R$ ${Number(veiculo.preco_sugerido).toLocaleString("pt-BR")}`;
+
     console.log(`🎞️ [${veiculoId}] Combinando vídeo + áudio...`);
-    const videoFinalUrl = await combinarVideoAudio(veiculoId, videoUrl, audioBuffer);
+    const videoFinalUrl = await combinarVideoAudio({
+      veiculoId,
+      videoUrl,
+      audioBuffer,
+      titulo,
+      preco,
+      musicaUrl: cfg?.musica_fundo_url ?? null,
+    });
 
     await supabaseAdmin
       .from("veiculos")
