@@ -1,7 +1,7 @@
 // lib/marketing-pipeline.ts
 //
 // Orquestra a esteira de geração de vídeo de marketing:
-// Supabase → Gemini (roteiro) → OpenAI TTS (voz) → Whisper (timestamps) → FFmpeg (legendas ASS + vídeo)
+// Supabase → Gemini (roteiro) → OpenAI TTS (voz) → Whisper (timestamps) → FFmpeg (legendas + vídeo)
 
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { GoogleGenerativeAI } from "@google/generative-ai";
@@ -95,58 +95,75 @@ async function gerarTranscricao(audioBuffer: ArrayBuffer): Promise<WhisperWord[]
   return (data.words ?? []) as WhisperWord[];
 }
 
-// ─── 4. Arquivo ASS com legendas dinâmicas (estilo CapCut) ───────────────────
-function assTime(secs: number): string {
-  const h = Math.floor(secs / 3600);
-  const m = Math.floor((secs % 3600) / 60);
-  const s = Math.floor(secs % 60);
-  const cs = Math.round((secs % 1) * 100);
-  return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}.${String(cs).padStart(2, "0")}`;
+// ─── 4. Legendas dinâmicas via drawtext encadeado ────────────────────────────
+// Usa drawtext + enable='between(t,start,end)' — não depende de libass/subtitles filter
+
+interface WordChunk {
+  text: string;
+  start: number;
+  end: number;
 }
 
-function gerarASS(words: WhisperWord[], audioDelay: number, preco: string): string {
-  const CHUNK = 4;
-
-  const chunks: { text: string; start: number; end: number }[] = [];
+function agruparPalavras(words: WhisperWord[], delay: number): WordChunk[] {
+  const CHUNK = 3;
+  const chunks: WordChunk[] = [];
   for (let i = 0; i < words.length; i += CHUNK) {
     const slice = words.slice(i, i + CHUNK);
     chunks.push({
       text: slice.map(w => w.word.trim()).join(" "),
-      start: slice[0].start + audioDelay,
-      end: slice[slice.length - 1].end + audioDelay + 0.05,
+      start: slice[0].start + delay,
+      end: slice[slice.length - 1].end + delay + 0.05,
     });
   }
+  return chunks;
+}
 
-  // Preço aparece 5s após início da narração e fica até o fim
-  const precoStart = audioDelay + 5;
+// Constrói cadeia de drawtext dinâmicos + overlay de preço no final
+// Retorna a seção de filtros (já inclui [vout] como label de saída)
+function buildCaptionFilters(
+  chunks: WordChunk[],
+  fontFile: string,
+  preco: string,
+  precoStart: number,
+  inputLabel: string,
+): string {
+  // Escapa texto para o filtro drawtext (sem shell — só escapa chars especiais do filtro)
+  const esc = (s: string) =>
+    s.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\u2019");
 
-  const header = [
-    "[Script Info]",
-    "ScriptType: v4.00+",
-    "PlayResX: 1080",
-    "PlayResY: 1920",
-    "WrapStyle: 2",
-    "ScaledBorderAndShadow: yes",
-    "",
-    "[V4+ Styles]",
-    "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-    // Legenda: branco, contorno preto 6px, base centralizada
-    "Style: Caption,Montserrat-Black,88,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,1,0,1,6,0,2,60,60,180,1",
-    // Preço: ouro (#FFD700 = BGR 00D7FF), contorno preto 4px, topo centralizado
-    "Style: Price,Montserrat-Black,64,&H0000D7FF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,4,0,8,60,60,60,1",
-    "",
-    "[Events]",
-    "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
-  ].join("\n");
+  const parts: string[] = [];
+  let prev = inputLabel;
 
-  const captionEvents = chunks
-    .map(c => `Dialogue: 0,${assTime(c.start)},${assTime(c.end)},Caption,,0,0,0,,{\\an2}${c.text}`)
-    .join("\n");
+  for (let i = 0; i < chunks.length; i++) {
+    const { text, start, end } = chunks[i];
+    const next = i === chunks.length - 1 ? "[vtxt]" : `[cap${i}]`;
+    parts.push(
+      `${prev}drawtext=fontfile=${fontFile}` +
+      `:text='${esc(text)}'` +
+      `:fontsize=65:fontcolor=white` +
+      `:x=(w-text_w)/2:y=h*0.76` +
+      `:borderw=5:bordercolor=black` +
+      `:enable='between(t,${start.toFixed(3)},${end.toFixed(3)})'` +
+      `${next}`
+    );
+    prev = next;
+  }
 
-  // Layer 1 garante que o preço fica acima das legendas se houver sobreposição
-  const precoEvent = `Dialogue: 1,${assTime(precoStart)},9:59:59.99,Price,,0,0,0,,{\\an8}${preco}`;
+  // Se não há chunks, passthrough direto
+  if (chunks.length === 0) prev = inputLabel;
 
-  return `${header}\n${captionEvents}\n${precoEvent}\n`;
+  // Preço: aparece na parte superior a partir de precoStart
+  parts.push(
+    `${prev}drawtext=fontfile=${fontFile}` +
+    `:text='${esc(preco)}'` +
+    `:fontsize=52:fontcolor='#FFD700'` +
+    `:x=(w-text_w)/2:y=h*0.10` +
+    `:box=1:boxcolor=black@0.6:boxborderw=14` +
+    `:enable='gte(t,${precoStart.toFixed(1)})'` +
+    `[vout]`
+  );
+
+  return parts.join(";");
 }
 
 // ─── 5. Pipeline FFmpeg estilo Reels ─────────────────────────────────────────
@@ -181,7 +198,6 @@ async function combinarVideoAudio(params: {
   const videoIn  = path.join(tmpDir, `${veiculoId}_in.mp4`);
   const audioIn  = path.join(tmpDir, `${veiculoId}_voice.mp3`);
   const musicIn  = path.join(tmpDir, `${veiculoId}_music.mp3`);
-  const assFile  = path.join(tmpDir, `${veiculoId}_captions.ass`);
   const fontTmp  = path.join(tmpDir, "Montserrat-Black.ttf");
   const videoOut = path.join(tmpDir, `${veiculoId}_out.mp4`);
 
@@ -210,33 +226,37 @@ async function combinarVideoAudio(params: {
 
     const audioDelay = hasMusicFile ? 2 : 0;
 
-    // Gera e salva legendas ASS (captions + preço — sem drawtext estático)
-    const assContent = gerarASS(words, audioDelay, preco);
-    await fs.writeFile(assFile, assContent, "utf8");
-    console.log(`📝 ASS: ${words.length} palavras → ${Math.ceil(words.length / 4)} legendas`);
-
-    // ── Duração do áudio e fator atempo ──────────────────────────────────────
+    // ── Duração real do áudio e fator atempo ─────────────────────────────────
     const audioDuration = Math.ceil((audioBuffer.byteLength * 8) / 128_000);
     const TARGET_SECS = 60;
-    // Acelera apenas se necessário; atempo máximo do FFmpeg é 2.0
     const atempo = audioDuration > TARGET_SECS
       ? Math.min(2.0, parseFloat((audioDuration / TARGET_SECS).toFixed(3)))
       : 1.0;
 
+    // Duração efetiva após aceleração — clipCount baseado NESSE valor, não em 60s fixos
+    const effectiveDuration = Math.ceil(audioDuration / atempo) + audioDelay;
+
     if (atempo > 1.0) {
-      console.log(`⏩ atempo=${atempo} (${audioDuration}s → ~${TARGET_SECS}s)`);
+      console.log(`⏩ atempo=${atempo} (${audioDuration}s → ${Math.ceil(audioDuration / atempo)}s)`);
     }
 
-    // ── Jump cuts: ignora 10s do início e fim do vídeo cru ───────────────────
-    const CLIP_SECS   = 3;
-    const SOURCE_START = 10;   // pula intro
-    const SOURCE_END   = 150;  // até 150s (ignora cauda)
-    const USABLE_SECS  = SOURCE_END - SOURCE_START; // 140s de "miolo"
-    const clipCount    = Math.ceil(TARGET_SECS / CLIP_SECS);
+    // ── Jump cuts: ignora 10s do início/fim do vídeo cru ─────────────────────
+    const CLIP_SECS    = 3;
+    const SOURCE_START = 10;
+    const SOURCE_END   = 150;
+    const USABLE_SECS  = SOURCE_END - SOURCE_START;
+    const clipCount    = Math.ceil(effectiveDuration / CLIP_SECS);
     const step         = clipCount > 1 ? USABLE_SECS / (clipCount - 1) : 0;
 
-    console.log(`✂️ ${clipCount} jump cuts × ${CLIP_SECS}s | fonte [${SOURCE_START}s–${SOURCE_END}s] | atempo=${atempo}`);
+    console.log(`✂️ ${clipCount} clips × ${CLIP_SECS}s | fonte [${SOURCE_START}s–${SOURCE_END}s] | vídeo total ~${effectiveDuration}s`);
 
+    // ── Legendas dinâmicas por drawtext encadeado ─────────────────────────────
+    const chunks = agruparPalavras(words, audioDelay);
+    const precoStart = audioDelay + 5;
+    const captionSection = buildCaptionFilters(chunks, fontTmp, preco, precoStart, "[raw]");
+    console.log(`📝 ${chunks.length} legendas dinâmicas geradas`);
+
+    // ── Monta args do FFmpeg ──────────────────────────────────────────────────
     const args: string[] = [];
 
     for (let i = 0; i < clipCount; i++) {
@@ -250,26 +270,24 @@ async function combinarVideoAudio(params: {
     const musicIdx = clipCount + 1;
 
     const concatIn = Array.from({ length: clipCount }, (_, i) => `[${i}:v]`).join("");
+    const concatSection = `${concatIn}concat=n=${clipCount}:v=1:a=0[raw]`;
 
-    // ── filter_complex ────────────────────────────────────────────────────────
-    // Voz: acelera se necessário, então delay de intro (quando há música)
+    // Voz: acelera se necessário, depois delay de intro (quando há música)
     const voiceAtempoFilter = atempo > 1.0 ? `atempo=${atempo},` : "";
 
-    let filterComplex: string;
-
+    let audioSection: string;
     if (hasMusicFile) {
-      filterComplex =
-        `${concatIn}concat=n=${clipCount}:v=1:a=0[raw];` +
-        `[raw]subtitles=${assFile}:fontsdir=${tmpDir}[vout];` +
+      audioSection =
         `[${voiceIdx}:a]${voiceAtempoFilter}adelay=2000|2000[voice];` +
         `[${musicIdx}:a]volume=volume='if(lt(t,2),0.9,0.12)':eval=frame[music];` +
         `[music][voice]amix=inputs=2:duration=first[aout]`;
     } else {
-      filterComplex =
-        `${concatIn}concat=n=${clipCount}:v=1:a=0[raw];` +
-        `[raw]subtitles=${assFile}:fontsdir=${tmpDir}[vout];` +
-        `[${voiceIdx}:a]${atempo > 1.0 ? `atempo=${atempo}` : "acopy"}[aout]`;
+      audioSection = atempo > 1.0
+        ? `[${voiceIdx}:a]atempo=${atempo}[aout]`
+        : `[${voiceIdx}:a]anull[aout]`;
     }
+
+    const filterComplex = [concatSection, captionSection, audioSection].join(";");
 
     args.push(
       "-filter_complex", filterComplex,
@@ -301,7 +319,7 @@ async function combinarVideoAudio(params: {
 
   } finally {
     await Promise.allSettled(
-      [videoIn, audioIn, musicIn, assFile, videoOut, fontTmp].map(f =>
+      [videoIn, audioIn, musicIn, videoOut, fontTmp].map(f =>
         fs.unlink(f).catch(() => {})
       )
     );
