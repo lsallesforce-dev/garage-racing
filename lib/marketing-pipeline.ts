@@ -155,11 +155,9 @@ function buildCaptionFilters(
       `${prev}drawtext=fontfile=${fontFile}` +
       `:text='${esc(text)}'` +
       // fontsize 55 sobre 1080px de largura: ~3 palavras cabem sem overflow
-      `:fontsize=55:fontcolor=white` +
-      // terço inferior da tela, centralizado horizontalmente
+      `:fontsize=72:fontcolor=white` +
       `:x=(w-text_w)/2:y=h*0.76` +
-      // contorno preto grosso para legibilidade em qualquer fundo
-      `:borderw=5:bordercolor=black` +
+      `:borderw=6:bordercolor=black` +
       `:enable='between(t,${start.toFixed(3)},${end.toFixed(3)})'` +
       `${next}`
     );
@@ -176,8 +174,9 @@ async function combinarVideoAudio(params: {
   audioBuffer: ArrayBuffer;
   words: WhisperWord[];
   musicaUrl: string | null;
+  logoUrl: string | null;
 }): Promise<string> {
-  const { veiculoId, videoUrl, audioBuffer, words, musicaUrl } = params;
+  const { veiculoId, videoUrl, audioBuffer, words, musicaUrl, logoUrl } = params;
 
   const { execFile } = await import("child_process");
   const { promisify } = await import("util");
@@ -200,6 +199,7 @@ async function combinarVideoAudio(params: {
   const videoIn  = path.join(tmpDir, `${veiculoId}_in.mp4`);
   const audioIn  = path.join(tmpDir, `${veiculoId}_voice.mp3`);
   const musicIn  = path.join(tmpDir, `${veiculoId}_music.mp3`);
+  const logoIn   = path.join(tmpDir, `${veiculoId}_logo.png`);
   const fontTmp  = path.join(tmpDir, "Montserrat-Black.ttf");
   const videoOut = path.join(tmpDir, `${veiculoId}_out.mp4`);
 
@@ -222,8 +222,17 @@ async function combinarVideoAudio(params: {
       if (mr.ok) await fs.writeFile(musicIn, Buffer.from(await mr.arrayBuffer()));
     }
 
+    if (logoUrl) {
+      const lr = await fetch(logoUrl);
+      if (lr.ok) await fs.writeFile(logoIn, Buffer.from(await lr.arrayBuffer()));
+    }
+
     const hasMusicFile = musicaUrl
       ? await fs.access(musicIn).then(() => true).catch(() => false)
+      : false;
+
+    const hasLogo = logoUrl
+      ? await fs.access(logoIn).then(() => true).catch(() => false)
       : false;
 
     const audioDelay = hasMusicFile ? 2 : 0;
@@ -266,17 +275,29 @@ async function combinarVideoAudio(params: {
     }
     args.push("-i", audioIn);
     if (hasMusicFile) args.push("-i", musicIn);
+    if (hasLogo) args.push("-i", logoIn);
 
     const voiceIdx = clipCount;
     const musicIdx = clipCount + 1;
+    const logoIdx  = clipCount + (hasMusicFile ? 2 : 1);
 
     const concatIn = Array.from({ length: clipCount }, (_, i) => `[${i}:v]`).join("");
 
-    // Concat → escala + crop 9:16 (1080×1920) → legendas
-    const videoSection =
+    // Logo aparece nos últimos 4s antes do áudio terminar
+    const logoStart = Math.max(0, effectiveDuration - 4);
+
+    // Concat → escala + crop 9:16 (1080×1920) → legendas → logo (opcional)
+    let videoSection =
       `${concatIn}concat=n=${clipCount}:v=1:a=0[concat];` +
       `[concat]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920[raw];` +
-      captionSection;
+      captionSection; // outputLabel: [vout]
+
+    if (hasLogo) {
+      // Escala a logo para 220px de largura, centralizada horizontalmente, 8% do topo
+      videoSection +=
+        `;[${logoIdx}:v]scale=220:-1[logo];` +
+        `[vout][logo]overlay=x=(W-w)/2:y=H*0.08:enable='gte(t,${logoStart})'[vfinal]`;
+    }
 
     // Áudio: acelera se necessário, delay de intro quando há música de fundo
     const voiceAtempoFilter = atempo > 1.0 ? `atempo=${atempo},` : "";
@@ -296,7 +317,7 @@ async function combinarVideoAudio(params: {
 
     args.push(
       "-filter_complex", filterComplex,
-      "-map", "[vout]",
+      "-map", hasLogo ? "[vfinal]" : "[vout]",
       "-map", "[aout]",
       "-c:v", "libx264",
       "-preset", "veryfast",
@@ -331,7 +352,7 @@ async function combinarVideoAudio(params: {
 
   } finally {
     await Promise.allSettled(
-      [videoIn, audioIn, musicIn, videoOut, fontTmp].map(f =>
+      [videoIn, audioIn, musicIn, logoIn, videoOut, fontTmp].map(f =>
         fs.unlink(f).catch(() => {})
       )
     );
@@ -350,7 +371,7 @@ export async function executarPipelineMarketing(veiculoId: string): Promise<void
 
   const { data: cfg } = await supabaseAdmin
     .from("config_garage")
-    .select("musica_fundo_url")
+    .select("musica_fundo_url, logo_url")
     .eq("user_id", veiculo.user_id)
     .maybeSingle();
 
@@ -380,6 +401,7 @@ export async function executarPipelineMarketing(veiculoId: string): Promise<void
       audioBuffer,
       words,
       musicaUrl: cfg?.musica_fundo_url ?? null,
+      logoUrl:   cfg?.logo_url ? cfg.logo_url.split("?")[0] : null,
     });
 
     await supabaseAdmin
