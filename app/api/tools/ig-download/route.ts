@@ -1,6 +1,22 @@
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireAuth } from "@/lib/api-auth";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { NextRequest, NextResponse } from "next/server";
+
+const r2 = new S3Client({
+  region: "auto",
+  endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+  },
+  forcePathStyle: true,
+  requestChecksumCalculation: "WHEN_REQUIRED",
+  responseChecksumValidation: "WHEN_REQUIRED",
+});
+
+const BUCKET = "videos-estoque";
+const PUBLIC_URL = process.env.R2_PUBLIC_URL!;
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -138,24 +154,14 @@ export async function POST(req: NextRequest) {
 
     const fileName = `ig-import-${Date.now()}.mp4`;
 
-    const { error: uploadError } = await supabaseAdmin.storage
-      .from("videos-estoque")
-      .upload(fileName, buffer, {
-        contentType: "video/mp4",
-        upsert: true,
-        cacheControl: "3600",
-      });
+    await r2.send(new PutObjectCommand({
+      Bucket: BUCKET,
+      Key: fileName,
+      Body: buffer,
+      ContentType: "video/mp4",
+    }));
 
-    if (uploadError) {
-      return NextResponse.json(
-        { success: false, error: `Erro no storage: ${uploadError.message}` },
-        { status: 500 }
-      );
-    }
-
-    const { data: { publicUrl } } = supabaseAdmin.storage
-      .from("videos-estoque")
-      .getPublicUrl(fileName);
+    const publicUrl = `${PUBLIC_URL}/${fileName}`;
 
     if (veiculoId) {
       await supabaseAdmin
