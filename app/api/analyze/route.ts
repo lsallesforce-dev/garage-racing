@@ -149,16 +149,7 @@ export async function POST(req: NextRequest) {
       throw error;
     }
 
-    // 7. Gerar URL assinada para o retorno
-    const fileName = videoUrl.split('/').pop();
-    const { data: signedData } = await supabaseAdmin.storage
-      .from('videos-estoque')
-      .createSignedUrl(fileName, 3600);
-
-    if (data && data[0] && signedData) {
-      data[0].video_url = signedData.signedUrl;
-    }
-
+    // video_url já é a URL pública do R2 — retorna direto sem signed URL do Supabase
     return NextResponse.json({ success: true, data });
 
   } catch (error: unknown) {
