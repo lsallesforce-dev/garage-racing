@@ -1,7 +1,7 @@
 // lib/marketing-pipeline.ts
 //
 // Orquestra a esteira de geração de vídeo de marketing:
-// Supabase → Gemini (roteiro) → OpenAI TTS (voz) → FFmpeg (vídeo final)
+// Supabase → Gemini (roteiro) → OpenAI TTS (voz) → Whisper (timestamps) → FFmpeg (legendas ASS + vídeo)
 
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { GoogleGenerativeAI } from "@google/generative-ai";
@@ -18,7 +18,9 @@ async function gerarRoteiro(veiculo: any): Promise<string> {
 
   const prompt = `Você é um locutor de vídeos de carros para Reels e TikTok.
 Crie um roteiro de locução de exatamente 60 segundos (aprox. 150 palavras) para o veículo abaixo.
-Tom: empolgante, direto, linguagem jovem brasileira. Destaque os diferenciais, o preço e chame pra ação no final.
+Tom: empolgante, direto, linguagem jovem brasileira.
+Regra de Vendas: Transforme a lista de equipamentos em benefícios práticos para o dia a dia do motorista (Exemplo: em vez de apenas dizer "câmbio automático", diga "conforto absoluto para você não se estressar no trânsito"). Não leia apenas um catálogo, crie desejo no cliente!
+Destaque os diferenciais, o preço e chame pra ação no final.
 Sem hashtags. Só o texto falado — sem indicações de cena, sem colchetes, sem estágios.
 
 Veículo: ${veiculo.marca} ${veiculo.modelo} ${veiculo.versao || ""} ${veiculo.ano_modelo}
@@ -59,17 +61,96 @@ async function gerarVoiceover(roteiro: string): Promise<ArrayBuffer> {
   return res.arrayBuffer();
 }
 
-// ─── 3. Pipeline FFmpeg estilo Reels ─────────────────────────────────────────
-// Jump cuts + texto animado + audio ducking (se música configurada)
+// ─── 3. Transcrição com timestamps via Whisper ───────────────────────────────
+interface WhisperWord {
+  word: string;
+  start: number;
+  end: number;
+}
+
+async function gerarTranscricao(audioBuffer: ArrayBuffer): Promise<WhisperWord[]> {
+  const formData = new FormData();
+  formData.append(
+    "file",
+    new Blob([audioBuffer], { type: "audio/mpeg" }),
+    "audio.mp3"
+  );
+  formData.append("model", "whisper-1");
+  formData.append("response_format", "verbose_json");
+  formData.append("timestamp_granularities[]", "word");
+  formData.append("language", "pt");
+
+  const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${OPENAI_API_KEY}` },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Whisper error ${res.status}: ${err.slice(0, 200)}`);
+  }
+
+  const data = await res.json();
+  return (data.words ?? []) as WhisperWord[];
+}
+
+// ─── 4. Arquivo ASS com legendas dinâmicas (estilo CapCut) ───────────────────
+function assTime(secs: number): string {
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = Math.floor(secs % 60);
+  const cs = Math.round((secs % 1) * 100);
+  return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}.${String(cs).padStart(2, "0")}`;
+}
+
+function gerarASS(words: WhisperWord[], audioDelay: number): string {
+  const CHUNK = 4; // palavras por legenda
+
+  const chunks: { text: string; start: number; end: number }[] = [];
+  for (let i = 0; i < words.length; i += CHUNK) {
+    const slice = words.slice(i, i + CHUNK);
+    chunks.push({
+      text: slice.map(w => w.word.trim()).join(" "),
+      start: slice[0].start + audioDelay,
+      end: slice[slice.length - 1].end + audioDelay + 0.05,
+    });
+  }
+
+  const header = [
+    "[Script Info]",
+    "ScriptType: v4.00+",
+    "PlayResX: 1080",
+    "PlayResY: 1920",
+    "WrapStyle: 2",
+    "ScaledBorderAndShadow: yes",
+    "",
+    "[V4+ Styles]",
+    "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+    // Branco, contorno preto 6px, centralizado na base, sem fundo
+    "Style: Default,Montserrat-Black,88,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,-1,0,0,0,100,100,1,0,1,6,0,2,60,60,180,1",
+    "",
+    "[Events]",
+    "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+  ].join("\n");
+
+  const events = chunks
+    .map(c => `Dialogue: 0,${assTime(c.start)},${assTime(c.end)},Default,,0,0,0,,{\\an2}${c.text}`)
+    .join("\n");
+
+  return `${header}\n${events}\n`;
+}
+
+// ─── 5. Pipeline FFmpeg estilo Reels ─────────────────────────────────────────
 async function combinarVideoAudio(params: {
   veiculoId: string;
   videoUrl: string;
   audioBuffer: ArrayBuffer;
-  titulo: string;
+  words: WhisperWord[];
   preco: string;
   musicaUrl: string | null;
 }): Promise<string> {
-  const { veiculoId, videoUrl, audioBuffer, titulo, preco, musicaUrl } = params;
+  const { veiculoId, videoUrl, audioBuffer, words, preco, musicaUrl } = params;
 
   const { execFile } = await import("child_process");
   const { promisify } = await import("util");
@@ -78,7 +159,7 @@ async function combinarVideoAudio(params: {
 
   const execFileAsync = promisify(execFile);
 
-  // Copy ffmpeg binary to /tmp so it's executable in Lambda (read-only fs except /tmp)
+  // Copia ffmpeg para /tmp — Lambda tem fs read-only exceto /tmp
   const { path: ffmpegSrc } = await import("@ffmpeg-installer/ffmpeg");
   const ffmpegPath = "/tmp/ffmpeg";
   try {
@@ -88,18 +169,17 @@ async function combinarVideoAudio(params: {
     await fs.chmod(ffmpegPath, 0o755);
   }
 
-  const tmpDir  = "/tmp";
-  const videoIn = path.join(tmpDir, `${veiculoId}_in.mp4`);
-  const audioIn = path.join(tmpDir, `${veiculoId}_voice.mp3`);
-  const musicIn = path.join(tmpDir, `${veiculoId}_music.mp3`);
+  const tmpDir   = "/tmp";
+  const videoIn  = path.join(tmpDir, `${veiculoId}_in.mp4`);
+  const audioIn  = path.join(tmpDir, `${veiculoId}_voice.mp3`);
+  const musicIn  = path.join(tmpDir, `${veiculoId}_music.mp3`);
+  const assFile  = path.join(tmpDir, `${veiculoId}_captions.ass`);
+  const fontTmp  = path.join(tmpDir, "Montserrat-Black.ttf");
   const videoOut = path.join(tmpDir, `${veiculoId}_out.mp4`);
 
-  // Fonte incluída no projeto (copiada para /tmp pois Lambda é read-only)
   const fontSrc = path.join(process.cwd(), "public", "fonts", "Montserrat-Black.ttf");
-  const fontTmp = path.join(tmpDir, "Montserrat-Black.ttf");
 
   try {
-    // Downloads em paralelo
     console.log(`⬇️ Baixando assets...`);
     const [videoRes, fontBuf] = await Promise.all([
       fetch(videoUrl).then(r => { if (!r.ok) throw new Error(`Vídeo ${r.status}`); return r.arrayBuffer(); }),
@@ -116,63 +196,61 @@ async function combinarVideoAudio(params: {
       if (mr.ok) await fs.writeFile(musicIn, Buffer.from(await mr.arrayBuffer()));
     }
 
-    const hasMusicFile = musicaUrl ? await fs.access(musicIn).then(() => true).catch(() => false) : false;
+    const hasMusicFile = musicaUrl
+      ? await fs.access(musicIn).then(() => true).catch(() => false)
+      : false;
 
-    // Duração do áudio e cálculo de clips
+    const audioDelay = hasMusicFile ? 2 : 0;
+
+    // Gera e salva legendas ASS
+    const assContent = gerarASS(words, audioDelay);
+    await fs.writeFile(assFile, assContent, "utf8");
+    console.log(`📝 ASS gerado: ${words.length} palavras → ${Math.ceil(words.length / 4)} legendas`);
+
+    // Duração e jump cuts
     const audioDuration = Math.ceil((audioBuffer.byteLength * 8) / 128_000);
-    const CLIP_SECS  = 4;   // cortes rápidos estilo Reels
+    const CLIP_SECS  = 4;
     const SOURCE_MAX = 150;
     const clipCount  = Math.ceil(audioDuration / CLIP_SECS);
     const step       = clipCount > 1 ? (SOURCE_MAX - CLIP_SECS) / (clipCount - 1) : 0;
 
-    console.log(`✂️ ${clipCount} jump cuts × ${CLIP_SECS}s | áudio ${audioDuration}s | música: ${hasMusicFile}`);
+    console.log(`✂️ ${clipCount} jump cuts × ${CLIP_SECS}s | áudio ${audioDuration}s`);
 
-    // ── Monta args do FFmpeg ──────────────────────────────────────────────────
     const args: string[] = [];
 
-    // Entradas: N clips do vídeo bruto
     for (let i = 0; i < clipCount; i++) {
       args.push("-ss", String(Math.round(i * step)), "-t", String(CLIP_SECS), "-i", videoIn);
     }
-    // Voz narrada
     args.push("-i", audioIn);
-    // Música (opcional)
     if (hasMusicFile) args.push("-i", musicIn);
 
     const voiceIdx = clipCount;
     const musicIdx = clipCount + 1;
 
-    // ── filter_complex ────────────────────────────────────────────────────────
-    // Escapa texto para drawtext (sem shell — só escapa chars especiais do filtro)
-    const esc = (s: string) => s.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\u2019");
-
     const concatIn = Array.from({ length: clipCount }, (_, i) => `[${i}:v]`).join("");
 
-    // Overlay de texto: título no topo + preço embaixo
-    // box=1 cria fundo semitransparente atrás do texto
-    const textFilters = [
-      // Título (aparece do início ao fim)
-      `drawtext=fontfile=${fontTmp}:text='${esc(titulo)}':fontsize=52:fontcolor=white` +
-      `:x=(w-text_w)/2:y=h*0.06:box=1:boxcolor=black@0.45:boxborderw=14`,
-      // Preço (aparece a partir de 3s)
-      `drawtext=fontfile=${fontTmp}:text='${esc(preco)}':fontsize=58:fontcolor='#FFD700'` +
-      `:x=(w-text_w)/2:y=h*0.84:box=1:boxcolor=black@0.55:boxborderw=14:enable='gte(t,3)'`,
-    ].join(",");
+    // Preço: overlay limpo, aparece no centro-baixo após 3s + delay
+    const esc = (s: string) => s.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\u2019");
+    const precoFilter =
+      `drawtext=fontfile=${fontTmp}:text='${esc(preco)}':fontsize=48:fontcolor='#FFD700'` +
+      `:x=(w-text_w)/2:y=h*0.80:box=1:boxcolor=black@0.6:boxborderw=14` +
+      `:enable='gte(t,${3 + audioDelay})'`;
 
     let filterComplex: string;
 
     if (hasMusicFile) {
-      // Audio ducking: música toca sozinha nos 2s de intro, depois abaixa para 12%
       filterComplex =
         `${concatIn}concat=n=${clipCount}:v=1:a=0[raw];` +
-        `[raw]${textFilters}[vout];` +
+        `[raw]subtitles=${assFile}:fontsdir=${tmpDir}[vcap];` +
+        `[vcap]${precoFilter}[vout];` +
         `[${musicIdx}:a]volume=volume='if(lt(t,2),0.9,0.12)':eval=frame[music];` +
         `[${voiceIdx}:a]adelay=2000|2000[voice];` +
         `[music][voice]amix=inputs=2:duration=first[aout]`;
     } else {
       filterComplex =
         `${concatIn}concat=n=${clipCount}:v=1:a=0[raw];` +
-        `[raw]${textFilters}[vout];` +
+        `[raw]subtitles=${assFile}:fontsdir=${tmpDir}[vcap];` +
+        `[vcap]${precoFilter}[vout];` +
         `[${voiceIdx}:a]acopy[aout]`;
     }
 
@@ -189,7 +267,7 @@ async function combinarVideoAudio(params: {
       videoOut,
     );
 
-    console.log(`🎞️ FFmpeg renderizando...`);
+    console.log(`🎞️ FFmpeg renderizando com legendas ASS...`);
     await execFileAsync(ffmpegPath, args, { maxBuffer: 200 * 1024 * 1024 });
 
     // Upload para Supabase Storage
@@ -206,7 +284,9 @@ async function combinarVideoAudio(params: {
 
   } finally {
     await Promise.allSettled(
-      [videoIn, audioIn, musicIn, videoOut, fontTmp].map(f => fs.unlink(f).catch(() => {}))
+      [videoIn, audioIn, musicIn, assFile, videoOut, fontTmp].map(f =>
+        fs.unlink(f).catch(() => {})
+      )
     );
   }
 }
@@ -239,18 +319,21 @@ export async function executarPipelineMarketing(veiculoId: string): Promise<void
     console.log(`🎙️ [${veiculoId}] Gerando voiceover...`);
     const audioBuffer = await gerarVoiceover(roteiro);
 
+    console.log(`📝 [${veiculoId}] Transcrevendo com Whisper...`);
+    const words = await gerarTranscricao(audioBuffer);
+    console.log(`📝 [${veiculoId}] ${words.length} palavras com timestamps`);
+
     const videoUrl = veiculo.video_url;
     if (!videoUrl) throw new Error("Veículo sem vídeo bruto vinculado");
 
-    const titulo = `${veiculo.marca} ${veiculo.modelo} ${veiculo.ano_modelo}`.toUpperCase();
-    const preco  = `R$ ${Number(veiculo.preco_sugerido).toLocaleString("pt-BR")}`;
+    const preco = `R$ ${Number(veiculo.preco_sugerido).toLocaleString("pt-BR")}`;
 
-    console.log(`🎞️ [${veiculoId}] Combinando vídeo + áudio...`);
+    console.log(`🎞️ [${veiculoId}] Combinando vídeo + legendas + áudio...`);
     const videoFinalUrl = await combinarVideoAudio({
       veiculoId,
       videoUrl,
       audioBuffer,
-      titulo,
+      words,
       preco,
       musicaUrl: cfg?.musica_fundo_url ?? null,
     });
