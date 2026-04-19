@@ -35,8 +35,7 @@ export async function POST(req: NextRequest) {
 
     const ext = fileName.split(".").pop() || "mp4";
     const baseName = fileName.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9]/g, "_");
-    // Prefixo por tenant — permite auditoria e isolamento no bucket
-    const storageName = `${user!.id}/${Date.now()}-${baseName}.${ext}`;
+    const storageName = `${Date.now()}-${baseName}.${ext}`;
 
     const command = new PutObjectCommand({
       Bucket: BUCKET,
