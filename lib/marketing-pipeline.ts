@@ -5,6 +5,22 @@
 
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+
+const r2 = new S3Client({
+  region: "auto",
+  endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+  },
+  forcePathStyle: true,
+  requestChecksumCalculation: "WHEN_REQUIRED",
+  responseChecksumValidation: "WHEN_REQUIRED",
+});
+
+const R2_BUCKET     = "videos-estoque";
+const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL!;
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY!;
@@ -283,10 +299,15 @@ async function combinarVideoAudio(params: {
       "-map", "[vout]",
       "-map", "[aout]",
       "-c:v", "libx264",
-      "-preset", "ultrafast",
-      "-crf", "23",
+      "-preset", "veryfast",
+      "-crf", "28",
+      // teto de bitrate para garantir que o arquivo caiba no Supabase Storage (< 50MB)
+      "-maxrate", "2500k",
+      "-bufsize", "5000k",
+      "-movflags", "+faststart",  // moov atom no início — melhor para streaming
       "-c:a", "aac",
-      "-shortest",   // para exatamente quando o áudio terminar
+      "-b:a", "128k",
+      "-shortest",
       "-y",
       videoOut,
     );
@@ -294,17 +315,19 @@ async function combinarVideoAudio(params: {
     console.log(`🎞️ FFmpeg renderizando (9:16)...`);
     await execFileAsync(ffmpegPath, args, { maxBuffer: 200 * 1024 * 1024 });
 
-    // Upload para Supabase Storage
+    // Upload para Cloudflare R2 (sem limite de tamanho, ao contrário do Supabase free)
     const outputBuffer = await fs.readFile(videoOut);
-    const storagePath = `marketing/${veiculoId}/video_final.mp4`;
-    const { error } = await supabaseAdmin.storage
-      .from("veiculos")
-      .upload(storagePath, outputBuffer, { contentType: "video/mp4", upsert: true });
-    if (error) throw new Error(`Upload falhou: ${error.message}`);
+    const r2Key = `marketing/${veiculoId}/video_final.mp4`;
+    await r2.send(new PutObjectCommand({
+      Bucket: R2_BUCKET,
+      Key: r2Key,
+      Body: outputBuffer,
+      ContentType: "video/mp4",
+    }));
 
-    const { data } = supabaseAdmin.storage.from("veiculos").getPublicUrl(storagePath);
-    console.log(`✅ Vídeo final: ${data.publicUrl}`);
-    return data.publicUrl;
+    const publicUrl = `${R2_PUBLIC_URL}/${r2Key}`;
+    console.log(`✅ Vídeo final: ${publicUrl}`);
+    return publicUrl;
 
   } finally {
     await Promise.allSettled(
