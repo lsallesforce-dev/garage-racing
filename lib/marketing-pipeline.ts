@@ -1,14 +1,12 @@
 // lib/marketing-pipeline.ts
 //
 // Orquestra a esteira de geração de vídeo de marketing:
-// Supabase → Gemini (roteiro) → ElevenLabs (voz) → Creatomate (vídeo final)
+// Supabase → Gemini (roteiro) → OpenAI TTS (voz) → FFmpeg (vídeo final)
 
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-const CREATOMATE_API_KEY = process.env.CREATOMATE_API_KEY!;
-const CREATOMATE_TEMPLATE_ID = process.env.CREATOMATE_TEMPLATE_ID!;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY!;
 
 // ─── 1. Roteiro via Gemini ────────────────────────────────────────────────────
@@ -47,7 +45,7 @@ async function gerarVoiceover(roteiro: string): Promise<ArrayBuffer> {
     body: JSON.stringify({
       model: "tts-1",
       input: roteiro,
-      voice: "onyx",           // voz grave masculina, boa para anúncios de carros
+      voice: "onyx",
       response_format: "mp3",
       speed: 1.0,
     }),
@@ -61,153 +59,72 @@ async function gerarVoiceover(roteiro: string): Promise<ArrayBuffer> {
   return res.arrayBuffer();
 }
 
-// ─── 3. Upload do áudio para Supabase Storage ────────────────────────────────
-async function uploadAudio(veiculoId: string, audioBuffer: ArrayBuffer): Promise<string> {
-  const path = `marketing/${veiculoId}/voiceover.mp3`;
-  const { error } = await supabaseAdmin.storage
-    .from("veiculos")
-    .upload(path, Buffer.from(audioBuffer), {
-      contentType: "audio/mpeg",
-      upsert: true,
-    });
+// ─── 3. Combina vídeo + áudio via FFmpeg ─────────────────────────────────────
+async function combinarVideoAudio(
+  veiculoId: string,
+  videoUrl: string,
+  audioBuffer: ArrayBuffer
+): Promise<string> {
+  const { execFile } = await import("child_process");
+  const { promisify } = await import("util");
+  const fs = await import("fs/promises");
+  const path = await import("path");
+  const ffmpegPath = (await import("ffmpeg-static")).default as string;
 
-  if (error) throw new Error(`Upload áudio falhou: ${error.message}`);
+  const execFileAsync = promisify(execFile);
+  const tmpDir = "/tmp";
+  const videoIn  = path.join(tmpDir, `${veiculoId}_in.mp4`);
+  const audioIn  = path.join(tmpDir, `${veiculoId}_audio.mp3`);
+  const videoOut = path.join(tmpDir, `${veiculoId}_out.mp4`);
 
-  const { data } = supabaseAdmin.storage.from("veiculos").getPublicUrl(path);
-  return data.publicUrl;
-}
+  try {
+    // Baixa vídeo bruto
+    console.log(`⬇️ Baixando vídeo: ${videoUrl}`);
+    const videoRes = await fetch(videoUrl);
+    if (!videoRes.ok) throw new Error(`Falha ao baixar vídeo: ${videoRes.status}`);
+    await fs.writeFile(videoIn, Buffer.from(await videoRes.arrayBuffer()));
 
-// ─── 4. Render via Creatomate (Source API — sem template) ────────────────────
-async function criarRender(params: {
-  videoUrl: string;
-  audioUrl: string;
-  audioBuffer: ArrayBuffer;
-  logoUrl: string | null;
-  veiculo: any;
-  webhookUrl: string;
-}): Promise<string> {
-  const { videoUrl, audioUrl, audioBuffer, logoUrl, veiculo, webhookUrl } = params;
+    // Salva áudio em disco
+    await fs.writeFile(audioIn, Buffer.from(audioBuffer));
 
-  // Estima duração do áudio pelo buffer MP3 (~128kbps CBR, OpenAI TTS padrão)
-  const audioDuration = Math.ceil((audioBuffer.byteLength * 8) / 128_000);
-  console.log(`⏱️ Duração estimada do áudio: ${audioDuration}s`);
+    // FFmpeg: substitui áudio, -shortest corta no menor stream (áudio ~60s)
+    console.log(`🎞️ Processando FFmpeg...`);
+    await execFileAsync(ffmpegPath, [
+      "-i", videoIn,
+      "-i", audioIn,
+      "-c:v", "copy",    // copia vídeo sem re-encodar (rápido)
+      "-map", "0:v:0",
+      "-map", "1:a:0",
+      "-shortest",       // duração = tamanho do áudio
+      "-y",
+      videoOut,
+    ]);
 
-  const preco = `R$ ${Number(veiculo.preco_sugerido).toLocaleString("pt-BR")}`;
-  const titulo = `${veiculo.marca} ${veiculo.modelo} ${veiculo.ano_modelo}`.toUpperCase();
-  const subtitulo = `${veiculo.versao || ""} • ${veiculo.quilometragem_estimada?.toLocaleString("pt-BR") ?? "—"} KM`.trim();
-  const cleanLogoUrl = logoUrl ? logoUrl.split("?")[0] : null;
+    // Upload para Supabase Storage
+    const outputBuffer = await fs.readFile(videoOut);
+    const storagePath = `marketing/${veiculoId}/video_final.mp4`;
 
-  if (cleanLogoUrl) console.log(`🖼️ Logo: ${cleanLogoUrl}`);
-  else console.warn(`⚠️ Sem logo`);
+    const { error } = await supabaseAdmin.storage
+      .from("veiculos")
+      .upload(storagePath, outputBuffer, { contentType: "video/mp4", upsert: true });
 
-  // Distribui clips de 8s pelo vídeo bruto (primeiros 150s) para cobrir o áudio
-  const CLIP_SECS = 8;
-  const SOURCE_MAX = 150;
-  const clipCount = Math.ceil(audioDuration / CLIP_SECS);
-  const step = clipCount > 1 ? (SOURCE_MAX - CLIP_SECS) / (clipCount - 1) : 0;
+    if (error) throw new Error(`Upload vídeo final falhou: ${error.message}`);
 
-  // Creatomate JSON source usa camelCase
-  const videoClips = Array.from({ length: clipCount }, (_, i) => ({
-    type: "video",
-    track: 1,
-    time: i * CLIP_SECS,
-    duration: CLIP_SECS,
-    "trim-start": Math.round(i * step),
-    source: videoUrl,
-    fit: "cover",
-  }));
+    const { data } = supabaseAdmin.storage.from("veiculos").getPublicUrl(storagePath);
+    console.log(`✅ Vídeo final: ${data.publicUrl}`);
+    return data.publicUrl;
 
-  const elements: object[] = [
-    ...videoClips,
-    { type: "audio", track: 2, time: 0, source: audioUrl },
-    {
-      type: "text",
-      track: 3,
-      time: 0,
-      duration: 6,
-      text: titulo,
-      "font-family": "Montserrat",
-      "font-weight": "900",
-      "font-size": "8 vmin",
-      "fill-color": "#ffffff",
-      "shadow-color": "rgba(0,0,0,0.6)",
-      "shadow-blur": 8,
-      "x-alignment": "50%",
-      "y-alignment": "82%",
-      width: "90%",
-    },
-    {
-      type: "text",
-      track: 3,
-      time: 6,
-      duration: 6,
-      text: `${subtitulo}\n${preco}`,
-      "font-family": "Montserrat",
-      "font-weight": "700",
-      "font-size": "5 vmin",
-      "fill-color": "#ffffff",
-      "shadow-color": "rgba(0,0,0,0.6)",
-      "shadow-blur": 8,
-      "x-alignment": "50%",
-      "y-alignment": "82%",
-      width: "90%",
-    },
-  ];
-
-  if (cleanLogoUrl) {
-    elements.push({
-      type: "image",
-      track: 4,
-      time: 0,
-      duration: audioDuration,
-      source: cleanLogoUrl,
-      x: "82%",
-      y: "6%",
-      width: "22%",
-      height: "10%",
-      fit: "contain",
-    });
+  } finally {
+    await Promise.allSettled([
+      fs.unlink(videoIn).catch(() => {}),
+      fs.unlink(audioIn).catch(() => {}),
+      fs.unlink(videoOut).catch(() => {}),
+    ]);
   }
-
-  const body = {
-    source: {
-      "output-format": "mp4",
-      format: "mp4",
-      width: 1080,
-      height: 1920,
-      duration: audioDuration,
-      elements,
-    },
-    webhook_url: webhookUrl,
-  };
-
-  console.log(`📤 Creatomate: ${clipCount} clips × ${CLIP_SECS}s = ${audioDuration}s total`);
-
-  const res = await fetch("https://api.creatomate.com/v1/renders", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${CREATOMATE_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Creatomate error ${res.status}: ${err.slice(0, 500)}`);
-  }
-
-  const data = await res.json();
-  console.log(`🎬 Creatomate response:`, JSON.stringify(data));
-  const render = Array.isArray(data) ? data[0] : data;
-  return render?.id as string;
 }
 
 // ─── Pipeline principal ───────────────────────────────────────────────────────
 export async function executarPipelineMarketing(veiculoId: string): Promise<void> {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://autozap.digital";
-
-  // Carrega dados do veículo e tenant
   const { data: veiculo } = await supabaseAdmin
     .from("veiculos")
     .select("*")
@@ -216,13 +133,6 @@ export async function executarPipelineMarketing(veiculoId: string): Promise<void
 
   if (!veiculo) throw new Error(`Veículo ${veiculoId} não encontrado`);
 
-  const { data: cfg } = await supabaseAdmin
-    .from("config_garage")
-    .select("logo_url")
-    .eq("user_id", veiculo.user_id)
-    .maybeSingle();
-
-  // Marca como "em processamento"
   await supabaseAdmin
     .from("veiculos")
     .update({ marketing_status: "processando" })
@@ -234,29 +144,23 @@ export async function executarPipelineMarketing(veiculoId: string): Promise<void
 
     console.log(`🎙️ [${veiculoId}] Gerando voiceover...`);
     const audioBuffer = await gerarVoiceover(roteiro);
-    const audioUrl = await uploadAudio(veiculoId, audioBuffer);
 
     const videoUrl = veiculo.video_url;
     if (!videoUrl) throw new Error("Veículo sem vídeo bruto vinculado");
 
-    console.log(`🎥 [${veiculoId}] Enviando para Creatomate...`);
-    const renderId = await criarRender({
-      videoUrl,
-      audioUrl,
-      audioBuffer,
-      logoUrl: cfg?.logo_url ?? null,
-      veiculo,
-      webhookUrl: `${appUrl}/api/marketing/webhook`,
-    });
+    console.log(`🎞️ [${veiculoId}] Combinando vídeo + áudio...`);
+    const videoFinalUrl = await combinarVideoAudio(veiculoId, videoUrl, audioBuffer);
 
-    // Salva render_id para rastrear quando o webhook chegar
     await supabaseAdmin
       .from("veiculos")
-      .update({ marketing_render_id: renderId, marketing_roteiro: roteiro })
+      .update({
+        video_marketing_url: videoFinalUrl,
+        marketing_status:    "pronto",
+        marketing_roteiro:   roteiro,
+      })
       .eq("id", veiculoId);
 
-    if (!renderId) throw new Error("Creatomate não retornou render ID");
-    console.log(`⏳ [${veiculoId}] Render iniciado: ${renderId}`);
+    console.log(`🏁 [${veiculoId}] Pipeline concluído.`);
   } catch (e) {
     await supabaseAdmin
       .from("veiculos")
