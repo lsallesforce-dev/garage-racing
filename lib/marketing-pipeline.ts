@@ -59,7 +59,7 @@ async function gerarVoiceover(roteiro: string): Promise<ArrayBuffer> {
   return res.arrayBuffer();
 }
 
-// ─── 3. Combina vídeo + áudio via FFmpeg ─────────────────────────────────────
+// ─── 3. Extrai clips + combina com áudio via FFmpeg ──────────────────────────
 async function combinarVideoAudio(
   veiculoId: string,
   videoUrl: string,
@@ -78,27 +78,49 @@ async function combinarVideoAudio(
   const videoOut = path.join(tmpDir, `${veiculoId}_out.mp4`);
 
   try {
-    // Baixa vídeo bruto
     console.log(`⬇️ Baixando vídeo: ${videoUrl}`);
     const videoRes = await fetch(videoUrl);
     if (!videoRes.ok) throw new Error(`Falha ao baixar vídeo: ${videoRes.status}`);
     await fs.writeFile(videoIn, Buffer.from(await videoRes.arrayBuffer()));
-
-    // Salva áudio em disco
     await fs.writeFile(audioIn, Buffer.from(audioBuffer));
 
-    // FFmpeg: substitui áudio, -shortest corta no menor stream (áudio ~60s)
-    console.log(`🎞️ Processando FFmpeg...`);
-    await execFileAsync(ffmpegPath, [
-      "-i", videoIn,
-      "-i", audioIn,
-      "-c:v", "copy",    // copia vídeo sem re-encodar (rápido)
-      "-map", "0:v:0",
-      "-map", "1:a:0",
-      "-shortest",       // duração = tamanho do áudio
+    // Estima duração do áudio e calcula pontos de corte
+    const audioDuration = Math.ceil((audioBuffer.byteLength * 8) / 128_000);
+    const CLIP_SECS  = 8;
+    const SOURCE_MAX = 150; // primeiros 2:30 do vídeo bruto
+    const clipCount  = Math.ceil(audioDuration / CLIP_SECS);
+    const step       = clipCount > 1 ? (SOURCE_MAX - CLIP_SECS) / (clipCount - 1) : 0;
+
+    console.log(`✂️ ${clipCount} clips × ${CLIP_SECS}s distribuídos em ${SOURCE_MAX}s de fonte`);
+
+    // Monta args do FFmpeg com N entradas do mesmo vídeo em pontos diferentes
+    const args: string[] = [];
+
+    for (let i = 0; i < clipCount; i++) {
+      const start = Math.round(i * step);
+      args.push("-ss", String(start), "-t", String(CLIP_SECS), "-i", videoIn);
+    }
+
+    // Áudio como última entrada
+    args.push("-i", audioIn);
+
+    // filter_complex: concatena os N clips de vídeo
+    const concatInputs = Array.from({ length: clipCount }, (_, i) => `[${i}:v]`).join("");
+    args.push(
+      "-filter_complex", `${concatInputs}concat=n=${clipCount}:v=1:a=0[outv]`,
+      "-map", "[outv]",
+      "-map", `${clipCount}:a`,
+      "-c:v", "libx264",
+      "-preset", "ultrafast", // rápido o suficiente para Vercel (300s limit)
+      "-crf", "23",
+      "-c:a", "aac",
+      "-shortest",
       "-y",
       videoOut,
-    ]);
+    );
+
+    console.log(`🎞️ FFmpeg processando ${clipCount} clips...`);
+    await execFileAsync(ffmpegPath, args, { maxBuffer: 100 * 1024 * 1024 });
 
     // Upload para Supabase Storage
     const outputBuffer = await fs.readFile(videoOut);
@@ -111,7 +133,7 @@ async function combinarVideoAudio(
     if (error) throw new Error(`Upload vídeo final falhou: ${error.message}`);
 
     const { data } = supabaseAdmin.storage.from("veiculos").getPublicUrl(storagePath);
-    console.log(`✅ Vídeo final: ${data.publicUrl}`);
+    console.log(`✅ Vídeo final pronto: ${data.publicUrl}`);
     return data.publicUrl;
 
   } finally {
