@@ -69,7 +69,7 @@ async function combinarVideoAudio(
   const { promisify } = await import("util");
   const fs = await import("fs/promises");
   const path = await import("path");
-  const ffmpegPath = (await import("ffmpeg-static")).default as string;
+  const { path: ffmpegPath } = await import("@ffmpeg-installer/ffmpeg");
 
   const execFileAsync = promisify(execFile);
   const tmpDir = "/tmp";
