@@ -1,7 +1,7 @@
 // lib/marketing-pipeline.ts
 //
 // Orquestra a esteira de geração de vídeo de marketing:
-// Supabase → Gemini (roteiro) → OpenAI TTS (voz) → Whisper (timestamps) → FFmpeg (legendas + vídeo)
+// Supabase → Gemini (roteiro) → OpenAI TTS (voz) → Whisper (timestamps) → FFmpeg (legendas + vídeo 9:16)
 
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { GoogleGenerativeAI } from "@google/generative-ai";
@@ -96,13 +96,11 @@ async function gerarTranscricao(audioBuffer: ArrayBuffer): Promise<WhisperWord[]
 }
 
 // ─── 4. Legendas dinâmicas via drawtext encadeado ────────────────────────────
-// Usa drawtext + enable='between(t,start,end)' — não depende de libass/subtitles filter
+// Usa drawtext + enable='between(t,start,end)' — sem dependência de libass.
+// O preço NÃO é inserido aqui: aparece automaticamente pela legenda no momento
+// em que o locutor o menciona (Whisper capta o timestamp correto).
 
-interface WordChunk {
-  text: string;
-  start: number;
-  end: number;
-}
+interface WordChunk { text: string; start: number; end: number; }
 
 function agruparPalavras(words: WhisperWord[], delay: number): WordChunk[] {
   const CHUNK = 3;
@@ -112,56 +110,45 @@ function agruparPalavras(words: WhisperWord[], delay: number): WordChunk[] {
     chunks.push({
       text: slice.map(w => w.word.trim()).join(" "),
       start: slice[0].start + delay,
-      end: slice[slice.length - 1].end + delay + 0.05,
+      end:   slice[slice.length - 1].end + delay + 0.05,
     });
   }
   return chunks;
 }
 
-// Constrói cadeia de drawtext dinâmicos + overlay de preço no final
-// Retorna a seção de filtros (já inclui [vout] como label de saída)
+// Constrói cadeia de drawtext — mesma fonte/cor em todas as legendas, sem overlay de preço.
+// Entrada: [raw] (já com escala 9:16 aplicada), saída: [vout]
 function buildCaptionFilters(
   chunks: WordChunk[],
   fontFile: string,
-  preco: string,
-  precoStart: number,
   inputLabel: string,
 ): string {
-  // Escapa texto para o filtro drawtext (sem shell — só escapa chars especiais do filtro)
+  // Escapa chars especiais do filtro drawtext (sem shell)
   const esc = (s: string) =>
     s.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\u2019");
+
+  if (chunks.length === 0) return `${inputLabel}copy[vout]`;
 
   const parts: string[] = [];
   let prev = inputLabel;
 
   for (let i = 0; i < chunks.length; i++) {
     const { text, start, end } = chunks[i];
-    const next = i === chunks.length - 1 ? "[vtxt]" : `[cap${i}]`;
+    const next = i === chunks.length - 1 ? "[vout]" : `[cap${i}]`;
     parts.push(
       `${prev}drawtext=fontfile=${fontFile}` +
       `:text='${esc(text)}'` +
-      `:fontsize=65:fontcolor=white` +
+      // fontsize 55 sobre 1080px de largura: ~3 palavras cabem sem overflow
+      `:fontsize=55:fontcolor=white` +
+      // terço inferior da tela, centralizado horizontalmente
       `:x=(w-text_w)/2:y=h*0.76` +
+      // contorno preto grosso para legibilidade em qualquer fundo
       `:borderw=5:bordercolor=black` +
       `:enable='between(t,${start.toFixed(3)},${end.toFixed(3)})'` +
       `${next}`
     );
     prev = next;
   }
-
-  // Se não há chunks, passthrough direto
-  if (chunks.length === 0) prev = inputLabel;
-
-  // Preço: aparece na parte superior a partir de precoStart
-  parts.push(
-    `${prev}drawtext=fontfile=${fontFile}` +
-    `:text='${esc(preco)}'` +
-    `:fontsize=52:fontcolor='#FFD700'` +
-    `:x=(w-text_w)/2:y=h*0.10` +
-    `:box=1:boxcolor=black@0.6:boxborderw=14` +
-    `:enable='gte(t,${precoStart.toFixed(1)})'` +
-    `[vout]`
-  );
 
   return parts.join(";");
 }
@@ -172,10 +159,9 @@ async function combinarVideoAudio(params: {
   videoUrl: string;
   audioBuffer: ArrayBuffer;
   words: WhisperWord[];
-  preco: string;
   musicaUrl: string | null;
 }): Promise<string> {
-  const { veiculoId, videoUrl, audioBuffer, words, preco, musicaUrl } = params;
+  const { veiculoId, videoUrl, audioBuffer, words, musicaUrl } = params;
 
   const { execFile } = await import("child_process");
   const { promisify } = await import("util");
@@ -228,12 +214,12 @@ async function combinarVideoAudio(params: {
 
     // ── Duração real do áudio e fator atempo ─────────────────────────────────
     const audioDuration = Math.ceil((audioBuffer.byteLength * 8) / 128_000);
-    const TARGET_SECS = 60;
+    const TARGET_SECS   = 60;
     const atempo = audioDuration > TARGET_SECS
       ? Math.min(2.0, parseFloat((audioDuration / TARGET_SECS).toFixed(3)))
       : 1.0;
 
-    // Duração efetiva após aceleração — clipCount baseado NESSE valor, não em 60s fixos
+    // Duração efetiva após aceleração — clipCount baseado nisso, não em 60s fixos
     const effectiveDuration = Math.ceil(audioDuration / atempo) + audioDelay;
 
     if (atempo > 1.0) {
@@ -248,13 +234,12 @@ async function combinarVideoAudio(params: {
     const clipCount    = Math.ceil(effectiveDuration / CLIP_SECS);
     const step         = clipCount > 1 ? USABLE_SECS / (clipCount - 1) : 0;
 
-    console.log(`✂️ ${clipCount} clips × ${CLIP_SECS}s | fonte [${SOURCE_START}s–${SOURCE_END}s] | vídeo total ~${effectiveDuration}s`);
+    console.log(`✂️ ${clipCount} clips × ${CLIP_SECS}s | [${SOURCE_START}s–${SOURCE_END}s] | total ~${effectiveDuration}s`);
 
-    // ── Legendas dinâmicas por drawtext encadeado ─────────────────────────────
+    // ── Legendas — timestamps já incluem o audioDelay ────────────────────────
     const chunks = agruparPalavras(words, audioDelay);
-    const precoStart = audioDelay + 5;
-    const captionSection = buildCaptionFilters(chunks, fontTmp, preco, precoStart, "[raw]");
-    console.log(`📝 ${chunks.length} legendas dinâmicas geradas`);
+    const captionSection = buildCaptionFilters(chunks, fontTmp, "[raw]");
+    console.log(`📝 ${chunks.length} legendas (${words.length} palavras)`);
 
     // ── Monta args do FFmpeg ──────────────────────────────────────────────────
     const args: string[] = [];
@@ -270,11 +255,15 @@ async function combinarVideoAudio(params: {
     const musicIdx = clipCount + 1;
 
     const concatIn = Array.from({ length: clipCount }, (_, i) => `[${i}:v]`).join("");
-    const concatSection = `${concatIn}concat=n=${clipCount}:v=1:a=0[raw]`;
 
-    // Voz: acelera se necessário, depois delay de intro (quando há música)
+    // Concat → escala + crop 9:16 (1080×1920) → legendas
+    const videoSection =
+      `${concatIn}concat=n=${clipCount}:v=1:a=0[concat];` +
+      `[concat]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920[raw];` +
+      captionSection;
+
+    // Áudio: acelera se necessário, delay de intro quando há música de fundo
     const voiceAtempoFilter = atempo > 1.0 ? `atempo=${atempo},` : "";
-
     let audioSection: string;
     if (hasMusicFile) {
       audioSection =
@@ -287,7 +276,7 @@ async function combinarVideoAudio(params: {
         : `[${voiceIdx}:a]anull[aout]`;
     }
 
-    const filterComplex = [concatSection, captionSection, audioSection].join(";");
+    const filterComplex = `${videoSection};${audioSection}`;
 
     args.push(
       "-filter_complex", filterComplex,
@@ -297,12 +286,12 @@ async function combinarVideoAudio(params: {
       "-preset", "ultrafast",
       "-crf", "23",
       "-c:a", "aac",
-      "-shortest",
+      "-shortest",   // para exatamente quando o áudio terminar
       "-y",
       videoOut,
     );
 
-    console.log(`🎞️ FFmpeg renderizando...`);
+    console.log(`🎞️ FFmpeg renderizando (9:16)...`);
     await execFileAsync(ffmpegPath, args, { maxBuffer: 200 * 1024 * 1024 });
 
     // Upload para Supabase Storage
@@ -361,15 +350,12 @@ export async function executarPipelineMarketing(veiculoId: string): Promise<void
     const videoUrl = veiculo.video_url;
     if (!videoUrl) throw new Error("Veículo sem vídeo bruto vinculado");
 
-    const preco = `R$ ${Number(veiculo.preco_sugerido).toLocaleString("pt-BR")}`;
-
     console.log(`🎞️ [${veiculoId}] Combinando vídeo + legendas + áudio...`);
     const videoFinalUrl = await combinarVideoAudio({
       veiculoId,
       videoUrl,
       audioBuffer,
       words,
-      preco,
       musicaUrl: cfg?.musica_fundo_url ?? null,
     });
 
