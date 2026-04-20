@@ -339,7 +339,7 @@ async function combinarVideoAudio(params: {
       captionSection; // outputLabel: [vout]
 
     if (hasLogo) {
-      console.log(`🖼️ Logo overlay: aparece em t=${logoStart}s (logoIdx=${logoIdx})`);
+      console.log(`🖼️ Logo overlay ativo (logoIdx=${logoIdx})`);
       // scale=-2 garante altura par (exigido pelo yuv420p); format=auto preserva alpha do PNG
       videoSection +=
         `;[${logoIdx}:v]scale=648:-2[logo];` +
@@ -361,7 +361,7 @@ async function combinarVideoAudio(params: {
     }
 
     const filterComplex = `${videoSection};${audioSection}`;
-    console.log(`🔧 hasLogo=${hasLogo} hasMusic=${hasMusicFile} logoIdx=${logoIdx} logoStart=${logoStart}`);
+    console.log(`🔧 hasLogo=${hasLogo} hasMusic=${hasMusicFile} logoIdx=${logoIdx}`);
     console.log(`🔧 filter_complex="${filterComplex.slice(-300)}"`);
 
     args.push(
