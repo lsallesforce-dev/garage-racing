@@ -4,6 +4,16 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { Video, Loader2, CheckCircle, AlertCircle, Download, RotateCcw } from "lucide-react";
 
+const R2 = process.env.NEXT_PUBLIC_R2_PUBLIC_URL ?? "";
+
+const MUSIC_PRESETS = [
+  { label: "Configurada na garagem", value: "" },
+  { label: "Sem música",             value: "none" },
+  { label: "🔥 Animado",             value: `${R2}/musicas/animado.mp3` },
+  { label: "✨ Elegante",            value: `${R2}/musicas/elegante.mp3` },
+  { label: "🎬 Emocional",           value: `${R2}/musicas/emocional.mp3` },
+];
+
 interface Props {
   veiculoId: string;
   statusInicial: string | null;
@@ -110,14 +120,13 @@ export function GenerateMarketingVideoButton({ veiculoId, statusInicial, videoFi
       </div>
 
       <div className="flex flex-col gap-1">
-        <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">Música de Fundo (URL)</span>
-        <input
-          type="url"
-          value={musicaOverride}
-          onChange={e => setMusicaOverride(e.target.value)}
-          placeholder="URL do .mp3 — vazio usa a configurada na garagem"
-          className="text-[11px] text-gray-700 bg-white border border-gray-200 rounded-xl px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 placeholder:text-gray-300"
-        />
+        <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">Música de Fundo</span>
+        <select value={musicaOverride} onChange={e => setMusicaOverride(e.target.value)}
+          className="text-[11px] font-bold text-gray-700 bg-white border border-gray-200 rounded-xl px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-400">
+          {MUSIC_PRESETS.map(p => (
+            <option key={p.value} value={p.value}>{p.label}</option>
+          ))}
+        </select>
       </div>
     </div>
   );

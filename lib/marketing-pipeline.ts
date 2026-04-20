@@ -200,7 +200,8 @@ async function combinarVideoAudio(params: {
   musicaOverride: string | null;
 }): Promise<string> {
   const { veiculoId, videoUrl, audioBuffer, words, musicaUrl, logoUrl, logoStoragePath, transicao, musicaOverride } = params;
-  const musicaFinal = musicaOverride ?? musicaUrl;
+  // "none" = usuário escolheu explicitamente sem música; null = usar config da garagem
+  const musicaFinal = musicaOverride === "none" ? null : (musicaOverride || musicaUrl);
 
   const { execFile } = await import("child_process");
   const { promisify } = await import("util");
