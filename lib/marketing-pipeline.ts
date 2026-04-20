@@ -224,7 +224,11 @@ async function combinarVideoAudio(params: {
 
     if (logoUrl) {
       const lr = await fetch(logoUrl);
-      if (lr.ok) await fs.writeFile(logoIn, Buffer.from(await lr.arrayBuffer()));
+      if (lr.ok) {
+        await fs.writeFile(logoIn, Buffer.from(await lr.arrayBuffer()));
+      } else {
+        console.warn(`⚠️ Logo fetch falhou (${lr.status}): ${logoUrl}`);
+      }
     }
 
     const hasMusicFile = musicaUrl
@@ -237,8 +241,15 @@ async function combinarVideoAudio(params: {
 
     const audioDelay = hasMusicFile ? 2 : 0;
 
-    // ── Duração real do áudio e fator atempo ─────────────────────────────────
-    const audioDuration = Math.ceil((audioBuffer.byteLength * 8) / 128_000);
+    // ── Duração real do áudio via ffmpeg -i (evita estimativa por bytesize) ──
+    // ffmpeg -i sem output retorna código 1, mas imprime Duration no stderr
+    const probeErr: string = await execFileAsync(ffmpegPath, ["-i", audioIn])
+      .then(() => "")
+      .catch((e: any) => String(e.stderr ?? e.message ?? ""));
+    const probeMatch = probeErr.match(/Duration:\s*(\d+):(\d+):([\d.]+)/);
+    const audioDuration = probeMatch
+      ? Math.ceil(+probeMatch[1] * 3600 + +probeMatch[2] * 60 + parseFloat(probeMatch[3]))
+      : Math.ceil((audioBuffer.byteLength * 8) / 128_000); // fallback se ffmpeg falhar
     const TARGET_SECS   = 60;
     const atempo = audioDuration > TARGET_SECS
       ? Math.min(2.0, parseFloat((audioDuration / TARGET_SECS).toFixed(3)))
@@ -293,10 +304,11 @@ async function combinarVideoAudio(params: {
       captionSection; // outputLabel: [vout]
 
     if (hasLogo) {
-      // Escala a logo para 220px de largura, centralizada horizontalmente, 8% do topo
+      console.log(`🖼️ Logo overlay: aparece em t=${logoStart}s (logoIdx=${logoIdx})`);
+      // scale=-2 garante altura par (exigido pelo yuv420p); format=auto preserva alpha do PNG
       videoSection +=
-        `;[${logoIdx}:v]scale=220:-1[logo];` +
-        `[vout][logo]overlay=x=(W-w)/2:y=H*0.08:enable='gte(t,${logoStart})'[vfinal]`;
+        `;[${logoIdx}:v]scale=220:-2[logo];` +
+        `[vout][logo]overlay=x=(W-w)/2:y=H*0.08:format=auto:enable='gte(t,${logoStart})'[vfinal]`;
     }
 
     // Áudio: acelera se necessário, delay de intro quando há música de fundo
