@@ -45,7 +45,7 @@ Paths de tmp são por job: `/tmp/ffmpeg_{veiculoId}`, `/tmp/ffmpeg_caps_{veiculo
 - `QSTASH_TOKEN`, `QSTASH_CURRENT_SIGNING_KEY`, `QSTASH_NEXT_SIGNING_KEY` — Upstash
 
 ## Worker de vídeo (`app/api/marketing/worker/route.ts`)
-- `maxDuration = 540` (9 min — Vercel Pro)
+- `maxDuration = 300` (5 min — limite do plano Hobby da Vercel)
 - Idempotente: pula se veículo já está `pronto`
 - `iniciar` route bloqueia double-click checando status `processando` antes de publicar no QStash
 

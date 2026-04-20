@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { executarPipelineMarketing } from "@/lib/marketing-pipeline";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
-export const maxDuration = 540;
+export const maxDuration = 300;
 
 async function handler(req: NextRequest) {
   const body = await req.json();
