@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Building2, Car, Users, MessageSquare, Zap, CheckCircle2, AlertTriangle, XCircle, ExternalLink, Copy, Plus, X, Loader2, RefreshCw, Activity } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Building2, Car, Users, MessageSquare, Zap, CheckCircle2, AlertTriangle, XCircle, ExternalLink, Copy, Plus, X, Loader2, RefreshCw, Activity, Music, Upload, CheckCircle } from "lucide-react";
 
 type StatusBadge = "ativo" | "sem_estoque" | "sem_webhook";
 type PlanoStatus = "trial" | "ativo" | "expirado";
@@ -196,6 +196,79 @@ function NovoTenantModal({ secret, onClose, onSuccess }: { secret: string; onClo
         )}
       </div>
     </div>
+  );
+}
+
+// ─── Upload Músicas ───────────────────────────────────────────────────────────
+
+const MUSICAS = [
+  { nome: "animado",   emoji: "🔥", label: "Animado" },
+  { nome: "elegante",  emoji: "✨", label: "Elegante" },
+  { nome: "emocional", emoji: "🎬", label: "Emocional" },
+] as const;
+
+function MusicasPanel({ secret }: { secret: string }) {
+  const [estados, setEstados] = useState<Record<string, "idle" | "uploading" | "done" | "error">>({});
+  const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  async function handleUpload(nome: string, file: File) {
+    setEstados(e => ({ ...e, [nome]: "uploading" }));
+    try {
+      const res = await fetch("/api/admin/upload-musica", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-secret": secret },
+        body: JSON.stringify({ nome }),
+      });
+      if (!res.ok) throw new Error();
+      const { signedUrl } = await res.json();
+      const put = await fetch(signedUrl, { method: "PUT", body: file, headers: { "Content-Type": "audio/mpeg" } });
+      if (!put.ok) throw new Error();
+      setEstados(e => ({ ...e, [nome]: "done" }));
+    } catch {
+      setEstados(e => ({ ...e, [nome]: "error" }));
+    }
+  }
+
+  return (
+    <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+      <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4 flex items-center gap-2">
+        <Music size={12} /> Músicas de Fundo (R2)
+      </p>
+      <div className="flex flex-wrap gap-4">
+        {MUSICAS.map(({ nome, emoji, label }) => {
+          const estado = estados[nome] ?? "idle";
+          return (
+            <div key={nome} className="flex flex-col gap-2 items-center">
+              <input
+                ref={el => { inputRefs.current[nome] = el; }}
+                type="file"
+                accept="audio/mpeg,audio/mp3,.mp3"
+                className="hidden"
+                onChange={e => { const f = e.target.files?.[0]; if (f) handleUpload(nome, f); }}
+              />
+              <button
+                onClick={() => inputRefs.current[nome]?.click()}
+                disabled={estado === "uploading"}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50 ${
+                  estado === "done"    ? "bg-green-50 text-green-700 border border-green-200" :
+                  estado === "error"   ? "bg-red-50 text-red-600 border border-red-200" :
+                  estado === "uploading" ? "bg-gray-100 text-gray-500 border border-gray-200" :
+                  "bg-gray-900 text-white hover:bg-red-600"
+                }`}
+              >
+                {estado === "uploading" ? <Loader2 size={12} className="animate-spin" /> :
+                 estado === "done"      ? <CheckCircle size={12} /> :
+                 <Upload size={12} />}
+                {emoji} {label}
+              </button>
+              {estado === "done"  && <span className="text-[9px] text-green-600 font-bold uppercase tracking-widest">Enviado!</span>}
+              {estado === "error" && <span className="text-[9px] text-red-500 font-bold uppercase tracking-widest">Erro</span>}
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-[9px] text-gray-400 mt-3">Envie arquivos MP3 para cada preset. São usados em todos os vídeos de marketing.</p>
+    </section>
   );
 }
 
@@ -477,6 +550,9 @@ export default function AdminPage() {
             </table>
           </div>
         </section>
+
+        {/* ── Músicas de Fundo ───────────────────────────────────────────── */}
+        <MusicasPanel secret={secret} />
 
         {/* ── Link vitrine pública ────────────────────────────────────────── */}
         <section className="bg-gray-900 rounded-2xl p-6 flex items-center justify-between">
