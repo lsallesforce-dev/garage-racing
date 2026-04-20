@@ -73,8 +73,10 @@ export function GenerateMarketingVideoButton({ veiculoId, statusInicial, videoFi
       if (data) {
         setStatus(data.marketing_status);
         if (data.video_marketing_url) setVideoUrl(data.video_marketing_url);
-        if (data.marketing_roteiro && !roteiro) setRoteiro(data.marketing_roteiro);
-        if (data.marketing_status === "pronto") setPrefsAlteradas(false);
+        if (data.marketing_status === "pronto") {
+          setPrefsAlteradas(false);
+          if (data.marketing_roteiro) setRoteiro(data.marketing_roteiro);
+        }
       }
     }, 5000);
 
