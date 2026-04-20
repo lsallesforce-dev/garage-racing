@@ -1,7 +1,5 @@
-// Proxy Edge para arquivos do R2 — evita rate-limit do pub-xxx.r2.dev no browser.
+// Proxy para arquivos do R2 — evita rate-limit do pub-xxx.r2.dev no browser.
 // Serve via autozap.digital/api/r2/<key> com suporte a Range requests (seek de vídeo).
-
-export const runtime = "edge";
 
 const R2_ORIGIN = process.env.R2_PUBLIC_URL!; // https://pub-xxx.r2.dev
 
