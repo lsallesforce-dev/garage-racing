@@ -321,7 +321,7 @@ async function combinarVideoAudio(params: {
       // scale=-2 garante altura par (exigido pelo yuv420p); format=auto preserva alpha do PNG
       videoSection +=
         `;[${logoIdx}:v]scale=648:-2[logo];` +
-        `[vout][logo]overlay=x=(W-w)/2:y=H*0.06:format=auto:enable='gte(t,${logoStart})'[vfinal]`;
+        `[vout][logo]overlay=x=(W-w)/2:y=H*0.06:format=auto[vfinal]`;
     }
 
     // Áudio: acelera se necessário, delay de intro quando há música de fundo
