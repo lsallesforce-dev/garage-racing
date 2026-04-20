@@ -77,97 +77,7 @@ async function gerarVoiceover(roteiro: string, voz: VozTTS = "onyx"): Promise<Ar
   return res.arrayBuffer();
 }
 
-// ─── 3. Transcrição com timestamps via Whisper ───────────────────────────────
-interface WhisperWord {
-  word: string;
-  start: number;
-  end: number;
-}
-
-async function gerarTranscricao(audioBuffer: ArrayBuffer): Promise<WhisperWord[]> {
-  const formData = new FormData();
-  formData.append(
-    "file",
-    new Blob([audioBuffer], { type: "audio/mpeg" }),
-    "audio.mp3"
-  );
-  formData.append("model", "whisper-1");
-  formData.append("response_format", "verbose_json");
-  formData.append("timestamp_granularities[]", "word");
-  formData.append("language", "pt");
-
-  const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${OPENAI_API_KEY}` },
-    body: formData,
-  });
-
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Whisper error ${res.status}: ${err.slice(0, 200)}`);
-  }
-
-  const data = await res.json();
-  return (data.words ?? []) as WhisperWord[];
-}
-
-// ─── 4. Legendas dinâmicas via drawtext encadeado ────────────────────────────
-// Usa drawtext + enable='between(t,start,end)' — sem dependência de libass.
-// O preço NÃO é inserido aqui: aparece automaticamente pela legenda no momento
-// em que o locutor o menciona (Whisper capta o timestamp correto).
-
-interface WordChunk { text: string; start: number; end: number; }
-
-function agruparPalavras(words: WhisperWord[], delay: number): WordChunk[] {
-  const CHUNK = 3;
-  const chunks: WordChunk[] = [];
-  for (let i = 0; i < words.length; i += CHUNK) {
-    const slice = words.slice(i, i + CHUNK);
-    chunks.push({
-      text: slice.map(w => w.word.trim()).join(" "),
-      start: slice[0].start + delay,
-      end:   slice[slice.length - 1].end + delay + 0.05,
-    });
-  }
-  return chunks;
-}
-
-// Constrói cadeia de drawtext — mesma fonte/cor em todas as legendas, sem overlay de preço.
-// Entrada: [raw] (já com escala 9:16 aplicada), saída: [vout]
-function buildCaptionFilters(
-  chunks: WordChunk[],
-  fontFile: string,
-  inputLabel: string,
-): string {
-  // Escapa chars especiais do filtro drawtext (sem shell)
-  const esc = (s: string) =>
-    s.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\u2019");
-
-  if (chunks.length === 0) return `${inputLabel}copy[vout]`;
-
-  const parts: string[] = [];
-  let prev = inputLabel;
-
-  for (let i = 0; i < chunks.length; i++) {
-    const { text, start, end } = chunks[i];
-    const next = i === chunks.length - 1 ? "[vout]" : `[cap${i}]`;
-    parts.push(
-      `${prev}drawtext=fontfile=${fontFile}` +
-      `:text='${esc(text)}'` +
-      // fontsize 55 sobre 1080px de largura: ~3 palavras cabem sem overflow
-      `:fontsize=72:fontcolor=white` +
-      `:x=(w-text_w)/2:y=h*0.76` +
-      `:borderw=6:bordercolor=black` +
-      `:enable='between(t,${start.toFixed(3)},${end.toFixed(3)})'` +
-      `${next}`
-    );
-    prev = next;
-  }
-
-  return parts.join(";");
-}
-
-// ─── 5a. Montagem de clips com ou sem transição xfade ────────────────────────
+// ─── 3. Montagem de clips com ou sem transição xfade ────────────────────────
 const TRANS_DUR = 0.3; // segundos de sobreposição entre clips
 
 const XFADE_TRANSITIONS = ["dissolve", "slideleft", "slideright", "wipeleft", "pixelize"];
@@ -206,14 +116,13 @@ async function combinarVideoAudio(params: {
   veiculoId: string;
   videoUrl: string;
   audioBuffer: ArrayBuffer;
-  words: WhisperWord[];
   musicaUrl: string | null;
   logoUrl: string | null;
   logoStoragePath: string | null;
   transicao: string;
   musicaOverride: string | null;
 }): Promise<string> {
-  const { veiculoId, videoUrl, audioBuffer, words, musicaUrl, logoUrl, logoStoragePath, transicao, musicaOverride } = params;
+  const { veiculoId, videoUrl, audioBuffer, musicaUrl, logoUrl, logoStoragePath, transicao, musicaOverride } = params;
   // "none" = usuário escolheu explicitamente sem música; null = usar config da garagem
   const musicaFinal = musicaOverride === "none" ? null : (musicaOverride || musicaUrl);
 
@@ -241,21 +150,14 @@ async function combinarVideoAudio(params: {
   const audioIn  = path.join(tmpDir, `${veiculoId}_voice.mp3`);
   const musicIn  = path.join(tmpDir, `${veiculoId}_music.mp3`);
   const logoIn   = path.join(tmpDir, `${veiculoId}_logo.png`);
-  const fontTmp  = path.join(tmpDir, "Montserrat-Black.ttf");
   const videoOut = path.join(tmpDir, `${veiculoId}_out.mp4`);
-
-  const fontSrc = path.join(process.cwd(), "public", "fonts", "Montserrat-Black.ttf");
 
   try {
     console.log(`⬇️ Baixando assets...`);
-    const [videoRes, fontBuf] = await Promise.all([
-      fetch(videoUrl).then(r => { if (!r.ok) throw new Error(`Vídeo ${r.status}`); return r.arrayBuffer(); }),
-      fs.readFile(fontSrc),
-    ]);
+    const videoRes = await fetch(videoUrl).then(r => { if (!r.ok) throw new Error(`Vídeo ${r.status}`); return r.arrayBuffer(); });
     await Promise.all([
       fs.writeFile(videoIn, Buffer.from(videoRes)),
       fs.writeFile(audioIn, Buffer.from(audioBuffer)),
-      fs.writeFile(fontTmp, fontBuf),
     ]);
 
     if (musicaFinal && musicaFinal.startsWith("http")) {
@@ -336,11 +238,6 @@ async function combinarVideoAudio(params: {
 
     console.log(`✂️ ${clipCount} clips × ${CLIP_SECS}s | transicao=${transicao} | [${SOURCE_START}s–${SOURCE_END}s] | total ~${effectiveDuration}s`);
 
-    // ── Legendas — timestamps já incluem o audioDelay ────────────────────────
-    const chunks = agruparPalavras(words, audioDelay);
-    const captionSection = buildCaptionFilters(chunks, fontTmp, "[raw]");
-    console.log(`📝 ${chunks.length} legendas (${words.length} palavras)`);
-
     // ── Monta args do FFmpeg ──────────────────────────────────────────────────
     const args: string[] = [];
 
@@ -356,11 +253,10 @@ async function combinarVideoAudio(params: {
     const musicIdx = clipCount + 1;
     const logoIdx  = clipCount + (hasMusicFile ? 2 : 1);
 
-    // Clips → concat ou xfade → escala + crop 9:16 → legendas → logo
+    // Clips → concat ou xfade → escala + crop 9:16 → logo
     let videoSection =
       `${buildClipsSection(clipCount, CLIP_SECS, transicao)};` +
-      `[concat]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920[raw];` +
-      captionSection; // outputLabel: [vout]
+      `[concat]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920[vout]`;
 
     if (hasLogo) {
       console.log(`🖼️ Logo overlay ativo (logoIdx=${logoIdx})`);
@@ -425,7 +321,7 @@ async function combinarVideoAudio(params: {
 
   } finally {
     await Promise.allSettled(
-      [videoIn, audioIn, musicIn, logoIn, videoOut, fontTmp].map(f =>
+      [videoIn, audioIn, musicIn, logoIn, videoOut].map(f =>
         fs.unlink(f).catch(() => {})
       )
     );
@@ -483,20 +379,15 @@ export async function executarPipelineMarketing(
     console.log(`🎙️ [${veiculoId}] Gerando voiceover (voz=${vozSelecionada})...`);
     const audioBuffer = await gerarVoiceover(roteiro, vozSelecionada);
 
-    console.log(`📝 [${veiculoId}] Transcrevendo com Whisper...`);
-    const words = await gerarTranscricao(audioBuffer);
-    console.log(`📝 [${veiculoId}] ${words.length} palavras com timestamps`);
-
     const videoUrl = veiculo.video_url;
     if (!videoUrl) throw new Error("Veículo sem vídeo bruto vinculado");
 
-    console.log(`🎞️ [${veiculoId}] Combinando vídeo + legendas + áudio...`);
+    console.log(`🎞️ [${veiculoId}] Combinando vídeo + áudio...`);
     console.log(`🖼️ cfg.logo_url=${cfg?.logo_url ?? "null"} | cfg.musica=${cfg?.musica_fundo_url ?? "null"}`);
     const videoFinalUrl = await combinarVideoAudio({
       veiculoId,
       videoUrl,
       audioBuffer,
-      words,
       musicaUrl:        cfg?.musica_fundo_url ?? null,
       logoUrl:          cfg?.logo_url ? cfg.logo_url.split("?")[0] : null,
       logoStoragePath:  logoStoragePath,
