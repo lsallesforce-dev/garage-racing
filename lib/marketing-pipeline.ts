@@ -339,6 +339,8 @@ async function combinarVideoAudio(params: {
     }
 
     const filterComplex = `${videoSection};${audioSection}`;
+    console.log(`🔧 hasLogo=${hasLogo} hasMusic=${hasMusicFile} logoIdx=${logoIdx} logoStart=${logoStart}`);
+    console.log(`🔧 filter_complex="${filterComplex.slice(-300)}"`);
 
     args.push(
       "-filter_complex", filterComplex,
