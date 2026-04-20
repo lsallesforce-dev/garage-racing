@@ -402,18 +402,19 @@ async function combinarVideoAudio(params: {
       : agruparPalavras(words, audioDelay);
     console.log(`📝 ${chunks.length} legendas (${words.length} palavras)`);
 
+    // Passo 1 usa mpeg4 como intermediário — compatível com o binário 2018 do
+    // @ffmpeg-installer que decodifica no passo 2 para gravar as legendas.
+    // libx264 do FFmpeg 7.0.2 gera NAL units que o binário de 2018 não parseia.
+    const hasCaptions = chunks.length > 0 && fontBuf;
     args.push(
       "-filter_complex", filterComplex,
       "-map", hasLogo ? "[vfinal]" : "[vout]",
       "-map", "[aout]",
-      "-c:v", "libx264",
-      "-preset", "veryfast",
-      "-crf", "28",
-      "-pix_fmt", "yuv420p",       // compatibilidade WhatsApp/celular
-      "-profile:v", "main",
-      "-level", "4.0",
-      "-maxrate", "2500k",
-      "-bufsize", "5000k",
+      ...(hasCaptions
+        ? ["-c:v", "mpeg4", "-q:v", "4", "-pix_fmt", "yuv420p"]
+        : ["-c:v", "libx264", "-preset", "veryfast", "-crf", "28",
+           "-pix_fmt", "yuv420p", "-profile:v", "main", "-level", "4.0",
+           "-maxrate", "2500k", "-bufsize", "5000k"]),
       "-movflags", "+faststart",
       "-c:a", "aac",
       "-b:a", "128k",
@@ -426,7 +427,6 @@ async function combinarVideoAudio(params: {
     await execFileAsync(ffmpegPath, args, { maxBuffer: 200 * 1024 * 1024 });
 
     // ── Passo 2: legendas via @ffmpeg-installer (tem drawtext/libfreetype) ──
-    const hasCaptions = chunks.length > 0 && fontBuf;
     if (hasCaptions) {
       const ffmpegCapsMod = await import("@ffmpeg-installer/ffmpeg");
       const ffmpegCapsPath = "/tmp/ffmpeg_caps";
