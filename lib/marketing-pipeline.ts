@@ -53,7 +53,7 @@ Cor: ${veiculo.cor ?? ""}`;
 }
 
 // ─── 2. Voiceover via OpenAI TTS ─────────────────────────────────────────────
-async function gerarVoiceover(roteiro: string): Promise<ArrayBuffer> {
+async function gerarVoiceover(roteiro: string, voz: VozTTS = "onyx"): Promise<ArrayBuffer> {
   const res = await fetch("https://api.openai.com/v1/audio/speech", {
     method: "POST",
     headers: {
@@ -63,7 +63,7 @@ async function gerarVoiceover(roteiro: string): Promise<ArrayBuffer> {
     body: JSON.stringify({
       model: "tts-1",
       input: roteiro,
-      voice: "onyx",
+      voice: voz,
       response_format: "mp3",
       speed: 1.0,
     }),
@@ -387,7 +387,10 @@ async function combinarVideoAudio(params: {
 }
 
 // ─── Pipeline principal ───────────────────────────────────────────────────────
-export async function executarPipelineMarketing(veiculoId: string, roteiroCustomizado?: string | null): Promise<void> {
+const VOZES_VALIDAS = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"] as const;
+type VozTTS = typeof VOZES_VALIDAS[number];
+
+export async function executarPipelineMarketing(veiculoId: string, roteiroCustomizado?: string | null, voz?: string | null): Promise<void> {
   const { data: veiculo } = await supabaseAdmin
     .from("veiculos")
     .select("*")
@@ -424,8 +427,9 @@ export async function executarPipelineMarketing(veiculoId: string, roteiroCustom
       roteiro = await gerarRoteiro(veiculo);
     }
 
-    console.log(`🎙️ [${veiculoId}] Gerando voiceover...`);
-    const audioBuffer = await gerarVoiceover(roteiro);
+    const vozSelecionada: VozTTS = (voz && VOZES_VALIDAS.includes(voz as VozTTS)) ? voz as VozTTS : "onyx";
+    console.log(`🎙️ [${veiculoId}] Gerando voiceover (voz=${vozSelecionada})...`);
+    const audioBuffer = await gerarVoiceover(roteiro, vozSelecionada);
 
     console.log(`📝 [${veiculoId}] Transcrevendo com Whisper...`);
     const words = await gerarTranscricao(audioBuffer);

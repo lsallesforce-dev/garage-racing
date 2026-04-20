@@ -10,12 +10,12 @@ export const maxDuration = 300;
 
 async function handler(req: NextRequest) {
   const body = await req.json();
-  const { veiculoId, roteiroCustomizado } = body;
+  const { veiculoId, roteiroCustomizado, voz } = body;
   if (!veiculoId) {
     return NextResponse.json({ error: "veiculoId obrigatório" }, { status: 400 });
   }
 
-  await executarPipelineMarketing(veiculoId, roteiroCustomizado ?? null);
+  await executarPipelineMarketing(veiculoId, roteiroCustomizado ?? null, voz ?? null);
   return NextResponse.json({ ok: true });
 }
 

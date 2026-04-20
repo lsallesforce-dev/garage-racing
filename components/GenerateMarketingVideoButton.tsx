@@ -16,6 +16,7 @@ export function GenerateMarketingVideoButton({ veiculoId, statusInicial, videoFi
   const [videoUrl, setVideoUrl] = useState<string | null>(videoFinalUrl);
   const [roteiro, setRoteiro] = useState<string>(roteiroInicial ?? "");
   const [editandoRoteiro, setEditandoRoteiro] = useState(false);
+  const [voz, setVoz] = useState<string>("onyx");
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -64,7 +65,7 @@ export function GenerateMarketingVideoButton({ veiculoId, statusInicial, videoFi
       const res = await fetch("/api/marketing/iniciar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ veiculoId, roteiroCustomizado: roteiroCustomizado ?? null }),
+        body: JSON.stringify({ veiculoId, roteiroCustomizado: roteiroCustomizado ?? null, voz }),
       });
       if (!res.ok) throw new Error();
     } catch {
@@ -118,6 +119,23 @@ export function GenerateMarketingVideoButton({ veiculoId, statusInicial, videoFi
           >
             <RotateCcw size={14} />
           </button>
+        </div>
+
+        {/* Seletor de voz */}
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Voz do Narrador</span>
+          <select
+            value={voz}
+            onChange={e => setVoz(e.target.value)}
+            className="w-full text-[11px] font-bold text-gray-700 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+          >
+            <option value="onyx">Onyx — Grave masculino</option>
+            <option value="echo">Echo — Neutro masculino</option>
+            <option value="fable">Fable — Expressivo masculino</option>
+            <option value="alloy">Alloy — Neutro</option>
+            <option value="nova">Nova — Feminino jovem</option>
+            <option value="shimmer">Shimmer — Feminino suave</option>
+          </select>
         </div>
 
         {/* Narração gerada pela IA */}
@@ -177,11 +195,25 @@ export function GenerateMarketingVideoButton({ veiculoId, statusInicial, videoFi
 
   // Estado inicial
   return (
-    <button
-      onClick={handleGenerate}
-      className="w-full py-4 bg-gray-900 text-white font-black uppercase italic text-[10px] tracking-widest rounded-2xl hover:bg-red-600 transition-all flex items-center justify-center gap-2"
-    >
-      <Video size={16} /> Gerar Vídeo de Vendas
-    </button>
+    <div className="flex flex-col gap-2">
+      <select
+        value={voz}
+        onChange={e => setVoz(e.target.value)}
+        className="w-full text-[11px] font-bold text-gray-700 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+      >
+        <option value="onyx">Onyx — Grave masculino</option>
+        <option value="echo">Echo — Neutro masculino</option>
+        <option value="fable">Fable — Expressivo masculino</option>
+        <option value="alloy">Alloy — Neutro</option>
+        <option value="nova">Nova — Feminino jovem</option>
+        <option value="shimmer">Shimmer — Feminino suave</option>
+      </select>
+      <button
+        onClick={() => handleGenerate()}
+        className="w-full py-4 bg-gray-900 text-white font-black uppercase italic text-[10px] tracking-widest rounded-2xl hover:bg-red-600 transition-all flex items-center justify-center gap-2"
+      >
+        <Video size={16} /> Gerar Vídeo de Vendas
+      </button>
+    </div>
   );
 }
