@@ -170,13 +170,28 @@ function buildCaptionFilters(
 // ─── 5a. Montagem de clips com ou sem transição xfade ────────────────────────
 const TRANS_DUR = 0.3; // segundos de sobreposição entre clips
 
+const XFADE_TRANSITIONS = ["dissolve", "slideleft", "slideright", "wipeleft", "pixelize"];
+
 function buildClipsSection(clipCount: number, clipSecs: number, transicao: string): string {
   if (transicao === "none" || clipCount === 1) {
     const inputs = Array.from({ length: clipCount }, (_, i) => `[${i}:v]`).join("");
     return `${inputs}concat=n=${clipCount}:v=1:a=0[concat]`;
   }
 
-  // Fade por clip — funciona com qualquer versão do FFmpeg (sem xfade)
+  // Opções xfade — requerem FFmpeg 4.3+ (ffmpeg-static v5 = FFmpeg 6.0 ✓)
+  if (XFADE_TRANSITIONS.includes(transicao)) {
+    const parts: string[] = [];
+    let prev = `[0:v]`;
+    for (let i = 1; i < clipCount; i++) {
+      const offset = (i * (clipSecs - TRANS_DUR)).toFixed(3);
+      const next = i === clipCount - 1 ? `[concat]` : `[xf${i}]`;
+      parts.push(`${prev}[${i}:v]xfade=transition=${transicao}:duration=${TRANS_DUR}:offset=${offset}${next}`);
+      prev = next;
+    }
+    return parts.join(";");
+  }
+
+  // Fade por clip (fade/black) — compatível com qualquer versão
   const fadeOut = (clipSecs - TRANS_DUR).toFixed(3);
   const color = transicao === "black" ? ":c=black" : "";
   const fadeParts = Array.from({ length: clipCount }, (_, i) =>
@@ -209,8 +224,10 @@ async function combinarVideoAudio(params: {
 
   const execFileAsync = promisify(execFile);
 
-  // Copia ffmpeg para /tmp — Lambda tem fs read-only exceto /tmp
-  const { path: ffmpegSrc } = await import("@ffmpeg-installer/ffmpeg");
+  // ffmpeg-static v5 = FFmpeg 6.0+ (tem xfade, xfade só existe a partir de 4.3)
+  // @ffmpeg-installer tem binário de 2018 (sem xfade)
+  const ffmpegStaticMod = await import("ffmpeg-static");
+  const ffmpegSrc: string = (ffmpegStaticMod.default ?? ffmpegStaticMod) as unknown as string;
   const ffmpegPath = "/tmp/ffmpeg";
   try {
     await fs.access(ffmpegPath);
@@ -311,7 +328,10 @@ async function combinarVideoAudio(params: {
     const SOURCE_END   = 150;
     const USABLE_SECS  = SOURCE_END - SOURCE_START;
     // Com transição xfade cada clip "doa" TRANS_DUR ao clip seguinte — adiciona clips extras
-    const clipCount = Math.ceil(effectiveDuration / CLIP_SECS);
+    const baseClips = Math.ceil(effectiveDuration / CLIP_SECS);
+    const clipCount = XFADE_TRANSITIONS.includes(transicao ?? "")
+      ? baseClips + Math.ceil((baseClips - 1) * TRANS_DUR / CLIP_SECS) + 1
+      : baseClips;
     const step      = clipCount > 1 ? USABLE_SECS / (clipCount - 1) : 0;
 
     console.log(`✂️ ${clipCount} clips × ${CLIP_SECS}s | transicao=${transicao} | [${SOURCE_START}s–${SOURCE_END}s] | total ~${effectiveDuration}s`);
