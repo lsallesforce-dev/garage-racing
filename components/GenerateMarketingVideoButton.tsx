@@ -27,7 +27,12 @@ export function GenerateMarketingVideoButton({ veiculoId, statusInicial, videoFi
   const [roteiro, setRoteiro] = useState<string>(roteiroInicial ?? "");
   const [editandoRoteiro, setEditandoRoteiro] = useState(false);
   const storageKey = `mkt_prefs_${veiculoId}`;
-  const savedPrefs = typeof window !== "undefined" ? JSON.parse(localStorage.getItem(storageKey) ?? "{}") : {};
+  const rawPrefs = typeof window !== "undefined" ? JSON.parse(localStorage.getItem(storageKey) ?? "{}") : {};
+  // Descarta musicaOverride salva sem domínio (env vazia na época do save)
+  const savedPrefs = {
+    ...rawPrefs,
+    musicaOverride: rawPrefs.musicaOverride?.startsWith("http") ? rawPrefs.musicaOverride : "",
+  };
 
   const [voz, setVoz] = useState<string>(savedPrefs.voz ?? "onyx");
   const [transicao, setTransicao] = useState<string>(savedPrefs.transicao ?? "fade");

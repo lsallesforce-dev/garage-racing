@@ -242,10 +242,16 @@ async function combinarVideoAudio(params: {
       fs.writeFile(fontTmp, fontBuf),
     ]);
 
-    if (musicaFinal) {
+    if (musicaFinal && musicaFinal.startsWith("http")) {
       const mr = await fetch(musicaFinal);
-      if (mr.ok) await fs.writeFile(musicIn, Buffer.from(await mr.arrayBuffer()));
-      else console.warn(`⚠️ Música fetch falhou (${mr.status})`);
+      const ct = mr.headers.get("content-type") ?? "";
+      if (mr.ok && (ct.includes("audio") || ct.includes("octet-stream"))) {
+        await fs.writeFile(musicIn, Buffer.from(await mr.arrayBuffer()));
+      } else {
+        console.warn(`⚠️ Música ignorada — status=${mr.status} content-type=${ct} url=${musicaFinal}`);
+      }
+    } else if (musicaFinal) {
+      console.warn(`⚠️ Música ignorada — URL inválida: ${musicaFinal}`);
     }
 
     if (logoStoragePath) {
