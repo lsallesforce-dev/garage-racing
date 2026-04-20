@@ -175,8 +175,9 @@ async function combinarVideoAudio(params: {
   words: WhisperWord[];
   musicaUrl: string | null;
   logoUrl: string | null;
+  logoStoragePath: string | null;
 }): Promise<string> {
-  const { veiculoId, videoUrl, audioBuffer, words, musicaUrl, logoUrl } = params;
+  const { veiculoId, videoUrl, audioBuffer, words, musicaUrl, logoUrl, logoStoragePath } = params;
 
   const { execFile } = await import("child_process");
   const { promisify } = await import("util");
@@ -222,27 +223,24 @@ async function combinarVideoAudio(params: {
       if (mr.ok) await fs.writeFile(musicIn, Buffer.from(await mr.arrayBuffer()));
     }
 
-    if (logoUrl) {
-      // Extrai o path relativo dentro do bucket "configuracoes"
-      // URL format: .../storage/v1/object/public/configuracoes/logos/xxx.png
-      const logoPathMatch = logoUrl.match(/\/storage\/v1\/object\/(?:public|sign)\/configuracoes\/(.+?)(\?.*)?$/);
-      if (logoPathMatch) {
-        const { data: logoBlob, error: logoErr } = await supabaseAdmin.storage
-          .from("configuracoes")
-          .download(logoPathMatch[1]);
-        if (logoBlob) {
-          await fs.writeFile(logoIn, Buffer.from(await logoBlob.arrayBuffer()));
-        } else {
-          console.warn(`⚠️ Logo download falhou: ${logoErr?.message}`);
-        }
+    if (logoStoragePath) {
+      // Download direto pelo path fixo — independente de logo_url estar salvo no DB
+      const { data: logoBlob, error: logoErr } = await supabaseAdmin.storage
+        .from("configuracoes")
+        .download(logoStoragePath);
+      if (logoBlob) {
+        await fs.writeFile(logoIn, Buffer.from(await logoBlob.arrayBuffer()));
+        console.log(`🖼️ Logo carregado: ${logoStoragePath}`);
       } else {
-        // URL externa — tenta fetch HTTP normal
-        const lr = await fetch(logoUrl);
-        if (lr.ok) {
-          await fs.writeFile(logoIn, Buffer.from(await lr.arrayBuffer()));
-        } else {
-          console.warn(`⚠️ Logo fetch falhou (${lr.status}): ${logoUrl}`);
-        }
+        console.warn(`⚠️ Logo não encontrado em ${logoStoragePath}: ${logoErr?.message}`);
+      }
+    } else if (logoUrl) {
+      // Fallback: URL externa
+      const lr = await fetch(logoUrl);
+      if (lr.ok) {
+        await fs.writeFile(logoIn, Buffer.from(await lr.arrayBuffer()));
+      } else {
+        console.warn(`⚠️ Logo fetch falhou (${lr.status}): ${logoUrl}`);
       }
     }
 
@@ -406,6 +404,9 @@ export async function executarPipelineMarketing(veiculoId: string): Promise<void
     .eq("user_id", configUserId)
     .maybeSingle();
 
+  // Logo: path fixo no bucket "configuracoes" — independente da coluna logo_url no DB
+  const logoStoragePath = configUserId ? `logos/${configUserId}.png` : null;
+
   await supabaseAdmin
     .from("veiculos")
     .update({ marketing_status: "processando" })
@@ -432,8 +433,9 @@ export async function executarPipelineMarketing(veiculoId: string): Promise<void
       videoUrl,
       audioBuffer,
       words,
-      musicaUrl: cfg?.musica_fundo_url ?? null,
-      logoUrl:   cfg?.logo_url ? cfg.logo_url.split("?")[0] : null,
+      musicaUrl:        cfg?.musica_fundo_url ?? null,
+      logoUrl:          cfg?.logo_url ? cfg.logo_url.split("?")[0] : null,
+      logoStoragePath:  logoStoragePath,
     });
 
     await supabaseAdmin
