@@ -9,6 +9,7 @@ import {
   ChevronDown, ChevronUp, Instagram, Download, Loader2,
 } from "lucide-react";
 import { GenerateMarketingVideoButton } from "@/components/GenerateMarketingVideoButton";
+import { toVideoUrl } from "@/lib/r2-url";
 import Link from "next/link";
 
 // ─── Opcionais: lista mestre por categoria ────────────────────────────────────
@@ -675,7 +676,7 @@ export default function DetalheVeiculo() {
                     Vídeo vinculado ao veículo
                   </p>
                   <video
-                    src={veiculo.video_url}
+                    src={toVideoUrl(veiculo.video_url)}
                     controls
                     className="w-full rounded-xl max-h-48 object-cover"
                   />

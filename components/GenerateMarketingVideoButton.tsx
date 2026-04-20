@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase";
+import { toVideoUrl } from "@/lib/r2-url";
 import { Video, Loader2, CheckCircle, AlertCircle, Download, RotateCcw } from "lucide-react";
 
 const MUSIC_PRESETS = [
@@ -190,11 +191,11 @@ export function GenerateMarketingVideoButton({ veiculoId, statusInicial, videoFi
           <CheckCircle size={14} />
           <span className="text-[10px] font-black uppercase tracking-widest">Reel gerado com sucesso!</span>
         </div>
-        <video src={videoUrl} controls className="w-full rounded-2xl max-h-48 object-cover bg-black" />
+        <video src={toVideoUrl(videoUrl)} controls className="w-full rounded-2xl max-h-48 object-cover bg-black" />
         <div className="flex gap-2">
           <a
-            href={videoUrl}
-            download
+            href={toVideoUrl(videoUrl)}
+            download="video_marketing.mp4"
             target="_blank"
             rel="noreferrer"
             className="flex-1 flex items-center justify-center gap-2 py-3 bg-gray-900 text-white text-[10px] font-black uppercase italic tracking-widest rounded-2xl hover:bg-indigo-600 transition-all"
