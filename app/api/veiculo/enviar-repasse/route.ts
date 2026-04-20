@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { requireAuth } from "@/lib/api-auth";
+import { requireVehicleOwner } from "@/lib/api-auth";
 import { sendMetaMessage, sendMetaCtaButton } from "@/lib/meta";
 
 export const maxDuration = 30;
@@ -14,13 +14,13 @@ export const maxDuration = 30;
 const BODY_LIMIT = 1024;
 
 export async function POST(req: NextRequest) {
-  const { error: authError } = await requireAuth();
-  if (authError) return authError;
-
   const { veiculoId, texto, capaUrl } = await req.json();
   if (!veiculoId || !texto) {
     return NextResponse.json({ error: "veiculoId e texto são obrigatórios" }, { status: 400 });
   }
+
+  const { error: authError } = await requireVehicleOwner(veiculoId);
+  if (authError) return authError;
 
   const { data: carro } = await supabaseAdmin
     .from("veiculos")

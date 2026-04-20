@@ -66,7 +66,16 @@ export async function requireVehicleOwner(veiculoId: string) {
     .single();
 
   if (!data) return { user: null, error: NextResponse.json({ error: "Veículo não encontrado" }, { status: 404 }) };
-  if (data.user_id !== user!.id) return { user: null, error: NextResponse.json({ error: "Acesso negado" }, { status: 403 }) };
+
+  // Vendedores têm role="vendedor" e owner_user_id no metadata — mesmo padrão do MainLayout
+  const effectiveUserId =
+    user!.user_metadata?.role === "vendedor"
+      ? user!.user_metadata?.owner_user_id
+      : user!.id;
+
+  if (data.user_id !== effectiveUserId) {
+    return { user: null, error: NextResponse.json({ error: "Acesso negado" }, { status: 403 }) };
+  }
 
   return { user, error: null };
 }
@@ -91,7 +100,15 @@ export async function requireLeadOwner(leadId: string) {
     .single();
 
   if (!data) return { user: null, error: NextResponse.json({ error: "Lead não encontrado" }, { status: 404 }) };
-  if (data.user_id !== user!.id) return { user: null, error: NextResponse.json({ error: "Acesso negado" }, { status: 403 }) };
+
+  const effectiveUserId =
+    user!.user_metadata?.role === "vendedor"
+      ? user!.user_metadata?.owner_user_id
+      : user!.id;
+
+  if (data.user_id !== effectiveUserId) {
+    return { user: null, error: NextResponse.json({ error: "Acesso negado" }, { status: 403 }) };
+  }
 
   return { user, error: null };
 }

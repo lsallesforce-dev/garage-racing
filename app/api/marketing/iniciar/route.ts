@@ -4,7 +4,7 @@
 // O frontend não espera o render — só faz polling no status.
 
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/api-auth";
+import { requireVehicleOwner } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { Client } from "@upstash/qstash";
 
@@ -12,13 +12,13 @@ const qstash = new Client({ token: process.env.QSTASH_TOKEN! });
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://autozap.digital";
 
 export async function POST(req: NextRequest) {
-  const { error: authError } = await requireAuth();
-  if (authError) return authError;
-
   const { veiculoId, roteiroCustomizado, voz, transicao, musicaOverride } = await req.json();
   if (!veiculoId) {
     return NextResponse.json({ error: "veiculoId obrigatório" }, { status: 400 });
   }
+
+  const { error: authError } = await requireVehicleOwner(veiculoId);
+  if (authError) return authError;
 
   // Previne double-click: rejeita se já está processando
   const { data: veiculo } = await supabaseAdmin

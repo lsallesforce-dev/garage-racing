@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { requireAuth } from "@/lib/api-auth";
+import { requireVehicleOwner } from "@/lib/api-auth";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { buscarFipe } from "@/lib/fipe";
 
@@ -111,11 +111,11 @@ function gerarTextoRepasse(
 }
 
 export async function POST(req: NextRequest) {
-  const { error: authError } = await requireAuth();
-  if (authError) return authError;
-
   const { veiculoId, tipo = "repasse" } = await req.json();
   if (!veiculoId) return NextResponse.json({ error: "veiculoId obrigatório" }, { status: 400 });
+
+  const { error: authError } = await requireVehicleOwner(veiculoId);
+  if (authError) return authError;
 
   const { data: carro } = await supabaseAdmin
     .from("veiculos")
