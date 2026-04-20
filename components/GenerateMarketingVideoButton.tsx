@@ -4,14 +4,12 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { Video, Loader2, CheckCircle, AlertCircle, Download, RotateCcw } from "lucide-react";
 
-const R2 = process.env.NEXT_PUBLIC_R2_PUBLIC_URL ?? "";
-
 const MUSIC_PRESETS = [
   { label: "Configurada na garagem", value: "" },
   { label: "Sem música",             value: "none" },
-  { label: "🔥 Animado",             value: `${R2}/musicas/animado.mp3` },
-  { label: "✨ Elegante",            value: `${R2}/musicas/elegante.mp3` },
-  { label: "🎬 Emocional",           value: `${R2}/musicas/emocional.mp3` },
+  { label: "🔥 Animado",             value: "preset:animado" },
+  { label: "✨ Elegante",            value: "preset:elegante" },
+  { label: "🎬 Emocional",           value: "preset:emocional" },
 ];
 
 interface Props {
@@ -28,10 +26,11 @@ export function GenerateMarketingVideoButton({ veiculoId, statusInicial, videoFi
   const [editandoRoteiro, setEditandoRoteiro] = useState(false);
   const storageKey = `mkt_prefs_${veiculoId}`;
   const rawPrefs = typeof window !== "undefined" ? JSON.parse(localStorage.getItem(storageKey) ?? "{}") : {};
-  // Descarta musicaOverride salva sem domínio (env vazia na época do save)
+  // Mantém só valores conhecidos: vazio, "none" ou preset:xxx (descarta URLs antigas)
+  const validMusica = (v: string) => v === "" || v === "none" || v.startsWith("preset:");
   const savedPrefs = {
     ...rawPrefs,
-    musicaOverride: rawPrefs.musicaOverride?.startsWith("http") ? rawPrefs.musicaOverride : "",
+    musicaOverride: validMusica(rawPrefs.musicaOverride ?? "") ? rawPrefs.musicaOverride : "",
   };
 
   const [voz, setVoz] = useState<string>(savedPrefs.voz ?? "onyx");

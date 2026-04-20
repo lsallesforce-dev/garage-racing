@@ -123,8 +123,14 @@ async function combinarVideoAudio(params: {
   musicaOverride: string | null;
 }): Promise<string> {
   const { veiculoId, videoUrl, audioBuffer, musicaUrl, logoUrl, logoStoragePath, transicao, musicaOverride } = params;
+  // Resolve preset:xxx → URL real no R2
+  const resolveMusica = (v: string | null) => {
+    if (!v || v === "none") return v;
+    if (v.startsWith("preset:")) return `${process.env.R2_PUBLIC_URL}/musicas/${v.slice(7)}.mp3`;
+    return v;
+  };
   // "none" = usuário escolheu explicitamente sem música; null = usar config da garagem
-  const musicaFinal = musicaOverride === "none" ? null : (musicaOverride || musicaUrl);
+  const musicaFinal = musicaOverride === "none" ? null : (resolveMusica(musicaOverride) || musicaUrl);
 
   const { execFile } = await import("child_process");
   const { promisify } = await import("util");
