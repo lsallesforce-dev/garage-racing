@@ -8,11 +8,14 @@ interface Props {
   veiculoId: string;
   statusInicial: string | null;
   videoFinalUrl: string | null;
+  roteiroInicial?: string | null;
 }
 
-export function GenerateMarketingVideoButton({ veiculoId, statusInicial, videoFinalUrl }: Props) {
+export function GenerateMarketingVideoButton({ veiculoId, statusInicial, videoFinalUrl, roteiroInicial }: Props) {
   const [status, setStatus] = useState<string | null>(statusInicial);
   const [videoUrl, setVideoUrl] = useState<string | null>(videoFinalUrl);
+  const [roteiro, setRoteiro] = useState<string>(roteiroInicial ?? "");
+  const [editandoRoteiro, setEditandoRoteiro] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -32,13 +35,14 @@ export function GenerateMarketingVideoButton({ veiculoId, statusInicial, videoFi
     intervalRef.current = setInterval(async () => {
       const { data } = await supabase
         .from("veiculos")
-        .select("marketing_status, video_marketing_url")
+        .select("marketing_status, video_marketing_url, marketing_roteiro")
         .eq("id", veiculoId)
         .single();
 
       if (data) {
         setStatus(data.marketing_status);
         if (data.video_marketing_url) setVideoUrl(data.video_marketing_url);
+        if (data.marketing_roteiro && !roteiro) setRoteiro(data.marketing_roteiro);
       }
     }, 5000);
 
@@ -53,13 +57,14 @@ export function GenerateMarketingVideoButton({ veiculoId, statusInicial, videoFi
     };
   }, [status, veiculoId]);
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (roteiroCustomizado?: string) => {
     setStatus("processando");
+    setEditandoRoteiro(false);
     try {
       const res = await fetch("/api/marketing/iniciar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ veiculoId }),
+        body: JSON.stringify({ veiculoId, roteiroCustomizado: roteiroCustomizado ?? null }),
       });
       if (!res.ok) throw new Error();
     } catch {
@@ -107,13 +112,48 @@ export function GenerateMarketingVideoButton({ veiculoId, statusInicial, videoFi
             <Download size={14} /> Baixar Vídeo
           </a>
           <button
-            onClick={handleGenerate}
+            onClick={() => handleGenerate()}
             className="px-4 py-3 bg-gray-100 text-gray-400 rounded-2xl hover:bg-gray-200 transition-all"
             title="Gerar novamente"
           >
             <RotateCcw size={14} />
           </button>
         </div>
+
+        {/* Narração gerada pela IA */}
+        {roteiro && (
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Narração do Locutor</span>
+              <button
+                onClick={() => setEditandoRoteiro(e => !e)}
+                className="text-[9px] font-bold text-indigo-500 hover:text-indigo-700 uppercase tracking-widest"
+              >
+                {editandoRoteiro ? "Cancelar" : "Editar"}
+              </button>
+            </div>
+            {editandoRoteiro ? (
+              <div className="flex flex-col gap-2">
+                <textarea
+                  value={roteiro}
+                  onChange={e => setRoteiro(e.target.value)}
+                  rows={6}
+                  className="w-full text-[11px] leading-relaxed text-gray-700 bg-gray-50 border border-indigo-300 rounded-xl p-3 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                />
+                <button
+                  onClick={() => handleGenerate(roteiro)}
+                  className="w-full py-2.5 bg-indigo-600 text-white text-[10px] font-black uppercase italic tracking-widest rounded-xl hover:bg-indigo-700 transition-all flex items-center justify-center gap-2"
+                >
+                  <RotateCcw size={12} /> Regenerar com este texto
+                </button>
+              </div>
+            ) : (
+              <div className="max-h-28 overflow-y-auto text-[11px] leading-relaxed text-gray-600 bg-gray-50 rounded-xl p-3 scrollbar-thin">
+                {roteiro}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     );
   }

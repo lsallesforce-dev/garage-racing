@@ -387,7 +387,7 @@ async function combinarVideoAudio(params: {
 }
 
 // ─── Pipeline principal ───────────────────────────────────────────────────────
-export async function executarPipelineMarketing(veiculoId: string): Promise<void> {
+export async function executarPipelineMarketing(veiculoId: string, roteiroCustomizado?: string | null): Promise<void> {
   const { data: veiculo } = await supabaseAdmin
     .from("veiculos")
     .select("*")
@@ -415,8 +415,14 @@ export async function executarPipelineMarketing(veiculoId: string): Promise<void
     .eq("id", veiculoId);
 
   try {
-    console.log(`🎬 [${veiculoId}] Gerando roteiro...`);
-    const roteiro = await gerarRoteiro(veiculo);
+    let roteiro: string;
+    if (roteiroCustomizado?.trim()) {
+      console.log(`🎬 [${veiculoId}] Usando roteiro customizado (${roteiroCustomizado.length} chars)`);
+      roteiro = roteiroCustomizado.trim();
+    } else {
+      console.log(`🎬 [${veiculoId}] Gerando roteiro...`);
+      roteiro = await gerarRoteiro(veiculo);
+    }
 
     console.log(`🎙️ [${veiculoId}] Gerando voiceover...`);
     const audioBuffer = await gerarVoiceover(roteiro);

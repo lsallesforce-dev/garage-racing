@@ -1093,6 +1093,7 @@ export default function DetalheVeiculo() {
                   veiculoId={veiculo.id}
                   statusInicial={veiculo.marketing_status ?? null}
                   videoFinalUrl={veiculo.video_marketing_url ?? null}
+                  roteiroInicial={veiculo.marketing_roteiro ?? null}
                 />
               </div>
             </div>
