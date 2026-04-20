@@ -407,6 +407,7 @@ export async function executarPipelineMarketing(veiculoId: string): Promise<void
     if (!videoUrl) throw new Error("Veículo sem vídeo bruto vinculado");
 
     console.log(`🎞️ [${veiculoId}] Combinando vídeo + legendas + áudio...`);
+    console.log(`🖼️ cfg.logo_url=${cfg?.logo_url ?? "null"} | cfg.musica=${cfg?.musica_fundo_url ?? "null"}`);
     const videoFinalUrl = await combinarVideoAudio({
       veiculoId,
       videoUrl,
