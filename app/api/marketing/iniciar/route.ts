@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
   const { error: authError } = await requireAuth();
   if (authError) return authError;
 
-  const { veiculoId, roteiroCustomizado, voz } = await req.json();
+  const { veiculoId, roteiroCustomizado, voz, transicao, musicaOverride } = await req.json();
   if (!veiculoId) {
     return NextResponse.json({ error: "veiculoId obrigatório" }, { status: 400 });
   }
@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
   // Publica na fila — QStash chama /api/marketing/worker com retry automático
   await qstash.publishJSON({
     url: `${APP_URL}/api/marketing/worker`,
-    body: { veiculoId, roteiroCustomizado: roteiroCustomizado ?? null, voz: voz ?? null },
+    body: { veiculoId, roteiroCustomizado: roteiroCustomizado ?? null, voz: voz ?? null, transicao: transicao ?? null, musicaOverride: musicaOverride ?? null },
     retries: 2,
   });
 

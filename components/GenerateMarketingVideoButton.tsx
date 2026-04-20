@@ -17,6 +17,8 @@ export function GenerateMarketingVideoButton({ veiculoId, statusInicial, videoFi
   const [roteiro, setRoteiro] = useState<string>(roteiroInicial ?? "");
   const [editandoRoteiro, setEditandoRoteiro] = useState(false);
   const [voz, setVoz] = useState<string>("onyx");
+  const [transicao, setTransicao] = useState<string>("fade");
+  const [musicaOverride, setMusicaOverride] = useState<string>("");
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -65,13 +67,60 @@ export function GenerateMarketingVideoButton({ veiculoId, statusInicial, videoFi
       const res = await fetch("/api/marketing/iniciar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ veiculoId, roteiroCustomizado: roteiroCustomizado ?? null, voz }),
+        body: JSON.stringify({ veiculoId, roteiroCustomizado: roteiroCustomizado ?? null, voz, transicao, musicaOverride: musicaOverride.trim() || null }),
       });
       if (!res.ok) throw new Error();
     } catch {
       setStatus("erro");
     }
   };
+
+  // Painel de configurações reutilizado no estado inicial e no "pronto"
+  const ConfigPanel = () => (
+    <div className="flex flex-col gap-2 p-3 bg-gray-50 rounded-2xl border border-gray-100">
+      <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">Configurações do Vídeo</p>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div className="flex flex-col gap-1">
+          <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">Voz</span>
+          <select value={voz} onChange={e => setVoz(e.target.value)}
+            className="text-[11px] font-bold text-gray-700 bg-white border border-gray-200 rounded-xl px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-400">
+            <option value="onyx">Onyx — Grave masc.</option>
+            <option value="echo">Echo — Neutro masc.</option>
+            <option value="fable">Fable — Expressivo</option>
+            <option value="alloy">Alloy — Neutro</option>
+            <option value="nova">Nova — Fem. jovem</option>
+            <option value="shimmer">Shimmer — Fem. suave</option>
+          </select>
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">Transição</span>
+          <select value={transicao} onChange={e => setTransicao(e.target.value)}
+            className="text-[11px] font-bold text-gray-700 bg-white border border-gray-200 rounded-xl px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-400">
+            <option value="none">Sem transição</option>
+            <option value="fade">Fade suave</option>
+            <option value="dissolve">Dissolve</option>
+            <option value="slideleft">Deslizar esq.</option>
+            <option value="slideright">Deslizar dir.</option>
+            <option value="wipeleft">Wipe esq.</option>
+            <option value="pixelize">Pixelizar</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">Música de Fundo (URL)</span>
+        <input
+          type="url"
+          value={musicaOverride}
+          onChange={e => setMusicaOverride(e.target.value)}
+          placeholder="URL do .mp3 — vazio usa a configurada na garagem"
+          className="text-[11px] text-gray-700 bg-white border border-gray-200 rounded-xl px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 placeholder:text-gray-300"
+        />
+      </div>
+    </div>
+  );
 
   if (status === "processando") {
     return (
@@ -121,22 +170,7 @@ export function GenerateMarketingVideoButton({ veiculoId, statusInicial, videoFi
           </button>
         </div>
 
-        {/* Seletor de voz */}
-        <div className="flex flex-col gap-1.5">
-          <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Voz do Narrador</span>
-          <select
-            value={voz}
-            onChange={e => setVoz(e.target.value)}
-            className="w-full text-[11px] font-bold text-gray-700 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-          >
-            <option value="onyx">Onyx — Grave masculino</option>
-            <option value="echo">Echo — Neutro masculino</option>
-            <option value="fable">Fable — Expressivo masculino</option>
-            <option value="alloy">Alloy — Neutro</option>
-            <option value="nova">Nova — Feminino jovem</option>
-            <option value="shimmer">Shimmer — Feminino suave</option>
-          </select>
-        </div>
+        <ConfigPanel />
 
         {/* Narração gerada pela IA */}
         {roteiro && (
@@ -196,18 +230,7 @@ export function GenerateMarketingVideoButton({ veiculoId, statusInicial, videoFi
   // Estado inicial
   return (
     <div className="flex flex-col gap-2">
-      <select
-        value={voz}
-        onChange={e => setVoz(e.target.value)}
-        className="w-full text-[11px] font-bold text-gray-700 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-      >
-        <option value="onyx">Onyx — Grave masculino</option>
-        <option value="echo">Echo — Neutro masculino</option>
-        <option value="fable">Fable — Expressivo masculino</option>
-        <option value="alloy">Alloy — Neutro</option>
-        <option value="nova">Nova — Feminino jovem</option>
-        <option value="shimmer">Shimmer — Feminino suave</option>
-      </select>
+      <ConfigPanel />
       <button
         onClick={() => handleGenerate()}
         className="w-full py-4 bg-gray-900 text-white font-black uppercase italic text-[10px] tracking-widest rounded-2xl hover:bg-red-600 transition-all flex items-center justify-center gap-2"

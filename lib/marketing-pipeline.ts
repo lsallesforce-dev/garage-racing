@@ -167,6 +167,26 @@ function buildCaptionFilters(
   return parts.join(";");
 }
 
+// ─── 5a. Montagem de clips com ou sem transição xfade ────────────────────────
+const TRANS_DUR = 0.3; // segundos de sobreposição entre clips
+
+function buildClipsSection(clipCount: number, clipSecs: number, transicao: string): string {
+  if (transicao === "none" || clipCount === 1) {
+    const inputs = Array.from({ length: clipCount }, (_, i) => `[${i}:v]`).join("");
+    return `${inputs}concat=n=${clipCount}:v=1:a=0[concat]`;
+  }
+  // xfade encadeado: offset cresce a cada transição
+  const parts: string[] = [];
+  let prev = `[0:v]`;
+  for (let i = 1; i < clipCount; i++) {
+    const offset = (i * (clipSecs - TRANS_DUR)).toFixed(3);
+    const next = i === clipCount - 1 ? `[concat]` : `[xf${i}]`;
+    parts.push(`${prev}[${i}:v]xfade=transition=${transicao}:duration=${TRANS_DUR}:offset=${offset}${next}`);
+    prev = next;
+  }
+  return parts.join(";");
+}
+
 // ─── 5. Pipeline FFmpeg estilo Reels ─────────────────────────────────────────
 async function combinarVideoAudio(params: {
   veiculoId: string;
@@ -176,8 +196,11 @@ async function combinarVideoAudio(params: {
   musicaUrl: string | null;
   logoUrl: string | null;
   logoStoragePath: string | null;
+  transicao: string;
+  musicaOverride: string | null;
 }): Promise<string> {
-  const { veiculoId, videoUrl, audioBuffer, words, musicaUrl, logoUrl, logoStoragePath } = params;
+  const { veiculoId, videoUrl, audioBuffer, words, musicaUrl, logoUrl, logoStoragePath, transicao, musicaOverride } = params;
+  const musicaFinal = musicaOverride ?? musicaUrl;
 
   const { execFile } = await import("child_process");
   const { promisify } = await import("util");
@@ -218,9 +241,10 @@ async function combinarVideoAudio(params: {
       fs.writeFile(fontTmp, fontBuf),
     ]);
 
-    if (musicaUrl) {
-      const mr = await fetch(musicaUrl);
+    if (musicaFinal) {
+      const mr = await fetch(musicaFinal);
       if (mr.ok) await fs.writeFile(musicIn, Buffer.from(await mr.arrayBuffer()));
+      else console.warn(`⚠️ Música fetch falhou (${mr.status})`);
     }
 
     if (logoStoragePath) {
@@ -244,7 +268,7 @@ async function combinarVideoAudio(params: {
       }
     }
 
-    const hasMusicFile = musicaUrl
+    const hasMusicFile = musicaFinal
       ? await fs.access(musicIn).then(() => true).catch(() => false)
       : false;
 
@@ -280,10 +304,12 @@ async function combinarVideoAudio(params: {
     const SOURCE_START = 10;
     const SOURCE_END   = 150;
     const USABLE_SECS  = SOURCE_END - SOURCE_START;
-    const clipCount    = Math.ceil(effectiveDuration / CLIP_SECS);
-    const step         = clipCount > 1 ? USABLE_SECS / (clipCount - 1) : 0;
+    // Com transição xfade cada clip "doa" TRANS_DUR ao clip seguinte — adiciona clips extras
+    const baseClips = Math.ceil(effectiveDuration / CLIP_SECS);
+    const clipCount = transicao !== "none" ? baseClips + Math.ceil((baseClips - 1) * TRANS_DUR / CLIP_SECS) + 1 : baseClips;
+    const step      = clipCount > 1 ? USABLE_SECS / (clipCount - 1) : 0;
 
-    console.log(`✂️ ${clipCount} clips × ${CLIP_SECS}s | [${SOURCE_START}s–${SOURCE_END}s] | total ~${effectiveDuration}s`);
+    console.log(`✂️ ${clipCount} clips × ${CLIP_SECS}s | transicao=${transicao} | [${SOURCE_START}s–${SOURCE_END}s] | total ~${effectiveDuration}s`);
 
     // ── Legendas — timestamps já incluem o audioDelay ────────────────────────
     const chunks = agruparPalavras(words, audioDelay);
@@ -305,14 +331,9 @@ async function combinarVideoAudio(params: {
     const musicIdx = clipCount + 1;
     const logoIdx  = clipCount + (hasMusicFile ? 2 : 1);
 
-    const concatIn = Array.from({ length: clipCount }, (_, i) => `[${i}:v]`).join("");
-
-    // Logo aparece nos últimos 4s antes do áudio terminar
-    const logoStart = Math.max(0, effectiveDuration - 4);
-
-    // Concat → escala + crop 9:16 (1080×1920) → legendas → logo (opcional)
+    // Clips → concat ou xfade → escala + crop 9:16 → legendas → logo
     let videoSection =
-      `${concatIn}concat=n=${clipCount}:v=1:a=0[concat];` +
+      `${buildClipsSection(clipCount, CLIP_SECS, transicao)};` +
       `[concat]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920[raw];` +
       captionSection; // outputLabel: [vout]
 
@@ -390,7 +411,13 @@ async function combinarVideoAudio(params: {
 const VOZES_VALIDAS = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"] as const;
 type VozTTS = typeof VOZES_VALIDAS[number];
 
-export async function executarPipelineMarketing(veiculoId: string, roteiroCustomizado?: string | null, voz?: string | null): Promise<void> {
+export async function executarPipelineMarketing(
+  veiculoId: string,
+  roteiroCustomizado?: string | null,
+  voz?: string | null,
+  transicao?: string | null,
+  musicaOverride?: string | null,
+): Promise<void> {
   const { data: veiculo } = await supabaseAdmin
     .from("veiculos")
     .select("*")
@@ -448,6 +475,8 @@ export async function executarPipelineMarketing(veiculoId: string, roteiroCustom
       musicaUrl:        cfg?.musica_fundo_url ?? null,
       logoUrl:          cfg?.logo_url ? cfg.logo_url.split("?")[0] : null,
       logoStoragePath:  logoStoragePath,
+      transicao:        transicao ?? "none",
+      musicaOverride:   musicaOverride ?? null,
     });
 
     await supabaseAdmin
