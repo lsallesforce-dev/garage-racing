@@ -248,7 +248,7 @@ async function combinarVideoAudio(params: {
       ? await fs.access(musicIn).then(() => true).catch(() => false)
       : false;
 
-    const hasLogo = logoUrl
+    const hasLogo = (logoStoragePath || logoUrl)
       ? await fs.access(logoIn).then(() => true).catch(() => false)
       : false;
 
