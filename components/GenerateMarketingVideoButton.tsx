@@ -26,11 +26,24 @@ export function GenerateMarketingVideoButton({ veiculoId, statusInicial, videoFi
   const [videoUrl, setVideoUrl] = useState<string | null>(videoFinalUrl);
   const [roteiro, setRoteiro] = useState<string>(roteiroInicial ?? "");
   const [editandoRoteiro, setEditandoRoteiro] = useState(false);
-  const [voz, setVoz] = useState<string>("onyx");
-  const [transicao, setTransicao] = useState<string>("fade");
-  const [musicaOverride, setMusicaOverride] = useState<string>("");
+  const storageKey = `mkt_prefs_${veiculoId}`;
+  const savedPrefs = typeof window !== "undefined" ? JSON.parse(localStorage.getItem(storageKey) ?? "{}") : {};
+
+  const [voz, setVoz] = useState<string>(savedPrefs.voz ?? "onyx");
+  const [transicao, setTransicao] = useState<string>(savedPrefs.transicao ?? "fade");
+  const [musicaOverride, setMusicaOverride] = useState<string>(savedPrefs.musicaOverride ?? "");
+  const [prefsAlteradas, setPrefsAlteradas] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const salvarPrefs = (novaVoz = voz, novaTransicao = transicao, novaMusica = musicaOverride) => {
+    localStorage.setItem(storageKey, JSON.stringify({ voz: novaVoz, transicao: novaTransicao, musicaOverride: novaMusica }));
+    setPrefsAlteradas(true);
+  };
+
+  const handleSetVoz = (v: string) => { setVoz(v); salvarPrefs(v, transicao, musicaOverride); };
+  const handleSetTransicao = (t: string) => { setTransicao(t); salvarPrefs(voz, t, musicaOverride); };
+  const handleSetMusica = (m: string) => { setMusicaOverride(m); salvarPrefs(voz, transicao, m); };
 
   const resetStatus = async () => {
     await supabase.from("veiculos").update({ marketing_status: null }).eq("id", veiculoId);
@@ -56,6 +69,7 @@ export function GenerateMarketingVideoButton({ veiculoId, statusInicial, videoFi
         setStatus(data.marketing_status);
         if (data.video_marketing_url) setVideoUrl(data.video_marketing_url);
         if (data.marketing_roteiro && !roteiro) setRoteiro(data.marketing_roteiro);
+        if (data.marketing_status === "pronto") setPrefsAlteradas(false);
       }
     }, 5000);
 
@@ -93,7 +107,7 @@ export function GenerateMarketingVideoButton({ veiculoId, statusInicial, videoFi
       <div className="grid grid-cols-2 gap-2">
         <div className="flex flex-col gap-1">
           <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">Voz</span>
-          <select value={voz} onChange={e => setVoz(e.target.value)}
+          <select value={voz} onChange={e => handleSetVoz(e.target.value)}
             className="text-[11px] font-bold text-gray-700 bg-white border border-gray-200 rounded-xl px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-400">
             <option value="onyx">Onyx — Grave masc.</option>
             <option value="echo">Echo — Neutro masc.</option>
@@ -106,7 +120,7 @@ export function GenerateMarketingVideoButton({ veiculoId, statusInicial, videoFi
 
         <div className="flex flex-col gap-1">
           <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">Transição</span>
-          <select value={transicao} onChange={e => setTransicao(e.target.value)}
+          <select value={transicao} onChange={e => handleSetTransicao(e.target.value)}
             className="text-[11px] font-bold text-gray-700 bg-white border border-gray-200 rounded-xl px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-400">
             <option value="none">Sem transição</option>
             <option value="fade">Fade suave</option>
@@ -121,13 +135,23 @@ export function GenerateMarketingVideoButton({ veiculoId, statusInicial, videoFi
 
       <div className="flex flex-col gap-1">
         <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">Música de Fundo</span>
-        <select value={musicaOverride} onChange={e => setMusicaOverride(e.target.value)}
+        <select value={musicaOverride} onChange={e => handleSetMusica(e.target.value)}
           className="text-[11px] font-bold text-gray-700 bg-white border border-gray-200 rounded-xl px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-400">
           {MUSIC_PRESETS.map(p => (
             <option key={p.value} value={p.value}>{p.label}</option>
           ))}
         </select>
       </div>
+
+      {/* Botão aparece só quando há vídeo gerado e as prefs foram alteradas */}
+      {status === "pronto" && prefsAlteradas && (
+        <button
+          onClick={() => { setPrefsAlteradas(false); handleGenerate(); }}
+          className="w-full py-2.5 bg-indigo-600 text-white text-[10px] font-black uppercase italic tracking-widest rounded-xl hover:bg-indigo-700 transition-all flex items-center justify-center gap-2"
+        >
+          <RotateCcw size={12} /> Aplicar e Regenerar
+        </button>
+      )}
     </div>
   );
 

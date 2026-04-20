@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { executarPipelineMarketing } from "@/lib/marketing-pipeline";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 
 export const maxDuration = 300;
 
@@ -15,8 +16,18 @@ async function handler(req: NextRequest) {
     return NextResponse.json({ error: "veiculoId obrigatório" }, { status: 400 });
   }
 
-  await executarPipelineMarketing(veiculoId, roteiroCustomizado ?? null, voz ?? null, transicao ?? null, musicaOverride ?? null);
-  return NextResponse.json({ ok: true });
+  try {
+    await executarPipelineMarketing(veiculoId, roteiroCustomizado ?? null, voz ?? null, transicao ?? null, musicaOverride ?? null);
+    return NextResponse.json({ ok: true });
+  } catch (e: any) {
+    const msg = e?.message ?? String(e);
+    console.error(`❌ Pipeline erro [${veiculoId}]:`, msg);
+    await supabaseAdmin.from("veiculos").update({
+      marketing_status: "erro",
+      marketing_roteiro: `ERRO: ${msg.slice(0, 500)}`,
+    }).eq("id", veiculoId);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
 }
 
 export async function POST(req: NextRequest) {
