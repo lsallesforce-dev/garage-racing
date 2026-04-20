@@ -320,8 +320,8 @@ async function combinarVideoAudio(params: {
       console.log(`🖼️ Logo overlay: aparece em t=${logoStart}s (logoIdx=${logoIdx})`);
       // scale=-2 garante altura par (exigido pelo yuv420p); format=auto preserva alpha do PNG
       videoSection +=
-        `;[${logoIdx}:v]scale=220:-2[logo];` +
-        `[vout][logo]overlay=x=(W-w)/2:y=H*0.08:format=auto:enable='gte(t,${logoStart})'[vfinal]`;
+        `;[${logoIdx}:v]scale=648:-2[logo];` +
+        `[vout][logo]overlay=x=(W-w)/2:y=H*0.06:format=auto:enable='gte(t,${logoStart})'[vfinal]`;
     }
 
     // Áudio: acelera se necessário, delay de intro quando há música de fundo
