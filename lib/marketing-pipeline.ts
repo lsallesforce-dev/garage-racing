@@ -175,16 +175,15 @@ function buildClipsSection(clipCount: number, clipSecs: number, transicao: strin
     const inputs = Array.from({ length: clipCount }, (_, i) => `[${i}:v]`).join("");
     return `${inputs}concat=n=${clipCount}:v=1:a=0[concat]`;
   }
-  // xfade encadeado: offset cresce a cada transição
-  const parts: string[] = [];
-  let prev = `[0:v]`;
-  for (let i = 1; i < clipCount; i++) {
-    const offset = (i * (clipSecs - TRANS_DUR)).toFixed(3);
-    const next = i === clipCount - 1 ? `[concat]` : `[xf${i}]`;
-    parts.push(`${prev}[${i}:v]xfade=transition=${transicao}:duration=${TRANS_DUR}:offset=${offset}${next}`);
-    prev = next;
-  }
-  return parts.join(";");
+
+  // Fade por clip — funciona com qualquer versão do FFmpeg (sem xfade)
+  const fadeOut = (clipSecs - TRANS_DUR).toFixed(3);
+  const color = transicao === "black" ? ":c=black" : "";
+  const fadeParts = Array.from({ length: clipCount }, (_, i) =>
+    `[${i}:v]fade=t=in:st=0:d=${TRANS_DUR}${color},fade=t=out:st=${fadeOut}:d=${TRANS_DUR}${color}[f${i}]`
+  );
+  const concatInputs = Array.from({ length: clipCount }, (_, i) => `[f${i}]`).join("");
+  return `${fadeParts.join(";")};${concatInputs}concat=n=${clipCount}:v=1:a=0[concat]`;
 }
 
 // ─── 5. Pipeline FFmpeg estilo Reels ─────────────────────────────────────────
@@ -312,8 +311,7 @@ async function combinarVideoAudio(params: {
     const SOURCE_END   = 150;
     const USABLE_SECS  = SOURCE_END - SOURCE_START;
     // Com transição xfade cada clip "doa" TRANS_DUR ao clip seguinte — adiciona clips extras
-    const baseClips = Math.ceil(effectiveDuration / CLIP_SECS);
-    const clipCount = transicao !== "none" ? baseClips + Math.ceil((baseClips - 1) * TRANS_DUR / CLIP_SECS) + 1 : baseClips;
+    const clipCount = Math.ceil(effectiveDuration / CLIP_SECS);
     const step      = clipCount > 1 ? USABLE_SECS / (clipCount - 1) : 0;
 
     console.log(`✂️ ${clipCount} clips × ${CLIP_SECS}s | transicao=${transicao} | [${SOURCE_START}s–${SOURCE_END}s] | total ~${effectiveDuration}s`);

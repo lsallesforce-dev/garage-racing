@@ -129,11 +129,7 @@ export function GenerateMarketingVideoButton({ veiculoId, statusInicial, videoFi
             className="text-[11px] font-bold text-gray-700 bg-white border border-gray-200 rounded-xl px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-400">
             <option value="none">Sem transição</option>
             <option value="fade">Fade suave</option>
-            <option value="dissolve">Dissolve</option>
-            <option value="slideleft">Deslizar esq.</option>
-            <option value="slideright">Deslizar dir.</option>
-            <option value="wipeleft">Wipe esq.</option>
-            <option value="pixelize">Pixelizar</option>
+            <option value="black">Fade pelo preto</option>
           </select>
         </div>
       </div>
