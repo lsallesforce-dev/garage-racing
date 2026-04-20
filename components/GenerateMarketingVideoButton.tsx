@@ -251,7 +251,7 @@ export function GenerateMarketingVideoButton({ veiculoId, statusInicial, videoFi
           <span className="text-[10px] font-black uppercase tracking-widest">Erro na geração. Tente novamente.</span>
         </div>
         <button
-          onClick={handleGenerate}
+          onClick={() => handleGenerate()}
           className="w-full py-4 bg-red-50 text-red-600 font-black uppercase italic text-[10px] tracking-widest rounded-2xl hover:bg-red-100 transition-all flex items-center justify-center gap-2"
         >
           <RotateCcw size={14} /> Tentar Novamente
