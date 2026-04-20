@@ -104,11 +104,49 @@ function agruparPalavras(words: WhisperWord[], delay: number): WordChunk[] {
   for (let i = 0; i < words.length; i += 3) {
     const slice = words.slice(i, i + 3);
     chunks.push({
-      text:  slice.map(w => w.word.trim()).join(" "),
+      text:  slice.map(w => w.word.trim().replace(/[.,!?;:]/g, "")).join(" "),
       start: slice[0].start + delay,
       end:   slice[slice.length - 1].end + delay + 0.05,
     });
   }
+  return chunks;
+}
+
+// Quando o roteiro tem quebras de linha (\n), cada linha vira uma legenda.
+// O nº de palavras da linha determina quantas palavras do Whisper consumir.
+function agruparPorRoteiro(roteiro: string, words: WhisperWord[], delay: number): WordChunk[] {
+  const linhas = roteiro
+    .split("\n")
+    .map(l => l.trim().replace(/[.,!?;:]/g, ""))
+    .filter(l => l.length > 0);
+
+  const chunks: WordChunk[] = [];
+  let wi = 0;
+
+  for (const linha of linhas) {
+    const n = linha.split(/\s+/).filter(w => w.length > 0).length;
+    if (wi >= words.length || n === 0) continue;
+    const startWi = wi;
+    const endWi   = Math.min(wi + n - 1, words.length - 1);
+    chunks.push({
+      text:  linha,
+      start: words[startWi].start + delay,
+      end:   words[endWi].end     + delay + 0.1,
+    });
+    wi = endWi + 1;
+  }
+
+  // palavras restantes por diferença de contagem
+  while (wi < words.length) {
+    const slice = words.slice(wi, wi + 3);
+    chunks.push({
+      text:  slice.map(w => w.word.trim().replace(/[.,!?;:]/g, "")).join(" "),
+      start: slice[0].start + delay,
+      end:   slice[slice.length - 1].end + delay + 0.05,
+    });
+    wi += slice.length;
+  }
+
   return chunks;
 }
 
@@ -125,7 +163,7 @@ function buildCaptionFilters(chunks: WordChunk[], fontFile: string, inputLabel: 
     parts.push(
       `${prev}drawtext=fontfile=${fontFile}` +
       `:text='${esc(text)}'` +
-      `:fontsize=72:fontcolor=white` +
+      `:fontsize=58:fontcolor=white` +
       `:x=(w-text_w)/2:y=h*0.76` +
       `:borderw=6:bordercolor=black` +
       `:enable='between(t,${start.toFixed(3)},${end.toFixed(3)})'` +
@@ -176,13 +214,14 @@ async function combinarVideoAudio(params: {
   videoUrl: string;
   audioBuffer: ArrayBuffer;
   words: WhisperWord[];
+  roteiro: string;
   musicaUrl: string | null;
   logoUrl: string | null;
   logoStoragePath: string | null;
   transicao: string;
   musicaOverride: string | null;
 }): Promise<string> {
-  const { veiculoId, videoUrl, audioBuffer, words, musicaUrl, logoUrl, logoStoragePath, transicao, musicaOverride } = params;
+  const { veiculoId, videoUrl, audioBuffer, words, roteiro, musicaUrl, logoUrl, logoStoragePath, transicao, musicaOverride } = params;
   // Resolve preset:xxx → URL real no R2
   const resolveMusica = (v: string | null) => {
     if (!v || v === "none") return v;
@@ -357,8 +396,10 @@ async function combinarVideoAudio(params: {
     console.log(`🔧 hasLogo=${hasLogo} hasMusic=${hasMusicFile} logoIdx=${logoIdx}`);
     console.log(`🔧 filter_complex="${filterComplex.slice(-300)}"`);
 
-    // ── Legendas — agrupar palavras com delay de intro ───────────────────────
-    const chunks = agruparPalavras(words, audioDelay);
+    // ── Legendas — usa quebras de linha do roteiro quando disponíveis ────────
+    const chunks = roteiro.includes("\n")
+      ? agruparPorRoteiro(roteiro, words, audioDelay)
+      : agruparPalavras(words, audioDelay);
     console.log(`📝 ${chunks.length} legendas (${words.length} palavras)`);
 
     args.push(
@@ -502,6 +543,7 @@ export async function executarPipelineMarketing(
       videoUrl,
       audioBuffer,
       words,
+      roteiro,
       musicaUrl:        cfg?.musica_fundo_url ?? null,
       logoUrl:          cfg?.logo_url ? cfg.logo_url.split("?")[0] : null,
       logoStoragePath:  logoStoragePath,
