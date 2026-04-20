@@ -77,7 +77,66 @@ async function gerarVoiceover(roteiro: string, voz: VozTTS = "onyx"): Promise<Ar
   return res.arrayBuffer();
 }
 
-// ─── 3. Montagem de clips com ou sem transição xfade ────────────────────────
+// ─── 3. Transcrição com timestamps via Whisper ───────────────────────────────
+interface WhisperWord { word: string; start: number; end: number; }
+interface WordChunk   { text: string; start: number; end: number; }
+
+async function gerarTranscricao(audioBuffer: ArrayBuffer): Promise<WhisperWord[]> {
+  const formData = new FormData();
+  formData.append("file", new Blob([audioBuffer], { type: "audio/mpeg" }), "audio.mp3");
+  formData.append("model", "whisper-1");
+  formData.append("response_format", "verbose_json");
+  formData.append("timestamp_granularities[]", "word");
+  formData.append("language", "pt");
+
+  const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${OPENAI_API_KEY}` },
+    body: formData,
+  });
+  if (!res.ok) throw new Error(`Whisper error ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const data = await res.json();
+  return (data.words ?? []) as WhisperWord[];
+}
+
+function agruparPalavras(words: WhisperWord[], delay: number): WordChunk[] {
+  const chunks: WordChunk[] = [];
+  for (let i = 0; i < words.length; i += 3) {
+    const slice = words.slice(i, i + 3);
+    chunks.push({
+      text:  slice.map(w => w.word.trim()).join(" "),
+      start: slice[0].start + delay,
+      end:   slice[slice.length - 1].end + delay + 0.05,
+    });
+  }
+  return chunks;
+}
+
+// Constrói cadeia drawtext para filter_complex (passo 2, binário @ffmpeg-installer)
+function buildCaptionFilters(chunks: WordChunk[], fontFile: string, inputLabel: string): string {
+  const esc = (s: string) =>
+    s.replace(/\\/g, "\\\\").replace(/:/g, "\\:").replace(/'/g, "\u2019");
+  if (chunks.length === 0) return `${inputLabel}copy[vout]`;
+  const parts: string[] = [];
+  let prev = inputLabel;
+  for (let i = 0; i < chunks.length; i++) {
+    const { text, start, end } = chunks[i];
+    const next = i === chunks.length - 1 ? "[vout]" : `[cap${i}]`;
+    parts.push(
+      `${prev}drawtext=fontfile=${fontFile}` +
+      `:text='${esc(text)}'` +
+      `:fontsize=72:fontcolor=white` +
+      `:x=(w-text_w)/2:y=h*0.76` +
+      `:borderw=6:bordercolor=black` +
+      `:enable='between(t,${start.toFixed(3)},${end.toFixed(3)})'` +
+      `${next}`
+    );
+    prev = next;
+  }
+  return parts.join(";");
+}
+
+// ─── 4. Montagem de clips com ou sem transição xfade ────────────────────────
 const TRANS_DUR = 0.3; // segundos de sobreposição entre clips
 
 const XFADE_TRANSITIONS = ["dissolve", "slideleft", "slideright", "wipeleft", "pixelize"];
@@ -116,13 +175,14 @@ async function combinarVideoAudio(params: {
   veiculoId: string;
   videoUrl: string;
   audioBuffer: ArrayBuffer;
+  words: WhisperWord[];
   musicaUrl: string | null;
   logoUrl: string | null;
   logoStoragePath: string | null;
   transicao: string;
   musicaOverride: string | null;
 }): Promise<string> {
-  const { veiculoId, videoUrl, audioBuffer, musicaUrl, logoUrl, logoStoragePath, transicao, musicaOverride } = params;
+  const { veiculoId, videoUrl, audioBuffer, words, musicaUrl, logoUrl, logoStoragePath, transicao, musicaOverride } = params;
   // Resolve preset:xxx → URL real no R2
   const resolveMusica = (v: string | null) => {
     if (!v || v === "none") return v;
@@ -156,14 +216,21 @@ async function combinarVideoAudio(params: {
   const audioIn  = path.join(tmpDir, `${veiculoId}_voice.mp3`);
   const musicIn  = path.join(tmpDir, `${veiculoId}_music.mp3`);
   const logoIn   = path.join(tmpDir, `${veiculoId}_logo.png`);
-  const videoOut = path.join(tmpDir, `${veiculoId}_out.mp4`);
+  const pass1Out  = path.join(tmpDir, `${veiculoId}_pass1.mp4`);
+  const videoOut  = path.join(tmpDir, `${veiculoId}_out.mp4`);
+  const fontTmp   = path.join(tmpDir, "Montserrat-Black.ttf");
+  const fontSrc   = path.join(process.cwd(), "public", "fonts", "Montserrat-Black.ttf");
 
   try {
     console.log(`⬇️ Baixando assets...`);
-    const videoRes = await fetch(videoUrl).then(r => { if (!r.ok) throw new Error(`Vídeo ${r.status}`); return r.arrayBuffer(); });
+    const [videoRes, fontBuf] = await Promise.all([
+      fetch(videoUrl).then(r => { if (!r.ok) throw new Error(`Vídeo ${r.status}`); return r.arrayBuffer(); }),
+      fs.readFile(fontSrc).catch(() => null),
+    ]);
     await Promise.all([
       fs.writeFile(videoIn, Buffer.from(videoRes)),
       fs.writeFile(audioIn, Buffer.from(audioBuffer)),
+      ...(fontBuf ? [fs.writeFile(fontTmp, fontBuf)] : []),
     ]);
 
     if (musicaFinal && musicaFinal.startsWith("http")) {
@@ -290,6 +357,10 @@ async function combinarVideoAudio(params: {
     console.log(`🔧 hasLogo=${hasLogo} hasMusic=${hasMusicFile} logoIdx=${logoIdx}`);
     console.log(`🔧 filter_complex="${filterComplex.slice(-300)}"`);
 
+    // ── Legendas — agrupar palavras com delay de intro ───────────────────────
+    const chunks = agruparPalavras(words, audioDelay);
+    console.log(`📝 ${chunks.length} legendas (${words.length} palavras)`);
+
     args.push(
       "-filter_complex", filterComplex,
       "-map", hasLogo ? "[vfinal]" : "[vout]",
@@ -297,21 +368,53 @@ async function combinarVideoAudio(params: {
       "-c:v", "libx264",
       "-preset", "veryfast",
       "-crf", "28",
-      // teto de bitrate para garantir que o arquivo caiba no Supabase Storage (< 50MB)
+      "-pix_fmt", "yuv420p",       // compatibilidade WhatsApp/celular
+      "-profile:v", "main",
+      "-level", "4.0",
       "-maxrate", "2500k",
       "-bufsize", "5000k",
-      "-movflags", "+faststart",  // moov atom no início — melhor para streaming
+      "-movflags", "+faststart",
       "-c:a", "aac",
       "-b:a", "128k",
       "-shortest",
       "-y",
-      videoOut,
+      pass1Out,
     );
 
-    console.log(`🎞️ FFmpeg renderizando (9:16)...`);
+    console.log(`🎞️ Passo 1 — montagem (9:16)...`);
     await execFileAsync(ffmpegPath, args, { maxBuffer: 200 * 1024 * 1024 });
 
-    // Upload para Cloudflare R2 (sem limite de tamanho, ao contrário do Supabase free)
+    // ── Passo 2: legendas via @ffmpeg-installer (tem drawtext/libfreetype) ──
+    const hasCaptions = chunks.length > 0 && fontBuf;
+    if (hasCaptions) {
+      const ffmpegCapsMod = await import("@ffmpeg-installer/ffmpeg");
+      const ffmpegCapsPath = "/tmp/ffmpeg_caps";
+      try { await fs.access(ffmpegCapsPath); }
+      catch {
+        await fs.copyFile((ffmpegCapsMod as any).path, ffmpegCapsPath);
+        await fs.chmod(ffmpegCapsPath, 0o755);
+      }
+      const captionFC = buildCaptionFilters(chunks, fontTmp, "[0:v]");
+      console.log(`📝 Passo 2 — legendas (${chunks.length} blocos)...`);
+      await execFileAsync(ffmpegCapsPath, [
+        "-i", pass1Out,
+        "-filter_complex", captionFC,
+        "-map", "[vout]",
+        "-map", "0:a",
+        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
+        "-pix_fmt", "yuv420p", "-profile:v", "main", "-level", "4.0",
+        "-c:a", "copy",
+        "-movflags", "+faststart",
+        "-y", videoOut,
+      ], { maxBuffer: 200 * 1024 * 1024 });
+    } else {
+      await fs.rename(pass1Out, videoOut).catch(async () => {
+        await fs.copyFile(pass1Out, videoOut);
+        await fs.unlink(pass1Out).catch(() => {});
+      });
+    }
+
+    // Upload para Cloudflare R2
     const outputBuffer = await fs.readFile(videoOut);
     const r2Key = `marketing/${veiculoId}/video_final.mp4`;
     await r2.send(new PutObjectCommand({
@@ -327,7 +430,7 @@ async function combinarVideoAudio(params: {
 
   } finally {
     await Promise.allSettled(
-      [videoIn, audioIn, musicIn, logoIn, videoOut].map(f =>
+      [videoIn, audioIn, musicIn, logoIn, pass1Out, videoOut, fontTmp].map(f =>
         fs.unlink(f).catch(() => {})
       )
     );
@@ -385,6 +488,10 @@ export async function executarPipelineMarketing(
     console.log(`🎙️ [${veiculoId}] Gerando voiceover (voz=${vozSelecionada})...`);
     const audioBuffer = await gerarVoiceover(roteiro, vozSelecionada);
 
+    console.log(`📝 [${veiculoId}] Transcrevendo com Whisper...`);
+    const words = await gerarTranscricao(audioBuffer);
+    console.log(`📝 [${veiculoId}] ${words.length} palavras`);
+
     const videoUrl = veiculo.video_url;
     if (!videoUrl) throw new Error("Veículo sem vídeo bruto vinculado");
 
@@ -394,6 +501,7 @@ export async function executarPipelineMarketing(
       veiculoId,
       videoUrl,
       audioBuffer,
+      words,
       musicaUrl:        cfg?.musica_fundo_url ?? null,
       logoUrl:          cfg?.logo_url ? cfg.logo_url.split("?")[0] : null,
       logoStoragePath:  logoStoragePath,
