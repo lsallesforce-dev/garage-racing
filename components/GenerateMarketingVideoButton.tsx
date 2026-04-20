@@ -26,7 +26,7 @@ export function GenerateMarketingVideoButton({ veiculoId, statusInicial, videoFi
   const [roteiro, setRoteiro] = useState<string>(roteiroInicial ?? "");
   const [editandoRoteiro, setEditandoRoteiro] = useState(false);
   const storageKey = `mkt_prefs_${veiculoId}`;
-  const rawPrefs = typeof window !== "undefined" ? JSON.parse(localStorage.getItem(storageKey) ?? "{}") : {};
+  const rawPrefs = typeof window !== "undefined" ? (() => { try { return JSON.parse(localStorage.getItem(storageKey) ?? "{}"); } catch { return {}; } })() : {};
   // Mantém só valores conhecidos: vazio, "none" ou preset:xxx (descarta URLs antigas)
   const validMusica = (v: string) => v === "" || v === "none" || v.startsWith("preset:");
   const savedPrefs = {

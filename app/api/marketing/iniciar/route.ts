@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/api-auth";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 import { Client } from "@upstash/qstash";
 
 const qstash = new Client({ token: process.env.QSTASH_TOKEN! });
@@ -17,6 +18,16 @@ export async function POST(req: NextRequest) {
   const { veiculoId, roteiroCustomizado, voz, transicao, musicaOverride } = await req.json();
   if (!veiculoId) {
     return NextResponse.json({ error: "veiculoId obrigatório" }, { status: 400 });
+  }
+
+  // Previne double-click: rejeita se já está processando
+  const { data: veiculo } = await supabaseAdmin
+    .from("veiculos")
+    .select("marketing_status")
+    .eq("id", veiculoId)
+    .single();
+  if (veiculo?.marketing_status === "processando") {
+    return NextResponse.json({ status: "already_processing" }, { status: 202 });
   }
 
   // Publica na fila — QStash chama /api/marketing/worker com retry automático

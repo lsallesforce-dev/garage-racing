@@ -7,13 +7,25 @@ import { NextRequest, NextResponse } from "next/server";
 import { executarPipelineMarketing } from "@/lib/marketing-pipeline";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
-export const maxDuration = 300;
+export const maxDuration = 540;
 
 async function handler(req: NextRequest) {
   const body = await req.json();
   const { veiculoId, roteiroCustomizado, voz, transicao, musicaOverride } = body;
   if (!veiculoId) {
     return NextResponse.json({ error: "veiculoId obrigatório" }, { status: 400 });
+  }
+
+  // Idempotência: QStash pode fazer retry — se já está "pronto" ou "processando" (outro worker),
+  // não roda o pipeline de novo para evitar gastos duplos e condição de corrida.
+  const { data: veiculoCheck } = await supabaseAdmin
+    .from("veiculos")
+    .select("marketing_status")
+    .eq("id", veiculoId)
+    .single();
+  if (veiculoCheck?.marketing_status === "pronto") {
+    console.log(`⏭️ [${veiculoId}] Já pronto — skip (QStash retry idempotente)`);
+    return NextResponse.json({ ok: true, skipped: true });
   }
 
   try {

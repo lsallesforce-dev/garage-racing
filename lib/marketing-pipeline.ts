@@ -242,13 +242,10 @@ async function combinarVideoAudio(params: {
   // @ffmpeg-installer tem binário de 2018 (sem xfade)
   const ffmpegStaticMod = await import("ffmpeg-static");
   const ffmpegSrc: string = (ffmpegStaticMod.default ?? ffmpegStaticMod) as unknown as string;
-  const ffmpegPath = "/tmp/ffmpeg";
-  try {
-    await fs.access(ffmpegPath);
-  } catch {
-    await fs.copyFile(ffmpegSrc, ffmpegPath);
-    await fs.chmod(ffmpegPath, 0o755);
-  }
+  // Usa path por job para evitar race condition entre execuções paralelas no /tmp
+  const ffmpegPath = `/tmp/ffmpeg_${veiculoId}`;
+  await fs.copyFile(ffmpegSrc, ffmpegPath);
+  await fs.chmod(ffmpegPath, 0o755);
 
   const tmpDir   = "/tmp";
   const videoIn  = path.join(tmpDir, `${veiculoId}_in.mp4`);
@@ -257,7 +254,7 @@ async function combinarVideoAudio(params: {
   const logoIn   = path.join(tmpDir, `${veiculoId}_logo.png`);
   const pass1Out  = path.join(tmpDir, `${veiculoId}_pass1.mp4`);
   const videoOut  = path.join(tmpDir, `${veiculoId}_out.mp4`);
-  const fontTmp   = path.join(tmpDir, "Montserrat-Black.ttf");
+  const fontTmp   = path.join(tmpDir, `Montserrat-Black-${veiculoId}.ttf`);
   const fontSrc   = path.join(process.cwd(), "public", "fonts", "Montserrat-Black.ttf");
 
   try {
@@ -429,12 +426,9 @@ async function combinarVideoAudio(params: {
     // ── Passo 2: legendas via @ffmpeg-installer (tem drawtext/libfreetype) ──
     if (hasCaptions) {
       const ffmpegCapsMod = await import("@ffmpeg-installer/ffmpeg");
-      const ffmpegCapsPath = "/tmp/ffmpeg_caps";
-      try { await fs.access(ffmpegCapsPath); }
-      catch {
-        await fs.copyFile((ffmpegCapsMod as any).path, ffmpegCapsPath);
-        await fs.chmod(ffmpegCapsPath, 0o755);
-      }
+      const ffmpegCapsPath = `/tmp/ffmpeg_caps_${veiculoId}`;
+      await fs.copyFile((ffmpegCapsMod as any).path, ffmpegCapsPath);
+      await fs.chmod(ffmpegCapsPath, 0o755);
       const captionFC = buildCaptionFilters(chunks, fontTmp, "[0:v]");
       console.log(`📝 Passo 2 — legendas (${chunks.length} blocos)...`);
       await execFileAsync(ffmpegCapsPath, [
@@ -457,6 +451,9 @@ async function combinarVideoAudio(params: {
 
     // Upload para Cloudflare R2
     const outputBuffer = await fs.readFile(videoOut);
+    if (outputBuffer.length < 50_000) {
+      throw new Error(`Vídeo gerado inválido — tamanho suspeito: ${outputBuffer.length} bytes`);
+    }
     const r2Key = `marketing/${veiculoId}/video_final.mp4`;
     await r2.send(new PutObjectCommand({
       Bucket: R2_BUCKET,
@@ -466,12 +463,13 @@ async function combinarVideoAudio(params: {
     }));
 
     const publicUrl = `${R2_PUBLIC_URL}/${r2Key}`;
-    console.log(`✅ Vídeo final: ${publicUrl}`);
+    console.log(`✅ Vídeo final: ${publicUrl} (${(outputBuffer.length / 1024 / 1024).toFixed(1)} MB)`);
     return publicUrl;
 
   } finally {
     await Promise.allSettled(
-      [videoIn, audioIn, musicIn, logoIn, pass1Out, videoOut, fontTmp].map(f =>
+      [videoIn, audioIn, musicIn, logoIn, pass1Out, videoOut, fontTmp,
+       ffmpegPath, `/tmp/ffmpeg_caps_${veiculoId}`].map(f =>
         fs.unlink(f).catch(() => {})
       )
     );
