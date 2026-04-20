@@ -223,11 +223,26 @@ async function combinarVideoAudio(params: {
     }
 
     if (logoUrl) {
-      const lr = await fetch(logoUrl);
-      if (lr.ok) {
-        await fs.writeFile(logoIn, Buffer.from(await lr.arrayBuffer()));
+      // Extrai o path relativo dentro do bucket "configuracoes"
+      // URL format: .../storage/v1/object/public/configuracoes/logos/xxx.png
+      const logoPathMatch = logoUrl.match(/\/storage\/v1\/object\/(?:public|sign)\/configuracoes\/(.+?)(\?.*)?$/);
+      if (logoPathMatch) {
+        const { data: logoBlob, error: logoErr } = await supabaseAdmin.storage
+          .from("configuracoes")
+          .download(logoPathMatch[1]);
+        if (logoBlob) {
+          await fs.writeFile(logoIn, Buffer.from(await logoBlob.arrayBuffer()));
+        } else {
+          console.warn(`⚠️ Logo download falhou: ${logoErr?.message}`);
+        }
       } else {
-        console.warn(`⚠️ Logo fetch falhou (${lr.status}): ${logoUrl}`);
+        // URL externa — tenta fetch HTTP normal
+        const lr = await fetch(logoUrl);
+        if (lr.ok) {
+          await fs.writeFile(logoIn, Buffer.from(await lr.arrayBuffer()));
+        } else {
+          console.warn(`⚠️ Logo fetch falhou (${lr.status}): ${logoUrl}`);
+        }
       }
     }
 
