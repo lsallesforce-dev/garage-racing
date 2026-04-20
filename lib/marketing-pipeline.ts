@@ -396,10 +396,14 @@ export async function executarPipelineMarketing(veiculoId: string): Promise<void
 
   if (!veiculo) throw new Error(`Veículo ${veiculoId} não encontrado`);
 
+  // user_id pode ser null em veículos antigos — fallback por vendedor_id
+  const configUserId = veiculo.user_id ?? veiculo.vendedor_id;
+  console.log(`🔍 config lookup: user_id=${veiculo.user_id} | vendedor_id=${veiculo.vendedor_id} → usando ${configUserId}`);
+
   const { data: cfg } = await supabaseAdmin
     .from("config_garage")
     .select("musica_fundo_url, logo_url")
-    .eq("user_id", veiculo.user_id)
+    .eq("user_id", configUserId)
     .maybeSingle();
 
   await supabaseAdmin
