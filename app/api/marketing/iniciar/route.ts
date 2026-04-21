@@ -30,6 +30,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ status: "already_processing" }, { status: 202 });
   }
 
+  // Marca processando ANTES de publicar — bloqueia double-click em qualquer janela de tempo
+  await supabaseAdmin.from("veiculos").update({ marketing_status: "processando" }).eq("id", veiculoId);
+
   // Publica na fila — QStash chama /api/marketing/worker com retry automático
   await qstash.publishJSON({
     url: `${APP_URL}/api/marketing/worker`,

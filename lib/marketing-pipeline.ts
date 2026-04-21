@@ -348,7 +348,7 @@ async function combinarVideoAudio(params: {
     console.log(`✂️ ${clipCount} clips × ${CLIP_SECS}s | transicao=${transicao} | [${SOURCE_START}s–${SOURCE_END}s] | total ~${effectiveDuration}s`);
 
     // ── Monta args do FFmpeg ──────────────────────────────────────────────────
-    const args: string[] = [];
+    const args: string[] = ["-threads", "0"]; // global: aplica a decode + encode
 
     for (let i = 0; i < clipCount; i++) {
       const seek = SOURCE_START + Math.round(i * step);
@@ -404,12 +404,11 @@ async function combinarVideoAudio(params: {
     // libx264 do FFmpeg 7.0.2 gera NAL units que o binário de 2018 não parseia.
     const hasCaptions = chunks.length > 0 && fontBuf;
     args.push(
-      "-threads", "0",
       "-filter_complex", filterComplex,
       "-map", hasLogo ? "[vfinal]" : "[vout]",
       "-map", "[aout]",
       ...(hasCaptions
-        ? ["-c:v", "mpeg4", "-q:v", "4", "-pix_fmt", "yuv420p"]
+        ? ["-c:v", "mpeg4", "-q:v", "8", "-pix_fmt", "yuv420p"]
         : ["-c:v", "libx264", "-preset", "veryfast", "-crf", "28",
            "-pix_fmt", "yuv420p", "-profile:v", "main", "-level", "4.0",
            "-maxrate", "2500k", "-bufsize", "5000k"]),
