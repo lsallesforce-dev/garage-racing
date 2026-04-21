@@ -38,7 +38,7 @@ Tom: empolgante, direto, linguagem jovem brasileira.
 Regra de Vendas: Transforme a lista de equipamentos em benefícios práticos para o dia a dia do motorista (Exemplo: em vez de apenas dizer "câmbio automático", diga "conforto absoluto para você não se estressar no trânsito"). Não leia apenas um catálogo, crie desejo no cliente!
 Destaque os diferenciais, o preço e chame pra ação no final.
 Sem hashtags. Só o texto falado — sem indicações de cena, sem colchetes, sem estágios.
-IMPORTANTE: Separe cada frase ou ideia com uma quebra de linha (\n). Cada linha deve ter no máximo 10 palavras.
+IMPORTANTE: Separe cada frase ou ideia com uma quebra de linha (\n). Cada linha deve ter no máximo 6 palavras.
 
 Veículo: ${veiculo.marca} ${veiculo.modelo} ${veiculo.versao || ""} ${veiculo.ano_modelo}
 KM: ${veiculo.quilometragem_estimada?.toLocaleString("pt-BR") ?? "—"}
@@ -404,6 +404,12 @@ async function combinarVideoAudio(params: {
     const chunks = roteiro.includes("\n")
       ? agruparPorRoteiro(roteiro, words, audioDelay)
       : agruparPalavras(words, audioDelay);
+    // Garante gap mínimo de 0.08s entre legendas consecutivas para evitar sobreposição
+    for (let i = 0; i < chunks.length - 1; i++) {
+      if (chunks[i].end > chunks[i + 1].start - 0.08) {
+        chunks[i].end = chunks[i + 1].start - 0.08;
+      }
+    }
     console.log(`📝 ${chunks.length} legendas (${words.length} palavras)`);
 
     // Passo 1 usa mpeg4 como intermediário — compatível com o binário 2018 do
