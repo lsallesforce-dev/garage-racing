@@ -9,6 +9,7 @@ import { sendMetaMessage, sendMetaImage, sendMetaVideo, sendMetaPreview, sendMet
 import { buscarDadosTransbordo, gerarRelatorioPista } from "@/lib/leads";
 import { hybridVehicleSearch, findVehicleForMedia } from "@/lib/hybrid-search";
 import { getCachedHistory, cacheHistory, invalidateHistory } from "@/lib/redis";
+import { toVideoUrlAbsolute } from "@/lib/r2-url";
 import { Vehicle } from "@/types/vehicle";
 
 type Temperatura = "FRIO" | "MORNO" | "QUENTE";
@@ -743,7 +744,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
       : veiculoPrincipal;
 
     if (veiculoParaVideo) {
-      const videoUrl = (veiculoParaVideo as any).video_url ?? null;
+      const videoUrl = toVideoUrlAbsolute((veiculoParaVideo as any).video_url ?? null);
       if (videoUrl) {
         try {
           await sendMetaVideo(phone, videoUrl, undefined, metaCreds);
