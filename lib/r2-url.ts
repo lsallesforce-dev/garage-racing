@@ -18,14 +18,9 @@ export function toVideoUrl(url: string | null | undefined): string {
   return url;
 }
 
-// Para uso em APIs externas (Meta, QStash) que precisam de URL absoluta
+// Para uso em APIs externas (Meta) — retorna a URL direta do R2.
+// O rate-limit do R2 afeta browsers, não servidores do Meta.
 export function toVideoUrlAbsolute(url: string | null | undefined): string {
   if (!url) return "";
-  for (const domain of R2_DOMAINS) {
-    if (url.includes(domain)) {
-      const key = url.split(`${domain}/`)[1];
-      return `${APP_URL}/api/r2/${key}`;
-    }
-  }
-  return url;
+  return url; // R2 direto — Meta não sofre rate-limit de browser
 }
