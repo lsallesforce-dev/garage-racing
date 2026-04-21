@@ -176,9 +176,9 @@ async function comprimirVideo(inputBuf: Buffer): Promise<Buffer> {
     await fs.writeFile(tmpIn, inputBuf);
     await execFileAsync(ffmpegPath, [
       "-i", tmpIn,
-      "-vf", "scale='min(1280,iw)':-2",
-      "-c:v", "libx264", "-preset", "fast", "-crf", "28",
-      "-c:a", "aac", "-b:a", "96k",
+      "-vf", "scale='min(640,iw)':-2",
+      "-c:v", "libx264", "-preset", "fast", "-crf", "32",
+      "-c:a", "aac", "-b:a", "64k",
       "-movflags", "+faststart",
       "-y", tmpOut,
     ], { maxBuffer: 100 * 1024 * 1024 });
