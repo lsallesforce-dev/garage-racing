@@ -38,6 +38,7 @@ Tom: empolgante, direto, linguagem jovem brasileira.
 Regra de Vendas: Transforme a lista de equipamentos em benefícios práticos para o dia a dia do motorista (Exemplo: em vez de apenas dizer "câmbio automático", diga "conforto absoluto para você não se estressar no trânsito"). Não leia apenas um catálogo, crie desejo no cliente!
 Destaque os diferenciais, o preço e chame pra ação no final.
 Sem hashtags. Só o texto falado — sem indicações de cena, sem colchetes, sem estágios.
+IMPORTANTE: Separe cada frase ou ideia com uma quebra de linha (\n). Cada linha deve ter no máximo 10 palavras.
 
 Veículo: ${veiculo.marca} ${veiculo.modelo} ${veiculo.versao || ""} ${veiculo.ano_modelo}
 KM: ${veiculo.quilometragem_estimada?.toLocaleString("pt-BR") ?? "—"}
