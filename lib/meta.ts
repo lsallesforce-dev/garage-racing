@@ -157,6 +157,35 @@ export async function sendMetaImage(
   }, c.accessToken);
 }
 
+// ─── Upload de mídia para o Meta (retorna media_id) ──────────────────────────
+async function uploadMediaToMeta(url: string, c: MetaCreds): Promise<string | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) { console.warn(`⚠️ Falha ao baixar vídeo do R2: ${res.status}`); return null; }
+    const buf = await res.arrayBuffer();
+    if (buf.byteLength > 16 * 1024 * 1024) {
+      console.warn(`⚠️ Vídeo maior que 16MB (${(buf.byteLength / 1024 / 1024).toFixed(1)}MB) — usando link direto`);
+      return null;
+    }
+    const form = new FormData();
+    form.append("messaging_product", "whatsapp");
+    form.append("type", "video/mp4");
+    form.append("file", new Blob([buf], { type: "video/mp4" }), "video.mp4");
+    const upload = await fetch(`${GRAPH_URL}/${c.phoneNumberId}/media`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${c.accessToken}` },
+      body: form,
+    });
+    if (!upload.ok) { console.warn(`⚠️ Meta media upload falhou: ${upload.status}`); return null; }
+    const data = await upload.json();
+    console.log(`📤 Meta media_id: ${data.id}`);
+    return data.id ?? null;
+  } catch (e) {
+    console.warn(`⚠️ uploadMediaToMeta erro:`, String(e).slice(0, 200));
+    return null;
+  }
+}
+
 // ─── Enviar vídeo ─────────────────────────────────────────────────────────────
 export async function sendMetaVideo(
   phone: string,
@@ -170,7 +199,9 @@ export async function sendMetaVideo(
     return;
   }
 
-  const video: any = { link: videoUrl };
+  // Tenta upload direto para evitar que o Meta precise buscar a URL
+  const mediaId = await uploadMediaToMeta(videoUrl, c);
+  const video: any = mediaId ? { id: mediaId } : { link: videoUrl };
   if (caption) video.caption = caption;
 
   return post(`/${c.phoneNumberId}/messages`, {
