@@ -745,6 +745,8 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
 
     if (veiculoParaVideo) {
       const videoUrl = toVideoUrlAbsolute((veiculoParaVideo as any).video_url ?? null);
+      console.log(`🎥 video_url raw: ${(veiculoParaVideo as any).video_url ?? "null"}`);
+      console.log(`🎥 video_url enviada ao Meta: ${videoUrl}`);
       if (videoUrl) {
         try {
           await sendMetaVideo(phone, videoUrl, undefined, metaCreds);
