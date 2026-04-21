@@ -744,8 +744,8 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
       : veiculoPrincipal;
 
     if (veiculoParaVideo) {
-      const videoUrl = toVideoUrlAbsolute((veiculoParaVideo as any).video_url ?? null);
-      console.log(`🎥 video_url raw: ${(veiculoParaVideo as any).video_url ?? "null"}`);
+      const videoUrlRaw = (veiculoParaVideo as any).video_url ?? null;
+      const videoUrl = videoUrlRaw; // usa URL direta do R2 para upload server-side
       console.log(`🎥 video_url enviada ao Meta: ${videoUrl}`);
       if (videoUrl) {
         try {
