@@ -334,7 +334,7 @@ async function combinarVideoAudio(params: {
     }
 
     // ── Jump cuts: ignora 10s do início/fim do vídeo cru ─────────────────────
-    const CLIP_SECS    = 3;
+    const CLIP_SECS    = 5; // 3→5s: menos clips, menos xfade, pipeline cabe em 300s
     const SOURCE_START = 10;
     const SOURCE_END   = 150;
     const USABLE_SECS  = SOURCE_END - SOURCE_START;
@@ -404,6 +404,7 @@ async function combinarVideoAudio(params: {
     // libx264 do FFmpeg 7.0.2 gera NAL units que o binário de 2018 não parseia.
     const hasCaptions = chunks.length > 0 && fontBuf;
     args.push(
+      "-threads", "0",
       "-filter_complex", filterComplex,
       "-map", hasLogo ? "[vfinal]" : "[vout]",
       "-map", "[aout]",
@@ -432,6 +433,7 @@ async function combinarVideoAudio(params: {
       const captionFC = buildCaptionFilters(chunks, fontTmp, "[0:v]");
       console.log(`📝 Passo 2 — legendas (${chunks.length} blocos)...`);
       await execFileAsync(ffmpegCapsPath, [
+        "-threads", "0",
         "-i", pass1Out,
         "-filter_complex", captionFC,
         "-map", "[vout]",
