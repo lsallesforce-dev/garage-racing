@@ -157,53 +157,15 @@ export async function sendMetaImage(
   }, c.accessToken);
 }
 
-// Comprime vídeo para < 15MB usando FFmpeg (escala para 720p, CRF 28)
-async function comprimirVideo(inputBuf: Buffer): Promise<Buffer> {
-  const { execFile } = await import("child_process");
-  const { promisify } = await import("util");
-  const fs = await import("fs/promises");
-  const path = await import("path");
-  const execFileAsync = promisify(execFile);
-
-  const ffmpegStaticMod = await import("ffmpeg-static");
-  const ffmpegSrc: string = (ffmpegStaticMod.default ?? ffmpegStaticMod) as unknown as string;
-  const ffmpegPath = "/tmp/ffmpeg_meta_compress";
-  try { await fs.copyFile(ffmpegSrc, ffmpegPath); await fs.chmod(ffmpegPath, 0o755); } catch (e: any) { if (e.code !== "ETXTBSY") throw e; }
-
-  const tmpIn  = path.join("/tmp", `meta_in_${Date.now()}.mp4`);
-  const tmpOut = path.join("/tmp", `meta_out_${Date.now()}.mp4`);
-  try {
-    await fs.writeFile(tmpIn, inputBuf);
-    await execFileAsync(ffmpegPath, [
-      "-i", tmpIn,
-      "-vf", "scale='min(640,iw)':-2",
-      "-c:v", "libx264", "-preset", "fast", "-crf", "32",
-      "-c:a", "aac", "-b:a", "64k",
-      "-movflags", "+faststart",
-      "-y", tmpOut,
-    ], { maxBuffer: 100 * 1024 * 1024 });
-    const compressed = await fs.readFile(tmpOut);
-    console.log(`🗜️ Vídeo comprimido: ${(inputBuf.length / 1024 / 1024).toFixed(1)}MB → ${(compressed.length / 1024 / 1024).toFixed(1)}MB`);
-    return compressed;
-  } finally {
-    await Promise.allSettled([fs.unlink(tmpIn).catch(() => {}), fs.unlink(tmpOut).catch(() => {})]);
-  }
-}
-
 // ─── Upload de mídia para o Meta (retorna media_id) ──────────────────────────
 async function uploadMediaToMeta(url: string, c: MetaCreds): Promise<string | null> {
   try {
     const res = await fetch(url);
-    if (!res.ok) { console.warn(`⚠️ Falha ao baixar vídeo do R2: ${res.status}`); return null; }
-    let buf = Buffer.from(await res.arrayBuffer());
-
-    if (buf.length > 15 * 1024 * 1024) {
-      console.log(`🗜️ Comprimindo vídeo ${(buf.length / 1024 / 1024).toFixed(1)}MB antes do upload...`);
-      buf = await comprimirVideo(buf);
-    }
+    if (!res.ok) { console.warn(`⚠️ Falha ao baixar vídeo: ${res.status}`); return null; }
+    const buf = Buffer.from(await res.arrayBuffer());
 
     if (buf.length > 16 * 1024 * 1024) {
-      console.warn(`⚠️ Vídeo ainda maior que 16MB após compressão — abortando upload`);
+      console.warn(`⚠️ Vídeo ${(buf.length/1024/1024).toFixed(1)}MB > 16MB — abortando upload`);
       return null;
     }
 

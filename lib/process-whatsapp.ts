@@ -14,6 +14,78 @@ import { Vehicle } from "@/types/vehicle";
 
 type Temperatura = "FRIO" | "MORNO" | "QUENTE";
 
+// ─── Compressão de vídeo com cache no R2 ──────────────────────────────────────
+// Na primeira vez: comprime, salva no R2 e atualiza o DB. Próximas chamadas: instantâneo.
+async function ensureCompressedVideo(videoUrl: string | null, veiculoId: string): Promise<string | null> {
+  if (!videoUrl) return null;
+
+  // Verifica tamanho sem baixar tudo — HEAD request
+  const head = await fetch(videoUrl, { method: "HEAD" }).catch(() => null);
+  const size = parseInt(head?.headers.get("content-length") ?? "0", 10);
+  if (size > 0 && size <= 15 * 1024 * 1024) return videoUrl; // já pequeno, usa direto
+  if (size === 0) return videoUrl; // não conseguiu checar, tenta direto
+
+  // Precisa comprimir
+  console.log(`🗜️ Comprimindo vídeo ${(size / 1024 / 1024).toFixed(1)}MB para envio WhatsApp...`);
+  try {
+    const { execFile } = await import("child_process");
+    const { promisify } = await import("util");
+    const fs = await import("fs/promises");
+    const path = await import("path");
+    const execFileAsync = promisify(execFile);
+    const { S3Client, PutObjectCommand } = await import("@aws-sdk/client-s3");
+
+    const ffmpegStaticMod = await import("ffmpeg-static");
+    const ffmpegSrc: string = (ffmpegStaticMod.default ?? ffmpegStaticMod) as unknown as string;
+    const ffmpegPath = "/tmp/ffmpeg_whatsapp";
+    try { await fs.copyFile(ffmpegSrc, ffmpegPath); await fs.chmod(ffmpegPath, 0o755); } catch (e: any) { if (e.code !== "ETXTBSY") throw e; }
+
+    const res = await fetch(videoUrl);
+    if (!res.ok) { console.warn(`⚠️ Falha ao baixar vídeo: ${res.status}`); return videoUrl; }
+    const inputBuf = Buffer.from(await res.arrayBuffer());
+
+    const tmpIn  = `/tmp/wpp_in_${veiculoId}.mp4`;
+    const tmpOut = `/tmp/wpp_out_${veiculoId}.mp4`;
+    try {
+      await fs.writeFile(tmpIn, inputBuf);
+      await execFileAsync(ffmpegPath, [
+        "-i", tmpIn,
+        "-vf", "scale='min(640,iw)':-2",
+        "-c:v", "libx264", "-preset", "fast", "-crf", "32",
+        "-c:a", "aac", "-b:a", "64k",
+        "-movflags", "+faststart",
+        "-y", tmpOut,
+      ], { maxBuffer: 100 * 1024 * 1024 });
+
+      const compressed = await fs.readFile(tmpOut);
+      console.log(`🗜️ ${(inputBuf.length/1024/1024).toFixed(1)}MB → ${(compressed.length/1024/1024).toFixed(1)}MB`);
+
+      // Salva no R2 com sufixo _wpp.mp4
+      const r2Key = videoUrl.split("/").pop()!.replace(/\.mp4$/i, "_wpp.mp4");
+      const r2 = new S3Client({
+        region: "auto",
+        endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+        credentials: { accessKeyId: process.env.R2_ACCESS_KEY_ID!, secretAccessKey: process.env.R2_SECRET_ACCESS_KEY! },
+        forcePathStyle: true,
+        requestChecksumCalculation: "WHEN_REQUIRED",
+        responseChecksumValidation: "WHEN_REQUIRED",
+      });
+      await r2.send(new PutObjectCommand({ Bucket: "videos-estoque", Key: r2Key, Body: compressed, ContentType: "video/mp4" }));
+      const compressedUrl = `${process.env.R2_PUBLIC_URL}/${r2Key}`;
+
+      // Atualiza o banco para usar o vídeo comprimido na próxima vez
+      await supabaseAdmin.from("veiculos").update({ video_url: compressedUrl }).eq("id", veiculoId);
+      console.log(`✅ Vídeo comprimido salvo: ${compressedUrl}`);
+      return compressedUrl;
+    } finally {
+      await Promise.allSettled([fs.unlink(tmpIn).catch(() => {}), fs.unlink(tmpOut).catch(() => {})]);
+    }
+  } catch (e) {
+    console.warn(`⚠️ Compressão falhou, usando URL original:`, String(e).slice(0, 200));
+    return videoUrl;
+  }
+}
+
 // ─── Decriptação de Áudio WhatsApp ────────────────────────────────────────────
 // O WhatsApp criptografa toda mídia com AES-256-CBC + HKDF-SHA256
 async function decryptWhatsAppAudio(encUrl: string, mediaKeyB64: string): Promise<Buffer | null> {
@@ -745,7 +817,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
 
     if (veiculoParaVideo) {
       const videoUrlRaw = (veiculoParaVideo as any).video_url ?? null;
-      const videoUrl = videoUrlRaw; // usa URL direta do R2 para upload server-side
+      const videoUrl = await ensureCompressedVideo(videoUrlRaw, veiculoParaVideo.id);
       console.log(`🎥 video_url enviada ao Meta: ${videoUrl}`);
       if (videoUrl) {
         try {
