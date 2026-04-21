@@ -333,7 +333,8 @@ async function combinarVideoAudio(params: {
       : 1.0;
 
     // Duração efetiva após aceleração — clipCount baseado nisso, não em 60s fixos
-    const effectiveDuration = Math.ceil(audioDuration / atempo) + audioDelay;
+    // +20s de buffer para cobrir imprecisão do probe de áudio no Railway
+    const effectiveDuration = Math.ceil(audioDuration / atempo) + audioDelay + 20;
 
     if (atempo > 1.0) {
       console.log(`⏩ atempo=${atempo} (${audioDuration}s → ${Math.ceil(audioDuration / atempo)}s)`);
@@ -387,7 +388,7 @@ async function combinarVideoAudio(params: {
     if (hasMusicFile) {
       audioSection =
         `[${voiceIdx}:a]${voiceAtempoFilter}adelay=2000|2000[voice];` +
-        `[${musicIdx}:a]volume=volume='if(lt(t,2),0.9,0.12)':eval=frame[music];` +
+        `[${musicIdx}:a]volume=volume='if(lt(t,2),0.7,0.07)':eval=frame[music];` +
         `[music][voice]amix=inputs=2:duration=first[aout]`;
     } else {
       audioSection = atempo > 1.0
