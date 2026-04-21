@@ -82,6 +82,9 @@ function extractFields(payload: any): {
 
     // Ignorar status updates (delivered, read, sent) — não são mensagens
     if (value?.statuses?.length && !value?.messages?.length) {
+      const s = value.statuses[0];
+      if (s?.errors?.length) console.error(`❌ Meta status error [${s.status}]:`, JSON.stringify(s.errors));
+      else console.log(`ℹ️ Meta status: ${s?.status} id=${s?.id}`);
       return { phone: "", userMessage: "", fromMe: true, messageId: null, phoneNumberId, audioMediaId: null };
     }
 
