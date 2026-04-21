@@ -176,7 +176,7 @@ function buildCaptionFilters(chunks: WordChunk[], fontFile: string, inputLabel: 
 }
 
 // ─── 4. Montagem de clips com ou sem transição xfade ────────────────────────
-const TRANS_DUR = 0.15; // segundos de sobreposição entre clips
+const TRANS_DUR = 0.05; // segundos de sobreposição entre clips
 
 const XFADE_TRANSITIONS = ["dissolve", "slideleft", "slideright", "wipeleft", "pixelize"];
 
