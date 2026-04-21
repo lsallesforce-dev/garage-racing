@@ -101,8 +101,8 @@ async function gerarTranscricao(audioBuffer: ArrayBuffer): Promise<WhisperWord[]
 
 function agruparPalavras(words: WhisperWord[], delay: number): WordChunk[] {
   const chunks: WordChunk[] = [];
-  for (let i = 0; i < words.length; i += 3) {
-    const slice = words.slice(i, i + 3);
+  for (let i = 0; i < words.length; i += 6) {
+    const slice = words.slice(i, i + 6);
     chunks.push({
       text:  slice.map(w => w.word.trim().replace(/[.,!?;:]/g, "")).join(" "),
       start: slice[0].start + delay,
@@ -175,7 +175,7 @@ function buildCaptionFilters(chunks: WordChunk[], fontFile: string, inputLabel: 
 }
 
 // ─── 4. Montagem de clips com ou sem transição xfade ────────────────────────
-const TRANS_DUR = 0.3; // segundos de sobreposição entre clips
+const TRANS_DUR = 0.15; // segundos de sobreposição entre clips
 
 const XFADE_TRANSITIONS = ["dissolve", "slideleft", "slideright", "wipeleft", "pixelize"];
 
@@ -339,7 +339,7 @@ async function combinarVideoAudio(params: {
     }
 
     // ── Jump cuts: ignora 10s do início/fim do vídeo cru ─────────────────────
-    const CLIP_SECS    = 5; // 3→5s: menos clips, menos xfade, pipeline cabe em 300s
+    const CLIP_SECS    = 8; // clips longos: menos xfade, pipeline cabe em 300s
     const SOURCE_START = 10;
     const SOURCE_END   = 150;
     const USABLE_SECS  = SOURCE_END - SOURCE_START;
