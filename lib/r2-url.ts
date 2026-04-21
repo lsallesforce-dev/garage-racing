@@ -18,9 +18,17 @@ export function toVideoUrl(url: string | null | undefined): string {
   return url;
 }
 
-// Para uso em APIs externas (Meta) — retorna a URL direta do R2.
-// O rate-limit do R2 afeta browsers, não servidores do Meta.
+// Para uso em APIs externas (Meta) — usa proxy para evitar rate-limit do R2.
+// APP_URL deve ser o domínio canônico (sem redirect).
+const CANONICAL_URL = process.env.CANONICAL_APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://www.autozap.digital";
+
 export function toVideoUrlAbsolute(url: string | null | undefined): string {
   if (!url) return "";
-  return url; // R2 direto — Meta não sofre rate-limit de browser
+  for (const domain of R2_DOMAINS) {
+    if (url.includes(domain)) {
+      const key = url.split(`${domain}/`)[1];
+      return `${CANONICAL_URL}/api/r2/${key}`;
+    }
+  }
+  return url;
 }
