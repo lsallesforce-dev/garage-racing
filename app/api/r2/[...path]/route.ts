@@ -1,6 +1,8 @@
 // Proxy para arquivos do R2 — evita rate-limit do pub-xxx.r2.dev no browser.
 // Serve via autozap.digital/api/r2/<key> com suporte a Range requests (seek de vídeo).
 
+export const maxDuration = 60;
+
 const R2_ORIGIN = process.env.R2_PUBLIC_URL!; // https://pub-xxx.r2.dev
 
 export async function GET(req: Request, { params }: { params: { path: string[] } }) {
@@ -12,6 +14,7 @@ export async function GET(req: Request, { params }: { params: { path: string[] }
   });
 
   if (!upstream.ok && upstream.status !== 206) {
+    console.error(`R2 proxy error: ${upstream.status} for key=${key}`);
     return new Response("Not found", { status: upstream.status });
   }
 
