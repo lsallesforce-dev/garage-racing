@@ -9,7 +9,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { Client } from "@upstash/qstash";
 
 const qstash = new Client({ token: process.env.QSTASH_TOKEN! });
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://autozap.digital";
+const WORKER_URL = process.env.RAILWAY_WORKER_URL ?? "https://garage-racing-production.up.railway.app";
 
 export async function POST(req: NextRequest) {
   const { veiculoId, roteiroCustomizado, voz, transicao, musicaOverride } = await req.json();
@@ -33,9 +33,9 @@ export async function POST(req: NextRequest) {
   // Marca processando ANTES de publicar — bloqueia double-click em qualquer janela de tempo
   await supabaseAdmin.from("veiculos").update({ marketing_status: "processando" }).eq("id", veiculoId);
 
-  // Publica na fila — QStash chama /api/marketing/worker com retry automático
+  // Publica na fila — QStash chama o worker no Railway (sem timeout de serverless)
   await qstash.publishJSON({
-    url: `${APP_URL}/api/marketing/worker`,
+    url: `${WORKER_URL}/worker`,
     body: { veiculoId, roteiroCustomizado: roteiroCustomizado ?? null, voz: voz ?? null, transicao: transicao ?? null, musicaOverride: musicaOverride ?? null },
     retries: 2,
   });
