@@ -244,8 +244,13 @@ async function combinarVideoAudio(params: {
   const ffmpegSrc: string = (ffmpegStaticMod.default ?? ffmpegStaticMod) as unknown as string;
   // Usa path por job para evitar race condition entre execuções paralelas no /tmp
   const ffmpegPath = `/tmp/ffmpeg_${veiculoId}`;
-  await fs.copyFile(ffmpegSrc, ffmpegPath);
-  await fs.chmod(ffmpegPath, 0o755);
+  try {
+    await fs.copyFile(ffmpegSrc, ffmpegPath);
+    await fs.chmod(ffmpegPath, 0o755);
+  } catch (err: any) {
+    if (err.code !== "ETXTBSY") throw err;
+    // Binário já em uso por execução paralela — reutiliza
+  }
 
   const tmpDir   = "/tmp";
   const videoIn  = path.join(tmpDir, `${veiculoId}_in.mp4`);
@@ -427,8 +432,12 @@ async function combinarVideoAudio(params: {
     if (hasCaptions) {
       const ffmpegCapsMod = await import("@ffmpeg-installer/ffmpeg");
       const ffmpegCapsPath = `/tmp/ffmpeg_caps_${veiculoId}`;
-      await fs.copyFile((ffmpegCapsMod as any).path, ffmpegCapsPath);
-      await fs.chmod(ffmpegCapsPath, 0o755);
+      try {
+        await fs.copyFile((ffmpegCapsMod as any).path, ffmpegCapsPath);
+        await fs.chmod(ffmpegCapsPath, 0o755);
+      } catch (err: any) {
+        if (err.code !== "ETXTBSY") throw err;
+      }
       const captionFC = buildCaptionFilters(chunks, fontTmp, "[0:v]");
       console.log(`📝 Passo 2 — legendas (${chunks.length} blocos)...`);
       await execFileAsync(ffmpegCapsPath, [
