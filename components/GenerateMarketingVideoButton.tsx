@@ -24,6 +24,7 @@ export function GenerateMarketingVideoButton({ veiculoId, statusInicial, videoFi
   const [status, setStatus] = useState<string | null>(statusInicial);
   const [videoUrl, setVideoUrl] = useState<string | null>(videoFinalUrl);
   const [roteiro, setRoteiro] = useState<string>(roteiroInicial ?? "");
+  const [roteiroVisivel, setRoteiroVisivel] = useState<boolean>(!!(roteiroInicial));
   const [editandoRoteiro, setEditandoRoteiro] = useState(false);
   const storageKey = `mkt_prefs_${veiculoId}`;
   const rawPrefs = typeof window !== "undefined" ? (() => { try { return JSON.parse(localStorage.getItem(storageKey) ?? "{}"); } catch { return {}; } })() : {};
@@ -75,7 +76,7 @@ export function GenerateMarketingVideoButton({ veiculoId, statusInicial, videoFi
         if (data.video_marketing_url) setVideoUrl(data.video_marketing_url);
         if (data.marketing_status === "pronto") {
           setPrefsAlteradas(false);
-          if (data.marketing_roteiro) setRoteiro(data.marketing_roteiro);
+          if (data.marketing_roteiro) { setRoteiro(data.marketing_roteiro); setRoteiroVisivel(true); }
         }
       }
     }, 5000);
@@ -214,7 +215,7 @@ export function GenerateMarketingVideoButton({ veiculoId, statusInicial, videoFi
         <ConfigPanel />
 
         {/* Narração gerada pela IA */}
-        {roteiro && (
+        {roteiroVisivel && (
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between">
               <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Narração do Locutor</span>
