@@ -18,9 +18,12 @@ interface Props {
   statusInicial: string | null;
   videoFinalUrl: string | null;
   roteiroInicial?: string | null;
+  marca?: string | null;
+  modelo?: string | null;
+  ano?: number | string | null;
 }
 
-export function GenerateMarketingVideoButton({ veiculoId, statusInicial, videoFinalUrl, roteiroInicial }: Props) {
+export function GenerateMarketingVideoButton({ veiculoId, statusInicial, videoFinalUrl, roteiroInicial, marca, modelo, ano }: Props) {
   const [status, setStatus] = useState<string | null>(statusInicial);
   const [videoUrl, setVideoUrl] = useState<string | null>(videoFinalUrl);
   const [roteiro, setRoteiro] = useState<string>(roteiroInicial ?? "");
@@ -196,7 +199,7 @@ export function GenerateMarketingVideoButton({ veiculoId, statusInicial, videoFi
         <div className="flex gap-2">
           <a
             href={toVideoUrl(videoUrl)}
-            download="video_marketing.mp4"
+            download={`${[marca, modelo, ano].filter(Boolean).join("_").replace(/\s+/g, "_") || "video_marketing"}.mp4`}
             target="_blank"
             rel="noreferrer"
             className="flex-1 flex items-center justify-center gap-2 py-3 bg-gray-900 text-white text-[10px] font-black uppercase italic tracking-widest rounded-2xl hover:bg-indigo-600 transition-all"

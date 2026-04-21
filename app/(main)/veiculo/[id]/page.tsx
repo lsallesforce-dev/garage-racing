@@ -1095,6 +1095,9 @@ export default function DetalheVeiculo() {
                   statusInicial={veiculo.marketing_status ?? null}
                   videoFinalUrl={veiculo.video_marketing_url ?? null}
                   roteiroInicial={veiculo.marketing_roteiro ?? null}
+                  marca={veiculo.marca ?? null}
+                  modelo={veiculo.modelo ?? null}
+                  ano={veiculo.ano_modelo ?? null}
                 />
               </div>
             </div>
