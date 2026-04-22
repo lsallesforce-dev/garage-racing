@@ -753,17 +753,30 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
       const toNorm = (s: string) =>
         s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
-      const veiculoNomeado = veiculosContexto.find((v) => {
-        // Divide modelo e marca em palavras individuais (≥3 chars)
-        // e verifica se ALGUMA delas aparece na mensagem.
-        // Ex: modelo "Toro Freedom" → ["toro", "freedom"] → "toro" match ✓
+      const matchModelo = (v: Vehicle) => {
         const modeloWords = toNorm(v.modelo ?? "").split(/\s+/).filter(w => w.length >= 3);
-        const marcaWords  = toNorm(v.marca  ?? "").split(/\s+/).filter(w => w.length >= 3);
-        return (
-          modeloWords.some(w => msgNorm.includes(w)) ||
-          marcaWords.some(w => msgNorm.includes(w))
-        );
-      });
+        return modeloWords.some(w => msgNorm.includes(w));
+      };
+      const matchMarca = (v: Vehicle) => {
+        const marcaWords = toNorm(v.marca ?? "").split(/\s+/).filter(w => w.length >= 3);
+        return marcaWords.some(w => msgNorm.includes(w));
+      };
+
+      // Match por modelo tem prioridade absoluta
+      const veiculoPorModelo = veiculosContexto.find(matchModelo);
+
+      // Match por marca: se veiculoPrincipal já é da mesma marca, usa ele em vez do primeiro da lista
+      // Evita que "desse Honda" troque Honda City pelo Honda HR-V que aparece primeiro no estoque
+      let veiculoPorMarca: Vehicle | undefined;
+      if (!veiculoPorModelo) {
+        if (veiculoPrincipal && matchMarca(veiculoPrincipal)) {
+          veiculoPorMarca = veiculoPrincipal;
+        } else {
+          veiculoPorMarca = veiculosContexto.find(matchMarca);
+        }
+      }
+
+      const veiculoNomeado = veiculoPorModelo ?? veiculoPorMarca;
 
       if (veiculoNomeado) {
         veiculosParaFoto = [veiculoNomeado];
