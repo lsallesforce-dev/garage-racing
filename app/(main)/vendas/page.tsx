@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { supabase } from "@/lib/supabase";
 import {
   X, Plus, Trash2, DollarSign, TrendingUp, TrendingDown,
   Package, ChevronDown, Check, Loader2, Users, ReceiptText,
@@ -518,13 +517,16 @@ function ModalComissoes({
 
   useEffect(() => {
     async function carregarPagamentos() {
-      const { data } = await supabase.from("financeiro_geral").select("id, descricao, data").ilike("descricao", `COMISSAO:%:${mes}`);
-      if (!data) return;
+      const res = await fetch(`/api/financeiro/resumo`);
+      if (!res.ok) return;
+      const { geral } = await res.json();
       const map: Record<string, { id: string; data: string }> = {};
-      data.forEach((item) => {
-        const parts = item.descricao.split(":");
-        if (parts.length === 3) map[parts[1]] = { id: item.id, data: item.data };
-      });
+      (geral as { id: string; descricao: string; data: string }[])
+        .filter((i) => i.descricao?.startsWith(`COMISSAO:`) && i.descricao?.endsWith(`:${mes}`))
+        .forEach((item) => {
+          const parts = item.descricao.split(":");
+          if (parts.length === 3) map[parts[1]] = { id: item.id, data: item.data };
+        });
       setPagamentos(map);
     }
     carregarPagamentos();
@@ -739,37 +741,15 @@ export default function VendasPage() {
   const [fechamentoDate, setFechamentoDate] = useState("");
 
   const carregar = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    const uid = user?.id;
-    if (!uid) return;
-
-    const { data: veic } = await supabase
-      .from("veiculos").select("*").eq("user_id", uid).order("created_at", { ascending: false });
-
-    const veicIds = (veic ?? []).map((v) => v.id);
-
-    const [{ data: desp }, { data: rec }, { data: vend }, { data: geral }] = await Promise.all([
-      veicIds.length
-        ? supabase.from("despesas_veiculo").select("*").in("veiculo_id", veicIds)
-        : Promise.resolve({ data: [] }),
-      veicIds.length
-        ? supabase.from("receitas_veiculo").select("*").in("veiculo_id", veicIds)
-        : Promise.resolve({ data: [] }),
-      supabase.from("vendedores").select("id, nome, comissao_pct").eq("user_id", uid),
-      supabase.from("financeiro_geral").select("*").eq("user_id", uid).order("data", { ascending: false }),
-    ]);
-
-    const lista = (veic ?? []).map((v) => ({
-      ...v,
-      despesas: (desp ?? []).filter((d) => d.veiculo_id === v.id),
-      receitas: (rec  ?? []).filter((r) => r.veiculo_id === v.id),
-    }));
+    const res = await fetch("/api/financeiro/resumo");
+    if (!res.ok) return;
+    const { veiculos: lista, vendedores: vend, geral } = await res.json();
 
     setVeiculos(lista);
-    setVendedores(vend ?? []);
-    setItensGeral(geral ?? []);
+    setVendedores(vend);
+    setItensGeral(geral);
     setLoading(false);
-    setSelecionado((prev) => prev ? lista.find((v) => v.id === prev.id) ?? null : null);
+    setSelecionado((prev) => prev ? lista.find((v: { id: string }) => v.id === prev.id) ?? null : null);
   }, []);
 
   useEffect(() => { carregar(); }, [carregar]);
