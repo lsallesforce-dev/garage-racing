@@ -903,10 +903,19 @@ export default function VendasPage() {
     const { data: { user } } = await supabase.auth.getUser();
     const uid = user?.id;
     if (!uid) return;
-    const [{ data: veic }, { data: desp }, { data: rec }, { data: vend }, { data: geral }] = await Promise.all([
-      supabase.from("veiculos").select("*").eq("user_id", uid).order("created_at", { ascending: false }),
-      supabase.from("despesas_veiculo").select("*"),
-      supabase.from("receitas_veiculo").select("*"),
+
+    const { data: veic } = await supabase
+      .from("veiculos").select("*").eq("user_id", uid).order("created_at", { ascending: false });
+
+    const veicIds = (veic ?? []).map((v) => v.id);
+
+    const [{ data: desp }, { data: rec }, { data: vend }, { data: geral }] = await Promise.all([
+      veicIds.length
+        ? supabase.from("despesas_veiculo").select("*").in("veiculo_id", veicIds)
+        : Promise.resolve({ data: [] }),
+      veicIds.length
+        ? supabase.from("receitas_veiculo").select("*").in("veiculo_id", veicIds)
+        : Promise.resolve({ data: [] }),
       supabase.from("vendedores").select("id, nome, comissao_pct").eq("user_id", uid),
       supabase.from("financeiro_geral").select("*").eq("user_id", uid).order("data", { ascending: false }),
     ]);
@@ -921,6 +930,7 @@ export default function VendasPage() {
     setVendedores(vend ?? []);
     setItensGeral(geral ?? []);
     setLoading(false);
+    setSelecionado((prev) => prev ? lista.find((v) => v.id === prev.id) ?? null : null);
   }, []);
 
   useEffect(() => { carregar(); }, [carregar]);
@@ -960,7 +970,7 @@ export default function VendasPage() {
 
   const lucroMes = lucroVeiculosMes + saldoGeralMes;
 
-  const despesasMes = veiculos.reduce((s, v) =>
+  const despesasMes = [...estoque, ...vendidosMes].reduce((s, v) =>
     s + (v.despesas ?? []).reduce((d, x) => d + x.valor, 0), 0);
 
   const totalComissoesMes = vendedores.reduce((s, vend) => {
@@ -1008,7 +1018,7 @@ export default function VendasPage() {
           <KpiCard label="Estoque em Custo"    value={fmt(totalEstoqueCusto)} sub={`${estoque.length} veículos`}   icon={Package}      color="blue"  />
           <KpiCard label="Faturamento do Mês"  value={fmt(faturamentoMes)}   sub={`${vendidosMes.length} vendas`} icon={DollarSign}   color="green" />
           <KpiCard label="Lucro Bruto do Mês"  value={fmt(lucroMes)}         sub="veículos + outras rec/desp"     icon={TrendingUp}   color={lucroMes >= 0 ? "green" : "red"} />
-          <KpiCard label="Despesas do Mês"     value={fmt(despesasMes)}      sub="todos os veículos"              icon={TrendingDown} color="red"   />
+          <KpiCard label="Despesas do Mês"     value={fmt(despesasMes)}      sub="estoque + vendas do mês"        icon={TrendingDown} color="red"   />
           <KpiCard
             label="Comissões a Pagar"
             value={fmt(totalComissoesMes)}
