@@ -422,7 +422,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   // Credenciais Meta exclusivas do tenant — sem fallback global
   const metaCreds = {
     phoneNumberId: garageConfig?.meta_phone_id ?? "",
-    accessToken: garageConfig?.meta_access_token ?? "",
+    accessToken: garageConfig?.meta_access_token || process.env.META_ACCESS_TOKEN || "",
   };
 
   let userMessage = rawMessage;

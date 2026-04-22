@@ -133,7 +133,7 @@ export async function GET(req: NextRequest) {
       const nomeEmpresa = (garagem as any)?.nome_empresa || "a loja";
       const metaCreds = {
         phoneNumberId: (garagem as any)?.meta_phone_id ?? "",
-        accessToken: (garagem as any)?.meta_access_token ?? "",
+        accessToken: (garagem as any)?.meta_access_token || process.env.META_ACCESS_TOKEN || "",
       };
 
       let carro = "veículo de interesse";

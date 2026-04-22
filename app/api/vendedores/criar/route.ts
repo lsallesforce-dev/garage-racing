@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
 
     const metaCreds = {
       phoneNumberId: garageConfig?.meta_phone_id ?? "",
-      accessToken: garageConfig?.meta_access_token ?? "",
+      accessToken: garageConfig?.meta_access_token || process.env.META_ACCESS_TOKEN || "",
     };
 
     const nomeLoja = garageConfig?.nome_empresa || "AutoZap";

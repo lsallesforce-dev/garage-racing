@@ -36,7 +36,8 @@ export async function POST(req: NextRequest) {
     .eq("user_id", carro.user_id)
     .maybeSingle();
 
-  if (!cfg?.meta_phone_id || !cfg?.meta_access_token) {
+  const resolvedToken = cfg?.meta_access_token || process.env.META_ACCESS_TOKEN || "";
+  if (!cfg?.meta_phone_id || !resolvedToken) {
     console.warn(`⚠️ enviar-repasse: credenciais Meta ausentes para user_id=${carro.user_id}`);
     return NextResponse.json({ error: "Credenciais Meta não configuradas" }, { status: 400 });
   }
@@ -47,7 +48,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Número do gerente não configurado em Configurações" }, { status: 400 });
   }
 
-  const creds = { phoneNumberId: cfg.meta_phone_id, accessToken: cfg.meta_access_token };
+  const creds = { phoneNumberId: cfg.meta_phone_id, accessToken: resolvedToken };
 
   const botPhone = (cfg.whatsapp_agente || cfg.whatsapp || "").replace(/\D/g, "");
   const ctaUrl = botPhone ? `https://wa.me/${botPhone}` : null;

@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
 
     const metaCreds = {
       phoneNumberId: cfg?.meta_phone_id ?? "",
-      accessToken: cfg?.meta_access_token ?? "",
+      accessToken: cfg?.meta_access_token || process.env.META_ACCESS_TOKEN || "",
     };
 
     await sendMetaMessage(phone, message, metaCreds);

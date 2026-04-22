@@ -221,15 +221,6 @@ export default function OnboardingPage() {
                   />
                   <p className="text-[10px] text-blue-500">Meta for Developers → WhatsApp → Configuração → Número de telefone.</p>
                 </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-blue-800">Token de Acesso Permanente</label>
-                  <input type="password" value={form.meta_access_token}
-                    onChange={e => set("meta_access_token", e.target.value.trim())}
-                    placeholder="EAAxxxxx..."
-                    className="bg-white border border-blue-200 rounded-xl px-4 py-3 text-sm font-mono text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
-                  />
-                  <p className="text-[10px] text-blue-500">Meta Business Suite → Configurações → Usuários do sistema → token permanente.</p>
-                </div>
               </div>
 
               <div className="flex gap-3 mt-2">
@@ -243,7 +234,7 @@ export default function OnboardingPage() {
                 </button>
               </div>
 
-              <button type="button" onClick={() => { setForm(f => ({ ...f, meta_phone_id: "", meta_access_token: "" })); handleFinish({ preventDefault: () => {} } as any); }}
+              <button type="button" onClick={() => { setForm(f => ({ ...f, meta_phone_id: "" })); handleFinish({ preventDefault: () => {} } as any); }}
                 className="text-[10px] text-gray-400 hover:text-gray-600 font-black uppercase tracking-widest transition-colors text-center">
                 Pular por agora →
               </button>

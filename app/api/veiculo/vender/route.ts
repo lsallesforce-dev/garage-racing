@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
       .single();
     const metaCreds = {
       phoneNumberId: cfg?.meta_phone_id ?? "",
-      accessToken: cfg?.meta_access_token ?? "",
+      accessToken: cfg?.meta_access_token || process.env.META_ACCESS_TOKEN || "",
     };
 
     // 3. Notificar cada lead via Meta
