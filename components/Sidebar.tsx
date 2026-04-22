@@ -1,6 +1,6 @@
 "use client";
 
-import { LayoutDashboard, MessageSquare, DollarSign, Users, ShieldCheck, Car, Store, Settings, LogOut, X } from "lucide-react";
+import { LayoutDashboard, MessageSquare, DollarSign, Users, ShieldCheck, Car, Store, Settings, LogOut, X, UserCircle } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -13,11 +13,13 @@ const adminMenuItems = [
   { icon: DollarSign, label: "Vendas / Financeiro", href: "/vendas" },
   { icon: Users, label: "Equipe de Vendas", href: "/vendedores" },
   { icon: Settings, label: "Configurações", href: "/configuracoes" },
+  { icon: UserCircle, label: "Minha Conta", href: "/minha-conta" },
 ];
 
 const vendedorMenuItems = [
   { icon: Car, label: "Estoque Inteligente", href: "/estoque" },
   { icon: MessageSquare, label: "Central de Chat", href: "/chat" },
+  { icon: UserCircle, label: "Minha Conta", href: "/minha-conta" },
 ];
 
 interface SidebarProps {
