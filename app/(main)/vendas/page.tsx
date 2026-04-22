@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
 import {
   X, Plus, Trash2, DollarSign, TrendingUp, TrendingDown,
   Package, ChevronDown, Check, Loader2, Users, ReceiptText,
-  ArrowUpRight, ArrowDownRight, Car,
+  ArrowUpRight, ArrowDownRight, Car, Contact,
 } from "lucide-react";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -972,7 +973,14 @@ export default function VendasPage() {
                   </button>
                 ))}
               </div>
-              <p className="text-[10px] text-gray-400 font-bold">{filtrados.length} veículo{filtrados.length !== 1 ? "s" : ""}</p>
+              <div className="flex items-center gap-3">
+                <p className="text-[10px] text-gray-400 font-bold">{filtrados.length} veículo{filtrados.length !== 1 ? "s" : ""}</p>
+                <Link href="/clientes"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gray-100 hover:bg-gray-900 text-gray-500 hover:text-white transition-all text-[9px] font-black uppercase tracking-widest">
+                  <Contact size={12} />
+                  Clientes
+                </Link>
+              </div>
             </div>
 
             {loading ? (
