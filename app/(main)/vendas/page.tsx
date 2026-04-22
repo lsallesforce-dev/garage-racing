@@ -5,7 +5,7 @@ import Link from "next/link";
 import {
   X, Plus, Trash2, DollarSign, TrendingUp, TrendingDown,
   Package, ChevronDown, Check, Loader2, Users, ReceiptText,
-  ArrowUpRight, ArrowDownRight, Car, Contact,
+  ArrowUpRight, ArrowDownRight, Car, Contact, FileSignature,
 } from "lucide-react";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -478,6 +478,12 @@ function SlideOver({
                   </div>
                 </div>
               )}
+
+              <Link href="/contratos" target="_blank"
+                className="w-full py-3 border-2 border-dashed border-gray-200 hover:border-gray-900 hover:bg-gray-900 text-gray-400 hover:text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2">
+                <FileSignature size={14} />
+                Gerar Contrato
+              </Link>
 
               <button type="button" onClick={salvarVenda} disabled={saving || !precoVenda}
                 className="w-full py-4 bg-green-500 hover:bg-green-400 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest transition-colors flex items-center justify-center gap-2 disabled:opacity-40">
