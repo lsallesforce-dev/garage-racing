@@ -870,29 +870,16 @@ export default function VendasPage() {
               sub: `${vendedores.length} vendedor${vendedores.length !== 1 ? "es" : ""}`,
               icon: Users, color: "amber" as const, onClick: () => setVerComissoes(true),
             },
-            {
-              label: "Outras Rec./Desp.", value: fmt(saldoGeral),
-              sub: "saldo geral", icon: ReceiptText, color: "gray" as const,
-              onClick: () => setVerGeral(true), extra: true,
-            },
           ].map((k) => {
-            const bg  = { blue: "bg-blue-50 border-blue-100", red: "bg-red-50 border-red-100", amber: "bg-amber-50 border-amber-100", gray: "bg-white border-gray-100" };
-            const ico = { blue: "text-blue-400", red: "text-red-400", amber: "text-amber-500", gray: "text-gray-400" };
+            const bg  = { blue: "bg-blue-50 border-blue-100", red: "bg-red-50 border-red-100", amber: "bg-amber-50 border-amber-100" };
+            const ico = { blue: "text-blue-400", red: "text-red-400", amber: "text-amber-500" };
             return (
               <div key={k.label}
                 className={`rounded-2xl border p-5 ${bg[k.color]} ${k.onClick ? "cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all" : ""}`}
                 onClick={k.onClick}>
                 <div className="flex items-center justify-between mb-3">
                   <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">{k.label}</p>
-                  <div className="flex items-center gap-1.5">
-                    {(k as any).extra && (
-                      <button type="button" onClick={(e) => { e.stopPropagation(); setVerGeral(true); }}
-                        className="w-5 h-5 bg-gray-900 hover:bg-red-600 text-white rounded-md flex items-center justify-center transition-colors">
-                        <Plus size={10} />
-                      </button>
-                    )}
-                    <k.icon size={15} className={ico[k.color]} />
-                  </div>
+                  <k.icon size={15} className={ico[k.color]} />
                 </div>
                 <p className="text-xl font-black tracking-tighter text-gray-900">{k.value}</p>
                 <p className="text-[10px] text-gray-400 mt-1">{k.sub}</p>
@@ -900,6 +887,30 @@ export default function VendasPage() {
               </div>
             );
           })}
+
+          {/* Card Outras Rec./Desp. — destaque por cor dinâmica */}
+          <div
+            className={`rounded-2xl border p-5 cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all ${
+              saldoGeral >= 0 ? "bg-green-50 border-green-200" : "bg-red-50 border-red-200"
+            }`}
+            onClick={() => setVerGeral(true)}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">Outras Rec./Desp.</p>
+              <div className="flex items-center gap-1.5">
+                <button type="button" onClick={(e) => { e.stopPropagation(); setVerGeral(true); }}
+                  className="w-5 h-5 bg-gray-900 hover:bg-red-600 text-white rounded-md flex items-center justify-center transition-colors">
+                  <Plus size={10} />
+                </button>
+                <ReceiptText size={15} className={saldoGeral >= 0 ? "text-green-500" : "text-red-400"} />
+              </div>
+            </div>
+            <p className={`text-xl font-black tracking-tighter ${saldoGeral >= 0 ? "text-green-700" : "text-red-600"}`}>
+              {fmt(saldoGeral)}
+            </p>
+            <p className="text-[10px] text-gray-400 mt-1">saldo geral</p>
+            <p className="text-[8px] font-black uppercase tracking-widest text-gray-300 mt-2">clique para detalhes →</p>
+          </div>
         </div>
 
         {/* ── Faixa de resultados ──────────────────────────────────────────── */}
@@ -1060,13 +1071,29 @@ export default function VendasPage() {
 
           {/* Histórico mensal */}
             <div className="bg-white rounded-[2rem] border border-gray-100 p-6">
-              <div className="flex items-center justify-between mb-4">
-                <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">Histórico</p>
-                <div className="flex items-center gap-2">
-                  <p className="text-[8px] text-gray-400 font-bold">Próx. fechamento</p>
-                  <input type="date" value={fechamentoDate} onChange={(e) => salvarFechamento(e.target.value)}
-                    className="px-2 py-1 border border-gray-200 rounded-lg text-[10px] font-bold text-gray-700 focus:outline-none focus:border-red-400" />
+              <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-3">Histórico</p>
+
+              {/* Próximo fechamento — destaque */}
+              <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 mb-4">
+                <div>
+                  <p className="text-[8px] font-black uppercase tracking-widest text-amber-500">Próx. Fechamento</p>
+                  <p className="text-sm font-black text-gray-800 mt-0.5">
+                    {fechamentoDate
+                      ? new Date(fechamentoDate + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })
+                      : "Não definido"}
+                  </p>
                 </div>
+                <input
+                  type="date"
+                  value={fechamentoDate}
+                  onChange={(e) => salvarFechamento(e.target.value)}
+                  className="opacity-0 absolute w-0 h-0"
+                  id="fechamento-input"
+                />
+                <label htmlFor="fechamento-input"
+                  className="cursor-pointer px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[9px] font-black uppercase tracking-widest transition-colors">
+                  Alterar
+                </label>
               </div>
 
               {mesesComDados.length === 0 ? (
