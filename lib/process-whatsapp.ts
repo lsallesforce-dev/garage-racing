@@ -122,6 +122,7 @@ export interface GarageConfig {
   // Day 2: prompt customization
   tom_venda?: string;               // ex: "descontraído", "formal", "apressado"
   instrucoes_adicionais?: string;   // bloco livre de instruções do dono
+  horario_funcionamento?: string;   // ex: "Seg a Sex das 8h às 18h"
 }
 
 export interface WhatsAppJobPayload {
@@ -187,6 +188,7 @@ interface BuildPromptParams {
   // Layer 2 & 4
   tomVenda?: string | null;
   instrucoesAdicionais?: string | null;
+  horarioFuncionamento?: string | null;
 }
 
 function buildSystemInstruction(p: BuildPromptParams): string {
@@ -285,6 +287,7 @@ ${instrucoesBlock}
 [DADOS DE CONTEXTO]
 NOME DO CLIENTE: ${p.nomeCliente ?? "Não informado"}
 ${p.enderecoGaragem ? `ENDEREÇO DA LOJA: ${p.enderecoGaragem}${p.enderecoComplemento ? ` (${p.enderecoComplemento})` : ""}` : ""}
+${p.horarioFuncionamento ? `HORÁRIO DE FUNCIONAMENTO: ${p.horarioFuncionamento}` : ""}
 ESTOQUE ESTRUTURADO:
 ${p.context}
 
@@ -884,6 +887,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
       clientePediuVideo,
       tomVenda: garageConfig?.tom_venda,
       instrucoesAdicionais: garageConfig?.instrucoes_adicionais,
+      horarioFuncionamento: garageConfig?.horario_funcionamento,
     });
 
     const partsToGenerate: any[] = [{ text: userMessage }];

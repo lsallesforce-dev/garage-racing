@@ -22,6 +22,7 @@ interface GarageConfig {
   cargo_usuario?: string;
   tom_venda?: string;
   instrucoes_adicionais?: string;
+  horario_funcionamento?: string;
 }
 
 export default function ConfiguracoesPage() {
@@ -51,6 +52,7 @@ export default function ConfiguracoesPage() {
     cargo_usuario: "",
     tom_venda: "",
     instrucoes_adicionais: "",
+    horario_funcionamento: "",
   });
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -83,6 +85,7 @@ export default function ConfiguracoesPage() {
               cargo_usuario: row.cargo_usuario ?? "",
               tom_venda: row.tom_venda ?? "",
               instrucoes_adicionais: row.instrucoes_adicionais ?? "",
+              horario_funcionamento: row.horario_funcionamento ?? "",
             });
             if (row.logo_url) {
               setCurrentLogo(row.logo_url);
@@ -217,6 +220,7 @@ export default function ConfiguracoesPage() {
             cargo_usuario: config.cargo_usuario || null,
             tom_venda: config.tom_venda || null,
             instrucoes_adicionais: config.instrucoes_adicionais || null,
+            horario_funcionamento: config.horario_funcionamento || null,
           },
           { onConflict: "user_id" }
         )
@@ -409,6 +413,20 @@ export default function ConfiguracoesPage() {
             </div>
 
             <div className="flex flex-col gap-4 mt-2 bg-amber-50/60 p-4 border border-amber-100 rounded-2xl">
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-widest text-amber-800 block mb-1.5">
+                  Horário de Funcionamento
+                </label>
+                <input
+                  type="text"
+                  value={config.horario_funcionamento || ""}
+                  onChange={e => setConfig(c => ({ ...c, horario_funcionamento: e.target.value }))}
+                  placeholder="Ex: Seg a Sex das 8h às 18h, Sáb das 8h às 13h"
+                  className="w-full bg-white border border-amber-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-400 transition"
+                />
+                <p className="text-[10px] text-amber-700 mt-1">O agente usará essa informação ao responder clientes fora do horário ou sobre visitas.</p>
+              </div>
+
               <div>
                 <label className="text-[10px] font-black uppercase tracking-widest text-amber-800 block mb-1.5">
                   Tom de Venda do Agente
