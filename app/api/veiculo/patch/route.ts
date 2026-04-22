@@ -11,6 +11,7 @@ const ALLOWED_FIELDS = new Set([
   "detalhes_inspecao", "transcricao_vendedor", "roteiro_pitch", "tags_busca",
   "ia_verificada", "status_venda", "cambio", "vistoriado", "abaixo_fipe", "de_repasse",
   "vendedor_responsavel_id",
+  "preco_compra", "placa", "preco_venda_final", "data_venda", "vendedor_id",
 ]);
 
 export async function PATCH(req: NextRequest) {

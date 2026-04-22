@@ -99,11 +99,12 @@ function ListaItens({
     e.stopPropagation();
     if (!desc || !valor) return;
     setAdding(true);
-    const { data } = await supabase
-      .from(tabela)
-      .insert({ veiculo_id: veiculoId, descricao: desc, valor: parseNum(valor) ?? 0 })
-      .select()
-      .single();
+    const res = await fetch("/api/financeiro/veiculo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tabela, veiculo_id: veiculoId, descricao: desc, valor: parseNum(valor) ?? 0 }),
+    });
+    const data = res.ok ? await res.json() : null;
     if (data) onAlterado([...itens, data]);
     setDesc("");
     setValor("");
@@ -113,7 +114,11 @@ function ListaItens({
   async function remover(id: string, e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
-    await supabase.from(tabela).delete().eq("id", id);
+    await fetch("/api/financeiro/veiculo", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tabela, id }),
+    });
     onAlterado(itens.filter((i) => i.id !== id));
   }
 
@@ -235,10 +240,14 @@ function Modal({
   async function salvarAquisicao(e: React.MouseEvent) {
     e.preventDefault();
     setSaving(true);
-    await supabase.from("veiculos").update({
-      preco_compra: parseNum(precoCompra),
-      placa: placa || null,
-    }).eq("id", veiculo.id);
+    await fetch("/api/veiculo/patch", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        veiculoId: veiculo.id,
+        fields: { preco_compra: parseNum(precoCompra), placa: placa || null },
+      }),
+    });
     setSaving(false);
     onReload();
   }
@@ -246,16 +255,27 @@ function Modal({
   async function salvarVenda(e: React.MouseEvent) {
     e.preventDefault();
     setSaving(true);
-    await supabase.from("veiculos").update({
-      preco_venda_final: parseNum(precoVenda),
-      data_venda: dataVenda || null,
-      vendedor_id: vendedorId || null,
-      status_venda: parseNum(precoVenda) ? "VENDIDO" : "DISPONIVEL",
-    }).eq("id", veiculo.id);
+    await fetch("/api/veiculo/patch", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        veiculoId: veiculo.id,
+        fields: {
+          preco_venda_final: parseNum(precoVenda),
+          data_venda: dataVenda || null,
+          vendedor_id: vendedorId || null,
+          status_venda: parseNum(precoVenda) ? "VENDIDO" : "DISPONIVEL",
+        },
+      }),
+    });
 
     // Salva % no perfil do vendedor se modo pct
     if (vendedorId && comissaoModo === "pct" && comissaoPct) {
-      await supabase.from("vendedores").update({ comissao_pct: parseNum(comissaoPct) }).eq("id", vendedorId);
+      await fetch("/api/financeiro/vendedor-comissao", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vendedorId, comissao_pct: parseNum(comissaoPct) }),
+      });
     }
     setSaving(false);
     onReload();
@@ -577,17 +597,17 @@ function ModalComissoes({
     const data = datas[vendId] || new Date().toISOString().split("T")[0];
     setSalvando((p) => ({ ...p, [vendId]: true }));
 
-    const { data: inserted } = await supabase
-      .from("financeiro_geral")
-      .insert({
+    const res = await fetch("/api/financeiro/geral", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
         tipo: "despesa",
         descricao: `COMISSAO:${vendId}:${mes}`,
         valor,
         data,
-      })
-      .select("id, data")
-      .single();
-
+      }),
+    });
+    const inserted = res.ok ? await res.json() : null;
     if (inserted) {
       setPagamentos((p) => ({ ...p, [vendId]: { id: inserted.id, data: inserted.data } }));
     }
@@ -597,7 +617,11 @@ function ModalComissoes({
   async function desfazerPagamento(vendId: string) {
     const pag = pagamentos[vendId];
     if (!pag) return;
-    await supabase.from("financeiro_geral").delete().eq("id", pag.id);
+    await fetch("/api/financeiro/geral", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: pag.id }),
+    });
     setPagamentos((p) => { const n = { ...p }; delete n[vendId]; return n; });
   }
 
@@ -720,10 +744,12 @@ function ModalFinanceiroGeral({
     e.preventDefault(); e.stopPropagation();
     if (!desc || !valor) return;
     setAdding(true);
-    const { data: row } = await supabase
-      .from("financeiro_geral")
-      .insert({ tipo, descricao: desc, valor: parseNum(valor) ?? 0, data })
-      .select().single();
+    const res = await fetch("/api/financeiro/geral", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tipo, descricao: desc, valor: parseNum(valor) ?? 0, data }),
+    });
+    const row = res.ok ? await res.json() : null;
     if (row) onAlterado([...itens, row]);
     setDesc(""); setValor("");
     setAdding(false);
@@ -731,7 +757,11 @@ function ModalFinanceiroGeral({
 
   async function remover(id: string, e: React.MouseEvent) {
     e.preventDefault(); e.stopPropagation();
-    await supabase.from("financeiro_geral").delete().eq("id", id);
+    await fetch("/api/financeiro/geral", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
     onAlterado(itens.filter((i) => i.id !== id));
   }
 
