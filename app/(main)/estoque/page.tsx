@@ -20,6 +20,7 @@ export default function ListaEstoque() {
   const [copiado, setCopiado] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [enviado, setEnviado] = useState(false);
+  const [erroEnvio, setErroEnvio] = useState<string | null>(null);
   const [repasseTipo, setRepasseTipo] = useState<"repasse" | "promocao">("repasse");
 
   const handleDelete = async (id: string) => {
@@ -72,14 +73,22 @@ export default function ListaEstoque() {
   const exportarRepasse = async () => {
     if (!repasseCarroId || !repasseTexto) return;
     setEnviando(true);
+    setErroEnvio(null);
     try {
-      await fetch("/api/veiculo/enviar-repasse", {
+      const res = await fetch("/api/veiculo/enviar-repasse", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ veiculoId: repasseCarroId, texto: repasseTexto, capaUrl: repasseCapaUrl }),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setErroEnvio(data.error || `Erro ${res.status}`);
+        return;
+      }
       setEnviado(true);
       setTimeout(() => setEnviado(false), 3000);
+    } catch (e: any) {
+      setErroEnvio("Falha na conexão. Tente novamente.");
     } finally {
       setEnviando(false);
     }
@@ -232,7 +241,11 @@ export default function ListaEstoque() {
                 </div>
 
                 {/* Actions */}
-                <div className="px-8 pb-8 pt-4 flex gap-3">
+                <div className="px-8 pb-8 pt-4 flex flex-col gap-3">
+                  {erroEnvio && (
+                    <p className="text-[11px] font-bold text-red-600 bg-red-50 rounded-xl px-4 py-2 text-center">{erroEnvio}</p>
+                  )}
+                  <div className="flex gap-3">
                   <button
                     onClick={exportarRepasse}
                     disabled={enviando}
@@ -260,6 +273,7 @@ export default function ListaEstoque() {
                   >
                     ↺
                   </button>
+                  </div>
                 </div>
               </>
             )}

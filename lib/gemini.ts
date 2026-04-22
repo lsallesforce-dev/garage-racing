@@ -21,7 +21,7 @@ export const geminiFlashFallback = genAI.getGenerativeModel(
 export async function generateEmbedding(text: string): Promise<number[] | null> {
   const model = genAI.getGenerativeModel(
     { model: "text-embedding-004" },
-    { apiVersion: "v1" }
+    { apiVersion: "v1beta" }
   );
 
   for (let attempt = 0; attempt < 3; attempt++) {

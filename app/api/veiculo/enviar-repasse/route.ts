@@ -37,11 +37,13 @@ export async function POST(req: NextRequest) {
     .maybeSingle();
 
   if (!cfg?.meta_phone_id || !cfg?.meta_access_token) {
+    console.warn(`⚠️ enviar-repasse: credenciais Meta ausentes para user_id=${carro.user_id}`);
     return NextResponse.json({ error: "Credenciais Meta não configuradas" }, { status: 400 });
   }
 
   const destino = cfg.whatsapp;
   if (!destino) {
+    console.warn(`⚠️ enviar-repasse: whatsapp do gerente não configurado para user_id=${carro.user_id}`);
     return NextResponse.json({ error: "Número do gerente não configurado em Configurações" }, { status: 400 });
   }
 
