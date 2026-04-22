@@ -388,6 +388,19 @@ function SlideOver({
               cor="green" onAlterado={setReceitas} />
           )}
 
+          {(aba === "despesas" || aba === "receitas") && (
+            <button
+              type="button"
+              onClick={() => { onReload(); setSaved(true); setTimeout(() => setSaved(false), 2000); }}
+              className={`mt-6 w-full py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${
+                saved ? "bg-green-500 text-white" : "bg-gray-900 hover:bg-red-600 text-white"
+              }`}
+            >
+              <Check size={15} />
+              {saved ? "Alterações salvas!" : "Salvar Alterações"}
+            </button>
+          )}
+
           {aba === "venda" && (
             <div className="space-y-5">
               <div>
