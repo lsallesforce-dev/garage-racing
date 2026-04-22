@@ -198,14 +198,22 @@ export default function CentralChat() {
 
   const assumirConversa = async () => {
     if (!selectedLead) return;
-    await supabase.from("leads").update({ em_atendimento_humano: true }).eq("id", selectedLead.id);
+    await fetch("/api/leads/atendimento", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lead_id: selectedLead.id, em_atendimento_humano: true }),
+    });
     setSelectedLead((prev) => prev ? { ...prev, em_atendimento_humano: true } : prev);
     carregarLeads();
   };
 
   const devolverParaIA = async () => {
     if (!selectedLead) return;
-    await supabase.from("leads").update({ em_atendimento_humano: false }).eq("id", selectedLead.id);
+    await fetch("/api/leads/atendimento", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lead_id: selectedLead.id, em_atendimento_humano: false }),
+    });
     setSelectedLead((prev) => prev ? { ...prev, em_atendimento_humano: false } : prev);
     carregarLeads();
   };

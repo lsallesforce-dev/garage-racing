@@ -311,11 +311,15 @@ export default function DetalheVeiculo() {
   // ── Save helpers ─────────────────────────────────────────────────────────
 
   const patch = async (fields: Record<string, any>) => {
-    const { error } = await supabase
-      .from("veiculos")
-      .update(fields)
-      .eq("id", veiculo.id);
-    if (error) throw error;
+    const res = await fetch("/api/veiculo/patch", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ veiculoId: veiculo.id, fields }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || "Erro ao salvar");
+    }
   };
 
   const handleSalvarNome = async () => {
@@ -385,9 +389,8 @@ export default function DetalheVeiculo() {
 
   const handleSave = async () => {
     setIsSaving(true);
-    const { error } = await supabase
-      .from("veiculos")
-      .update({
+    try {
+      await patch({
         preco_sugerido: veiculo.preco_sugerido / 100,
         quilometragem_estimada: veiculo.quilometragem_estimada,
         cor: veiculo.cor,
@@ -402,9 +405,9 @@ export default function DetalheVeiculo() {
         vistoriado: veiculo.vistoriado,
         abaixo_fipe: veiculo.abaixo_fipe,
         de_repasse: veiculo.de_repasse,
-      })
-      .eq("id", id);
-    if (!error) alert("Dados atualizados! 🚀");
+      });
+      alert("Dados atualizados! 🚀");
+    } catch {}
     setIsSaving(false);
   };
 
