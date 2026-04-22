@@ -86,8 +86,8 @@ function splitMessage(text: string): string[] {
     return porParagrafo.slice(0, 3);
   }
 
-  // Tenta quebrar em sentenças (. ! ?)
-  const sentencas = text.match(/[^.!?]*[.!?]+["']?/g) ?? [];
+  // Tenta quebrar em sentenças (. ! ?) — ignora pontos entre dígitos (ex: R$ 80.000)
+  const sentencas = text.match(/[^.!?]*(?<!\d)[.!?]+(?!\d)["']?/g) ?? [];
   if (sentencas.length >= 2) {
     const meio = Math.ceil(sentencas.length / 2);
     const parte1 = sentencas.slice(0, meio).join("").trim();

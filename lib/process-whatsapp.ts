@@ -602,11 +602,25 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
 
   // Atualiza veiculo_id do lead se mudou + sincroniza veiculoPrincipal local
   if (lead && clientePediuCarroDiferente && topVeiculos[0]) {
-    await supabaseAdmin
-      .from("leads")
-      .update({ veiculo_id: topVeiculos[0].id })
-      .eq("id", lead.id);
-    veiculoPrincipal = topVeiculos[0]; // sincroniza local — contexto já mostra o novo carro em foco
+    // Só troca veiculoPrincipal se o MODELO do novo carro está explicitamente na mensagem.
+    // Evita que "tem foto do Honda?" troque Honda City por Honda HR-V só porque HR-V
+    // apareceu primeiro na busca textual por marca.
+    const novoVeiculo = topVeiculos[0];
+    const msgNormSwitch = userMessage.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+    const modeloWordsNovo = (novoVeiculo.modelo ?? "")
+      .normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()
+      .split(/\s+/).filter(w => w.length >= 3);
+    const novoModeloMencionado = modeloWordsNovo.some(w => msgNormSwitch.includes(w));
+    const marcaDiferente = !veiculoPrincipal || novoVeiculo.marca?.toLowerCase() !== veiculoPrincipal.marca?.toLowerCase();
+
+    if (novoModeloMencionado || marcaDiferente) {
+      await supabaseAdmin
+        .from("leads")
+        .update({ veiculo_id: novoVeiculo.id })
+        .eq("id", lead.id);
+      veiculoPrincipal = novoVeiculo;
+    }
+    // Se mesma marca mas modelo não mencionado → mantém veiculoPrincipal atual
   } else if (lead && !veiculoPrincipal && topVeiculos[0]) {
     await supabaseAdmin
       .from("leads")
