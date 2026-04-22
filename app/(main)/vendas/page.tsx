@@ -897,13 +897,10 @@ export default function VendasPage() {
           >
             <div className="flex items-center justify-between mb-3">
               <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">Outras Rec./Desp.</p>
-              <div className="flex items-center gap-1.5">
-                <button type="button" onClick={(e) => { e.stopPropagation(); setVerGeral(true); }}
-                  className="w-5 h-5 bg-gray-900 hover:bg-red-600 text-white rounded-md flex items-center justify-center transition-colors">
-                  <Plus size={10} />
-                </button>
-                <ReceiptText size={15} className={saldoGeral >= 0 ? "text-green-500" : "text-red-400"} />
-              </div>
+              <button type="button" onClick={(e) => { e.stopPropagation(); setVerGeral(true); }}
+                className="w-8 h-8 bg-gray-900 hover:bg-red-600 text-white rounded-xl flex items-center justify-center transition-colors">
+                <Plus size={16} />
+              </button>
             </div>
             <p className={`text-xl font-black tracking-tighter ${saldoGeral >= 0 ? "text-green-700" : "text-red-600"}`}>
               {fmt(saldoGeral)}
