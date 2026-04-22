@@ -808,16 +808,16 @@ export default function VendasPage() {
       <div className="max-w-7xl mx-auto space-y-8">
 
         {/* ── Hero ─────────────────────────────────────────────────────────── */}
-        <div className="bg-gray-900 rounded-[2rem] p-8 md:p-10 text-white relative overflow-hidden">
+        <div className="bg-gray-900 rounded-[2rem] p-5 md:p-7 text-white relative overflow-hidden">
           {/* Decoração de fundo */}
           <div className="absolute -right-16 -top-16 w-64 h-64 bg-white/5 rounded-full" />
           <div className="absolute -right-6 -bottom-20 w-48 h-48 bg-white/5 rounded-full" />
 
           <div className="relative">
-            <div className="flex items-start justify-between flex-wrap gap-4 mb-8">
+            <div className="flex items-start justify-between flex-wrap gap-3 mb-5">
               <div>
                 <p className="text-white/50 text-xs font-black uppercase tracking-[0.3em] mb-1">Financeiro</p>
-                <h1 className="text-3xl md:text-4xl font-black italic uppercase tracking-tighter leading-none capitalize">
+                <h1 className="text-2xl md:text-3xl font-black italic uppercase tracking-tighter leading-none capitalize">
                   {mesLabel}
                 </h1>
               </div>
@@ -831,21 +831,21 @@ export default function VendasPage() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 md:gap-10">
               <div>
                 <p className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-2">Lucro Bruto do Mês</p>
-                <p className={`text-4xl md:text-5xl font-black tracking-tighter leading-none ${lucroMes >= 0 ? "text-green-400" : "text-red-400"}`}>
+                <p className={`text-3xl md:text-4xl font-black tracking-tighter leading-none ${lucroMes >= 0 ? "text-green-400" : "text-red-400"}`}>
                   {fmtCompact(lucroMes)}
                 </p>
                 <p className="text-white/30 text-xs mt-1">veículos + outras receitas</p>
               </div>
               <div>
                 <p className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-2">Faturamento</p>
-                <p className="text-4xl md:text-5xl font-black tracking-tighter leading-none text-white">
+                <p className="text-3xl md:text-4xl font-black tracking-tighter leading-none text-white">
                   {fmtCompact(faturamentoMes)}
                 </p>
                 <p className="text-white/30 text-xs mt-1">{vendidosMes.length} venda{vendidosMes.length !== 1 ? "s" : ""} no mês</p>
               </div>
               <div>
                 <p className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-2">Acumulado {anoAtual}</p>
-                <p className={`text-4xl md:text-5xl font-black tracking-tighter leading-none ${lucroAnual >= 0 ? "text-white" : "text-red-400"}`}>
+                <p className={`text-3xl md:text-4xl font-black tracking-tighter leading-none ${lucroAnual >= 0 ? "text-white" : "text-red-400"}`}>
                   {fmtCompact(lucroAnual)}
                 </p>
                 <p className="text-white/30 text-xs mt-1">{mesesComDados.filter((m) => m.startsWith(anoAtual)).length} mês(es) com dados</p>
@@ -902,9 +902,9 @@ export default function VendasPage() {
           })}
         </div>
 
-        {/* ── Faixa de lucro mensal ────────────────────────────────────────── */}
+        {/* ── Faixa de resultados ──────────────────────────────────────────── */}
         <div className="bg-white rounded-2xl border border-gray-100 px-6 py-4">
-          <div className="flex items-center gap-6 overflow-x-auto pb-1 scrollbar-hide">
+          <div className="flex items-center gap-8 overflow-x-auto pb-1 scrollbar-hide">
 
             {mesesComDados.length === 0 ? (
               <p className="text-xs text-gray-300 py-2 whitespace-nowrap">Sem dados históricos ainda</p>
@@ -912,49 +912,34 @@ export default function VendasPage() {
               <>
                 {/* Label fixo à esquerda */}
                 <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 whitespace-nowrap flex-shrink-0">
-                  Lucro<br />mensal
+                  Resultados
                 </p>
 
-                <div className="w-px h-10 bg-gray-100 flex-shrink-0" />
+                <div className="w-px h-8 bg-gray-100 flex-shrink-0" />
 
                 {/* Meses — ordem cronológica */}
                 {[...mesesComDados].reverse().map((m) => {
                   const lucro   = calcLucroMes(m);
                   const ehAtual = m === mes;
-                  const maxAbs  = Math.max(...mesesComDados.map((x) => Math.abs(calcLucroMes(x))), 1);
-                  const barW    = Math.max((Math.abs(lucro) / maxAbs) * 64, 4);
                   return (
-                    <div key={m} className="flex flex-col items-center gap-1 flex-shrink-0 w-16">
-                      <span className={`text-[9px] font-black whitespace-nowrap ${lucro >= 0 ? "text-green-600" : "text-red-500"}`}>
-                        {lucro >= 0 ? "+" : ""}{fmtCompact(lucro).replace("R$ ", "")}
+                    <div key={m} className="flex flex-col items-center gap-1 flex-shrink-0">
+                      <span className={`text-xs font-black whitespace-nowrap ${lucro >= 0 ? "text-green-600" : "text-red-500"}`}>
+                        {fmt(lucro)}
                       </span>
-                      <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                        <div
-                          style={{ width: `${barW}px` }}
-                          className={`h-full rounded-full ${
-                            ehAtual
-                              ? lucro >= 0 ? "bg-green-500" : "bg-red-500"
-                              : lucro >= 0 ? "bg-gray-300" : "bg-red-300"
-                          }`}
-                        />
-                      </div>
-                      <span className={`text-[8px] font-bold capitalize whitespace-nowrap ${ehAtual ? "text-gray-900" : "text-gray-400"}`}>
+                      <span className={`text-[10px] font-bold capitalize whitespace-nowrap ${ehAtual ? "text-gray-700 font-black" : "text-gray-400"}`}>
                         {labelMes(m)}{ehAtual ? " ●" : ""}
                       </span>
                     </div>
                   );
                 })}
 
-                {/* Divisor + Total ano */}
-                <div className="w-px h-10 bg-gray-100 flex-shrink-0" />
-                <div className="flex flex-col items-center gap-1 flex-shrink-0 pl-2">
-                  <span className={`text-sm font-black whitespace-nowrap ${lucroAnual >= 0 ? "text-green-600" : "text-red-500"}`}>
-                    {lucroAnual >= 0 ? "+" : ""}{fmtCompact(lucroAnual)}
+                {/* Divisor + Total ano — sempre no final */}
+                <div className="w-px h-8 bg-gray-100 flex-shrink-0 ml-auto" />
+                <div className="flex flex-col items-center gap-1 flex-shrink-0">
+                  <span className={`text-xs font-black whitespace-nowrap ${lucroAnual >= 0 ? "text-green-600" : "text-red-500"}`}>
+                    {fmt(lucroAnual)}
                   </span>
-                  <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                    <div className={`h-full w-full rounded-full ${lucroAnual >= 0 ? "bg-green-200" : "bg-red-200"}`} />
-                  </div>
-                  <span className="text-[8px] font-black uppercase tracking-widest text-gray-400 whitespace-nowrap">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 whitespace-nowrap">
                     Total {anoAtual}
                   </span>
                 </div>
