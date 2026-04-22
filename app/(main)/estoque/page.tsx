@@ -102,14 +102,14 @@ export default function ListaEstoque() {
   };
 
   return (
-    <div className="p-10 bg-[#f4f4f2] min-h-screen font-sans overflow-y-auto w-full">
+    <div className="p-4 md:p-10 bg-[#f4f4f2] min-h-screen font-sans overflow-y-auto w-full">
       <div className="max-w-6xl mx-auto">
-        <div className="flex justify-between items-end mb-12">
+        <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-end mb-8 md:mb-12">
             <div>
-                <h1 className="text-6xl font-black italic uppercase text-gray-300 leading-none mb-2 tracking-tighter">Estoque Inteligente</h1>
+                <h1 className="text-4xl md:text-6xl font-black italic uppercase text-gray-300 leading-none mb-2 tracking-tighter">Estoque Inteligente</h1>
                 <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-gray-400">Gerenciamento completo do pátio digital.</p>
             </div>
-            <Link href="/upload" className="px-8 py-4 bg-red-600 text-white font-black uppercase italic rounded-2xl shadow-xl shadow-red-200 flex items-center gap-2 hover:scale-105 transition-all tracking-widest text-[10px]">
+            <Link href="/upload" className="self-start sm:self-auto px-6 py-3 md:px-8 md:py-4 bg-red-600 text-white font-black uppercase italic rounded-2xl shadow-xl shadow-red-200 flex items-center gap-2 hover:scale-105 transition-all tracking-widest text-[10px]">
                 <Plus size={18} strokeWidth={3} /> Cadastrar Nova Máquina
               </Link>
         </div>
@@ -117,11 +117,11 @@ export default function ListaEstoque() {
         <div className="grid gap-4">
             {!loading ? (
                 carros.length > 0 ? carros.map((carro) => (
-                <div key={carro.id} className="bg-white p-6 rounded-[2.5rem] border border-gray-100 flex items-center justify-between shadow-sm hover:shadow-xl transition-all group">
-                    <div className="flex items-center gap-6">
-                    <div className="w-32 h-20 bg-gray-100 rounded-2xl overflow-hidden relative">
-                        <img 
-                            src={carro.capa_marketing_url || (carro.fotos?.[0] || 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?q=80&w=2070&auto=format&fit=crop')} 
+                <div key={carro.id} className="bg-white p-4 md:p-6 rounded-[2rem] md:rounded-[2.5rem] border border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shadow-sm hover:shadow-xl transition-all group">
+                    <div className="flex items-center gap-4">
+                    <div className="w-24 h-16 md:w-32 md:h-20 flex-shrink-0 bg-gray-100 rounded-2xl overflow-hidden relative">
+                        <img
+                            src={carro.capa_marketing_url || (carro.fotos?.[0] || 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?q=80&w=2070&auto=format&fit=crop')}
                             alt={carro.modelo}
                             className="w-full h-full object-contain group-hover:scale-110 transition-transform duration-700"
                         />
@@ -133,7 +133,7 @@ export default function ListaEstoque() {
                     </div>
                     <div>
                         <div className="flex items-center gap-2 mb-1">
-                            <h3 className="text-xl font-black uppercase italic leading-none text-gray-900 group-hover:text-red-600 transition-colors">{carro.marca} {carro.modelo}</h3>
+                            <h3 className="text-base md:text-xl font-black uppercase italic leading-none text-gray-900 group-hover:text-red-600 transition-colors">{carro.marca} {carro.modelo}</h3>
                         </div>
                         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
                             {carro.versao || 'Configuração Esportiva'} • {carro.ano_modelo || '2024'}
@@ -144,9 +144,9 @@ export default function ListaEstoque() {
                     </div>
                     </div>
 
-                    <div className="flex gap-3 items-center">
+                    <div className="flex flex-wrap gap-2 items-center">
                         {confirmandoId === carro.id ? (
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-[10px] font-black uppercase text-gray-500">Tem certeza?</span>
                             <button
                               onClick={() => handleDelete(carro.id)}
@@ -167,21 +167,21 @@ export default function ListaEstoque() {
                         )}
                         <button
                             onClick={() => gerarRepasse(carro.id, "promocao")}
-                            className="flex items-center gap-2 px-6 py-4 bg-blue-600 text-white text-[10px] font-black uppercase italic rounded-2xl hover:bg-blue-700 transition-all tracking-widest shadow-lg shadow-blue-200"
+                            className="flex items-center gap-2 px-4 py-3 md:px-6 md:py-4 bg-blue-600 text-white text-[10px] font-black uppercase italic rounded-2xl hover:bg-blue-700 transition-all tracking-widest shadow-lg shadow-blue-200"
                         >
                             <Share2 size={14} /> Envio Whats
                         </button>
                         <button
                             onClick={() => gerarRepasse(carro.id)}
-                            className="flex items-center gap-2 px-6 py-4 bg-green-600 text-white text-[10px] font-black uppercase italic rounded-2xl hover:bg-green-700 transition-all tracking-widest shadow-lg shadow-green-200"
+                            className="flex items-center gap-2 px-4 py-3 md:px-6 md:py-4 bg-green-600 text-white text-[10px] font-black uppercase italic rounded-2xl hover:bg-green-700 transition-all tracking-widest shadow-lg shadow-green-200"
                         >
                             <Share2 size={14} /> Repasse
                         </button>
                         <Link
                             href={`/veiculo/${carro.id}`}
-                            className="flex items-center gap-2 px-8 py-4 bg-slate-900 text-white text-[10px] font-black uppercase italic rounded-2xl hover:bg-red-600 transition-all tracking-widest shadow-lg shadow-slate-200"
+                            className="flex items-center gap-2 px-4 py-3 md:px-8 md:py-4 bg-slate-900 text-white text-[10px] font-black uppercase italic rounded-2xl hover:bg-red-600 transition-all tracking-widest shadow-lg shadow-slate-200"
                         >
-                            <Zap size={14} className="fill-white" /> Business / IA Insights
+                            <Zap size={14} className="fill-white" /> <span className="hidden sm:inline">Business / </span>IA Insights
                         </Link>
                     </div>
                 </div>

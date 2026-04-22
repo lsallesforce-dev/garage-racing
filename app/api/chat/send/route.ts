@@ -15,11 +15,16 @@ export async function POST(req: NextRequest) {
     const { user, error: authError } = await requireLeadOwner(lead_id);
     if (authError) return authError;
 
+    // Vendedor usa o user_id do dono, não o próprio
+    const effectiveUserId = user!.user_metadata?.role === "vendedor"
+      ? user!.user_metadata?.owner_user_id
+      : user!.id;
+
     // Busca credenciais Meta do tenant
     const { data: cfg } = await supabaseAdmin
       .from("config_garage")
       .select("meta_phone_id, meta_access_token")
-      .eq("user_id", user!.id)
+      .eq("user_id", effectiveUserId)
       .single();
 
     const metaCreds = {
