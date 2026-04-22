@@ -199,6 +199,7 @@ function Modal({
 }) {
   const [aba, setAba] = useState<"aquisicao" | "despesas" | "receitas" | "venda">("aquisicao");
   const [saving, setSaving] = useState(false);
+  const [saved,  setSaved]  = useState(false);
 
   // Aquisição
   const [precoCompra, setPrecoCompra] = useState(veiculo.preco_compra ? String(veiculo.preco_compra) : "");
@@ -249,6 +250,8 @@ function Modal({
       }),
     });
     setSaving(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
     onReload();
   }
 
@@ -377,10 +380,10 @@ function Modal({
                 type="button"
                 onClick={salvarAquisicao}
                 disabled={saving}
-                className="w-full py-3 bg-gray-900 hover:bg-red-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-colors flex items-center justify-center gap-2"
+                className={`w-full py-3 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-colors flex items-center justify-center gap-2 ${saved ? "bg-green-500" : "bg-gray-900 hover:bg-red-600"}`}
               >
                 {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-                Salvar Aquisição
+                {saved ? "Salvo!" : "Salvar Aquisição"}
               </button>
             </div>
           )}
@@ -392,7 +395,7 @@ function Modal({
               tabela="despesas_veiculo"
               veiculoId={veiculo.id}
               cor="red"
-              onAlterado={(itens) => { setDespesas(itens); onReload(); }}
+              onAlterado={setDespesas}
             />
           )}
 
@@ -403,7 +406,7 @@ function Modal({
               tabela="receitas_veiculo"
               veiculoId={veiculo.id}
               cor="green"
-              onAlterado={(itens) => { setReceitas(itens); onReload(); }}
+              onAlterado={setReceitas}
             />
           )}
 
@@ -1238,7 +1241,7 @@ export default function VendasPage() {
         <Modal
           veiculo={selecionado}
           vendedores={vendedores}
-          onClose={() => setSelecionado(null)}
+          onClose={() => { setSelecionado(null); carregar(); }}
           onReload={carregar}
         />
       )}
