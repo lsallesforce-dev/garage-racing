@@ -24,10 +24,14 @@ export default function ListaEstoque() {
   const [repasseTipo, setRepasseTipo] = useState<"repasse" | "promocao">("repasse");
 
   const handleDelete = async (id: string) => {
-    await supabase.from("vendas_concluidas").update({ veiculo_id: null }).eq("veiculo_id", id);
-    await supabase.from("leads").update({ veiculo_id: null }).eq("veiculo_id", id);
-    await supabase.from("veiculos").delete().eq("id", id);
-    setCarros(prev => prev.filter(c => c.id !== id));
+    const res = await fetch("/api/veiculo/deletar", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ veiculoId: id }),
+    });
+    if (res.ok) {
+      setCarros(prev => prev.filter(c => c.id !== id));
+    }
     setConfirmandoId(null);
   };
 
