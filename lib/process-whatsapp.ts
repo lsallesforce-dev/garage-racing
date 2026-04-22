@@ -290,8 +290,8 @@ ${p.context}
 
 ${p.instrucaoPendente ? `✅ INSTRUÇÃO DO GERENTE (use esta informação para responder ao cliente agora): ${p.instrucaoPendente}` : ""}
 
-${p.clientePediuFoto ? "❌ FOTO: Não há foto disponível para esse veículo. Responda: 'Esse ainda não tem foto disponível, mas posso te passar mais detalhes.' PROIBIDO dizer que vai verificar." : ""}
-${p.clientePediuVideo ? "❌ VÍDEO: Não há vídeo disponível para esse veículo. Responda: 'Esse não tem vídeo disponível no momento.'" : ""}
+${p.clientePediuFoto ? "❌ FOTO: Não há foto disponível para esse veículo. Responda ao cliente: 'Esse ainda não tem foto disponível, mas posso te passar mais detalhes.' E use precisa_instrucao com: 'Cliente pediu foto do veículo mas não há foto cadastrada no sistema.'" : ""}
+${p.clientePediuVideo ? "❌ VÍDEO: Não há vídeo disponível para esse veículo. Responda ao cliente: 'Esse não tem vídeo disponível no momento.' E use precisa_instrucao com: 'Cliente pediu vídeo do veículo mas não há vídeo cadastrado no sistema.'" : ""}
 
 [AÇÃO REQUERIDA]
 Você DEVE retornar a resposta estritamente no formato JSON, usando a seguinte estrutura exata:
@@ -305,11 +305,13 @@ Você DEVE retornar a resposta estritamente no formato JSON, usando a seguinte e
 }
 
 REGRAS DO precisa_instrucao:
-- Use SOMENTE quando o cliente pedir um dado que NÃO está na ficha do veículo (ex: laudo de vistoria, cor dos bancos, número de donos, histórico de revisões, detalhes mecânicos específicos)
+- Use quando o cliente pedir um dado que NÃO está na ficha do veículo (ex: laudo de vistoria, cor dos bancos, número de donos, histórico de revisões, detalhes mecânicos específicos)
+- Use quando não conseguir atender o pedido do cliente (ex: foto ou vídeo não disponível, documento não cadastrado)
 - NUNCA use para preço, km, cor, motor, ano — esses dados estão na ficha
 - NUNCA invente ou assuma a resposta — prefira sinalizar a dúvida
-- Quando usar: escreva uma frase objetiva descrevendo o que o cliente quer saber. Ex: "Cliente perguntou se o Gol 2022 tem laudo de vistoria cautelar"
+- Quando usar: escreva uma frase objetiva descrevendo o que o cliente quer. Ex: "Cliente perguntou se o Gol 2022 tem laudo de vistoria cautelar"
 - Quando NÃO usar: null
+- ⚠️ PROIBIDO FICAR MUDO: Se não puder ajudar o cliente com algo, SEMPRE responda com o motivo E use precisa_instrucao para alertar o gerente. Nunca deixe o cliente sem resposta.
 
 REGRAS DO veiculo_id_foco:
 - Use o ID do "VEÍCULO EM FOCO" como padrão
@@ -705,9 +707,11 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
 
   // Continuação implícita: "e da ranger?", "e o gol?", "e a strada?" após pedido de foto anterior
   // O cliente não repete a palavra "foto" mas está claramente continuando o pedido anterior
+  // Exclusão: se a mensagem contém palavra de vídeo ("e tem vídeo?"), NÃO é continuação de foto
   const continuacaoFoto =
     clientePediuFotoAntes &&
-    /^(e\b|e\s+(a|o|da|do|de|dos|das|tem)\b)/i.test(userMessage.trim());
+    /^(e\b|e\s+(a|o|da|do|de|dos|das|tem)\b)/i.test(userMessage.trim()) &&
+    !gatilhosVideo.some(g => mensagemLower.includes(g));
 
   // Detecta pedido de fotos de MÚLTIPLOS carros ("foto deles", "de ambos", "dos dois", "de cada um")
   const pedindoFotosMultiplos = /\b(deles|delas|dos dois|das duas|de ambos|de todos|de cada|de cada um)\b/i.test(mensagemLower);
