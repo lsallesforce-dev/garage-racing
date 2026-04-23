@@ -100,10 +100,6 @@ export default function Dashboard() {
             <h1 className="text-3xl md:text-6xl font-black italic uppercase text-gray-300/80 leading-none mb-2 tracking-tighter">Radar do Pátio</h1>
             <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-gray-400">Bem-vindo à {nomeEmpresa || "AutoZap"}, Comandante.</p>
             </div>
-            <div className="flex gap-2 md:gap-4">
-            <button className="flex-1 sm:flex-none px-4 md:px-6 py-3 md:py-4 bg-white rounded-3xl text-[10px] font-black uppercase border border-gray-100 shadow-sm hover:bg-gray-50 transition-all">Exportar</button>
-            <button className="flex-1 sm:flex-none px-4 md:px-6 py-3 md:py-4 bg-slate-900 text-white rounded-3xl text-[10px] font-black uppercase shadow-xl shadow-slate-200 hover:bg-red-600 transition-all">Config.</button>
-            </div>
         </div>
 
         {/* Flash: Cards de Performance (Telemetria) */}
