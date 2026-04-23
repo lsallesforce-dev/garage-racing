@@ -494,6 +494,56 @@ async function combinarVideoAudio(params: {
   }
 }
 
+// ─── Concat takes ────────────────────────────────────────────────────────────
+async function concatenarTakes(takes: string[], veiculoId: string): Promise<string> {
+  const fs   = await import("fs/promises");
+  const path = await import("path");
+  const { execFile } = await import("child_process");
+  const { promisify } = await import("util");
+  const execFileAsync = promisify(execFile);
+
+  const ffmpegStaticMod = await import("ffmpeg-static");
+  const ffmpegSrc: string = (ffmpegStaticMod.default ?? ffmpegStaticMod) as unknown as string;
+  const ffmpegPath = `/tmp/ffmpeg_concat_${veiculoId}`;
+  try { await fs.copyFile(ffmpegSrc, ffmpegPath); await fs.chmod(ffmpegPath, 0o755); } catch (e: any) { if (e.code !== "ETXTBSY") throw e; }
+
+  const tmpDir = `/tmp/takes_${veiculoId}`;
+  await fs.mkdir(tmpDir, { recursive: true });
+
+  // Baixa cada take para /tmp
+  const localPaths: string[] = [];
+  for (let i = 0; i < takes.length; i++) {
+    const res = await fetch(takes[i]);
+    if (!res.ok) throw new Error(`Falha ao baixar take ${i + 1}: ${res.status}`);
+    const buf = Buffer.from(await res.arrayBuffer());
+    const p = path.join(tmpDir, `take_${i}.mp4`);
+    await fs.writeFile(p, buf);
+    localPaths.push(p);
+  }
+
+  // Cria arquivo de lista para concat
+  const listFile = path.join(tmpDir, "list.txt");
+  await fs.writeFile(listFile, localPaths.map(p => `file '${p}'`).join("\n"));
+
+  const outPath = `/tmp/takes_concat_${veiculoId}.mp4`;
+  await execFileAsync(ffmpegPath, [
+    "-f", "concat", "-safe", "0", "-i", listFile,
+    "-c:v", "copy", "-c:a", "copy",
+    "-y", outPath,
+  ], { maxBuffer: 200 * 1024 * 1024 });
+
+  // Faz upload do concat para R2
+  const concatKey = `takes/${veiculoId}/concat_${Date.now()}.mp4`;
+  const concatBuf = await fs.readFile(outPath);
+  await r2.send(new PutObjectCommand({ Bucket: R2_BUCKET, Key: concatKey, Body: concatBuf, ContentType: "video/mp4" }));
+
+  // Limpa tmp
+  await Promise.all([...localPaths, listFile, outPath].map(f => fs.unlink(f).catch(() => {})));
+  await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+
+  return `${R2_PUBLIC_URL}/${concatKey}`;
+}
+
 // ─── Pipeline principal ───────────────────────────────────────────────────────
 const VOZES_VALIDAS = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"] as const;
 type VozTTS = typeof VOZES_VALIDAS[number];
@@ -549,8 +599,15 @@ export async function executarPipelineMarketing(
     const words = await gerarTranscricao(audioBuffer);
     console.log(`📝 [${veiculoId}] ${words.length} palavras`);
 
-    const videoUrl = veiculo.video_url;
-    if (!videoUrl) throw new Error("Veículo sem vídeo bruto vinculado");
+    // Takes têm prioridade: se existirem, concat → usa como vídeo de entrada
+    let videoUrl = veiculo.video_url as string | null;
+    const takes: string[] = veiculo.video_takes ?? [];
+    if (takes.length > 0) {
+      console.log(`🎬 [${veiculoId}] Concatenando ${takes.length} take(s)...`);
+      videoUrl = await concatenarTakes(takes, veiculoId);
+      console.log(`✅ [${veiculoId}] Concat concluído: ${videoUrl}`);
+    }
+    if (!videoUrl) throw new Error("Veículo sem vídeo bruto vinculado (nem takes cadastrados)");
 
     console.log(`🎞️ [${veiculoId}] Combinando vídeo + áudio...`);
     console.log(`🖼️ cfg.logo_url=${cfg?.logo_url ?? "null"} | cfg.musica=${cfg?.musica_fundo_url ?? "null"}`);

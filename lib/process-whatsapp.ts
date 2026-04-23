@@ -850,9 +850,10 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
       : veiculoPrincipal;
 
     if (veiculoParaVideo) {
-      const videoUrlRaw = (veiculoParaVideo as any).video_url ?? null;
+      // Prioridade: reel de marketing (já otimizado) → vídeo bruto
+      const videoUrlRaw = (veiculoParaVideo as any).video_marketing_url ?? (veiculoParaVideo as any).video_url ?? null;
       const videoUrl = await ensureCompressedVideo(videoUrlRaw, veiculoParaVideo.id);
-      console.log(`🎥 video_url enviada ao Meta: ${videoUrl}`);
+      console.log(`🎥 vídeo enviado ao Meta: ${videoUrl} (marketing=${!!(veiculoParaVideo as any).video_marketing_url})`);
       if (videoUrl) {
         try {
           await sendMetaVideo(phone, videoUrl, undefined, metaCreds);

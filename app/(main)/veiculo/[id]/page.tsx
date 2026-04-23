@@ -202,6 +202,103 @@ function SectionCard({
 
 // ─── Scanner de Documentos ────────────────────────────────────────────────────
 
+// ─── Takes de Vídeo ──────────────────────────────────────────────────────────
+function TakesVideo({ veiculoId, takesIniciais }: { veiculoId: string; takesIniciais: string[] }) {
+  const [takes, setTakes]       = useState<string[]>(takesIniciais);
+  const [uploading, setUploading] = useState(false);
+  const [progresso, setProgresso] = useState(0);
+  const [erro, setErro]           = useState("");
+  const inputRef = React.useRef<HTMLInputElement>(null);
+
+  async function handleFile(file: File) {
+    setErro(""); setUploading(true); setProgresso(0);
+    try {
+      // 1) Pede URL presigned
+      const res = await fetch(`/api/veiculo/takes?veiculoId=${veiculoId}&fileName=${encodeURIComponent(file.name)}`);
+      if (!res.ok) throw new Error((await res.json()).error);
+      const { uploadUrl, publicUrl } = await res.json();
+
+      // 2) Upload direto ao R2 (sem passar pelo Vercel)
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.upload.onprogress = e => { if (e.lengthComputable) setProgresso(Math.round(e.loaded / e.total * 100)); };
+        xhr.onload  = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Upload falhou: ${xhr.status}`)));
+        xhr.onerror = () => reject(new Error("Erro de rede no upload"));
+        xhr.open("PUT", uploadUrl);
+        xhr.setRequestHeader("Content-Type", "video/mp4");
+        xhr.send(file);
+      });
+
+      // 3) Confirma no banco
+      const conf = await fetch("/api/veiculo/takes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ veiculoId, publicUrl }),
+      });
+      if (!conf.ok) throw new Error((await conf.json()).error);
+      const { video_takes } = await conf.json();
+      setTakes(video_takes);
+    } catch (e: any) {
+      setErro(e.message ?? "Erro no upload");
+    } finally {
+      setUploading(false); setProgresso(0);
+    }
+  }
+
+  async function remover(url: string) {
+    const res = await fetch("/api/veiculo/takes", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ veiculoId, publicUrl: url }),
+    });
+    if (res.ok) { const { video_takes } = await res.json(); setTakes(video_takes); }
+  }
+
+  const nomeArquivo = (url: string) => decodeURIComponent(url.split("/").pop() ?? url).replace(/^\d+_/, "");
+
+  return (
+    <div className="mt-6 pt-6 border-t border-black/10 relative z-10">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-[9px] font-black uppercase tracking-widest text-gray-500">
+          Takes de Vídeo ({takes.length})
+        </p>
+        <button onClick={() => inputRef.current?.click()} disabled={uploading}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 hover:bg-red-600 active:scale-95 disabled:opacity-50 text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all">
+          {uploading ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
+          {uploading ? `${progresso}%` : "Adicionar Take"}
+        </button>
+        <input ref={inputRef} type="file" accept="video/*" className="hidden"
+          onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ""; }} />
+      </div>
+
+      {takes.length > 0 && (
+        <div className="space-y-2 mb-3">
+          {takes.map((url, i) => (
+            <div key={url} className="flex items-center justify-between px-3 py-2 bg-black/5 rounded-xl">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-[8px] font-black text-gray-400 w-4 shrink-0">#{i + 1}</span>
+                <Video size={12} className="text-gray-500 shrink-0" />
+                <span className="text-[10px] font-bold text-gray-700 truncate">{nomeArquivo(url)}</span>
+              </div>
+              <button onClick={() => remover(url)} className="ml-2 p-1.5 hover:bg-red-100 rounded-lg transition-colors shrink-0">
+                <Trash2 size={11} className="text-red-400" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {takes.length === 0 && !uploading && (
+        <p className="text-[10px] text-gray-400 text-center py-2">
+          Envie os takes — a IA concatena antes de gerar o Reel
+        </p>
+      )}
+
+      {erro && <p className="text-[10px] text-red-500 font-bold mt-1">{erro}</p>}
+    </div>
+  );
+}
+
 interface DadosCRLV {
   placa?: string | null; renavam?: string | null; chassi?: string | null;
   marca?: string | null; modelo?: string | null; versao?: string | null;
@@ -1337,6 +1434,9 @@ export default function DetalheVeiculo() {
                   </pre>
                 </div>
               )}
+
+              {/* Takes de vídeo */}
+              <TakesVideo veiculoId={veiculo.id} takesIniciais={veiculo.video_takes ?? []} />
 
               {/* Gerador de Vídeo IA */}
               <div className="mt-6 pt-6 border-t border-black/10 relative z-10">
