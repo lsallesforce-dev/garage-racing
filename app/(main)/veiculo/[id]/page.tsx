@@ -213,9 +213,10 @@ interface DadosCRLV {
   especie?: string | null; potencia?: string | null; cilindradas?: string | null;
 }
 
-function ScanDocumento({ veiculoId, onAplicar, placa, renavam, chassi }: {
+function ScanDocumento({ veiculoId, onAplicar, veiculo: veic, placa, renavam, chassi }: {
   veiculoId: string;
   onAplicar: (dados: DadosCRLV) => Promise<void>;
+  veiculo?: any;
   placa?: string | null;
   renavam?: string | null;
   chassi?: string | null;
@@ -228,6 +229,7 @@ function ScanDocumento({ veiculoId, onAplicar, placa, renavam, chassi }: {
   const [preview, setPreview]     = useState<string | null>(null);
   const [isPdf, setIsPdf]         = useState(false);
   const [nomeArq, setNomeArq]     = useState("");
+  const [consulta, setConsulta]   = useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
 
   const temDadosSalvos = placa || renavam || chassi;
@@ -287,12 +289,67 @@ function ScanDocumento({ veiculoId, onAplicar, placa, renavam, chassi }: {
       <input ref={inputRef} type="file" accept="image/*,application/pdf" className="hidden"
         onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ""; }} />
 
+      {/* Modal de consulta */}
+      {consulta && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={() => setConsulta(false)}>
+          <div className="bg-white rounded-[2rem] p-6 w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-2xl bg-gray-900 flex items-center justify-center">
+                  <FileCheck size={16} className="text-white" />
+                </div>
+                <div>
+                  <p className="text-sm font-black uppercase italic">Ficha do Veículo</p>
+                  <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Dados salvos no sistema</p>
+                </div>
+              </div>
+              <button onClick={() => setConsulta(false)} className="p-2 hover:bg-gray-100 rounded-xl transition-colors">
+                <X size={16} className="text-gray-500" />
+              </button>
+            </div>
+
+            <div className="space-y-1.5">
+              {[
+                { label: "Placa",         value: veic?.placa,              privado: false },
+                { label: "Final Placa",   value: veic?.final_placa,        privado: false },
+                { label: "RENAVAM",       value: renavam,                  privado: true  },
+                { label: "Chassi",        value: chassi,                   privado: true  },
+                { label: "Marca",         value: veic?.marca,              privado: false },
+                { label: "Modelo",        value: veic?.modelo,             privado: false },
+                { label: "Versão",        value: veic?.versao,             privado: false },
+                { label: "Ano Fab.",      value: veic?.ano,                privado: false },
+                { label: "Ano Modelo",    value: veic?.ano_modelo,         privado: false },
+                { label: "Combustível",   value: veic?.combustivel,        privado: false },
+                { label: "Cor",           value: veic?.cor,                privado: false },
+              ].filter(c => c.value != null && c.value !== "").map(c => (
+                <div key={c.label} className={`px-3 py-2 rounded-xl flex justify-between items-center gap-2 ${c.privado ? "bg-amber-50 border border-amber-100" : "bg-gray-50"}`}>
+                  <span className="text-[8px] font-black uppercase tracking-widest text-gray-400 shrink-0">{c.label}</span>
+                  <span className={`text-[10px] font-black text-right ${c.privado ? "text-amber-700" : "text-gray-900"}`}>
+                    {String(c.value)}{c.privado && " 🔒"}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <p className="mt-4 text-[8px] text-amber-600 font-bold">
+              🔒 Campos restritos ficam disponíveis apenas em contratos e vendas.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Dados já salvos no banco */}
       {temDadosSalvos && !resultado && (
-        <div className="mb-3 grid grid-cols-2 gap-1.5">
-          {placa   && <div className="px-3 py-2 bg-gray-50 rounded-xl flex justify-between items-center gap-2"><span className="text-[8px] font-black uppercase tracking-widest text-gray-400">Placa</span><span className="text-[10px] font-black text-gray-900">{placa}</span></div>}
-          {renavam && <div className="px-3 py-2 bg-amber-50 border border-amber-100 rounded-xl flex justify-between items-center gap-2"><span className="text-[8px] font-black uppercase tracking-widest text-gray-400">RENAVAM</span><span className="text-[10px] font-black text-amber-700">{renavam.slice(0,4)}… 🔒</span></div>}
-          {chassi  && <div className="px-3 py-2 bg-amber-50 border border-amber-100 rounded-xl col-span-2 flex justify-between items-center gap-2"><span className="text-[8px] font-black uppercase tracking-widest text-gray-400">Chassi</span><span className="text-[10px] font-black text-amber-700">{chassi.slice(0,6)}… 🔒</span></div>}
+        <div className="mb-3 space-y-2">
+          <div className="grid grid-cols-2 gap-1.5">
+            {placa   && <div className="px-3 py-2 bg-gray-50 rounded-xl flex justify-between items-center gap-2"><span className="text-[8px] font-black uppercase tracking-widest text-gray-400">Placa</span><span className="text-[10px] font-black text-gray-900">{placa}</span></div>}
+            {renavam && <div className="px-3 py-2 bg-amber-50 border border-amber-100 rounded-xl flex justify-between items-center gap-2"><span className="text-[8px] font-black uppercase tracking-widest text-gray-400">RENAVAM</span><span className="text-[10px] font-black text-amber-700">{renavam.slice(0,4)}… 🔒</span></div>}
+            {chassi  && <div className="px-3 py-2 bg-amber-50 border border-amber-100 rounded-xl col-span-2 flex justify-between items-center gap-2"><span className="text-[8px] font-black uppercase tracking-widest text-gray-400">Chassi</span><span className="text-[10px] font-black text-amber-700">{chassi.slice(0,6)}… 🔒</span></div>}
+          </div>
+          <button onClick={() => setConsulta(true)}
+            className="w-full py-2.5 border border-gray-200 hover:border-gray-900 hover:bg-gray-900 hover:text-white rounded-2xl text-[10px] font-black uppercase tracking-widest text-gray-500 transition-all flex items-center justify-center gap-2">
+            <FileCheck size={13} /> Consultar Dados Completos
+          </button>
         </div>
       )}
 
@@ -1301,6 +1358,7 @@ export default function DetalheVeiculo() {
             {/* ── Documentos / Scanner ── */}
             <ScanDocumento
               veiculoId={veiculo.id}
+              veiculo={veiculo}
               placa={veiculo.placa ?? null}
               renavam={veiculo.renavam ?? null}
               chassi={veiculo.chassi ?? null}
