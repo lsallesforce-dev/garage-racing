@@ -288,7 +288,6 @@ function SlideOver({
       const [lojaRes] = await Promise.all([fetch("/api/contratos/dados-vendedor")]);
       const loja = lojaRes.ok ? await lojaRes.json() : {};
 
-      const nomeVeic = [veiculo.marca, veiculo.modelo, veiculo.versao].filter(Boolean).join(" ");
       const contratoRes = await fetch("/api/contratos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -301,24 +300,26 @@ function SlideOver({
               endereco: loja.endereco || "",
               cidade: loja.cidade || "",
               estado: loja.estado || "",
+              logo_url: loja.logo_url || null,
             },
-            comprador: { nome: "", cpf: "", rg: "", endereco: "", cidade: "", estado: "" },
+            comprador: { nome: "", cpf: "", email: "", endereco: "", cidade: "", estado: "", cep: "", telefone: "" },
             veiculo: {
-              descricao: nomeVeic,
-              ano: veiculo.ano_modelo || "",
+              marca: veiculo.marca || "",
+              modelo: veiculo.modelo || "",
+              versao: veiculo.versao || "",
+              ano_fab: String(veiculo.ano_modelo || ""),
+              ano_mod: String(veiculo.ano_modelo || ""),
               placa: veiculo.placa || "",
               renavam: "",
               chassi: "",
-              cor: "",
             },
-            pagamento: {
-              valor: parseNum(precoVenda) || 0,
-              forma: "dinheiro",
-              parcelas: null,
-              entrada: null,
-              obs: "",
-            },
-            data_contrato: dataVenda || new Date().toISOString().split("T")[0],
+            regularidade: { furto: "", multas: "", alienacao: "", outros: "" },
+            valor_total: parseNum(precoVenda) || 0,
+            pagamentos: [{ tipo: "dinheiro", valor: parseNum(precoVenda) || 0 }],
+            observacoes: "",
+            cidade_contrato: loja.cidade || "",
+            data_assinatura: dataVenda || new Date().toISOString().split("T")[0],
+            hora_assinatura: "",
           },
         }),
       });

@@ -68,10 +68,13 @@ export default function ImprimirContratoPage() {
   if (!dados) return <div className="flex items-center justify-center min-h-screen">Contrato não encontrado.</div>;
 
   const d = dados;
-  const valorExt = numeroExtenso(d.valor_total);
-  const valorFmt = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(d.valor_total);
-  const textoData = textoDataLonga(d.data_assinatura);
-  const textoPagamento = descricaoPagamentos(d.pagamentos);
+  const valorTotal = d.valor_total ?? 0;
+  const valorExt = numeroExtenso(valorTotal);
+  const valorFmt = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(valorTotal);
+  const textoData = d.data_assinatura ? textoDataLonga(d.data_assinatura) : "";
+  const textoPagamento = Array.isArray(d.pagamentos) && d.pagamentos.length > 0
+    ? descricaoPagamentos(d.pagamentos)
+    : `PAGAMENTO EM DINHEIRO NO VALOR DE ${valorFmt} (${valorExt})`;
 
   const compradorBloco = [
     d.comprador.nome,
@@ -144,7 +147,7 @@ export default function ImprimirContratoPage() {
 
         {/* Objeto */}
         <p style={{ marginBottom: "14px", textAlign: "justify" }}>
-          <strong>OBJETO DO CONTRATO:</strong> Veículo Marca {d.veiculo.marca.toUpperCase()}, {d.veiculo.modelo.toUpperCase()}{d.veiculo.versao ? ` ${d.veiculo.versao.toUpperCase()}` : ""}, ANO {d.veiculo.ano_fab} MODELO {d.veiculo.ano_mod}, PLACA {d.veiculo.placa.toUpperCase()}{d.veiculo.renavam ? `, RENAVAM ${d.veiculo.renavam}` : ""}{d.veiculo.chassi ? `, CHASSI ${d.veiculo.chassi.toUpperCase()}` : ""}.
+          <strong>OBJETO DO CONTRATO:</strong> Veículo Marca {(d.veiculo.marca || "").toUpperCase()}, {(d.veiculo.modelo || "").toUpperCase()}{d.veiculo.versao ? ` ${d.veiculo.versao.toUpperCase()}` : ""}, ANO {d.veiculo.ano_fab} MODELO {d.veiculo.ano_mod}, PLACA {(d.veiculo.placa || "").toUpperCase()}{d.veiculo.renavam ? `, RENAVAM ${d.veiculo.renavam}` : ""}{d.veiculo.chassi ? `, CHASSI ${d.veiculo.chassi.toUpperCase()}` : ""}.
         </p>
 
         {/* Situação */}
