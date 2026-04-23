@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { Plus, FileText, Trash2, ExternalLink, Loader2, Search, X, ChevronDown } from "lucide-react";
+import { Plus, FileText, Trash2, ExternalLink, Loader2, Search, X, ChevronDown, Pencil } from "lucide-react";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -62,7 +62,7 @@ const TIPOS_PAG = [
 
 // ─── Formulário novo contrato ─────────────────────────────────────────────────
 
-function NovoContratoForm({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+function NovoContratoForm({ onClose, onCreated, contratoEdit }: { onClose: () => void; onCreated: () => void; contratoEdit?: Contrato }) {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [saving, setSaving] = useState(false);
 
@@ -78,7 +78,7 @@ function NovoContratoForm({ onClose, onCreated }: { onClose: () => void; onCreat
   const [veiculoSel, setVeiculoSel] = useState<VeiculoOpt | null>(null);
 
   // Dados do contrato (editáveis)
-  const [dados, setDados] = useState<DadosContrato>({
+  const [dados, setDados] = useState<DadosContrato>(contratoEdit?.dados ?? {
     vendedor: { nome: "", cnpj: "", endereco: "", cidade: "", estado: "", logo_url: "" },
     comprador: { nome: "", cpf: "", email: "", endereco: "", cidade: "", estado: "", cep: "", telefone: "", apelido: "" },
     veiculo: { marca: "", modelo: "", versao: "", ano_fab: "", ano_mod: "", placa: "", renavam: "", chassi: "" },
@@ -99,7 +99,7 @@ function NovoContratoForm({ onClose, onCreated }: { onClose: () => void; onCreat
     ]).then(([cli, fin, vend]) => {
       setClientes(cli ?? []);
       setVeiculos((fin.veiculos ?? []).filter((v: { status_venda: string }) => v.status_venda !== "VENDIDO"));
-      if (vend) {
+      if (vend && !contratoEdit) {
         setVendedor(vend);
         setDados(d => ({
           ...d,
@@ -108,7 +108,7 @@ function NovoContratoForm({ onClose, onCreated }: { onClose: () => void; onCreat
         }));
       }
     });
-  }, []);
+  }, [contratoEdit]);
 
   function selecionarCliente(c: ClienteOpt) {
     setClienteSel(c);
@@ -146,10 +146,12 @@ function NovoContratoForm({ onClose, onCreated }: { onClose: () => void; onCreat
 
   async function salvar() {
     setSaving(true);
-    const res = await fetch("/api/contratos", {
-      method: "POST",
+    const url = contratoEdit ? `/api/contratos/${contratoEdit.id}` : "/api/contratos";
+    const method = contratoEdit ? "PATCH" : "POST";
+    const res = await fetch(url, {
+      method,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ veiculo_id: veiculoSel?.id ?? null, cliente_id: clienteSel?.id ?? null, dados }),
+      body: JSON.stringify({ veiculo_id: veiculoSel?.id ?? contratoEdit?.veiculo_id ?? null, cliente_id: clienteSel?.id ?? contratoEdit?.cliente_id ?? null, dados }),
     });
     if (res.ok) {
       const contrato = await res.json();
@@ -173,7 +175,7 @@ function NovoContratoForm({ onClose, onCreated }: { onClose: () => void; onCreat
         {/* Header */}
         <div className="flex items-center justify-between px-7 py-5 border-b border-gray-100">
           <div>
-            <p className="font-black uppercase italic tracking-tight text-gray-900">Novo Contrato</p>
+            <p className="font-black uppercase italic tracking-tight text-gray-900">{contratoEdit ? "Editar Contrato" : "Novo Contrato"}</p>
             <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mt-0.5">
               {step === 1 ? "1. Partes" : step === 2 ? "2. Veículo e Pagamento" : "3. Revisão"}
             </p>
@@ -436,6 +438,7 @@ export default function ContratosPage() {
   const [contratos, setContratos] = useState<Contrato[]>([]);
   const [loading, setLoading]     = useState(true);
   const [novoOpen, setNovoOpen]   = useState(false);
+  const [editando, setEditando]   = useState<Contrato | null>(null);
 
   const carregar = useCallback(async () => {
     const res = await fetch("/api/contratos");
@@ -504,6 +507,9 @@ export default function ContratosPage() {
                     </p>
                     <p className="hidden md:block text-[10px] text-gray-400 font-bold">{data}</p>
                     <div className="flex items-center gap-1 justify-end">
+                      <button onClick={() => setEditando(c)} className="p-2 hover:bg-gray-100 rounded-xl transition-colors" title="Editar">
+                        <Pencil size={14} className="text-gray-400" />
+                      </button>
                       <Link href={`/contratos/${c.id}/imprimir`} target="_blank"
                         className="p-2 hover:bg-gray-100 rounded-xl transition-colors" title="Abrir / Imprimir">
                         <ExternalLink size={14} className="text-gray-400" />
@@ -522,6 +528,9 @@ export default function ContratosPage() {
 
       {novoOpen && (
         <NovoContratoForm onClose={() => setNovoOpen(false)} onCreated={carregar} />
+      )}
+      {editando && (
+        <NovoContratoForm onClose={() => setEditando(null)} onCreated={carregar} contratoEdit={editando} />
       )}
     </div>
   );
