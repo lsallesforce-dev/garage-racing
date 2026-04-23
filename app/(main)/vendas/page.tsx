@@ -259,6 +259,9 @@ function SlideOver({
   async function salvarVendaEGerarContrato(e: React.MouseEvent) {
     e.preventDefault(); setSaving(true);
 
+    // Abre janela em branco ANTES dos awaits — popup blocker exige gesto síncrono
+    const win = window.open("", "_blank");
+
     await fetch("/api/veiculo/patch", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -281,12 +284,9 @@ function SlideOver({
       });
     }
 
-    // Cria contrato pré-preenchido e abre página de impressão
     try {
-      const [dadosVendRes] = await Promise.all([
-        fetch("/api/contratos/dados-vendedor"),
-      ]);
-      const loja = dadosVendRes.ok ? await dadosVendRes.json() : {};
+      const [lojaRes] = await Promise.all([fetch("/api/contratos/dados-vendedor")]);
+      const loja = lojaRes.ok ? await lojaRes.json() : {};
 
       const nomeVeic = [veiculo.marca, veiculo.modelo, veiculo.versao].filter(Boolean).join(" ");
       const contratoRes = await fetch("/api/contratos", {
@@ -325,10 +325,14 @@ function SlideOver({
 
       if (contratoRes.ok) {
         const contrato = await contratoRes.json();
-        window.open(`/contratos/${contrato.id}/imprimir`, "_blank");
+        if (win) win.location.href = `/contratos/${contrato.id}/imprimir`;
+        else window.open(`/contratos/${contrato.id}/imprimir`, "_blank");
+      } else {
+        win?.close();
       }
-    } catch (_) {
-      // contrato falhou — venda já foi salva
+    } catch (err) {
+      console.error("Erro ao gerar contrato:", err);
+      win?.close();
     }
 
     setSaving(false); onReload(); onClose();
