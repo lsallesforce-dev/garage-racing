@@ -287,11 +287,20 @@ function ScanDocumento({ veiculoId, onAplicar, placa, renavam, chassi }: {
       <input ref={inputRef} type="file" accept="image/*,application/pdf" className="hidden"
         onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ""; }} />
 
+      {/* Dados já salvos no banco */}
+      {temDadosSalvos && !resultado && (
+        <div className="mb-3 grid grid-cols-2 gap-1.5">
+          {placa   && <div className="px-3 py-2 bg-gray-50 rounded-xl flex justify-between items-center gap-2"><span className="text-[8px] font-black uppercase tracking-widest text-gray-400">Placa</span><span className="text-[10px] font-black text-gray-900">{placa}</span></div>}
+          {renavam && <div className="px-3 py-2 bg-amber-50 border border-amber-100 rounded-xl flex justify-between items-center gap-2"><span className="text-[8px] font-black uppercase tracking-widest text-gray-400">RENAVAM</span><span className="text-[10px] font-black text-amber-700">{renavam.slice(0,4)}… 🔒</span></div>}
+          {chassi  && <div className="px-3 py-2 bg-amber-50 border border-amber-100 rounded-xl col-span-2 flex justify-between items-center gap-2"><span className="text-[8px] font-black uppercase tracking-widest text-gray-400">Chassi</span><span className="text-[10px] font-black text-amber-700">{chassi.slice(0,6)}… 🔒</span></div>}
+        </div>
+      )}
+
       <button onClick={() => inputRef.current?.click()} disabled={scanning}
         className="w-full py-4 border-2 border-dashed border-gray-200 hover:border-gray-900 rounded-2xl flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-gray-900 transition-all disabled:opacity-40">
         {scanning
           ? <><Loader2 size={15} className="animate-spin text-red-500" /> Analisando documento...</>
-          : <><Upload size={15} /> {preview ? "Trocar documento" : "Enviar CRLV / Documento"}</>
+          : <><Upload size={15} /> {temDadosSalvos ? "Atualizar CRLV" : "Enviar CRLV / Documento"}</>
         }
       </button>
 
@@ -1292,6 +1301,9 @@ export default function DetalheVeiculo() {
             {/* ── Documentos / Scanner ── */}
             <ScanDocumento
               veiculoId={veiculo.id}
+              placa={veiculo.placa ?? null}
+              renavam={veiculo.renavam ?? null}
+              chassi={veiculo.chassi ?? null}
               onAplicar={async (dados) => {
                 const updates: Record<string, any> = {};
                 if (dados.placa)          updates.placa          = dados.placa;
