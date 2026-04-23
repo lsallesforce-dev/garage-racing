@@ -35,8 +35,12 @@ interface Veiculo {
   marca: string;
   modelo: string;
   versao: string | null;
+  ano: number | null;
   ano_modelo: string | null;
   placa: string | null;
+  renavam: string | null;
+  chassi: string | null;
+  cor: string | null;
   preco_sugerido: number | null;
   preco_compra: number | null;
   preco_venda_final: number | null;
@@ -307,11 +311,11 @@ function SlideOver({
               marca: veiculo.marca || "",
               modelo: veiculo.modelo || "",
               versao: veiculo.versao || "",
-              ano_fab: String(veiculo.ano_modelo || ""),
+              ano_fab: String(veiculo.ano || veiculo.ano_modelo || ""),
               ano_mod: String(veiculo.ano_modelo || ""),
               placa: veiculo.placa || "",
-              renavam: "",
-              chassi: "",
+              renavam: veiculo.renavam || "",
+              chassi: veiculo.chassi || "",
             },
             regularidade: { furto: "", multas: "", alienacao: "", outros: "" },
             valor_total: parseNum(precoVenda) || 0,

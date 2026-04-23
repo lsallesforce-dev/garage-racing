@@ -213,9 +213,12 @@ interface DadosCRLV {
   especie?: string | null; potencia?: string | null; cilindradas?: string | null;
 }
 
-function ScanDocumento({ veiculoId, onAplicar }: {
+function ScanDocumento({ veiculoId, onAplicar, placa, renavam, chassi }: {
   veiculoId: string;
   onAplicar: (dados: DadosCRLV) => Promise<void>;
+  placa?: string | null;
+  renavam?: string | null;
+  chassi?: string | null;
 }) {
   const [scanning, setScanning]   = useState(false);
   const [aplicando, setAplicando] = useState(false);
@@ -226,6 +229,8 @@ function ScanDocumento({ veiculoId, onAplicar }: {
   const [isPdf, setIsPdf]         = useState(false);
   const [nomeArq, setNomeArq]     = useState("");
   const inputRef = React.useRef<HTMLInputElement>(null);
+
+  const temDadosSalvos = placa || renavam || chassi;
 
   async function handleFile(file: File) {
     setErro(""); setResultado(null); setAplicado(false);
