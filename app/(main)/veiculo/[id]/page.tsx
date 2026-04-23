@@ -203,14 +203,34 @@ function SectionCard({
 // ─── Scanner de Documentos ────────────────────────────────────────────────────
 
 // ─── Takes de Vídeo ──────────────────────────────────────────────────────────
+function capturarFrame(file: File): Promise<string> {
+  return new Promise(resolve => {
+    const video  = document.createElement("video");
+    const objUrl = URL.createObjectURL(file);
+    video.src        = objUrl;
+    video.muted      = true;
+    video.currentTime = 1;
+    video.onloadeddata = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width  = 120;
+      canvas.height = 68;
+      canvas.getContext("2d")?.drawImage(video, 0, 0, 120, 68);
+      URL.revokeObjectURL(objUrl);
+      resolve(canvas.toDataURL("image/jpeg", 0.7));
+    };
+    video.onerror = () => { URL.revokeObjectURL(objUrl); resolve(""); };
+  });
+}
+
 function TakesVideo({ veiculoId, takesIniciais }: { veiculoId: string; takesIniciais: string[] }) {
   const [takes, setTakes]         = useState<string[]>(takesIniciais);
+  const [thumbs, setThumbs]       = useState<Record<string, string>>({});
   const [fila, setFila]           = useState<{ name: string; prog: number; erro?: string }[]>([]);
   const [dragOver, setDragOver]   = useState<number | null>(null);
   const dragIdx = React.useRef<number | null>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
 
-  async function uploadFile(file: File, idx: number): Promise<string | null> {
+  async function uploadFile(file: File, idx: number, thumb: string): Promise<string | null> {
     const atualizar = (patch: Partial<{ prog: number; erro: string }>) =>
       setFila(prev => prev.map((f, i) => i === idx ? { ...f, ...patch } : f));
     try {
@@ -223,6 +243,7 @@ function TakesVideo({ veiculoId, takesIniciais }: { veiculoId: string; takesInic
       const { publicUrl, video_takes } = await res.json();
       atualizar({ prog: 100 });
       setTakes(video_takes);
+      if (thumb) setThumbs(prev => ({ ...prev, [publicUrl]: thumb }));
       return publicUrl as string;
     } catch (e: any) {
       atualizar({ erro: e.message ?? "Erro" });
@@ -231,10 +252,11 @@ function TakesVideo({ veiculoId, takesIniciais }: { veiculoId: string; takesInic
   }
 
   async function handleFiles(files: FileList) {
-    const arr  = Array.from(files);
-    const base = fila.length;
+    const arr    = Array.from(files);
+    const base   = fila.length;
+    const frames = await Promise.all(arr.map(f => capturarFrame(f)));
     setFila(prev => [...prev, ...arr.map(f => ({ name: f.name, prog: 0 }))]);
-    for (let i = 0; i < arr.length; i++) await uploadFile(arr[i], base + i);
+    for (let i = 0; i < arr.length; i++) await uploadFile(arr[i], base + i, frames[i]);
     setTimeout(() => setFila([]), 2000);
   }
 
@@ -302,14 +324,20 @@ function TakesVideo({ veiculoId, takesIniciais }: { veiculoId: string; takesInic
               onDragEnd={onDragEnd}
               className={`flex items-center gap-2 px-3 py-2 rounded-xl cursor-grab active:cursor-grabbing transition-all select-none
                 ${dragOver === i ? "bg-red-100 border border-red-300 scale-[1.02]" : "bg-black/5"}`}>
-              <span className="text-[8px] font-black text-gray-400 w-5 shrink-0 text-center">{i + 1}</span>
+              <span className="text-[8px] font-black text-gray-400 w-4 shrink-0 text-center">{i + 1}</span>
               {/* grip */}
               <svg width="10" height="14" viewBox="0 0 10 14" className="text-gray-400 shrink-0" fill="currentColor">
                 <circle cx="2.5" cy="2.5" r="1.5"/><circle cx="7.5" cy="2.5" r="1.5"/>
                 <circle cx="2.5" cy="7" r="1.5"/><circle cx="7.5" cy="7" r="1.5"/>
                 <circle cx="2.5" cy="11.5" r="1.5"/><circle cx="7.5" cy="11.5" r="1.5"/>
               </svg>
-              <Video size={11} className="text-gray-500 shrink-0" />
+              {/* thumbnail ou ícone */}
+              {thumbs[url]
+                ? <img src={thumbs[url]} className="w-14 h-8 rounded object-cover shrink-0 border border-black/10" />
+                : <div className="w-14 h-8 rounded bg-black/10 flex items-center justify-center shrink-0">
+                    <Video size={11} className="text-gray-400" />
+                  </div>
+              }
               <span className="text-[10px] font-bold text-gray-700 truncate flex-1">{nomeArquivo(url)}</span>
               <button onClick={() => remover(url)} className="p-1.5 hover:bg-red-100 rounded-lg transition-colors shrink-0">
                 <Trash2 size={11} className="text-red-400" />
