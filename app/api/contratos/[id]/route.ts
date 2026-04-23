@@ -11,7 +11,8 @@ async function resolveOwner(contratoId: string, userId: string) {
   return data?.user_id === userId;
 }
 
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const { user, error: authError } = await requireAuth();
   if (authError) return authError;
 
@@ -23,7 +24,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   const { data, error } = await supabaseAdmin
     .from("contratos")
     .select("*")
-    .eq("id", params.id)
+    .eq("id", id)
     .eq("user_id", effectiveUserId)
     .single();
 
@@ -31,7 +32,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   return NextResponse.json(data);
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const { user, error: authError } = await requireAuth();
   if (authError) return authError;
 
@@ -40,10 +42,10 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
       ? user!.user_metadata?.owner_user_id
       : user!.id;
 
-  if (!(await resolveOwner(params.id, effectiveUserId))) {
+  if (!(await resolveOwner(id, effectiveUserId))) {
     return NextResponse.json({ error: "Acesso negado" }, { status: 403 });
   }
 
-  await supabaseAdmin.from("contratos").delete().eq("id", params.id);
+  await supabaseAdmin.from("contratos").delete().eq("id", id);
   return NextResponse.json({ ok: true });
 }
