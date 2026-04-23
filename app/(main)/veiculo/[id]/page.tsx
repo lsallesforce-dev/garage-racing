@@ -213,20 +213,16 @@ function TakesVideo({ veiculoId, takesIniciais }: { veiculoId: string; takesInic
     const atualizar = (patch: Partial<{ prog: number; erro: string }>) =>
       setFila(prev => prev.map((f, i) => i === idx ? { ...f, ...patch } : f));
     try {
-      const res = await fetch(`/api/veiculo/takes?veiculoId=${veiculoId}&fileName=${encodeURIComponent(file.name)}`);
-      if (!res.ok) throw new Error((await res.json()).error ?? "Erro ao obter URL");
-      const { uploadUrl, publicUrl } = await res.json();
+      atualizar({ prog: 10 });
+      const fd = new FormData();
+      fd.append("veiculoId", veiculoId);
+      fd.append("arquivo", file);
 
-      await new Promise<void>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.upload.onprogress = e => { if (e.lengthComputable) atualizar({ prog: Math.round(e.loaded / e.total * 100) }); };
-        xhr.onload  = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`HTTP ${xhr.status}`)));
-        xhr.onerror = () => reject(new Error("Erro de rede"));
-        xhr.open("PUT", uploadUrl);
-        xhr.setRequestHeader("Content-Type", "video/mp4");
-        xhr.send(file);
-      });
-
+      const res = await fetch("/api/veiculo/takes", { method: "POST", body: fd });
+      if (!res.ok) throw new Error((await res.json()).error ?? `HTTP ${res.status}`);
+      const { publicUrl, video_takes } = await res.json();
+      atualizar({ prog: 100 });
+      setTakes(video_takes);
       return publicUrl as string;
     } catch (e: any) {
       atualizar({ erro: e.message ?? "Erro" });
@@ -235,31 +231,14 @@ function TakesVideo({ veiculoId, takesIniciais }: { veiculoId: string; takesInic
   }
 
   async function handleFiles(files: FileList) {
-    const arr = Array.from(files);
-    // Adiciona entradas na fila com progresso 0
+    const arr  = Array.from(files);
+    const base = fila.length;
     setFila(prev => [...prev, ...arr.map(f => ({ name: f.name, prog: 0 }))]);
-    const base = fila.length; // índice base na fila
 
-    // Upload sequencial para não sobrecarregar
-    let novasTakes = [...takes];
     for (let i = 0; i < arr.length; i++) {
-      const url = await uploadFile(arr[i], base + i);
-      if (url) {
-        // Confirma no banco
-        const conf = await fetch("/api/veiculo/takes", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ veiculoId, publicUrl: url }),
-        });
-        if (conf.ok) {
-          const { video_takes } = await conf.json();
-          novasTakes = video_takes;
-          setTakes(video_takes);
-        }
-      }
+      await uploadFile(arr[i], base + i);
     }
 
-    // Limpa fila concluída após 2s
     setTimeout(() => setFila([]), 2000);
   }
 
