@@ -241,8 +241,9 @@ function SlideOver({
     onReload();
   }
 
-  async function salvarVenda(e: React.MouseEvent) {
+  async function salvarVendaEGerarContrato(e: React.MouseEvent) {
     e.preventDefault(); setSaving(true);
+
     await fetch("/api/veiculo/patch", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -256,6 +257,7 @@ function SlideOver({
         },
       }),
     });
+
     if (vendedorId && comissaoModo === "pct" && comissaoPct) {
       await fetch("/api/financeiro/vendedor-comissao", {
         method: "PATCH",
@@ -263,6 +265,57 @@ function SlideOver({
         body: JSON.stringify({ vendedorId, comissao_pct: parseNum(comissaoPct) }),
       });
     }
+
+    // Cria contrato pré-preenchido e abre página de impressão
+    try {
+      const [dadosVendRes] = await Promise.all([
+        fetch("/api/contratos/dados-vendedor"),
+      ]);
+      const loja = dadosVendRes.ok ? await dadosVendRes.json() : {};
+
+      const nomeVeic = [veiculo.marca, veiculo.modelo, veiculo.versao].filter(Boolean).join(" ");
+      const contratoRes = await fetch("/api/contratos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          veiculo_id: veiculo.id,
+          dados: {
+            vendedor: {
+              nome: loja.nome_fantasia || loja.nome_empresa || "",
+              cnpj: loja.cnpj || "",
+              endereco: loja.endereco || "",
+              cidade: loja.cidade || "",
+              estado: loja.estado || "",
+            },
+            comprador: { nome: "", cpf: "", rg: "", endereco: "", cidade: "", estado: "" },
+            veiculo: {
+              descricao: nomeVeic,
+              ano: veiculo.ano_modelo || "",
+              placa: veiculo.placa || "",
+              renavam: "",
+              chassi: "",
+              cor: "",
+            },
+            pagamento: {
+              valor: parseNum(precoVenda) || 0,
+              forma: "dinheiro",
+              parcelas: null,
+              entrada: null,
+              obs: "",
+            },
+            data_contrato: dataVenda || new Date().toISOString().split("T")[0],
+          },
+        }),
+      });
+
+      if (contratoRes.ok) {
+        const contrato = await contratoRes.json();
+        window.open(`/contratos/${contrato.id}/imprimir`, "_blank");
+      }
+    } catch (_) {
+      // contrato falhou — venda já foi salva
+    }
+
     setSaving(false); onReload(); onClose();
   }
 
@@ -479,16 +532,10 @@ function SlideOver({
                 </div>
               )}
 
-              <Link href="/contratos" target="_blank"
-                className="w-full py-3 border-2 border-dashed border-gray-200 hover:border-gray-900 hover:bg-gray-900 text-gray-400 hover:text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2">
-                <FileSignature size={14} />
-                Gerar Contrato
-              </Link>
-
-              <button type="button" onClick={salvarVenda} disabled={saving || !precoVenda}
+              <button type="button" onClick={salvarVendaEGerarContrato} disabled={saving || !precoVenda}
                 className="w-full py-4 bg-green-500 hover:bg-green-400 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest transition-colors flex items-center justify-center gap-2 disabled:opacity-40">
-                {saving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
-                Registrar Venda
+                {saving ? <Loader2 size={15} className="animate-spin" /> : <FileSignature size={15} />}
+                Salvar Venda e Gerar Contrato
               </button>
             </div>
           )}

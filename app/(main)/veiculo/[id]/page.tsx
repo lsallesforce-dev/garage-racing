@@ -215,9 +215,11 @@ interface DadosCRLV {
 
 function ScanDocumento({ veiculoId, onAplicar }: {
   veiculoId: string;
-  onAplicar: (dados: DadosCRLV) => void;
+  onAplicar: (dados: DadosCRLV) => Promise<void>;
 }) {
   const [scanning, setScanning]   = useState(false);
+  const [aplicando, setAplicando] = useState(false);
+  const [aplicado, setAplicado]   = useState(false);
   const [resultado, setResultado] = useState<DadosCRLV | null>(null);
   const [erro, setErro]           = useState("");
   const [preview, setPreview]     = useState<string | null>(null);
@@ -226,7 +228,7 @@ function ScanDocumento({ veiculoId, onAplicar }: {
   const inputRef = React.useRef<HTMLInputElement>(null);
 
   async function handleFile(file: File) {
-    setErro(""); setResultado(null);
+    setErro(""); setResultado(null); setAplicado(false);
     setIsPdf(file.type === "application/pdf");
     setNomeArq(file.name);
     setPreview(file.type.startsWith("image/") ? URL.createObjectURL(file) : null);
@@ -319,10 +321,30 @@ function ScanDocumento({ veiculoId, onAplicar }: {
             <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 flex items-center gap-1.5">
               <FileCheck size={11} className="text-green-500" /> Dados extraídos
             </p>
-            <button onClick={() => onAplicar(resultado)}
-              className="px-4 py-2 bg-gray-900 hover:bg-green-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-colors">
-              Aplicar ao Veículo
-            </button>
+            {aplicado ? (
+              <span className="px-4 py-2 bg-green-100 text-green-700 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5">
+                <Check size={10} /> Salvo!
+              </span>
+            ) : (
+              <button
+                disabled={aplicando}
+                onClick={async () => {
+                  if (!resultado) return;
+                  setAplicando(true);
+                  setErro("");
+                  try {
+                    await onAplicar(resultado);
+                    setAplicado(true);
+                  } catch (e: any) {
+                    setErro(e.message ?? "Erro ao salvar");
+                  } finally {
+                    setAplicando(false);
+                  }
+                }}
+                className="px-4 py-2 bg-gray-900 hover:bg-green-600 disabled:opacity-50 text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-colors flex items-center gap-1.5">
+                {aplicando ? <><Loader2 size={10} className="animate-spin" /> Salvando...</> : "Aplicar ao Veículo"}
+              </button>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-1.5">
@@ -1255,25 +1277,25 @@ export default function DetalheVeiculo() {
             {/* ── Documentos / Scanner ── */}
             <ScanDocumento
               veiculoId={veiculo.id}
-              onAplicar={(dados) => {
-                const updates: Record<string, string | null> = {};
+              onAplicar={async (dados) => {
+                const updates: Record<string, any> = {};
                 if (dados.placa)          updates.placa          = dados.placa;
                 if (dados.renavam)        updates.renavam        = dados.renavam;
                 if (dados.chassi)         updates.chassi         = dados.chassi;
                 if (dados.marca)          updates.marca          = dados.marca;
                 if (dados.modelo)         updates.modelo         = dados.modelo;
                 if (dados.versao)         updates.versao         = dados.versao;
-                if (dados.ano_fabricacao) updates.ano            = dados.ano_fabricacao;
-                if (dados.ano_modelo)     updates.ano_modelo     = dados.ano_modelo;
+                // anos são colunas integer no DB — converter string → number
+                if (dados.ano_fabricacao) { const n = parseInt(dados.ano_fabricacao); if (!isNaN(n)) updates.ano = n; }
+                if (dados.ano_modelo)     { const n = parseInt(dados.ano_modelo);     if (!isNaN(n)) updates.ano_modelo = n; }
                 if (dados.combustivel)    updates.combustivel    = dados.combustivel;
                 if (dados.cor)            updates.cor            = dados.cor;
-                // Extrai final da placa (último dígito numérico)
                 if (dados.placa) {
                   const digitos = dados.placa.replace(/[^0-9]/g, "");
                   if (digitos.length > 0) updates.final_placa = digitos.slice(-1);
                 }
                 setVeiculo((v: any) => ({ ...v, ...updates }));
-                patch(updates);
+                await patch(updates);
               }}
             />
 
