@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { useParams, useRouter } from "next/navigation";
 import { PhotoGallery } from "@/components/PhotoGallery";
 import {
   ArrowLeft, Save, Edit2, X, Check, Video, Plus,
   ChevronDown, ChevronUp, Instagram, Download, Loader2,
+  ScanLine, FileCheck, Upload, AlertCircle,
 } from "lucide-react";
 import { GenerateMarketingVideoButton } from "@/components/GenerateMarketingVideoButton";
 import { toVideoUrl } from "@/lib/r2-url";
@@ -195,6 +196,137 @@ function SectionCard({
         )}
       </button>
       {open && <div className="px-8 pb-8">{children}</div>}
+    </div>
+  );
+}
+
+// ─── Scanner de Documentos ────────────────────────────────────────────────────
+
+interface DadosCRLV {
+  placa?: string | null; renavam?: string | null; chassi?: string | null;
+  marca?: string | null; modelo?: string | null; versao?: string | null;
+  ano_fabricacao?: string | null; ano_modelo?: string | null;
+  combustivel?: string | null; cor?: string | null;
+  proprietario?: string | null; cpf_cnpj_proprietario?: string | null;
+  municipio?: string | null; uf?: string | null;
+  validade_licenciamento?: string | null; categoria?: string | null;
+  especie?: string | null; potencia?: string | null; cilindradas?: string | null;
+}
+
+function ScanDocumento({ veiculoId, onAplicar }: {
+  veiculoId: string;
+  onAplicar: (dados: DadosCRLV) => void;
+}) {
+  const [scanning, setScanning]   = useState(false);
+  const [resultado, setResultado] = useState<DadosCRLV | null>(null);
+  const [erro, setErro]           = useState("");
+  const [preview, setPreview]     = useState<string | null>(null);
+  const inputRef = React.useRef<HTMLInputElement>(null);
+
+  async function handleFile(file: File) {
+    setErro(""); setResultado(null);
+    setPreview(URL.createObjectURL(file));
+    setScanning(true);
+    try {
+      const fd = new FormData();
+      fd.append("arquivo", file);
+      const res = await fetch("/api/veiculo/scan-documento", { method: "POST", body: fd });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Erro no scan");
+      setResultado(json);
+    } catch (e: any) {
+      setErro(e.message);
+    } finally {
+      setScanning(false);
+    }
+  }
+
+  const camposVisiveis: { key: keyof DadosCRLV; label: string; privado?: boolean }[] = [
+    { key: "placa",                   label: "Placa" },
+    { key: "renavam",                 label: "RENAVAM",        privado: true },
+    { key: "chassi",                  label: "Chassi",         privado: true },
+    { key: "marca",                   label: "Marca" },
+    { key: "modelo",                  label: "Modelo" },
+    { key: "versao",                  label: "Versão" },
+    { key: "ano_fabricacao",          label: "Ano Fab." },
+    { key: "ano_modelo",              label: "Ano Modelo" },
+    { key: "combustivel",             label: "Combustível" },
+    { key: "cor",                     label: "Cor" },
+    { key: "proprietario",            label: "Proprietário",   privado: true },
+    { key: "cpf_cnpj_proprietario",   label: "CPF/CNPJ",       privado: true },
+    { key: "municipio",               label: "Município" },
+    { key: "uf",                      label: "UF" },
+    { key: "validade_licenciamento",  label: "Validade CRLV" },
+    { key: "potencia",                label: "Potência (cv)" },
+  ];
+
+  return (
+    <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm p-8">
+      <div className="flex items-center gap-3 mb-6">
+        <div className="w-10 h-10 rounded-2xl bg-gray-900 flex items-center justify-center">
+          <ScanLine size={18} className="text-white" />
+        </div>
+        <div>
+          <h3 className="text-sm font-black uppercase italic tracking-tight text-gray-900">Documentos do Veículo</h3>
+          <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">IA extrai dados do CRLV automaticamente</p>
+        </div>
+      </div>
+
+      {/* Upload */}
+      <input ref={inputRef} type="file" accept="image/*,application/pdf" className="hidden"
+        onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ""; }} />
+
+      <button onClick={() => inputRef.current?.click()} disabled={scanning}
+        className="w-full py-4 border-2 border-dashed border-gray-200 hover:border-gray-900 rounded-2xl flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-gray-900 transition-all disabled:opacity-40">
+        {scanning
+          ? <><Loader2 size={15} className="animate-spin text-red-500" /> Analisando documento...</>
+          : <><Upload size={15} /> {preview ? "Trocar documento" : "Enviar CRLV / Documento"}</>
+        }
+      </button>
+
+      {preview && !scanning && (
+        <div className="mt-3 rounded-2xl overflow-hidden border border-gray-100 max-h-40">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={preview} alt="Documento" className="w-full h-40 object-contain bg-gray-50" />
+        </div>
+      )}
+
+      {erro && (
+        <div className="mt-4 flex items-center gap-2 bg-red-50 text-red-600 rounded-2xl px-4 py-3">
+          <AlertCircle size={14} />
+          <p className="text-xs font-bold">{erro}</p>
+        </div>
+      )}
+
+      {resultado && (
+        <div className="mt-5 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 flex items-center gap-1.5">
+              <FileCheck size={11} className="text-green-500" /> Dados extraídos
+            </p>
+            <button onClick={() => onAplicar(resultado)}
+              className="px-4 py-2 bg-gray-900 hover:bg-green-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-colors">
+              Aplicar ao Veículo
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-1.5">
+            {camposVisiveis.filter(c => resultado[c.key] != null).map(c => (
+              <div key={c.key} className={`px-3 py-2 rounded-xl flex justify-between items-center gap-2 ${c.privado ? "bg-amber-50 border border-amber-100" : "bg-gray-50"}`}>
+                <span className="text-[8px] font-black uppercase tracking-widest text-gray-400 shrink-0">{c.label}</span>
+                <span className={`text-[10px] font-black text-right truncate ${c.privado ? "text-amber-700" : "text-gray-900"}`}>
+                  {resultado[c.key]}
+                </span>
+                {c.privado && <span className="text-[7px] text-amber-400 font-bold shrink-0">🔒</span>}
+              </div>
+            ))}
+          </div>
+
+          <p className="text-[8px] text-amber-600 font-bold flex items-center gap-1">
+            🔒 Campos com cadeado ficam restritos a contratos e vendas — não são enviados ao agente IA.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
@@ -1104,6 +1236,25 @@ export default function DetalheVeiculo() {
                 />
               </div>
             </div>
+
+            {/* ── Documentos / Scanner ── */}
+            <ScanDocumento
+              veiculoId={veiculo.id}
+              onAplicar={(dados) => {
+                const updates: Record<string, string | null> = {};
+                if (dados.placa)          updates.placa         = dados.placa;
+                if (dados.renavam)        updates.renavam       = dados.renavam;
+                if (dados.chassi)         updates.chassi        = dados.chassi;
+                if (dados.marca)          updates.marca         = dados.marca;
+                if (dados.modelo)         updates.modelo        = dados.modelo;
+                if (dados.versao)         updates.versao        = dados.versao;
+                if (dados.ano_fabricacao) updates.ano_modelo    = dados.ano_fabricacao;
+                if (dados.combustivel)    updates.combustivel   = dados.combustivel;
+                if (dados.cor)            updates.cor           = dados.cor;
+                setVeiculo((v: any) => ({ ...v, ...updates }));
+                patch(updates);
+              }}
+            />
 
             {/* Leads interessados */}
             <div>
