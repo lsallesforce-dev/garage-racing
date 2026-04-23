@@ -1257,15 +1257,21 @@ export default function DetalheVeiculo() {
               veiculoId={veiculo.id}
               onAplicar={(dados) => {
                 const updates: Record<string, string | null> = {};
-                if (dados.placa)          updates.placa         = dados.placa;
-                if (dados.renavam)        updates.renavam       = dados.renavam;
-                if (dados.chassi)         updates.chassi        = dados.chassi;
-                if (dados.marca)          updates.marca         = dados.marca;
-                if (dados.modelo)         updates.modelo        = dados.modelo;
-                if (dados.versao)         updates.versao        = dados.versao;
-                if (dados.ano_fabricacao) updates.ano_modelo    = dados.ano_fabricacao;
-                if (dados.combustivel)    updates.combustivel   = dados.combustivel;
-                if (dados.cor)            updates.cor           = dados.cor;
+                if (dados.placa)          updates.placa          = dados.placa;
+                if (dados.renavam)        updates.renavam        = dados.renavam;
+                if (dados.chassi)         updates.chassi         = dados.chassi;
+                if (dados.marca)          updates.marca          = dados.marca;
+                if (dados.modelo)         updates.modelo         = dados.modelo;
+                if (dados.versao)         updates.versao         = dados.versao;
+                if (dados.ano_fabricacao) updates.ano            = dados.ano_fabricacao;
+                if (dados.ano_modelo)     updates.ano_modelo     = dados.ano_modelo;
+                if (dados.combustivel)    updates.combustivel    = dados.combustivel;
+                if (dados.cor)            updates.cor            = dados.cor;
+                // Extrai final da placa (último dígito numérico)
+                if (dados.placa) {
+                  const digitos = dados.placa.replace(/[^0-9]/g, "");
+                  if (digitos.length > 0) updates.final_placa = digitos.slice(-1);
+                }
                 setVeiculo((v: any) => ({ ...v, ...updates }));
                 patch(updates);
               }}
