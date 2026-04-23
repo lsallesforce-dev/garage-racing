@@ -204,45 +204,63 @@ function SectionCard({
 
 // ─── Takes de Vídeo ──────────────────────────────────────────────────────────
 function TakesVideo({ veiculoId, takesIniciais }: { veiculoId: string; takesIniciais: string[] }) {
-  const [takes, setTakes]       = useState<string[]>(takesIniciais);
-  const [uploading, setUploading] = useState(false);
-  const [progresso, setProgresso] = useState(0);
-  const [erro, setErro]           = useState("");
+  const [takes, setTakes]         = useState<string[]>(takesIniciais);
+  // fila de uploads: { file, progresso, erro }
+  const [fila, setFila]           = useState<{ name: string; prog: number; erro?: string }[]>([]);
   const inputRef = React.useRef<HTMLInputElement>(null);
 
-  async function handleFile(file: File) {
-    setErro(""); setUploading(true); setProgresso(0);
+  async function uploadFile(file: File, idx: number): Promise<string | null> {
+    const atualizar = (patch: Partial<{ prog: number; erro: string }>) =>
+      setFila(prev => prev.map((f, i) => i === idx ? { ...f, ...patch } : f));
     try {
-      // 1) Pede URL presigned
       const res = await fetch(`/api/veiculo/takes?veiculoId=${veiculoId}&fileName=${encodeURIComponent(file.name)}`);
-      if (!res.ok) throw new Error((await res.json()).error);
+      if (!res.ok) throw new Error((await res.json()).error ?? "Erro ao obter URL");
       const { uploadUrl, publicUrl } = await res.json();
 
-      // 2) Upload direto ao R2 (sem passar pelo Vercel)
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
-        xhr.upload.onprogress = e => { if (e.lengthComputable) setProgresso(Math.round(e.loaded / e.total * 100)); };
-        xhr.onload  = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Upload falhou: ${xhr.status}`)));
-        xhr.onerror = () => reject(new Error("Erro de rede no upload"));
+        xhr.upload.onprogress = e => { if (e.lengthComputable) atualizar({ prog: Math.round(e.loaded / e.total * 100) }); };
+        xhr.onload  = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`HTTP ${xhr.status}`)));
+        xhr.onerror = () => reject(new Error("Erro de rede"));
         xhr.open("PUT", uploadUrl);
         xhr.setRequestHeader("Content-Type", "video/mp4");
         xhr.send(file);
       });
 
-      // 3) Confirma no banco
-      const conf = await fetch("/api/veiculo/takes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ veiculoId, publicUrl }),
-      });
-      if (!conf.ok) throw new Error((await conf.json()).error);
-      const { video_takes } = await conf.json();
-      setTakes(video_takes);
+      return publicUrl as string;
     } catch (e: any) {
-      setErro(e.message ?? "Erro no upload");
-    } finally {
-      setUploading(false); setProgresso(0);
+      atualizar({ erro: e.message ?? "Erro" });
+      return null;
     }
+  }
+
+  async function handleFiles(files: FileList) {
+    const arr = Array.from(files);
+    // Adiciona entradas na fila com progresso 0
+    setFila(prev => [...prev, ...arr.map(f => ({ name: f.name, prog: 0 }))]);
+    const base = fila.length; // índice base na fila
+
+    // Upload sequencial para não sobrecarregar
+    let novasTakes = [...takes];
+    for (let i = 0; i < arr.length; i++) {
+      const url = await uploadFile(arr[i], base + i);
+      if (url) {
+        // Confirma no banco
+        const conf = await fetch("/api/veiculo/takes", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ veiculoId, publicUrl: url }),
+        });
+        if (conf.ok) {
+          const { video_takes } = await conf.json();
+          novasTakes = video_takes;
+          setTakes(video_takes);
+        }
+      }
+    }
+
+    // Limpa fila concluída após 2s
+    setTimeout(() => setFila([]), 2000);
   }
 
   async function remover(url: string) {
@@ -254,7 +272,24 @@ function TakesVideo({ veiculoId, takesIniciais }: { veiculoId: string; takesInic
     if (res.ok) { const { video_takes } = await res.json(); setTakes(video_takes); }
   }
 
-  const nomeArquivo = (url: string) => decodeURIComponent(url.split("/").pop() ?? url).replace(/^\d+_/, "");
+  async function mover(i: number, dir: -1 | 1) {
+    const nova = [...takes];
+    const j = i + dir;
+    if (j < 0 || j >= nova.length) return;
+    [nova[i], nova[j]] = [nova[j], nova[i]];
+    setTakes(nova);
+    // Persiste nova ordem: deleta tudo e reinserere pela API de ordem
+    await fetch("/api/veiculo/takes/reorder", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ veiculoId, video_takes: nova }),
+    });
+  }
+
+  const nomeArquivo = (url: string) =>
+    decodeURIComponent(url.split("/").pop() ?? url).replace(/^\d+_/, "").replace(/\.[^.]+$/, "");
+
+  const uploading = fila.some(f => !f.erro && f.prog < 100);
 
   return (
     <div className="mt-6 pt-6 border-t border-black/10 relative z-10">
@@ -265,22 +300,33 @@ function TakesVideo({ veiculoId, takesIniciais }: { veiculoId: string; takesInic
         <button onClick={() => inputRef.current?.click()} disabled={uploading}
           className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 hover:bg-red-600 active:scale-95 disabled:opacity-50 text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all">
           {uploading ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
-          {uploading ? `${progresso}%` : "Adicionar Take"}
+          {uploading ? "Enviando..." : "Adicionar Takes"}
         </button>
-        <input ref={inputRef} type="file" accept="video/*" className="hidden"
-          onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ""; }} />
+        <input ref={inputRef} type="file" accept="video/*" multiple className="hidden"
+          onChange={e => { if (e.target.files?.length) handleFiles(e.target.files); e.target.value = ""; }} />
       </div>
 
+      {/* Lista de takes salvos */}
       {takes.length > 0 && (
-        <div className="space-y-2 mb-3">
+        <div className="space-y-1.5 mb-3">
           {takes.map((url, i) => (
-            <div key={url} className="flex items-center justify-between px-3 py-2 bg-black/5 rounded-xl">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="text-[8px] font-black text-gray-400 w-4 shrink-0">#{i + 1}</span>
-                <Video size={12} className="text-gray-500 shrink-0" />
-                <span className="text-[10px] font-bold text-gray-700 truncate">{nomeArquivo(url)}</span>
+            <div key={url} className="flex items-center gap-2 px-3 py-2 bg-black/5 rounded-xl">
+              {/* Ordem */}
+              <span className="text-[8px] font-black text-gray-400 w-5 shrink-0 text-center">{i + 1}</span>
+              <Video size={11} className="text-gray-500 shrink-0" />
+              <span className="text-[10px] font-bold text-gray-700 truncate flex-1">{nomeArquivo(url)}</span>
+              {/* Setas de reordenação */}
+              <div className="flex flex-col gap-0.5 shrink-0">
+                <button onClick={() => mover(i, -1)} disabled={i === 0}
+                  className="p-0.5 hover:bg-black/10 rounded disabled:opacity-20 transition-colors">
+                  <ChevronUp size={10} className="text-gray-500" />
+                </button>
+                <button onClick={() => mover(i, 1)} disabled={i === takes.length - 1}
+                  className="p-0.5 hover:bg-black/10 rounded disabled:opacity-20 transition-colors">
+                  <ChevronDown size={10} className="text-gray-500" />
+                </button>
               </div>
-              <button onClick={() => remover(url)} className="ml-2 p-1.5 hover:bg-red-100 rounded-lg transition-colors shrink-0">
+              <button onClick={() => remover(url)} className="p-1.5 hover:bg-red-100 rounded-lg transition-colors shrink-0">
                 <Trash2 size={11} className="text-red-400" />
               </button>
             </div>
@@ -288,13 +334,33 @@ function TakesVideo({ veiculoId, takesIniciais }: { veiculoId: string; takesInic
         </div>
       )}
 
-      {takes.length === 0 && !uploading && (
-        <p className="text-[10px] text-gray-400 text-center py-2">
-          Envie os takes — a IA concatena antes de gerar o Reel
-        </p>
+      {/* Fila de upload em andamento */}
+      {fila.length > 0 && (
+        <div className="space-y-1.5 mb-3">
+          {fila.map((f, i) => (
+            <div key={i} className="px-3 py-2 bg-black/5 rounded-xl">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[9px] font-bold text-gray-600 truncate max-w-[180px]">{f.name.replace(/\.[^.]+$/, "")}</span>
+                {f.erro
+                  ? <span className="text-[9px] font-black text-red-500">{f.erro}</span>
+                  : <span className="text-[9px] font-black text-gray-400">{f.prog === 100 ? "✓" : `${f.prog}%`}</span>
+                }
+              </div>
+              {!f.erro && (
+                <div className="w-full h-1 bg-black/10 rounded-full overflow-hidden">
+                  <div className="h-full bg-gray-900 transition-all duration-150 rounded-full" style={{ width: `${f.prog}%` }} />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
       )}
 
-      {erro && <p className="text-[10px] text-red-500 font-bold mt-1">{erro}</p>}
+      {takes.length === 0 && fila.length === 0 && (
+        <p className="text-[10px] text-gray-400 text-center py-2">
+          Selecione múltiplos vídeos — a IA junta na ordem antes de gerar o Reel
+        </p>
+      )}
     </div>
   );
 }
