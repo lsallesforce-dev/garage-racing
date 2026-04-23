@@ -77,7 +77,7 @@ export const Sidebar = ({ onClose, isVendedor = false, effectiveUserId = "" }: S
       // Admin: pull from config_garage
       supabase
         .from("config_garage")
-        .select("nome_usuario, cargo_usuario, nome_empresa, vitrine_slug, webhook_token")
+        .select("nome_usuario, cargo_usuario, nome_empresa, nome_fantasia, vitrine_slug, webhook_token")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false })
         .limit(1)
@@ -86,7 +86,7 @@ export const Sidebar = ({ onClose, isVendedor = false, effectiveUserId = "" }: S
           if (row) {
             setNomeUsuario(row.nome_usuario || "");
             setCargoUsuario(row.cargo_usuario || "");
-            setNomeEmpresa(row.nome_empresa || "");
+            setNomeEmpresa(row.nome_fantasia || row.nome_empresa || "");
             setVitrineSlug(row.vitrine_slug || row.webhook_token || null);
           }
         });

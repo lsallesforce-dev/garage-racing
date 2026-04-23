@@ -13,7 +13,7 @@ export async function GET() {
 
   const { data } = await supabaseAdmin
     .from("config_garage")
-    .select("nome_empresa, cnpj, endereco, endereco_complemento, cidade, estado, logo_url")
+    .select("nome_empresa, nome_fantasia, cnpj, endereco, endereco_complemento, cidade, estado, logo_url")
     .eq("user_id", effectiveUserId)
     .limit(1)
     .single();

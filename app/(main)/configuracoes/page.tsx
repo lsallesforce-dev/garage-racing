@@ -9,6 +9,10 @@ type Mode = "auto" | "manual";
 interface GarageConfig {
   id?: string;
   nome_empresa: string;
+  nome_fantasia: string;
+  cnpj: string;
+  cidade: string;
+  estado: string;
   nome_agente: string;
   endereco: string;
   endereco_complemento?: string;
@@ -39,6 +43,10 @@ export default function ConfiguracoesPage() {
   const [currentLogo, setCurrentLogo] = useState<string | null>(null);
   const [config, setConfig] = useState<GarageConfig>({
     nome_empresa: "",
+    nome_fantasia: "",
+    cnpj: "",
+    cidade: "",
+    estado: "",
     nome_agente: "",
     endereco: "",
     endereco_complemento: "",
@@ -72,6 +80,10 @@ export default function ConfiguracoesPage() {
             setConfig({
               id: row.id,
               nome_empresa: row.nome_empresa ?? "",
+              nome_fantasia: row.nome_fantasia ?? "",
+              cnpj: row.cnpj ?? "",
+              cidade: row.cidade ?? "",
+              estado: row.estado ?? "",
               nome_agente: row.nome_agente ?? "",
               endereco: row.endereco ?? "",
               endereco_complemento: row.endereco_complemento ?? "",
@@ -208,6 +220,10 @@ export default function ConfiguracoesPage() {
             ...(config.id ? { id: config.id } : {}),
             user_id: user.id,
             nome_empresa: config.nome_empresa,
+            nome_fantasia: config.nome_fantasia || null,
+            cnpj: config.cnpj || null,
+            cidade: config.cidade || null,
+            estado: config.estado || null,
             nome_agente: config.nome_agente,
             endereco: config.endereco,
             endereco_complemento: config.endereco_complemento || null,
@@ -274,15 +290,64 @@ export default function ConfiguracoesPage() {
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
               <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
-                Nome da Empresa
+                Nome Fantasia <span className="text-gray-400 normal-case font-normal">(usado nas páginas do site)</span>
+              </label>
+              <input
+                type="text"
+                value={config.nome_fantasia}
+                onChange={e => setConfig(c => ({ ...c, nome_fantasia: e.target.value }))}
+                placeholder="Ex: Aprove Multimarcas"
+                className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+                Razão Social <span className="text-gray-400 normal-case font-normal">(para contratos)</span>
               </label>
               <input
                 type="text"
                 value={config.nome_empresa}
                 onChange={e => setConfig(c => ({ ...c, nome_empresa: e.target.value }))}
-                placeholder="Ex: Garage Racing"
+                placeholder="Ex: APROVE MULTIMARCAS COM DE VEICULOS LTDA"
                 className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
               />
+            </div>
+
+            <div className="flex gap-3">
+              <div className="flex flex-col gap-1.5 flex-1">
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+                  CNPJ <span className="text-gray-400 normal-case font-normal">(para contratos)</span>
+                </label>
+                <input
+                  type="text"
+                  value={config.cnpj}
+                  onChange={e => setConfig(c => ({ ...c, cnpj: e.target.value }))}
+                  placeholder="00.000.000/0001-00"
+                  className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5 w-40">
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">Cidade</label>
+                <input
+                  type="text"
+                  value={config.cidade}
+                  onChange={e => setConfig(c => ({ ...c, cidade: e.target.value }))}
+                  placeholder="São José do RP"
+                  className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5 w-20">
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">UF</label>
+                <input
+                  type="text"
+                  value={config.estado}
+                  onChange={e => setConfig(c => ({ ...c, estado: e.target.value.toUpperCase().slice(0, 2) }))}
+                  placeholder="SP"
+                  maxLength={2}
+                  className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
+                />
+              </div>
             </div>
 
             <div className="flex flex-col gap-1.5">
