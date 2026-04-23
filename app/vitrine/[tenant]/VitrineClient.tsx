@@ -4,7 +4,7 @@ import { useState, useMemo } from "react";
 import Link from "next/link";
 import {
   Zap, MessageCircle, Play, Award,
-  X, ChevronDown, SlidersHorizontal,
+  X, ChevronDown, SlidersHorizontal, ArrowRight,
 } from "lucide-react";
 
 function fmt(v: number) {
@@ -291,17 +291,19 @@ export default function VitrineClient({ tenant, nomeEmpresa, whatsapp, estoque, 
                         {carro.versao ?? "—"} • {carro.ano_modelo ?? "—"}
                       </p>
                     </Link>
-                    <div className="mt-4 pt-4 border-t border-gray-50 mb-5">
-                      <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-0.5">Preço</p>
-                      <p className="text-2xl font-black tracking-tighter text-gray-900">{preco}</p>
+                    <div className="mt-4 pt-4 border-t border-gray-50 mb-5 flex items-end justify-between gap-2">
+                      <div>
+                        <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-0.5">Preço</p>
+                        <p className="text-2xl font-black tracking-tighter text-gray-900">{preco}</p>
+                      </div>
+                      <button
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setModalCarro(carro); }}
+                        className="text-[8px] font-black uppercase tracking-widest text-gray-400 hover:text-red-600 underline underline-offset-2 transition-colors whitespace-nowrap pb-1"
+                      >
+                        ou simular
+                      </button>
                     </div>
                     <div className="mt-auto grid grid-cols-2 gap-2">
-                      <button
-                        onClick={() => setModalCarro(carro)}
-                        className="flex items-center justify-center gap-1.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-700 py-2.5 rounded-xl font-black uppercase text-[9px] tracking-widest transition-colors"
-                      >
-                        Simular
-                      </button>
                       <a
                         href={`https://wa.me/${whatsapp}?text=${msgWhats}`}
                         target="_blank" rel="noopener noreferrer"
@@ -310,6 +312,13 @@ export default function VitrineClient({ tenant, nomeEmpresa, whatsapp, estoque, 
                       >
                         <MessageCircle size={12} /> WhatsApp
                       </a>
+                      <Link
+                        href={`/vitrine/${tenant}/${carro.id}`}
+                        className="flex items-center justify-center gap-1.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-700 py-2.5 rounded-xl font-black uppercase text-[9px] tracking-widest transition-colors"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Ver detalhes <ArrowRight size={11} />
+                      </Link>
                     </div>
                   </div>
                 </div>
