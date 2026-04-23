@@ -221,11 +221,15 @@ function ScanDocumento({ veiculoId, onAplicar }: {
   const [resultado, setResultado] = useState<DadosCRLV | null>(null);
   const [erro, setErro]           = useState("");
   const [preview, setPreview]     = useState<string | null>(null);
+  const [isPdf, setIsPdf]         = useState(false);
+  const [nomeArq, setNomeArq]     = useState("");
   const inputRef = React.useRef<HTMLInputElement>(null);
 
   async function handleFile(file: File) {
     setErro(""); setResultado(null);
-    setPreview(URL.createObjectURL(file));
+    setIsPdf(file.type === "application/pdf");
+    setNomeArq(file.name);
+    setPreview(file.type.startsWith("image/") ? URL.createObjectURL(file) : null);
     setScanning(true);
     try {
       const fd = new FormData();
@@ -284,10 +288,21 @@ function ScanDocumento({ veiculoId, onAplicar }: {
         }
       </button>
 
-      {preview && !scanning && (
-        <div className="mt-3 rounded-2xl overflow-hidden border border-gray-100 max-h-40">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={preview} alt="Documento" className="w-full h-40 object-contain bg-gray-50" />
+      {(preview || isPdf) && !scanning && (
+        <div className="mt-3 rounded-2xl overflow-hidden border border-gray-100">
+          {preview
+            ? /* eslint-disable-next-line @next/next/no-img-element */
+              <img src={preview} alt="Documento" className="w-full h-40 object-contain bg-gray-50" />
+            : <div className="flex items-center gap-3 px-4 py-3 bg-gray-50">
+                <div className="w-9 h-9 bg-red-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <span className="text-[9px] font-black text-red-600">PDF</span>
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-gray-900 truncate max-w-[200px]">{nomeArq}</p>
+                  <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest">Pronto para análise</p>
+                </div>
+              </div>
+          }
         </div>
       )}
 
