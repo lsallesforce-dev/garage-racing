@@ -30,6 +30,18 @@ interface Vendedor {
   comissao_pct: number;
 }
 
+interface Cliente {
+  id: string;
+  nome: string;
+  cpf: string | null;
+  telefone: string | null;
+  email: string | null;
+  endereco: string | null;
+  cidade: string | null;
+  estado: string | null;
+  cep: string | null;
+}
+
 interface Veiculo {
   id: string;
   marca: string;
@@ -223,6 +235,17 @@ function SlideOver({
   const [comissaoPct,  setComissaoPct]  = useState("");
   const [comissaoValDireto, setComissaoValDireto] = useState("");
 
+  // Comprador
+  const [clientes,       setClientes]       = useState<Cliente[]>([]);
+  const [clienteId,      setClienteId]      = useState("");
+  const [clienteSel,     setClienteSel]     = useState<Cliente | null>(null);
+  const [buscaCliente,   setBuscaCliente]   = useState("");
+  const [showDropCliente, setShowDropCliente] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/clientes").then(r => r.ok ? r.json() : []).then(setClientes).catch(() => {});
+  }, []);
+
   const vendedorSel = vendedores.find((v) => v.id === vendedorId);
 
   useEffect(() => {
@@ -297,6 +320,7 @@ function SlideOver({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           veiculo_id: veiculo.id,
+          cliente_id: clienteId || null,
           dados: {
             vendedor: {
               nome: loja.nome_fantasia || loja.nome_empresa || "",
@@ -306,7 +330,16 @@ function SlideOver({
               estado: loja.estado || "",
               logo_url: loja.logo_url || null,
             },
-            comprador: { nome: "", cpf: "", email: "", endereco: "", cidade: "", estado: "", cep: "", telefone: "" },
+            comprador: {
+              nome:     clienteSel?.nome     || "",
+              cpf:      clienteSel?.cpf      || "",
+              email:    clienteSel?.email    || "",
+              endereco: clienteSel?.endereco || "",
+              cidade:   clienteSel?.cidade   || "",
+              estado:   clienteSel?.estado   || "",
+              cep:      clienteSel?.cep      || "",
+              telefone: clienteSel?.telefone || "",
+            },
             veiculo: {
               marca: veiculo.marca || "",
               modelo: veiculo.modelo || "",
@@ -503,6 +536,50 @@ function SlideOver({
                 <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2 block">Data da Venda</label>
                 <input type="date" value={dataVenda} onChange={(e) => setDataVenda(e.target.value)}
                   className="w-full px-4 py-4 border border-gray-200 rounded-2xl text-gray-900 font-bold focus:outline-none focus:border-red-400" />
+              </div>
+
+              {/* Comprador */}
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2 block">Comprador</label>
+                {clienteSel ? (
+                  <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl">
+                    <div>
+                      <p className="text-sm font-black text-gray-900">{clienteSel.nome}</p>
+                      {clienteSel.cpf && <p className="text-[10px] text-gray-400 font-bold mt-0.5">CPF {clienteSel.cpf}</p>}
+                    </div>
+                    <button type="button" onClick={() => { setClienteSel(null); setClienteId(""); setBuscaCliente(""); }}
+                      className="text-[9px] font-black uppercase text-gray-400 hover:text-red-500 transition-colors">Trocar</button>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={buscaCliente}
+                      onChange={e => { setBuscaCliente(e.target.value); setShowDropCliente(true); }}
+                      onFocus={() => setShowDropCliente(true)}
+                      placeholder="Buscar por nome ou CPF..."
+                      className="w-full px-4 py-4 border border-gray-200 rounded-2xl text-gray-900 font-bold focus:outline-none focus:border-red-400"
+                    />
+                    {showDropCliente && (
+                      <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-2xl shadow-xl max-h-48 overflow-y-auto">
+                        {clientes
+                          .filter(c => !buscaCliente || c.nome.toLowerCase().includes(buscaCliente.toLowerCase()) || (c.cpf ?? "").includes(buscaCliente))
+                          .slice(0, 8)
+                          .map(c => (
+                            <button key={c.id} type="button"
+                              onMouseDown={() => { setClienteSel(c); setClienteId(c.id); setBuscaCliente(""); setShowDropCliente(false); }}
+                              className="w-full text-left px-4 py-3 hover:bg-gray-50 border-b border-gray-100 last:border-0 transition-colors">
+                              <p className="text-sm font-bold text-gray-900">{c.nome}</p>
+                              {c.cpf && <p className="text-[10px] text-gray-400">{c.cpf}</p>}
+                            </button>
+                          ))}
+                        {clientes.filter(c => !buscaCliente || c.nome.toLowerCase().includes(buscaCliente.toLowerCase()) || (c.cpf ?? "").includes(buscaCliente)).length === 0 && (
+                          <p className="px-4 py-3 text-xs text-gray-400 text-center">Nenhum cliente encontrado</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div>
