@@ -7,7 +7,7 @@ import { PhotoGallery } from "@/components/PhotoGallery";
 import {
   ArrowLeft, Save, Edit2, X, Check, Video, Plus,
   ChevronDown, ChevronUp, Instagram, Download, Loader2,
-  ScanLine, FileCheck, Upload, AlertCircle,
+  ScanLine, FileCheck, Upload, AlertCircle, Trash2,
 } from "lucide-react";
 import { GenerateMarketingVideoButton } from "@/components/GenerateMarketingVideoButton";
 import { toVideoUrl } from "@/lib/r2-url";
