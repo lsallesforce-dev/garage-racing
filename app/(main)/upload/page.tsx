@@ -6,15 +6,18 @@ import { Vehicle } from "@/types/vehicle";
 import { supabase } from "@/lib/supabase";
 import {
   Upload, Video, Info, CheckCircle, Download,
-  ArrowRight, Instagram, Loader2, Zap,
+  ArrowRight, Instagram, Loader2, Zap, PenLine,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 type InputMode = "dispositivo" | "instagram";
 
 export default function UploadPage() {
+  const router = useRouter();
   const [mode, setMode] = useState<InputMode>("dispositivo");
   const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [criandoManual, setCriandoManual] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [resultadoAnalise, setResultadoAnalise] = useState<Vehicle | null>(null);
   const [uploadStep, setUploadStep] = useState<string>("");
@@ -59,6 +62,21 @@ export default function UploadPage() {
       setResultadoAnalise(data.data[0] as Vehicle);
     } else {
       throw new Error(data.error || "Falha na análise");
+    }
+  };
+
+  // ── Cadastro Manual ───────────────────────────────────────────────────────
+
+  const handleCadastroManual = async () => {
+    setCriandoManual(true);
+    try {
+      const res = await fetch("/api/veiculo/criar", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Erro ao criar veículo");
+      router.push(`/veiculo/${data.id}`);
+    } catch (e: any) {
+      alert(e.message);
+      setCriandoManual(false);
     }
   };
 
@@ -381,23 +399,43 @@ export default function UploadPage() {
                 </div>
               )}
 
-              {/* Dica (só aparece no modo dispositivo) */}
+              {/* Dica + Cadastro Manual (só no modo dispositivo) */}
               {mode === "dispositivo" && (
-                <div className="mt-10 pt-10 border-t border-gray-50">
-                  <div className="flex items-start gap-4 text-gray-400">
-                    <div className="bg-gray-50 p-4 rounded-2xl text-red-600 flex-shrink-0">
-                      <Info className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-black text-gray-900 uppercase mb-2">
-                        Dica de Engenharia
-                      </p>
-                      <p className="text-[10px] leading-relaxed font-bold uppercase opacity-60">
-                        Vídeos de 30-60 segundos geram os melhores insights estruturais.
-                      </p>
+                <>
+                  <div className="mt-10 pt-10 border-t border-gray-50">
+                    <div className="flex items-start gap-4 text-gray-400">
+                      <div className="bg-gray-50 p-4 rounded-2xl text-red-600 flex-shrink-0">
+                        <Info className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black text-gray-900 uppercase mb-2">
+                          Dica de Engenharia
+                        </p>
+                        <p className="text-[10px] leading-relaxed font-bold uppercase opacity-60">
+                          Vídeos de 30-60 segundos geram os melhores insights estruturais.
+                        </p>
+                      </div>
                     </div>
                   </div>
-                </div>
+
+                  <div className="mt-8 flex items-center gap-4">
+                    <div className="flex-1 h-px bg-gray-100" />
+                    <span className="text-[9px] font-black uppercase tracking-widest text-gray-300">ou</span>
+                    <div className="flex-1 h-px bg-gray-100" />
+                  </div>
+
+                  <button
+                    onClick={handleCadastroManual}
+                    disabled={isLoading || criandoManual}
+                    className="mt-6 w-full flex items-center justify-center gap-3 py-4 border-2 border-dashed border-gray-200 rounded-2xl text-[10px] font-black uppercase tracking-widest text-gray-400 hover:border-gray-900 hover:text-gray-900 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {criandoManual
+                      ? <Loader2 size={15} className="animate-spin" />
+                      : <PenLine size={15} />
+                    }
+                    {criandoManual ? "Criando..." : "Cadastrar Manualmente"}
+                  </button>
+                </>
               )}
 
               {mode === "instagram" && (
