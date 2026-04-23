@@ -317,35 +317,45 @@ function ScanDocumento({ veiculoId, onAplicar }: {
 
       {resultado && (
         <div className="mt-5 space-y-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between mb-1">
             <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 flex items-center gap-1.5">
               <FileCheck size={11} className="text-green-500" /> Dados extraídos
             </p>
-            {aplicado ? (
-              <span className="px-4 py-2 bg-green-100 text-green-700 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-1.5">
-                <Check size={10} /> Salvo!
-              </span>
-            ) : (
-              <button
-                disabled={aplicando}
-                onClick={async () => {
-                  if (!resultado) return;
-                  setAplicando(true);
-                  setErro("");
-                  try {
-                    await onAplicar(resultado);
-                    setAplicado(true);
-                  } catch (e: any) {
-                    setErro(e.message ?? "Erro ao salvar");
-                  } finally {
-                    setAplicando(false);
-                  }
-                }}
-                className="px-4 py-2 bg-gray-900 hover:bg-green-600 disabled:opacity-50 text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-colors flex items-center gap-1.5">
-                {aplicando ? <><Loader2 size={10} className="animate-spin" /> Salvando...</> : "Aplicar ao Veículo"}
-              </button>
-            )}
           </div>
+
+          {aplicado ? (
+            <div className="flex items-center justify-center gap-2 w-full py-3 bg-green-50 border border-green-200 rounded-2xl text-green-700 text-[10px] font-black uppercase tracking-widest">
+              <Check size={13} /> Dados aplicados e salvos!
+            </div>
+          ) : (
+            <button
+              disabled={aplicando}
+              onClick={async () => {
+                if (!resultado) return;
+                setAplicando(true);
+                setErro("");
+                try {
+                  await onAplicar(resultado);
+                  setAplicado(true);
+                } catch (e: any) {
+                  setErro(e.message ?? "Erro ao salvar");
+                } finally {
+                  setAplicando(false);
+                }
+              }}
+              className="w-full py-3.5 bg-gray-900 hover:bg-green-600 active:scale-95 active:bg-green-700 disabled:opacity-50 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all duration-150 flex items-center justify-center gap-2 shadow-sm">
+              {aplicando
+                ? <><Loader2 size={13} className="animate-spin" /> Salvando campos...</>
+                : <><Check size={13} /> Aplicar ao Veículo</>
+              }
+            </button>
+          )}
+
+          {erro && (
+            <div className="flex items-center gap-2 bg-red-50 text-red-600 rounded-2xl px-4 py-3 text-xs font-bold mt-2">
+              <AlertCircle size={13} /> {erro}
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-1.5">
             {camposVisiveis.filter(c => resultado[c.key] != null).map(c => (
