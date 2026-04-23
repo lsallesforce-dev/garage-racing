@@ -205,8 +205,9 @@ function SectionCard({
 // ─── Takes de Vídeo ──────────────────────────────────────────────────────────
 function TakesVideo({ veiculoId, takesIniciais }: { veiculoId: string; takesIniciais: string[] }) {
   const [takes, setTakes]         = useState<string[]>(takesIniciais);
-  // fila de uploads: { file, progresso, erro }
   const [fila, setFila]           = useState<{ name: string; prog: number; erro?: string }[]>([]);
+  const [dragOver, setDragOver]   = useState<number | null>(null);
+  const dragIdx = React.useRef<number | null>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
 
   async function uploadFile(file: File, idx: number): Promise<string | null> {
@@ -217,7 +218,6 @@ function TakesVideo({ veiculoId, takesIniciais }: { veiculoId: string; takesInic
       const fd = new FormData();
       fd.append("veiculoId", veiculoId);
       fd.append("arquivo", file);
-
       const res = await fetch("/api/veiculo/takes", { method: "POST", body: fd });
       if (!res.ok) throw new Error((await res.json()).error ?? `HTTP ${res.status}`);
       const { publicUrl, video_takes } = await res.json();
@@ -234,11 +234,7 @@ function TakesVideo({ veiculoId, takesIniciais }: { veiculoId: string; takesInic
     const arr  = Array.from(files);
     const base = fila.length;
     setFila(prev => [...prev, ...arr.map(f => ({ name: f.name, prog: 0 }))]);
-
-    for (let i = 0; i < arr.length; i++) {
-      await uploadFile(arr[i], base + i);
-    }
-
+    for (let i = 0; i < arr.length; i++) await uploadFile(arr[i], base + i);
     setTimeout(() => setFila([]), 2000);
   }
 
@@ -251,18 +247,27 @@ function TakesVideo({ veiculoId, takesIniciais }: { veiculoId: string; takesInic
     if (res.ok) { const { video_takes } = await res.json(); setTakes(video_takes); }
   }
 
-  async function mover(i: number, dir: -1 | 1) {
-    const nova = [...takes];
-    const j = i + dir;
-    if (j < 0 || j >= nova.length) return;
-    [nova[i], nova[j]] = [nova[j], nova[i]];
-    setTakes(nova);
-    // Persiste nova ordem: deleta tudo e reinserere pela API de ordem
+  async function persistirOrdem(nova: string[]) {
     await fetch("/api/veiculo/takes/reorder", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ veiculoId, video_takes: nova }),
     });
+  }
+
+  function onDragStart(i: number) { dragIdx.current = i; }
+  function onDragEnter(i: number) { setDragOver(i); }
+  function onDragEnd() {
+    const from = dragIdx.current;
+    const to   = dragOver;
+    dragIdx.current = null;
+    setDragOver(null);
+    if (from === null || to === null || from === to) return;
+    const nova = [...takes];
+    const [item] = nova.splice(from, 1);
+    nova.splice(to, 0, item);
+    setTakes(nova);
+    persistirOrdem(nova);
   }
 
   const nomeArquivo = (url: string) =>
@@ -285,26 +290,27 @@ function TakesVideo({ veiculoId, takesIniciais }: { veiculoId: string; takesInic
           onChange={e => { if (e.target.files?.length) handleFiles(e.target.files); e.target.value = ""; }} />
       </div>
 
-      {/* Lista de takes salvos */}
+      {/* Lista de takes salvos — drag to reorder */}
       {takes.length > 0 && (
         <div className="space-y-1.5 mb-3">
           {takes.map((url, i) => (
-            <div key={url} className="flex items-center gap-2 px-3 py-2 bg-black/5 rounded-xl">
-              {/* Ordem */}
+            <div key={url}
+              draggable
+              onDragStart={() => onDragStart(i)}
+              onDragEnter={() => onDragEnter(i)}
+              onDragOver={e => e.preventDefault()}
+              onDragEnd={onDragEnd}
+              className={`flex items-center gap-2 px-3 py-2 rounded-xl cursor-grab active:cursor-grabbing transition-all select-none
+                ${dragOver === i ? "bg-red-100 border border-red-300 scale-[1.02]" : "bg-black/5"}`}>
               <span className="text-[8px] font-black text-gray-400 w-5 shrink-0 text-center">{i + 1}</span>
+              {/* grip */}
+              <svg width="10" height="14" viewBox="0 0 10 14" className="text-gray-400 shrink-0" fill="currentColor">
+                <circle cx="2.5" cy="2.5" r="1.5"/><circle cx="7.5" cy="2.5" r="1.5"/>
+                <circle cx="2.5" cy="7" r="1.5"/><circle cx="7.5" cy="7" r="1.5"/>
+                <circle cx="2.5" cy="11.5" r="1.5"/><circle cx="7.5" cy="11.5" r="1.5"/>
+              </svg>
               <Video size={11} className="text-gray-500 shrink-0" />
               <span className="text-[10px] font-bold text-gray-700 truncate flex-1">{nomeArquivo(url)}</span>
-              {/* Setas de reordenação */}
-              <div className="flex flex-col gap-0.5 shrink-0">
-                <button onClick={() => mover(i, -1)} disabled={i === 0}
-                  className="p-0.5 hover:bg-black/10 rounded disabled:opacity-20 transition-colors">
-                  <ChevronUp size={10} className="text-gray-500" />
-                </button>
-                <button onClick={() => mover(i, 1)} disabled={i === takes.length - 1}
-                  className="p-0.5 hover:bg-black/10 rounded disabled:opacity-20 transition-colors">
-                  <ChevronDown size={10} className="text-gray-500" />
-                </button>
-              </div>
               <button onClick={() => remover(url)} className="p-1.5 hover:bg-red-100 rounded-lg transition-colors shrink-0">
                 <Trash2 size={11} className="text-red-400" />
               </button>
