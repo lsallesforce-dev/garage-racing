@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef, forwardRef, useImperativeHandle } from "react";
 import Link from "next/link";
 import {
   X, Plus, Trash2, DollarSign, TrendingUp, TrendingDown,
@@ -88,36 +88,49 @@ function labelMes(m: string) {
 
 // ─── Mini-CRUD reutilizável (despesas e receitas) ─────────────────────────────
 
-function ListaItens({
-  itens, tabela, veiculoId, cor, onAlterado,
-}: {
+interface ListaItensHandle { flush: () => Promise<void>; }
+
+const ListaItens = forwardRef<ListaItensHandle, {
   itens: ItemFinanceiro[];
   tabela: "despesas_veiculo" | "receitas_veiculo";
   veiculoId: string;
   cor: "red" | "green";
   onAlterado: (itens: ItemFinanceiro[]) => void;
-}) {
-  const [desc, setDesc]   = useState("");
-  const [valor, setValor] = useState("");
+}>(function ListaItens({ itens, tabela, veiculoId, cor, onAlterado }, ref) {
+  const [desc, setDesc]     = useState("");
+  const [valor, setValor]   = useState("");
   const [adding, setAdding] = useState(false);
+
+  const descRef  = useRef(desc);
+  const valorRef = useRef(valor);
+  descRef.current  = desc;
+  valorRef.current = valor;
 
   const total = itens.reduce((s, i) => s + i.valor, 0);
   const bg    = cor === "red" ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600";
 
-  async function adicionar(e: React.MouseEvent) {
-    e.preventDefault(); e.stopPropagation();
-    if (!desc || !valor) return;
+  async function adicionarInterno(d: string, v: string, currentItens: ItemFinanceiro[]) {
+    if (!d || !v) return;
     setAdding(true);
     const res = await fetch("/api/financeiro/veiculo", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tabela, veiculo_id: veiculoId, descricao: desc, valor: parseNum(valor) ?? 0 }),
+      body: JSON.stringify({ tabela, veiculo_id: veiculoId, descricao: d, valor: parseNum(v) ?? 0 }),
     });
     const data = res.ok ? await res.json() : null;
-    if (data) onAlterado([...itens, data]);
+    if (data) onAlterado([...currentItens, data]);
     setDesc(""); setValor("");
     setAdding(false);
   }
+
+  async function adicionar(e: React.MouseEvent) {
+    e.preventDefault(); e.stopPropagation();
+    await adicionarInterno(desc, valor, itens);
+  }
+
+  useImperativeHandle(ref, () => ({
+    flush: () => adicionarInterno(descRef.current, valorRef.current, itens),
+  }));
 
   async function remover(id: string, e: React.MouseEvent) {
     e.preventDefault(); e.stopPropagation();
@@ -159,12 +172,12 @@ function ListaItens({
         <input value={desc} onChange={(e) => setDesc(e.target.value)}
           placeholder={cor === "red" ? "Ex: Revisão, IPVA..." : "Ex: Comissão financiamento..."}
           className="flex-1 px-3 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-900 focus:outline-none focus:border-gray-400"
-          onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); adicionarInterno(desc, valor, itens); } }}
         />
         <input value={valor} onChange={(e) => setValor(e.target.value)}
           placeholder="R$" type="number"
           className="w-24 px-3 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-900 focus:outline-none focus:border-gray-400"
-          onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); adicionarInterno(desc, valor, itens); } }}
         />
         <button type="button" onClick={adicionar} disabled={adding || !desc || !valor}
           className={`p-2.5 text-white rounded-xl transition-colors disabled:opacity-40 ${
@@ -175,7 +188,7 @@ function ListaItens({
       </div>
     </div>
   );
-}
+});
 
 // ─── SlideOver (detalhe do veículo) ───────────────────────────────────────────
 
@@ -196,6 +209,8 @@ function SlideOver({
 
   const [despesas, setDespesas] = useState<ItemFinanceiro[]>(veiculo.despesas ?? []);
   const [receitas, setReceitas] = useState<ItemFinanceiro[]>(veiculo.receitas ?? []);
+  const despesasRef = useRef<ListaItensHandle>(null);
+  const receitasRef = useRef<ListaItensHandle>(null);
 
   const [precoVenda,  setPrecoVenda]  = useState(String(veiculo.preco_venda_final ?? veiculo.preco_sugerido ?? ""));
   const [dataVenda,   setDataVenda]   = useState(veiculo.data_venda ?? "");
@@ -432,19 +447,23 @@ function SlideOver({
           )}
 
           {aba === "despesas" && (
-            <ListaItens itens={despesas} tabela="despesas_veiculo" veiculoId={veiculo.id}
+            <ListaItens ref={despesasRef} itens={despesas} tabela="despesas_veiculo" veiculoId={veiculo.id}
               cor="red" onAlterado={setDespesas} />
           )}
 
           {aba === "receitas" && (
-            <ListaItens itens={receitas} tabela="receitas_veiculo" veiculoId={veiculo.id}
+            <ListaItens ref={receitasRef} itens={receitas} tabela="receitas_veiculo" veiculoId={veiculo.id}
               cor="green" onAlterado={setReceitas} />
           )}
 
           {(aba === "despesas" || aba === "receitas") && (
             <button
               type="button"
-              onClick={() => { onReload(); setSaved(true); setTimeout(() => setSaved(false), 2000); }}
+              onClick={async () => {
+                await despesasRef.current?.flush();
+                await receitasRef.current?.flush();
+                onReload(); setSaved(true); setTimeout(() => setSaved(false), 2000);
+              }}
               className={`mt-6 w-full py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${
                 saved ? "bg-green-500 text-white" : "bg-gray-900 hover:bg-red-600 text-white"
               }`}
