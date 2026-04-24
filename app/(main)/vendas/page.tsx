@@ -971,7 +971,7 @@ function ModalRelatorios({
   }
 
   function imprimirRelatorio() {
-    const url = `/print/relatorio?mes=${mesSel}`;
+    const url = `/relatorio?mes=${mesSel}`;
     const win = window.open("", "_blank");
     if (win) win.location.href = url;
   }
