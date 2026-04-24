@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Upload, CheckCircle2, Loader2, ImageIcon, Trash2, Sparkles, FileImage, Save } from "lucide-react";
+import { Upload, CheckCircle2, Loader2, ImageIcon, Trash2, Sparkles, FileImage, Save, Copy, Eye, EyeOff } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 type Mode = "auto" | "manual";
@@ -41,6 +41,9 @@ export default function ConfiguracoesPage() {
   const [savingInfo, setSavingInfo] = useState(false);
   const [savedInfo, setSavedInfo] = useState(false);
   const [currentLogo, setCurrentLogo] = useState<string | null>(null);
+  const [showToken, setShowToken] = useState(false);
+  const [webhookToken, setWebhookToken] = useState("");
+  const [copied, setCopied] = useState<string | null>(null);
   const [config, setConfig] = useState<GarageConfig>({
     nome_empresa: "",
     nome_fantasia: "",
@@ -77,6 +80,7 @@ export default function ConfiguracoesPage() {
           if (error) console.error("❌ config_garage load error:", error);
           const row = data?.[0];
           if (row) {
+            if (row.webhook_token) setWebhookToken(row.webhook_token);
             setConfig({
               id: row.id,
               nome_empresa: row.nome_empresa ?? "",
@@ -107,6 +111,12 @@ export default function ConfiguracoesPage() {
         });
     });
   }, []);
+
+  const copyToClipboard = (text: string, key: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(key);
+    setTimeout(() => setCopied(null), 2000);
+  };
 
   const reset = () => {
     setOriginalFile(null);
@@ -432,6 +442,32 @@ export default function ConfiguracoesPage() {
               <p className="text-[10px] text-blue-500">Encontrado em: Meta for Developers → WhatsApp → Configuração → Número de telefone.</p>
 
               <label className="text-[10px] font-black uppercase tracking-widest text-blue-800 mt-3 block">
+                Access Token
+              </label>
+              <div className="relative">
+                <input
+                  type={showToken ? "text" : "password"}
+                  value={config.meta_access_token || ""}
+                  onChange={e => setConfig(c => ({ ...c, meta_access_token: e.target.value.trim() }))}
+                  placeholder="EAAxxxxxxxxxxxxxxxx..."
+                  className="w-full bg-white border border-blue-200 rounded-xl px-4 py-2.5 pr-20 font-mono text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
+                />
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
+                  <button type="button" onClick={() => setShowToken(v => !v)}
+                    className="p-1.5 text-blue-400 hover:text-blue-700 transition-colors">
+                    {showToken ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                  {config.meta_access_token && (
+                    <button type="button" onClick={() => copyToClipboard(config.meta_access_token!, "token")}
+                      className="p-1.5 text-blue-400 hover:text-blue-700 transition-colors">
+                      {copied === "token" ? <CheckCircle2 size={14} className="text-green-500" /> : <Copy size={14} />}
+                    </button>
+                  )}
+                </div>
+              </div>
+              <p className="text-[10px] text-blue-500">Encontrado em: Meta for Developers → WhatsApp → Configuração → Token de acesso temporário (ou token permanente do sistema).</p>
+
+              <label className="text-[10px] font-black uppercase tracking-widest text-blue-800 mt-3 block">
                 Slug da Vitrine (URL curta)
               </label>
               <input
@@ -476,6 +512,27 @@ export default function ConfiguracoesPage() {
                 className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
               />
             </div>
+
+            {webhookToken && (
+              <div className="flex flex-col gap-1.5 mt-2 bg-green-50/60 p-4 border border-green-100 rounded-2xl">
+                <p className="text-[10px] font-black uppercase tracking-widest text-green-800 mb-1">
+                  AvisaAPI — Token do Webhook
+                </p>
+                <p className="text-[10px] text-green-700 mb-2">
+                  Cole na URL do webhook na plataforma Avisa:{" "}
+                  <span className="font-mono font-bold">https://autozap.digital/api/webhook/avisa?token=SEU_TOKEN</span>
+                </p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 bg-white border border-green-200 rounded-xl px-4 py-2.5 font-mono text-xs text-gray-700 truncate">
+                    {webhookToken}
+                  </code>
+                  <button type="button" onClick={() => copyToClipboard(webhookToken, "wtoken")}
+                    className="shrink-0 flex items-center gap-1.5 px-3 py-2.5 bg-green-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-green-500 transition-colors">
+                    {copied === "wtoken" ? <><CheckCircle2 size={12} /> Copiado!</> : <><Copy size={12} /> Copiar</>}
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="flex flex-col gap-4 mt-2 bg-amber-50/60 p-4 border border-amber-100 rounded-2xl">
               <div>
