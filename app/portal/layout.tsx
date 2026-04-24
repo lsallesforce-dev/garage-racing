@@ -103,11 +103,16 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
           </div>
           <div className="border-t border-gray-800 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
             <p className="text-[10px] text-gray-600 uppercase tracking-widest font-bold">
-              © {new Date().getFullYear()} AutoZap. Todos os direitos reservados.
+              © {new Date().getFullYear()} AutoZap · LS Tecnologias. Todos os direitos reservados.
             </p>
-            <p className="text-[10px] text-gray-600 uppercase tracking-widest font-bold">
-              Feito com ⚡ para revendas brasileiras
-            </p>
+            <div className="flex items-center gap-4">
+              <Link href="/portal/privacidade" className="text-[10px] text-gray-600 hover:text-gray-400 uppercase tracking-widest font-bold transition-colors">
+                Privacidade
+              </Link>
+              <Link href="/portal/termos" className="text-[10px] text-gray-600 hover:text-gray-400 uppercase tracking-widest font-bold transition-colors">
+                Termos
+              </Link>
+            </div>
           </div>
         </div>
       </footer>
