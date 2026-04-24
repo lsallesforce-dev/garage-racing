@@ -6,6 +6,7 @@ import {
   X, Plus, Trash2, DollarSign, TrendingUp, TrendingDown,
   Package, ChevronDown, Check, Loader2, Users, ReceiptText,
   ArrowUpRight, ArrowDownRight, Car, Contact, FileSignature,
+  BarChart3, Lock, LockOpen, Printer, ChevronLeft, ChevronRight,
 } from "lucide-react";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -886,6 +887,346 @@ function ModalFinanceiroGeral({ itens, onAlterado, onClose }: {
   );
 }
 
+// ─── Modal Relatórios + Fechamento ───────────────────────────────────────────
+
+interface Fechamento {
+  id: string; mes: string; fechado_em: string;
+  faturamento: number; custo_total: number; lucro_bruto: number;
+  comissoes: number; lucro_liquido: number; qtd_vendas: number;
+}
+
+function ModalRelatorios({
+  veiculos, vendedores, itensGeral, onClose,
+}: {
+  veiculos: Veiculo[];
+  vendedores: Vendedor[];
+  itensGeral: ItemGeral[];
+  onClose: () => void;
+}) {
+  const meses = Array.from(new Set([
+    ...veiculos.filter(v => v.data_venda).map(v => v.data_venda!.slice(0, 7)),
+    ...itensGeral.filter(i => i.data).map(i => i.data.slice(0, 7)),
+  ])).sort((a, b) => b.localeCompare(a));
+
+  const [mesSel, setMesSel]       = useState(meses[0] ?? mesAtual());
+  const [aba, setAba]             = useState<"vendas" | "comissoes" | "fechamento">("vendas");
+  const [fechamentos, setFechs]   = useState<Fechamento[]>([]);
+  const [fechando, setFechando]   = useState(false);
+  const [reabrindo, setReabrindo] = useState(false);
+  const [loadingFechs, setLoadingFechs] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/financeiro/fechamento")
+      .then(r => r.json())
+      .then(d => { setFechs(Array.isArray(d) ? d : []); setLoadingFechs(false); });
+  }, []);
+
+  const vendidosMes  = veiculos.filter(v => v.status_venda === "VENDIDO" && v.data_venda?.startsWith(mesSel));
+  const faturamento  = vendidosMes.reduce((s, v) => s + (v.preco_venda_final ?? 0), 0);
+  const custoTotal   = vendidosMes.reduce((s, v) => s + (v.preco_compra ?? 0) + (v.despesas ?? []).reduce((d, x) => d + x.valor, 0), 0);
+  const lucroBruto   = vendidosMes.reduce((s, v) => s + (calcLucro(v, v.despesas ?? [], v.receitas ?? []) ?? 0), 0);
+  const saldoGeral   = itensGeral.filter(i => i.data?.startsWith(mesSel)).reduce((s, i) => i.tipo === "receita" ? s + i.valor : s - i.valor, 0);
+  const comissoes    = vendedores.reduce((s, vend) => {
+    const vs = vendidosMes.filter(v => v.vendedor_id === vend.id);
+    const l  = vs.reduce((ll, v) => ll + (calcLucro(v, v.despesas ?? [], v.receitas ?? []) ?? 0), 0);
+    return s + (l * vend.comissao_pct) / 100;
+  }, 0);
+  const lucroLiquido = lucroBruto + saldoGeral - comissoes;
+
+  const fechamentoAtual = fechamentos.find(f => f.mes === mesSel);
+  const mesFechado = !!fechamentoAtual;
+
+  async function fecharMes() {
+    if (!confirm(`Fechar ${labelMes(mesSel)} com lucro líquido de ${fmt(lucroLiquido)}?\n\nEsse snapshot ficará gravado e pode ser reaberto depois.`)) return;
+    setFechando(true);
+    const snapshot = vendidosMes.map(v => ({
+      id: v.id, marca: v.marca, modelo: v.modelo, versao: v.versao,
+      data_venda: v.data_venda, preco_compra: v.preco_compra,
+      preco_venda_final: v.preco_venda_final,
+      lucro: calcLucro(v, v.despesas ?? [], v.receitas ?? []),
+      vendedor_id: v.vendedor_id,
+    }));
+    const res = await fetch("/api/financeiro/fechamento", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mes: mesSel, faturamento, custo_total: custoTotal, lucro_bruto: lucroBruto, comissoes, lucro_liquido: lucroLiquido, qtd_vendas: vendidosMes.length, snapshot }),
+    });
+    if (res.ok) {
+      const novo = await res.json();
+      setFechs(prev => [novo, ...prev.filter(f => f.mes !== mesSel)]);
+    }
+    setFechando(false);
+  }
+
+  async function reabrirMes() {
+    if (!confirm(`Reabrir ${labelMes(mesSel)}? O snapshot será removido.`)) return;
+    setReabrindo(true);
+    await fetch("/api/financeiro/fechamento", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mes: mesSel }),
+    });
+    setFechs(prev => prev.filter(f => f.mes !== mesSel));
+    setReabrindo(false);
+  }
+
+  function imprimirRelatorio() {
+    const url = `/print/relatorio?mes=${mesSel}`;
+    const win = window.open("", "_blank");
+    if (win) win.location.href = url;
+  }
+
+  const mesIdx  = meses.indexOf(mesSel);
+  const mesAnterior = meses[mesIdx + 1];
+  const mesPosterior = meses[mesIdx - 1];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <div className="bg-white rounded-[2rem] w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-8 py-5 border-b border-gray-100 flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <BarChart3 size={18} className="text-red-600" />
+            <h2 className="text-base font-black uppercase tracking-tighter text-gray-900">Relatórios</h2>
+          </div>
+          {/* Seletor de mês */}
+          <div className="flex items-center gap-2">
+            <button onClick={() => mesAnterior && setMesSel(mesAnterior)} disabled={!mesAnterior}
+              className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-20 transition-colors">
+              <ChevronLeft size={14} />
+            </button>
+            <select value={mesSel} onChange={e => setMesSel(e.target.value)}
+              className="px-3 py-1.5 border border-gray-200 rounded-xl text-sm font-black text-gray-900 focus:outline-none focus:border-gray-400 capitalize">
+              {meses.map(m => (
+                <option key={m} value={m}>{labelMes(m)}{fechamentos.find(f => f.mes === m) ? " 🔒" : ""}</option>
+              ))}
+            </select>
+            <button onClick={() => mesPosterior && setMesSel(mesPosterior)} disabled={!mesPosterior}
+              className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-20 transition-colors">
+              <ChevronRight size={14} />
+            </button>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-xl transition-colors">
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Resumo do mês selecionado */}
+        <div className="grid grid-cols-5 gap-0 border-b border-gray-100 flex-shrink-0">
+          {[
+            { label: "Faturamento",   value: fmt(faturamento),  color: "text-gray-900"  },
+            { label: "Custo Total",   value: fmt(custoTotal),   color: "text-red-500"   },
+            { label: "Lucro Bruto",   value: fmt(lucroBruto),   color: lucroBruto >= 0 ? "text-green-600" : "text-red-500" },
+            { label: "Comissões",     value: fmt(comissoes),    color: "text-amber-600" },
+            { label: "Lucro Líquido", value: fmt(lucroLiquido), color: lucroLiquido >= 0 ? "text-green-700" : "text-red-600" },
+          ].map((k, i) => (
+            <div key={k.label} className={`px-5 py-3 text-center ${i < 4 ? "border-r border-gray-100" : ""} ${k.label === "Lucro Líquido" ? "bg-gray-50" : ""}`}>
+              <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-0.5">{k.label}</p>
+              <p className={`text-sm font-black ${k.color}`}>{k.value}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Tabs */}
+        <div className="flex border-b border-gray-100 flex-shrink-0">
+          {([
+            { key: "vendas",      label: `Vendas (${vendidosMes.length})` },
+            { key: "comissoes",   label: "Comissões" },
+            { key: "fechamento",  label: mesFechado ? "🔒 Fechado" : "Fechar Mês" },
+          ] as const).map(t => (
+            <button key={t.key} onClick={() => setAba(t.key)}
+              className={`px-6 py-3 text-[10px] font-black uppercase tracking-widest transition-colors ${
+                aba === t.key ? "text-red-600 border-b-2 border-red-600" : "text-gray-400 hover:text-gray-700"
+              }`}>
+              {t.label}
+            </button>
+          ))}
+          <div className="ml-auto flex items-center pr-4">
+            <button onClick={imprimirRelatorio}
+              className="flex items-center gap-1.5 px-4 py-1.5 bg-gray-900 hover:bg-red-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-colors">
+              <Printer size={12} /> Imprimir / PDF
+            </button>
+          </div>
+        </div>
+
+        {/* Conteúdo */}
+        <div className="flex-1 overflow-y-auto p-6">
+
+          {/* ABA: VENDAS */}
+          {aba === "vendas" && (
+            vendidosMes.length === 0 ? (
+              <p className="text-center text-gray-300 text-sm py-10">Nenhuma venda em {labelMes(mesSel)}</p>
+            ) : (
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="border-b border-gray-100">
+                    {["Veículo", "Data", "Compra", "Despesas", "Venda", "Lucro", "Margem %", "Vendedor"].map(h => (
+                      <th key={h} className="pb-2 text-[8px] font-black uppercase tracking-widest text-gray-400 pr-4 whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {vendidosMes.map(v => {
+                    const despTotal = (v.despesas ?? []).reduce((s, d) => s + d.valor, 0);
+                    const lucro     = calcLucro(v, v.despesas ?? [], v.receitas ?? []);
+                    const margem    = v.preco_compra && v.preco_venda_final
+                      ? ((v.preco_venda_final - v.preco_compra) / v.preco_compra) * 100 : null;
+                    const vend      = vendedores.find(vd => vd.id === v.vendedor_id);
+                    return (
+                      <tr key={v.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                        <td className="py-2.5 pr-4">
+                          <p className="text-xs font-black uppercase italic text-gray-900 whitespace-nowrap">{v.marca} {v.modelo}</p>
+                          <p className="text-[9px] text-gray-400">{v.versao ?? "—"} · {v.ano_modelo ?? "—"}</p>
+                        </td>
+                        <td className="py-2.5 pr-4 text-xs text-gray-600 whitespace-nowrap">
+                          {v.data_venda ? new Date(v.data_venda + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : "—"}
+                        </td>
+                        <td className="py-2.5 pr-4 text-xs text-gray-600 whitespace-nowrap">{v.preco_compra ? fmt(v.preco_compra) : "—"}</td>
+                        <td className="py-2.5 pr-4 text-xs whitespace-nowrap">
+                          {despTotal > 0 ? <span className="text-red-500">{fmt(despTotal)}</span> : <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="py-2.5 pr-4 text-xs font-bold text-gray-800 whitespace-nowrap">{v.preco_venda_final ? fmt(v.preco_venda_final) : "—"}</td>
+                        <td className="py-2.5 pr-4 text-xs font-black whitespace-nowrap">
+                          {lucro != null ? <span className={lucro >= 0 ? "text-green-600" : "text-red-500"}>{fmt(lucro)}</span> : <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="py-2.5 pr-4 text-xs whitespace-nowrap">
+                          {margem != null ? <span className={margem >= 0 ? "text-green-500" : "text-red-400"}>{margem > 0 ? "+" : ""}{margem.toFixed(1)}%</span> : <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="py-2.5 text-xs text-gray-500 whitespace-nowrap">{vend?.nome ?? "—"}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-gray-200">
+                    <td className="pt-3 text-[9px] font-black uppercase tracking-widest text-gray-400">{vendidosMes.length} venda{vendidosMes.length !== 1 ? "s" : ""}</td>
+                    <td />
+                    <td className="pt-3 text-xs font-black text-gray-700">{fmt(custoTotal)}</td>
+                    <td />
+                    <td className="pt-3 text-xs font-black text-gray-700">{fmt(faturamento)}</td>
+                    <td className="pt-3 text-xs font-black text-green-700">{fmt(lucroBruto)}</td>
+                    <td /><td />
+                  </tr>
+                </tfoot>
+              </table>
+            )
+          )}
+
+          {/* ABA: COMISSÕES */}
+          {aba === "comissoes" && (
+            vendedores.length === 0 ? (
+              <p className="text-center text-gray-300 text-sm py-10">Nenhum vendedor cadastrado</p>
+            ) : (
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="border-b border-gray-100">
+                    {["Vendedor", "Vendas", "Faturamento", "Lucro Gerado", "Comissão %", "Valor a Pagar"].map(h => (
+                      <th key={h} className="pb-2 text-[8px] font-black uppercase tracking-widest text-gray-400 pr-6">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {vendedores.map(vend => {
+                    const vs       = vendidosMes.filter(v => v.vendedor_id === vend.id);
+                    const fat      = vs.reduce((s, v) => s + (v.preco_venda_final ?? 0), 0);
+                    const lucroV   = vs.reduce((s, v) => s + (calcLucro(v, v.despesas ?? [], v.receitas ?? []) ?? 0), 0);
+                    const comissao = (lucroV * vend.comissao_pct) / 100;
+                    return (
+                      <tr key={vend.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                        <td className="py-3 pr-6 text-sm font-black text-gray-900">{vend.nome}</td>
+                        <td className="py-3 pr-6 text-sm font-bold text-gray-600">{vs.length}</td>
+                        <td className="py-3 pr-6 text-sm font-bold text-gray-600">{fmt(fat)}</td>
+                        <td className="py-3 pr-6 text-sm font-bold">
+                          <span className={lucroV >= 0 ? "text-green-600" : "text-red-500"}>{fmt(lucroV)}</span>
+                        </td>
+                        <td className="py-3 pr-6 text-sm font-bold text-amber-600">{vend.comissao_pct}%</td>
+                        <td className="py-3 text-sm font-black text-amber-700">{fmt(comissao)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-gray-200">
+                    <td className="pt-3 text-[9px] font-black uppercase tracking-widest text-gray-400" colSpan={5}>Total a pagar</td>
+                    <td className="pt-3 text-sm font-black text-amber-700">{fmt(comissoes)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            )
+          )}
+
+          {/* ABA: FECHAMENTO */}
+          {aba === "fechamento" && (
+            <div className="max-w-lg mx-auto space-y-6">
+              {mesFechado && fechamentoAtual ? (
+                <div className="bg-green-50 border border-green-200 rounded-2xl p-6 text-center space-y-3">
+                  <div className="flex items-center justify-center gap-2 text-green-700">
+                    <Lock size={20} />
+                    <p className="font-black uppercase tracking-widest text-sm">Mês Fechado</p>
+                  </div>
+                  <p className="text-[10px] text-green-600 font-bold uppercase tracking-widest">
+                    Fechado em {new Date(fechamentoAtual.fechado_em).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                  </p>
+                  <div className="grid grid-cols-2 gap-3 mt-4 text-left">
+                    {[
+                      { label: "Faturamento",   value: fmt(fechamentoAtual.faturamento)  },
+                      { label: "Custo Total",   value: fmt(fechamentoAtual.custo_total)  },
+                      { label: "Lucro Bruto",   value: fmt(fechamentoAtual.lucro_bruto)  },
+                      { label: "Comissões",     value: fmt(fechamentoAtual.comissoes)    },
+                      { label: "Lucro Líquido", value: fmt(fechamentoAtual.lucro_liquido) },
+                      { label: "Vendas",        value: String(fechamentoAtual.qtd_vendas) },
+                    ].map(k => (
+                      <div key={k.label} className="bg-white rounded-xl px-4 py-2.5 border border-green-100">
+                        <p className="text-[8px] font-black uppercase tracking-widest text-gray-400">{k.label}</p>
+                        <p className="text-sm font-black text-gray-900">{k.value}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <button onClick={reabrirMes} disabled={reabrindo}
+                    className="flex items-center gap-2 mx-auto mt-4 px-5 py-2.5 border border-gray-300 hover:border-red-400 hover:text-red-600 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors disabled:opacity-40">
+                    {reabrindo ? <Loader2 size={13} className="animate-spin" /> : <LockOpen size={13} />}
+                    Reabrir mês
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-5">
+                  <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 space-y-3">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-amber-600">Resumo para fechamento — {labelMes(mesSel)}</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      {[
+                        { label: "Faturamento",   value: fmt(faturamento),  hl: false },
+                        { label: "Custo Total",   value: fmt(custoTotal),   hl: false },
+                        { label: "Lucro Bruto",   value: fmt(lucroBruto),   hl: false },
+                        { label: "Outras Rec/Desp", value: fmt(saldoGeral), hl: false },
+                        { label: "Comissões",     value: fmt(comissoes),    hl: false },
+                        { label: "Lucro Líquido", value: fmt(lucroLiquido), hl: true  },
+                      ].map(k => (
+                        <div key={k.label} className={`rounded-xl px-4 py-2.5 border ${k.hl ? "bg-gray-900 border-gray-900" : "bg-white border-amber-100"}`}>
+                          <p className={`text-[8px] font-black uppercase tracking-widest ${k.hl ? "text-white/50" : "text-gray-400"}`}>{k.label}</p>
+                          <p className={`text-sm font-black ${k.hl ? (lucroLiquido >= 0 ? "text-green-400" : "text-red-400") : "text-gray-900"}`}>{k.value}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-gray-400 text-center leading-relaxed">
+                    O fechamento salva um snapshot congelado deste mês.<br/>Você pode reabrir para correções quando precisar.
+                  </p>
+                  <button onClick={fecharMes} disabled={fechando}
+                    className="w-full flex items-center justify-center gap-2 py-4 bg-gray-900 hover:bg-red-600 text-white rounded-2xl font-black uppercase tracking-widest text-[11px] transition-all disabled:opacity-40">
+                    {fechando ? <Loader2 size={15} className="animate-spin" /> : <Lock size={15} />}
+                    {fechando ? "Fechando..." : `Fechar ${labelMes(mesSel)}`}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Página Principal ─────────────────────────────────────────────────────────
 
 export default function VendasPage() {
@@ -895,8 +1236,9 @@ export default function VendasPage() {
   const [verComissoes, setVerComissoes] = useState(false);
   const [verGeral,     setVerGeral]     = useState(false);
   const [itensGeral,   setItensGeral]   = useState<ItemGeral[]>([]);
-  const [loading,      setLoading]      = useState(true);
-  const [filtro,       setFiltro]       = useState<"todos" | "estoque" | "vendido">("todos");
+  const [loading,        setLoading]        = useState(true);
+  const [filtro,         setFiltro]         = useState<"todos" | "estoque" | "vendido">("todos");
+  const [verRelatorios,  setVerRelatorios]  = useState(false);
   const [fechamentoDate, setFechamentoDate] = useState("");
 
   const carregar = useCallback(async () => {
@@ -980,11 +1322,17 @@ export default function VendasPage() {
                   {mesLabel}
                 </h1>
               </div>
-              <span className={`px-4 py-2 rounded-full text-xs font-black uppercase tracking-widest ${
-                lucroMes >= 0 ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
-              }`}>
-                {lucroMes >= 0 ? "▲" : "▼"} {margemMedia != null ? `${margemMedia.toFixed(1)}% margem` : "sem vendas"}
-              </span>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setVerRelatorios(true)}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-full text-[10px] font-black uppercase tracking-widest transition-all">
+                  <BarChart3 size={12} /> Relatórios
+                </button>
+                <span className={`px-4 py-2 rounded-full text-xs font-black uppercase tracking-widest ${
+                  lucroMes >= 0 ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
+                }`}>
+                  {lucroMes >= 0 ? "▲" : "▼"} {margemMedia != null ? `${margemMedia.toFixed(1)}% margem` : "sem vendas"}
+                </span>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 md:gap-10">
@@ -1234,54 +1582,36 @@ export default function VendasPage() {
 
           {/* Histórico mensal */}
             <div className="bg-white rounded-[2rem] border border-gray-100 p-6">
-              <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-3">Histórico</p>
-
-              {/* Próximo fechamento — destaque */}
-              <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 mb-4">
-                <div>
-                  <p className="text-[8px] font-black uppercase tracking-widest text-amber-500">Próx. Fechamento</p>
-                  <p className="text-sm font-black text-gray-800 mt-0.5">
-                    {fechamentoDate
-                      ? new Date(fechamentoDate + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })
-                      : "Não definido"}
-                  </p>
-                </div>
-                <input
-                  type="date"
-                  value={fechamentoDate}
-                  onChange={(e) => salvarFechamento(e.target.value)}
-                  className="opacity-0 absolute w-0 h-0"
-                  id="fechamento-input"
-                />
-                <label htmlFor="fechamento-input"
-                  className="cursor-pointer px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[9px] font-black uppercase tracking-widest transition-colors">
-                  Alterar
-                </label>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">Histórico</p>
+                <button onClick={() => setVerRelatorios(true)}
+                  className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-gray-400 hover:text-red-600 transition-colors">
+                  <BarChart3 size={11} /> Relatórios
+                </button>
               </div>
 
               {mesesComDados.length === 0 ? (
                 <p className="text-center text-xs text-gray-300 py-4">Nenhum dado ainda</p>
               ) : (
-                <div className="space-y-1.5 max-h-56 overflow-y-auto">
+                <div className="space-y-1.5 max-h-64 overflow-y-auto">
                   {mesesComDados.map((m) => {
                     const lucro   = calcLucroMes(m);
                     const ehAtual = m === mes;
-                    const fechado = fechamentoDate && m < mes;
                     const [ano, mesNum] = m.split("-");
                     const label = new Date(parseInt(ano), parseInt(mesNum) - 1, 1)
                       .toLocaleDateString("pt-BR", { month: "short", year: "2-digit" }).replace(".", "");
                     return (
-                      <div key={m} className={`flex items-center justify-between px-3 py-2.5 rounded-xl ${
-                        ehAtual ? "bg-blue-50" : "bg-gray-50"
-                      }`}>
+                      <button key={m} onClick={() => setVerRelatorios(true)}
+                        className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl hover:opacity-80 transition-opacity ${
+                          ehAtual ? "bg-blue-50" : "bg-gray-50"
+                        }`}>
                         <div className="flex items-center gap-2.5">
                           <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-                            ehAtual ? "bg-blue-400" : fechado ? "bg-gray-300" : "bg-gray-200"
+                            ehAtual ? "bg-blue-400" : "bg-gray-300"
                           }`} />
-                          <div>
+                          <div className="text-left">
                             <p className="text-xs font-black text-gray-800 capitalize">{label}</p>
                             {ehAtual && <p className="text-[7px] font-bold uppercase text-blue-400 tracking-widest">atual</p>}
-                            {fechado && <p className="text-[7px] font-bold uppercase text-gray-400 tracking-widest">fechado</p>}
                           </div>
                         </div>
                         <div className="flex items-center gap-1.5">
@@ -1293,7 +1623,7 @@ export default function VendasPage() {
                             {fmtCompact(lucro)}
                           </p>
                         </div>
-                      </div>
+                      </button>
                     );
                   })}
                 </div>
@@ -1318,6 +1648,15 @@ export default function VendasPage() {
 
       {verGeral && (
         <ModalFinanceiroGeral itens={itensGeral} onAlterado={setItensGeral} onClose={() => setVerGeral(false)} />
+      )}
+
+      {verRelatorios && (
+        <ModalRelatorios
+          veiculos={veiculos}
+          vendedores={vendedores}
+          itensGeral={itensGeral}
+          onClose={() => setVerRelatorios(false)}
+        />
       )}
     </div>
   );
