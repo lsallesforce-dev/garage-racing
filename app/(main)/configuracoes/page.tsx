@@ -4,6 +4,13 @@ import { useState, useRef, useEffect } from "react";
 import { Upload, CheckCircle2, Loader2, ImageIcon, Trash2, Sparkles, FileImage, Save, Copy, Eye, EyeOff } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
+declare global {
+  interface Window {
+    fbAsyncInit: () => void;
+    FB: any;
+  }
+}
+
 type Mode = "auto" | "manual";
 
 interface GarageConfig {
@@ -44,6 +51,8 @@ export default function ConfiguracoesPage() {
   const [showToken, setShowToken] = useState(false);
   const [webhookToken, setWebhookToken] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
+  const [metaConnecting, setMetaConnecting] = useState(false);
+  const [metaConnected, setMetaConnected] = useState(false);
   const [config, setConfig] = useState<GarageConfig>({
     nome_empresa: "",
     nome_fantasia: "",
@@ -66,6 +75,91 @@ export default function ConfiguracoesPage() {
     horario_funcionamento: "",
   });
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Carrega o Facebook SDK para Embedded Signup
+  useEffect(() => {
+    window.fbAsyncInit = function () {
+      window.FB.init({
+        appId: process.env.NEXT_PUBLIC_META_APP_ID!,
+        autoLogAppEvents: true,
+        xfbml: true,
+        version: "v19.0",
+      });
+    };
+
+    if (!document.getElementById("facebook-sdk")) {
+      const script = document.createElement("script");
+      script.id = "facebook-sdk";
+      script.src = "https://connect.facebook.net/pt_BR/sdk.js";
+      script.async = true;
+      script.defer = true;
+      document.body.appendChild(script);
+    }
+
+    // Recebe phone_number_id e waba_id do popup do Embedded Signup
+    const handleMessage = (event: MessageEvent) => {
+      if (event.origin !== "https://www.facebook.com") return;
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === "WA_EMBEDDED_SIGNUP" && data.event === "FINISH") {
+          setConfig(c => ({
+            ...c,
+            meta_phone_id: data.data?.phone_number_id || c.meta_phone_id,
+          }));
+        }
+      } catch {}
+    };
+
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, []);
+
+  const handleMetaEmbeddedSignup = async () => {
+    if (!window.FB) { alert("SDK do Facebook ainda carregando, tente novamente."); return; }
+    setMetaConnecting(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setMetaConnecting(false); return; }
+
+    const redirectUri = `${window.location.origin}/configuracoes`;
+
+    window.FB.login(
+      async (response: any) => {
+        const code = response.authResponse?.code;
+        if (!code) { setMetaConnecting(false); return; }
+        try {
+          const res = await fetch("/api/auth/meta/exchange", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ code, redirectUri }),
+          });
+          const data = await res.json();
+          if (res.ok) {
+            setConfig(c => ({
+              ...c,
+              meta_access_token: data.access_token  || c.meta_access_token,
+              meta_phone_id:     data.phone_number_id || c.meta_phone_id,
+            }));
+            setMetaConnected(true);
+            setTimeout(() => setMetaConnected(false), 4000);
+          } else {
+            alert("Erro ao conectar: " + data.error);
+          }
+        } finally {
+          setMetaConnecting(false);
+        }
+      },
+      {
+        config_id: process.env.NEXT_PUBLIC_META_CONFIG_ID,
+        response_type: "code",
+        override_default_response_type: true,
+        extras: {
+          setup: {},
+          featureType: "",
+          sessionInfoVersion: "2",
+        },
+      },
+    );
+  };
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -469,25 +563,28 @@ export default function ConfiguracoesPage() {
 
               <div className="mt-4 pt-4 border-t border-blue-100">
                 <p className="text-[10px] font-black uppercase tracking-widest text-blue-800 mb-2">
-                  Ou conecte automaticamente via OAuth
+                  Conectar via Embedded Signup
                 </p>
                 <button
                   type="button"
-                  onClick={async () => {
-                    const { data: { user } } = await supabase.auth.getUser();
-                    if (!user) return;
-                    const appId = process.env.NEXT_PUBLIC_META_APP_ID;
-                    if (!appId) { alert("META_APP_ID não configurado"); return; }
-                    const redirectUri = encodeURIComponent(`${window.location.origin}/api/auth/meta/callback`);
-                    const scope = "whatsapp_business_management,whatsapp_business_messaging,public_profile";
-                    window.location.href = `https://www.facebook.com/dialog/oauth?client_id=${appId}&redirect_uri=${redirectUri}&state=${user.id}&scope=${scope}&response_type=code`;
-                  }}
-                  className="w-full py-2.5 rounded-xl font-black uppercase text-[10px] tracking-widest bg-[#1877F2] text-white hover:bg-[#1465d8] transition-colors flex items-center justify-center gap-2"
+                  onClick={handleMetaEmbeddedSignup}
+                  disabled={metaConnecting || metaConnected}
+                  className="w-full py-2.5 rounded-xl font-black uppercase text-[10px] tracking-widest bg-[#1877F2] text-white hover:bg-[#1465d8] disabled:opacity-60 transition-colors flex items-center justify-center gap-2"
                 >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
-                  Conectar com Meta / Facebook
+                  {metaConnecting ? (
+                    <><Loader2 size={14} className="animate-spin" /> Conectando...</>
+                  ) : metaConnected ? (
+                    <><CheckCircle2 size={14} /> Conectado!</>
+                  ) : (
+                    <>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+                      Conectar com Meta / Facebook
+                    </>
+                  )}
                 </button>
-                <p className="text-[10px] text-blue-500 mt-1">Preenche Phone ID e Access Token automaticamente.</p>
+                <p className="text-[10px] text-blue-500 mt-1">
+                  Guia o cliente a criar ou conectar uma WABA e preenche Phone ID + Access Token automaticamente.
+                </p>
               </div>
 
               <label className="text-[10px] font-black uppercase tracking-widest text-blue-800 mt-3 block">
