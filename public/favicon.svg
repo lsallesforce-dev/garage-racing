@@ -1,0 +1,6 @@
+<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="48" height="48" rx="8" fill="#E0130F"/>
+  <text x="3" y="20" font-family="'Barlow Condensed', 'Arial Narrow', sans-serif" font-weight="700" font-size="13" fill="#FAFAF8" letter-spacing="2">AUTO</text>
+  <line x1="0" y1="24" x2="48" y2="26" stroke="#0D0D0F" stroke-width="1.5" opacity="0.4"/>
+  <text x="1" y="46" font-family="'Barlow Condensed', 'Arial Narrow', sans-serif" font-weight="900" font-size="28" fill="#FAFAF8" letter-spacing="-1">ZAP</text>
+</svg>

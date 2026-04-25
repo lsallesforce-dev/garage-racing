@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Zap } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "AutoZap — IA para Revendas de Veículos",
@@ -26,11 +25,14 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
       {/* Navbar */}
       <header className="fixed top-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-md border-b border-gray-100">
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-          <Link href="/portal" className="flex items-center gap-2 group">
-            <div className="w-8 h-8 bg-gray-900 rounded-lg flex items-center justify-center group-hover:bg-red-600 transition-colors">
-              <Zap size={16} className="text-white" fill="white" />
-            </div>
-            <span className="font-black text-lg italic uppercase tracking-tight text-gray-900">AutoZap</span>
+          <Link href="/portal" className="flex items-center">
+            <svg width="90" height="42" viewBox="0 0 240 110" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="0" y="0" width="240" height="48" fill="#E0130F"/>
+              <polygon points="0,42 240,48 240,53 0,47" fill="#0D0D0F" opacity="0.25"/>
+              <text x="8" y="40" fontFamily="'Barlow Condensed','Arial Narrow',sans-serif" fontWeight="700" fontSize="34" fill="#FAFAF8" letterSpacing="28">AUTO</text>
+              <text x="-2" y="108" fontFamily="'Barlow Condensed','Arial Narrow',sans-serif" fontWeight="900" fontSize="72" fill="#0D0D0F" letterSpacing="-3">ZAP</text>
+              <circle cx="106" cy="91" r="5" fill="#E0130F"/>
+            </svg>
           </Link>
 
           <nav className="hidden md:flex items-center gap-8">
@@ -62,11 +64,14 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
         <div className="max-w-6xl mx-auto px-6">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-10 mb-12">
             <div className="md:col-span-2">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 bg-red-600 rounded-lg flex items-center justify-center">
-                  <Zap size={16} className="text-white" fill="white" />
-                </div>
-                <span className="font-black text-xl italic uppercase tracking-tight">AutoZap</span>
+              <div className="mb-4">
+                <svg width="90" height="42" viewBox="0 0 240 110" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="0" y="0" width="240" height="48" fill="#E0130F"/>
+                  <polygon points="0,42 240,48 240,53 0,47" fill="#0D0D0F" opacity="0.35"/>
+                  <text x="8" y="40" fontFamily="'Barlow Condensed','Arial Narrow',sans-serif" fontWeight="700" fontSize="34" fill="#FAFAF8" letterSpacing="28">AUTO</text>
+                  <text x="-2" y="108" fontFamily="'Barlow Condensed','Arial Narrow',sans-serif" fontWeight="900" fontSize="72" fill="#FAFAF8" letterSpacing="-3">ZAP</text>
+                  <circle cx="106" cy="91" r="5" fill="#E0130F"/>
+                </svg>
               </div>
               <p className="text-sm text-gray-400 leading-relaxed max-w-xs">
                 Inteligência artificial para revendas de veículos. Automatize leads, gere vídeos e escale suas vendas.

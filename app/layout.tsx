@@ -11,6 +11,13 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: 'AutoZap | Inteligência Automotiva',
   description: 'Gerencie seu estoque e atendimento automotivo com IA.',
+  icons: {
+    icon: [
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+    ],
+    shortcut: '/favicon.svg',
+    apple: '/favicon.svg',
+  },
 };
 
 export default function RootLayout({
