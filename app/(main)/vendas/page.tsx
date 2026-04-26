@@ -8,6 +8,10 @@ import {
   ArrowUpRight, ArrowDownRight, Car, Contact, FileSignature,
   BarChart3, Lock, LockOpen, Printer, ChevronLeft, ChevronRight,
 } from "lucide-react";
+import {
+  ResponsiveContainer, BarChart, Bar, Line,
+  XAxis, YAxis, CartesianGrid, Tooltip, ComposedChart, Cell,
+} from "recharts";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -1239,6 +1243,7 @@ export default function VendasPage() {
   const [loading,        setLoading]        = useState(true);
   const [filtro,         setFiltro]         = useState<"todos" | "estoque" | "vendido">("todos");
   const [verRelatorios,  setVerRelatorios]  = useState(false);
+  const [verGraficos,    setVerGraficos]    = useState(false);
   const [fechamentoDate, setFechamentoDate] = useState("");
 
   const carregar = useCallback(async () => {
@@ -1323,9 +1328,13 @@ export default function VendasPage() {
                 </h1>
               </div>
               <div className="flex items-center gap-2">
+                <button onClick={() => setVerGraficos(true)}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-full text-[10px] font-black uppercase tracking-widest transition-all">
+                  <BarChart3 size={12} /> Gráficos
+                </button>
                 <button onClick={() => setVerRelatorios(true)}
                   className="flex items-center gap-1.5 px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-full text-[10px] font-black uppercase tracking-widest transition-all">
-                  <BarChart3 size={12} /> Relatórios
+                  <Printer size={12} /> Relatórios
                 </button>
                 <span className={`px-4 py-2 rounded-full text-xs font-black uppercase tracking-widest ${
                   lucroMes >= 0 ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
@@ -1658,6 +1667,193 @@ export default function VendasPage() {
           onClose={() => setVerRelatorios(false)}
         />
       )}
+
+      {verGraficos && (
+        <ModalGraficos
+          veiculos={veiculos}
+          vendedores={vendedores}
+          itensGeral={itensGeral}
+          onClose={() => setVerGraficos(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Modal Gráficos ───────────────────────────────────────────────────────────
+
+function ModalGraficos({
+  veiculos, vendedores, itensGeral, onClose,
+}: {
+  veiculos: Veiculo[];
+  vendedores: Vendedor[];
+  itensGeral: ItemGeral[];
+  onClose: () => void;
+}) {
+  const [fechamentos, setFechs] = useState<Fechamento[]>([]);
+
+  useEffect(() => {
+    fetch("/api/financeiro/fechamento")
+      .then((r) => r.json())
+      .then((d) => setFechs(Array.isArray(d) ? d : []));
+  }, []);
+
+  const mesAtualStr = mesAtual();
+
+  // Monta série: últimos 11 fechamentos + mês atual ao vivo
+  function calcMes(m: string) {
+    const vendidosM = veiculos.filter((v) => v.status_venda === "VENDIDO" && v.data_venda?.startsWith(m));
+    const fat = vendidosM.reduce((s, v) => s + (v.preco_venda_final ?? 0), 0);
+    const custo = vendidosM.reduce((s, v) =>
+      s + (v.preco_compra ?? 0) + (v.despesas ?? []).reduce((d, x) => d + x.valor, 0), 0);
+    const saldoG = itensGeral.filter((i) => i.data?.startsWith(m)).reduce((s, i) =>
+      i.tipo === "receita" ? s + i.valor : s - i.valor, 0);
+    const lucroV = fat - custo;
+    const comissoes = vendedores.reduce((s, vd) => {
+      const lucroVend = vendidosM.filter((v) => v.vendedor_id === vd.id)
+        .reduce((l, v) => l + (v.preco_venda_final ?? 0) - (v.preco_compra ?? 0) - (v.despesas ?? []).reduce((d, x) => d + x.valor, 0), 0);
+      return s + (lucroVend * vd.comissao_pct) / 100;
+    }, 0);
+    const lucroLiq = lucroV + saldoG - comissoes;
+    return { faturamento: fat, custo_total: custo, lucro_liquido: lucroLiq, comissoes, qtd_vendas: vendidosM.length };
+  }
+
+  const mesesComDados = Array.from(new Set([
+    ...veiculos.filter((v) => v.data_venda).map((v) => v.data_venda!.slice(0, 7)),
+    ...itensGeral.filter((i) => i.data).map((i) => i.data.slice(0, 7)),
+    mesAtualStr,
+  ])).sort((a, b) => a.localeCompare(b)).slice(-12);
+
+  const serie = mesesComDados.map((m) => {
+    const fech = fechamentos.find((f) => f.mes === m);
+    const live = calcMes(m);
+    return {
+      label: labelMes(m),
+      faturamento:   fech?.faturamento   ?? live.faturamento,
+      custo_total:   fech?.custo_total   ?? live.custo_total,
+      lucro_liquido: fech?.lucro_liquido ?? live.lucro_liquido,
+      comissoes:     fech?.comissoes     ?? live.comissoes,
+      margem:        (fech?.faturamento ?? live.faturamento) > 0
+        ? ((fech?.lucro_liquido ?? live.lucro_liquido) / (fech?.faturamento ?? live.faturamento)) * 100
+        : 0,
+      ao_vivo: m === mesAtualStr && !fechamentos.find((f) => f.mes === m),
+    };
+  });
+
+  // Ranking all-time
+  const rankMap = new Map<string, { nome: string; qtd: number; faturamento: number; comissao: number }>();
+  veiculos.filter((v) => v.status_venda === "VENDIDO" && v.vendedor_id).forEach((v) => {
+    const vd = vendedores.find((x) => x.id === v.vendedor_id);
+    if (!vd) return;
+    const prev = rankMap.get(vd.id) ?? { nome: vd.nome, qtd: 0, faturamento: 0, comissao: 0 };
+    const lucroV = (v.preco_venda_final ?? 0) - (v.preco_compra ?? 0) - (v.despesas ?? []).reduce((s, d) => s + d.valor, 0);
+    rankMap.set(vd.id, { nome: vd.nome, qtd: prev.qtd + 1, faturamento: prev.faturamento + (v.preco_venda_final ?? 0), comissao: prev.comissao + lucroV * vd.comissao_pct / 100 });
+  });
+  const ranking = Array.from(rankMap.values()).sort((a, b) => b.faturamento - a.faturamento);
+
+  function CustomTooltip({ active, payload, label }: any) {
+    if (!active || !payload?.length) return null;
+    return (
+      <div className="bg-gray-900 text-white rounded-2xl px-4 py-3 shadow-xl text-xs">
+        <p className="font-black uppercase tracking-widest text-gray-400 mb-2">{label}</p>
+        {payload.map((p: any) => (
+          <div key={p.dataKey} className="flex items-center gap-2 mb-1">
+            <span className="w-2 h-2 rounded-full" style={{ background: p.fill || p.stroke }} />
+            <span className="text-gray-300">{p.name}:</span>
+            <span className="font-black">
+              {p.name?.includes("%") ? `${Number(p.value).toFixed(1)}%` : fmt(p.value)}
+            </span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-[#f4f4f2] rounded-[2.5rem] w-full max-w-5xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-8 py-5 bg-white border-b border-gray-100 flex-shrink-0">
+          <div>
+            <p className="text-sm font-black uppercase italic tracking-tight text-gray-900">Painel Financeiro</p>
+            <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mt-0.5">Histórico e tendências</p>
+          </div>
+          <button onClick={onClose} className="w-9 h-9 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors">
+            <X size={14} className="text-gray-600" />
+          </button>
+        </div>
+
+        {/* Conteúdo */}
+        <div className="overflow-y-auto flex-1 p-6 space-y-6">
+
+          {/* Gráfico 1: Lucro líquido */}
+          <div className="bg-white rounded-[2rem] border border-gray-100 p-6">
+            <p className="text-xs font-black uppercase italic tracking-tight text-gray-900 mb-1">Lucro Líquido por Mês</p>
+            <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-5">Barra vermelha = mês atual ao vivo</p>
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={serie} barSize={28}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
+                <XAxis dataKey="label" tick={{ fontSize: 10, fontWeight: 700, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
+                <YAxis tickFormatter={fmt} tick={{ fontSize: 10, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={70} />
+                <Tooltip content={<CustomTooltip />} cursor={{ fill: "#f9fafb" }} />
+                <Bar dataKey="lucro_liquido" name="Lucro Líquido" radius={[6, 6, 0, 0]}>
+                  {serie.map((e, i) => <Cell key={i} fill={e.ao_vivo ? "#E0130F" : "#e2e8f0"} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Gráfico 2: Faturamento vs Custo + Margem */}
+          <div className="bg-white rounded-[2rem] border border-gray-100 p-6">
+            <p className="text-xs font-black uppercase italic tracking-tight text-gray-900 mb-1">Faturamento vs Custo</p>
+            <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-5">Linha = margem % (eixo direito)</p>
+            <ResponsiveContainer width="100%" height={240}>
+              <ComposedChart data={serie}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
+                <XAxis dataKey="label" tick={{ fontSize: 10, fontWeight: 700, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
+                <YAxis yAxisId="left" tickFormatter={fmt} tick={{ fontSize: 10, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={70} />
+                <YAxis yAxisId="right" orientation="right" tickFormatter={(v) => `${v.toFixed(0)}%`} tick={{ fontSize: 10, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={40} />
+                <Tooltip content={<CustomTooltip />} cursor={{ fill: "#f9fafb" }} />
+                <Bar yAxisId="left" dataKey="faturamento" name="Faturamento" fill="#0f172a" radius={[4, 4, 0, 0]} barSize={18} />
+                <Bar yAxisId="left" dataKey="custo_total" name="Custo Total" fill="#fca5a5" radius={[4, 4, 0, 0]} barSize={18} />
+                <Line yAxisId="right" type="monotone" dataKey="margem" name="Margem %" stroke="#E0130F" strokeWidth={2} dot={{ r: 3, fill: "#E0130F" }} strokeDasharray="4 2" />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Ranking de vendedores */}
+          {ranking.length > 0 && (
+            <div className="bg-white rounded-[2rem] border border-gray-100 p-6">
+              <p className="text-xs font-black uppercase italic tracking-tight text-gray-900 mb-5">Ranking de Vendedores — acumulado total</p>
+              <table className="w-full">
+                <thead>
+                  <tr>
+                    {["#", "Vendedor", "Vendas", "Faturamento", "Comissão"].map((h) => (
+                      <th key={h} className="text-left text-[8px] font-black uppercase tracking-widest text-gray-400 pb-3 pr-4">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {ranking.map((v, i) => (
+                    <tr key={v.nome} className="border-t border-gray-50">
+                      <td className="py-3 pr-4">
+                        <span className={`w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-black ${i === 0 ? "bg-amber-400 text-white" : i === 1 ? "bg-gray-300 text-gray-700" : i === 2 ? "bg-orange-300 text-white" : "bg-gray-100 text-gray-500"}`}>{i + 1}</span>
+                      </td>
+                      <td className="py-3 pr-4 font-black text-sm text-gray-900">{v.nome}</td>
+                      <td className="py-3 pr-4 text-sm font-bold text-gray-600">{v.qtd}</td>
+                      <td className="py-3 pr-4 text-sm font-bold text-gray-700">{fmt(v.faturamento)}</td>
+                      <td className="py-3">
+                        <span className="px-3 py-1 bg-green-50 border border-green-100 rounded-xl text-[10px] font-black text-green-700">{fmt(v.comissao)}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+        </div>
+      </div>
     </div>
   );
 }

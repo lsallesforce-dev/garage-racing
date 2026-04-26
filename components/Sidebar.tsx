@@ -11,7 +11,6 @@ const adminMenuItems = [
   { icon: Car, label: "Estoque Inteligente", href: "/estoque" },
   { icon: MessageSquare, label: "Central de Chat", href: "/chat" },
   { icon: DollarSign,  label: "Vendas / Financeiro", href: "/vendas" },
-  { icon: BarChart3,   label: "Painel Financeiro",  href: "/financeiro" },
   { icon: Contact, label: "Clientes", href: "/clientes" },
   { icon: FileSignature, label: "Contratos", href: "/contratos" },
   { icon: Users, label: "Equipe de Vendas", href: "/vendedores" },
