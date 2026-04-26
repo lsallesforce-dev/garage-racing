@@ -5,15 +5,19 @@ import { createSupabaseServerClient } from "@/lib/supabase-server";
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 export async function POST(req: NextRequest) {
-  const supabase = await createSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { nome_empresa, nome_usuario, email: bodyEmail } = await req.json();
 
-  const { nome_empresa, nome_usuario } = await req.json();
+  let toEmail = bodyEmail;
+  if (!toEmail) {
+    const supabase = await createSupabaseServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    toEmail = user.email;
+  }
 
   const { error } = await resend.emails.send({
     from: process.env.RESEND_FROM ?? "AutoZap <autozap@autozap.digital>",
-    to: user.email!,
+    to: toEmail,
     subject: `Bem-vindo à AutoZap, ${nome_empresa}! 🚗`,
     html: `
 <!DOCTYPE html>

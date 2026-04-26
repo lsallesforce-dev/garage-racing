@@ -109,7 +109,11 @@ function OnboardingInner() {
       fetch("/api/email/boas-vindas", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nome_empresa: form.nome_empresa }),
+        body: JSON.stringify({
+          nome_empresa: form.nome_empresa,
+          nome_usuario:  account.nome,
+          email:         account.email,
+        }),
       }).catch(() => {});
 
       router.push("/upload");
