@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { useUserRole } from "@/components/SidebarWrapper";
 import {
   Send, MessageSquare, Phone, Bot, ArrowLeft,
-  Search, User, Zap, ChevronDown,
+  Search, User, Zap, ChevronDown, Trash2,
 } from "lucide-react";
 
 type UltimaMensagem = {
@@ -216,6 +216,16 @@ export default function CentralChat() {
     });
     setSelectedLead((prev) => prev ? { ...prev, em_atendimento_humano: false } : prev);
     carregarLeads();
+  };
+
+  const excluirConversa = async () => {
+    if (!selectedLead) return;
+    if (!confirm(`Excluir conversa com ${selectedLead.nome || selectedLead.wa_id}? Esta ação não pode ser desfeita.`)) return;
+    await supabase.from("mensagens").delete().eq("lead_id", selectedLead.id);
+    await supabase.from("leads").delete().eq("id", selectedLead.id);
+    setLeads(prev => prev.filter(l => l.id !== selectedLead.id));
+    setSelectedLead(null);
+    setMensagens([]);
   };
 
   const enviar = async () => {
@@ -476,6 +486,14 @@ export default function CentralChat() {
                   </button>
                 </div>
               )}
+
+              <button
+                onClick={excluirConversa}
+                className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-red-600 hover:text-white text-gray-400 text-[9px] font-black uppercase rounded-xl transition-all whitespace-nowrap"
+                title="Excluir conversa"
+              >
+                <Trash2 size={13} />
+              </button>
 
               <a
                 href={`https://wa.me/${selectedLead.wa_id}`}
