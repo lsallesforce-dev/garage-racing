@@ -633,26 +633,6 @@ export default function ConfiguracoesPage() {
               />
             </div>
 
-            {webhookToken && (
-              <div className="flex flex-col gap-1.5 mt-2 bg-green-50/60 p-4 border border-green-100 rounded-2xl">
-                <p className="text-[10px] font-black uppercase tracking-widest text-green-800 mb-1">
-                  AvisaAPI — Token do Webhook
-                </p>
-                <p className="text-[10px] text-green-700 mb-2">
-                  Cole na URL do webhook na plataforma Avisa:{" "}
-                  <span className="font-mono font-bold">https://autozap.digital/api/webhook/avisa?token=SEU_TOKEN</span>
-                </p>
-                <div className="flex items-center gap-2">
-                  <code className="flex-1 bg-white border border-green-200 rounded-xl px-4 py-2.5 font-mono text-xs text-gray-700 truncate">
-                    {webhookToken}
-                  </code>
-                  <button type="button" onClick={() => copyToClipboard(webhookToken, "wtoken")}
-                    className="shrink-0 flex items-center gap-1.5 px-3 py-2.5 bg-green-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-green-500 transition-colors">
-                    {copied === "wtoken" ? <><CheckCircle2 size={12} /> Copiado!</> : <><Copy size={12} /> Copiar</>}
-                  </button>
-                </div>
-              </div>
-            )}
 
             <div className="flex flex-col gap-4 mt-2 bg-amber-50/60 p-4 border border-amber-100 rounded-2xl">
               <div>
