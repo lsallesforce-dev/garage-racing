@@ -185,7 +185,7 @@ export default function ListaEstoque() {
                             href={`/veiculo/${carro.id}`}
                             className="flex items-center gap-2 px-4 py-3 md:px-8 md:py-4 bg-slate-900 text-white text-[10px] font-black uppercase italic rounded-2xl hover:bg-red-600 transition-all tracking-widest shadow-lg shadow-slate-200"
                         >
-                            <Zap size={14} className="fill-white" /> <span className="hidden sm:inline">Business / </span>IA Insights
+                            <Zap size={14} className="fill-white" /> Painel do Carro
                         </Link>
                     </div>
                 </div>
