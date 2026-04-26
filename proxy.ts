@@ -163,7 +163,7 @@ export async function proxy(request: NextRequest) {
   // Usuário logado tentando acessar /login → redireciona para o painel
   if (user && pathname === "/login") {
     const homeUrl = request.nextUrl.clone();
-    homeUrl.pathname = "/";
+    homeUrl.pathname = "/dashboard";
     return NextResponse.redirect(homeUrl);
   }
 
