@@ -145,6 +145,11 @@ export async function proxy(request: NextRequest) {
 
   // Rotas públicas — sem login obrigatório
   const isPublic =
+    pathname === "/" ||
+    pathname.startsWith("/planos") ||
+    pathname.startsWith("/sobre") ||
+    pathname.startsWith("/privacidade") ||
+    pathname.startsWith("/termos") ||
     pathname.startsWith("/login") ||
     pathname.startsWith("/vitrine") ||
     pathname.startsWith("/loja-nao-encontrada") ||
