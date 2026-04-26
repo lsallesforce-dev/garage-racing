@@ -100,7 +100,7 @@ export default function PortalHome() {
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4">
-            <Link href="/portal/planos"
+            <Link href="/planos"
               className="inline-flex items-center gap-3 px-8 py-4 bg-red-600 text-white rounded-2xl font-black uppercase tracking-widest text-sm hover:bg-red-500 transition-all hover:gap-4 group">
               Começar grátis
               <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
@@ -237,7 +237,7 @@ export default function PortalHome() {
             Comece grátis hoje. Sem cartão de crédito. Em 10 minutos você já tem a IA trabalhando no seu pátio.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link href="/portal/planos"
+            <Link href="/planos"
               className="inline-flex items-center justify-center gap-3 px-8 py-4 bg-white text-red-600 rounded-2xl font-black uppercase tracking-widest text-sm hover:bg-gray-100 transition-colors">
               Ver planos e preços
               <ArrowRight size={16} />

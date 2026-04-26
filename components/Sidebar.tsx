@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
 const adminMenuItems = [
-  { icon: LayoutDashboard, label: "Pátio Digital", href: "/" },
+  { icon: LayoutDashboard, label: "Pátio Digital", href: "/dashboard" },
   { icon: Car, label: "Estoque Inteligente", href: "/estoque" },
   { icon: MessageSquare, label: "Central de Chat", href: "/chat" },
   { icon: DollarSign,  label: "Vendas / Financeiro", href: "/vendas" },

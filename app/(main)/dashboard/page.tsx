@@ -2,235 +2,202 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import Link from "next/link";
-import { StatsCard } from "@/components/StatsCard";
-import { Vehicle } from "@/types/vehicle";
-import { Car, Users, TrendingUp, ShieldCheck, ArrowRight, Search, Bell, Plus, PlusCircle } from "lucide-react";
+import { Flame, TrendingUp, Users, Car, Zap, Brain, LayoutDashboard } from "lucide-react";
+import { useRouter } from "next/navigation";
 
-export default function DashboardPage() {
-  const [veiculos, setVeiculos] = useState<Vehicle[]>([]);
+export default function Dashboard() {
+  const router = useRouter();
   const [stats, setStats] = useState({
-    total_estoque: 0,
-    total_leads: 0,
-    leads_quentes: 0,
-    respostas_ia: 0,
+    faturamento: 0,
+    leadsTotais: 0,
+    eficienciaIA: 0,
+    carrosPatio: 0,
+    frios: 0,
+    mornos: 0,
+    quentes: 0
   });
+  const [atividades, setAtividades] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [nomeEmpresa, setNomeEmpresa] = useState("");
+
+  // Flash: Função que puxa a realidade do banco de dados
+  const carregarDashboard = async () => {
+    setLoading(true);
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        const uid = user?.id;
+        if (!uid) return;
+
+        // 1. Faturamento (Soma de carros VENDIDOS)
+        const { data: vendidos } = await supabase.from('veiculos').select('preco_sugerido').eq('status_venda', 'VENDIDO').eq('user_id', uid);
+        const totalFaturado = vendidos?.reduce((acc, curr) => acc + Number(curr.preco_sugerido || 0), 0) || 0;
+
+        // 2. Leads e Temperaturas
+        const { data: leads } = await supabase.from('leads').select('status').eq('user_id', uid);
+        const contagem = {
+        total: leads?.length || 0,
+        frios: leads?.filter(l => l.status === 'FRIO').length || 0,
+        mornos: leads?.filter(l => l.status === 'MORNO').length || 0,
+        quentes: leads?.filter(l => l.status === 'QUENTE').length || 0,
+        };
+
+        // 3. Carros no Pátio (DISPONÍVEIS)
+        const { count: totalPatio } = await supabase
+            .from('veiculos')
+            .select('*', { count: 'exact', head: true })
+            .eq('user_id', uid)
+            .or('status_venda.eq.DISPONIVEL,status_venda.is.null');
+
+        // 4. Atividades Recentes (Movimentação)
+        const { data: recents } = await supabase
+        .from('leads')
+        .select('*, veiculos(modelo)')
+        .eq('user_id', uid)
+        .order('updated_at', { ascending: false })
+        .limit(5);
+
+        setStats({
+        faturamento: totalFaturado,
+        leadsTotais: contagem.total,
+        eficienciaIA: contagem.total > 0 ? Math.round((contagem.quentes / contagem.total) * 100) : 0,
+        carrosPatio: totalPatio || 0,
+        frios: contagem.frios,
+        mornos: contagem.mornos,
+        quentes: contagem.quentes
+        });
+        if (recents) setAtividades(recents);
+    } catch (error) {
+        console.error("Flash Error:", error);
+    } finally {
+        setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    async function fetchData() {
-      setLoading(true);
-      try {
-        const { data: vData } = await supabase
-          .from("veiculos")
-          .select("*")
-          .order("created_at", { ascending: false });
-        
-        setVeiculos(vData || []);
-
-        const { data: sData } = await supabase
-          .from("dashboard_summary")
-          .select("*")
-          .single();
-        
-        if (sData) setStats(sData);
-
-      } catch (error) {
-        console.error("Error fetching dashboard data:", error);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchData();
-
-    const channel = supabase
-      .channel("dashboard-vendas")
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "veiculos" }, () => {
-        fetchData();
-      })
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
+    carregarDashboard();
+    // Carrega nome da empresa para o greeting
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      supabase
+        .from("config_garage")
+        .select("nome_empresa")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .then(({ data }) => {
+          const row = data?.[0];
+          if (row?.nome_empresa) setNomeEmpresa(row.nome_empresa);
+        });
+    });
   }, []);
 
   return (
-    <main className="flex-1 p-10 bg-[#efefed]">
-      {/* 🏆 Header Profissional */}
-      <header className="flex justify-between items-center mb-10 pb-6 border-b border-gray-200">
-        <div>
-          <h1 className="text-4xl font-black uppercase tracking-tighter italic text-gray-900">Analytics Dashboard</h1>
-          <p className="text-gray-400 uppercase tracking-widest text-[10px] font-bold">AutoZap • Performance Intelligence</p>
-        </div>
-
-        <div className="flex items-center gap-4 text-gray-400">
-          <Search size={20} className="cursor-pointer hover:text-gray-600 transition-colors" />
-          <Bell size={20} className="cursor-pointer hover:text-gray-600 transition-colors" />
-        </div>
-      </header>
-
-      {/* KPI Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 mb-10">
-        <StatsCard title="Total Vehicles" value={veiculos.length} change={20} timeframe="vs last month" />
-        <StatsCard title="Total Sold" value={Math.floor(veiculos.length * 0.15)} change={12} timeframe="vs last month" />
-        <StatsCard title="Total Earned" value={`R$ ${(veiculos.length * 125000).toLocaleString()}`} change={6} timeframe="vs last month" />
-        <StatsCard title="Clicked" value={121} change={2} isNegative timeframe="vs last month" />
-        <StatsCard title="Conversion" value="6%" change={10} timeframe="vs last month" />
-      </div>
-
-      {/* Main Content Sections (Middle Row) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-10">
-        {/* Most Viewed Vehicles Chart Placeholder */}
-        <div className="lg:col-span-2 bg-white rounded-[2.5rem] border border-gray-100 p-8 shadow-sm h-[400px] flex flex-col">
-          <div className="flex justify-between items-center mb-8">
-            <h3 className="text-[11px] font-black uppercase text-gray-400 tracking-widest flex items-center gap-2">
-              Most Viewed Vehicles
-              <span className="text-[#d65243] text-[10px] lowercase font-bold cursor-pointer hover:underline">Expand</span>
-            </h3>
-            <div className="flex gap-4">
-                <div className="flex items-center gap-2 text-[10px] font-bold text-gray-400">
-                  <div className="w-2 h-2 rounded-full bg-blue-400"></div>
-                  Mercedes-Benz GLC
-                </div>
-                <div className="flex items-center gap-2 text-[10px] font-bold text-gray-400">
-                  <div className="w-2 h-2 rounded-full bg-yellow-400"></div>
-                  BMW X4
-                </div>
+    <div className="p-4 md:p-8 bg-[#f4f4f2] min-h-screen font-sans overflow-y-auto w-full">
+      <div className="max-w-7xl mx-auto">
+        {/* Flash: Header com Título e Botões de Ação */}
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4 mb-8 md:mb-12">
+            <div>
+            <h1 className="text-3xl md:text-6xl font-black italic uppercase text-gray-300/80 leading-none mb-2 tracking-tighter">Radar do Pátio</h1>
+            <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-gray-400">Bem-vindo à {nomeEmpresa || "AutoZap"}, Comandante.</p>
             </div>
-          </div>
-          
-          <div className="flex-1 flex items-end gap-1 px-4 pb-4">
-             {/* Mock Wave Chart using CSS spikes/divs */}
-             {Array.from({length: 40}).map((_, i) => (
-               <div key={i} className="flex-1 space-y-1 group relative">
-                 <div 
-                   className="w-full bg-blue-100/50 group-hover:bg-blue-200 transition-all rounded-t-sm" 
-                   style={{ height: `${20 + Math.sin(i * 0.5) * 15 + Math.random() * 20}%` }}
-                 ></div>
-                 <div 
-                   className="w-full bg-yellow-100/50 group-hover:bg-yellow-200 transition-all rounded-t-sm" 
-                   style={{ height: `${10 + Math.cos(i * 0.3) * 10 + Math.random() * 15}%` }}
-                 ></div>
-               </div>
-             ))}
-          </div>
-          <div className="flex justify-between px-4 pt-4 border-t border-gray-50 text-[9px] font-black text-gray-300 uppercase tracking-widest">
-            <span>01</span><span>05</span><span>10</span><span>15</span><span>20</span><span>25</span><span>30</span>
-          </div>
         </div>
 
-        {/* Chat / Inbox Section */}
-        <div className="bg-white rounded-[2.5rem] border border-gray-100 p-8 shadow-sm h-[400px] flex flex-col">
-          <div className="flex justify-between items-center mb-8">
-            <h3 className="text-[11px] font-black uppercase text-gray-400 tracking-widest flex items-center gap-2">
-              Conversas IA
-              <span className="text-[#d65243] text-[10px] lowercase font-bold cursor-pointer hover:underline">View All</span>
-            </h3>
-            <Search size={14} className="text-gray-300" />
-          </div>
+        {/* Flash: Cards de Performance (Telemetria) */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mb-8">
+            <div className="bg-slate-900 p-5 md:p-8 rounded-[2rem] md:rounded-[2.5rem] text-white shadow-2xl relative overflow-hidden group col-span-2 md:col-span-1">
+            <div className="absolute -right-4 -top-4 text-white/5 group-hover:text-white/10 transition-colors">
+                <TrendingUp size={120} />
+            </div>
+            <p className="text-[9px] font-black uppercase tracking-widest text-gray-500 mb-1">Faturamento (Pátio)</p>
+            <h4 className="text-3xl font-black italic tracking-tighter">
+                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', notation: 'compact' }).format(stats.faturamento)}
+            </h4>
+            <p className="text-[9px] text-green-400 font-bold uppercase mt-2 italic">↑ Performance Estável</p>
+            </div>
+            
+            <div className="bg-white p-5 md:p-8 rounded-[2rem] md:rounded-[2.5rem] border border-gray-100 shadow-sm hover:shadow-lg transition-all">
+            <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Eficiencia IA (Lucas)</p>
+            <h4 className="text-3xl md:text-4xl font-black italic tracking-tighter">{stats.eficienciaIA}%</h4>
+            <p className="text-[9px] text-slate-900 font-bold uppercase mt-2 italic">Conversão p/ Quente</p>
+            </div>
 
-          <div className="space-y-6 flex-1 overflow-y-auto pr-2">
-            {[
-              { name: "Heidi Kane", msg: "Where can I come to see this car?", time: "5 minutes ago", id: "#1568444", unread: 3 },
-              { name: "Oliver Kramp", msg: "Hello, what is the terms for car financing?", time: "18 minutes ago", id: "#1560306", unread: 1 },
-              { name: "Bruce Adams", msg: "I agree. When can you make a deal?", time: "30 minutes ago", id: "#1564268", unread: 1 },
-              { name: "Jane Shevchenko", msg: "I need some information about the car!", time: "Yesterday", id: "#1562147", unread: 1 },
-            ].map((chat, i) => (
-              <div key={i} className="flex gap-4 group cursor-pointer hover:bg-gray-50 p-2 -m-2 rounded-xl transition-all">
-                <div className="w-10 h-10 rounded-xl bg-gray-100 flex-shrink-0 flex items-center justify-center font-bold text-gray-400 text-xs shadow-inner uppercase">
-                  {chat.name.split(' ').map(n => n[0]).join('')}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex justify-between items-start mb-0.5">
-                    <p className="text-[11px] font-black text-gray-900 truncate uppercase">{chat.name}</p>
-                    <span className="text-[9px] font-bold text-gray-300 whitespace-nowrap ml-2 uppercase leading-none">{chat.time}</span>
-                  </div>
-                  <p className="text-[9px] text-gray-400 font-bold mb-1 uppercase tracking-tight">{chat.id}</p>
-                  <p className="text-[10px] text-gray-500 truncate leading-snug">{chat.msg}</p>
-                </div>
-                <div className="flex flex-col justify-end">
-                   {chat.unread > 0 && (
-                     <span className="bg-[#d65243] text-white text-[8px] font-black w-4 h-4 flex items-center justify-center rounded-sm">
-                       {chat.unread}
-                     </span>
-                   )}
-                </div>
-              </div>
-            ))}
-          </div>
+            <div className="bg-white p-5 md:p-8 rounded-[2rem] md:rounded-[2.5rem] border border-gray-100 shadow-sm hover:shadow-lg transition-all">
+            <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Total de Leads</p>
+            <h4 className="text-3xl md:text-4xl font-black italic tracking-tighter">{stats.leadsTotais}</h4>
+            <p className="text-[9px] text-blue-500 font-bold uppercase mt-2 italic">Novas Oportunidades</p>
+            </div>
+
+            <div className="bg-white p-5 md:p-8 rounded-[2rem] md:rounded-[2.5rem] border border-gray-100 shadow-sm hover:shadow-lg transition-all">
+            <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Carros em Pátio</p>
+            <h4 className="text-3xl md:text-4xl font-black italic tracking-tighter">{stats.carrosPatio}</h4>
+            <p className="text-[9px] text-orange-500 font-bold uppercase mt-2 italic">Giro de Estoque</p>
+            </div>
         </div>
+
+        {/* Flash: Termômetro de Leads */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+            <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 hover:shadow-md transition-all">
+            <p className="text-[10px] font-black uppercase text-blue-500 mb-1 tracking-widest">Leads Frios</p>
+            <h4 className="text-3xl font-black italic tracking-tighter">{stats.frios}</h4>
+            <p className="text-[9px] text-gray-400 font-bold uppercase mt-2">Apenas Curiosos</p>
+            </div>
+            <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 hover:shadow-md transition-all">
+            <p className="text-[10px] font-black uppercase text-amber-500 mb-1 tracking-widest">Interesse Real</p>
+            <h4 className="text-3xl font-black italic tracking-tighter">{stats.mornos}</h4>
+            <p className="text-[9px] text-gray-400 font-bold uppercase mt-2">Simulando Troca</p>
+            </div>
+            <div className="bg-white p-8 rounded-[2.5rem] border-2 border-red-100 bg-red-50/20 hover:scale-[1.02] transition-all">
+            <p className="text-[10px] font-black uppercase text-red-600 mb-1 tracking-widest text-left">🔥 Oportunidade</p>
+            <h4 className="text-3xl font-black italic text-red-600 tracking-tighter">{stats.quentes}</h4>
+            <p className="text-[9px] text-red-600/60 font-bold uppercase mt-2">Visita Agendada</p>
+            </div>
+        </div>
+
+        {/* Flash: Movimentação ao Vivo */}
+        <div className="bg-white p-10 rounded-[3rem] border border-gray-100 shadow-sm">
+            <div className="flex justify-between items-center mb-8">
+            <h3 className="text-2xl font-black uppercase italic text-gray-300">Movimentação no Pátio</h3>
+            <span className="flex items-center gap-2 text-[10px] font-black text-red-600 uppercase tracking-widest">
+                <span className="w-2 h-2 bg-red-600 rounded-full animate-ping"></span> Ao Vivo
+            </span>
+            </div>
+
+            <div className="grid gap-3">
+            {!loading ? (
+                atividades.length > 0 ? atividades.map((lead) => (
+                    <div key={lead.id} className="flex flex-col md:flex-row md:items-center justify-between p-6 hover:bg-gray-50/50 rounded-3xl transition-all border border-transparent hover:border-gray-100 group">
+                    <div className="flex items-center gap-6 min-w-[200px]">
+                        <div className={`w-3 h-3 rounded-full ${lead.status === 'QUENTE' ? 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]' : 'bg-blue-400'}`}></div>
+                        <div>
+                        <p className="text-sm font-black uppercase tracking-tight">{lead.nome || "Lead Interessado"}</p>
+                        <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">De olho: <span className="text-red-600">{lead.veiculos?.modelo || "Maquinário"}</span></p>
+                        </div>
+                    </div>
+                    <p className="text-sm text-gray-500 italic flex-1 md:px-12 py-3 md:py-0 truncate max-w-[500px]">
+                        "{lead.resumo_negociacao || "O Lucas (IA) está qualificando o interesse..."}"
+                    </p>
+                    <button
+                        onClick={() => router.push(`/chat?wa_id=${lead.wa_id}`)}
+                        className="px-6 py-3 bg-slate-100 rounded-2xl text-[9px] font-black uppercase hover:bg-red-600 hover:text-white transition-all tracking-widest"
+                    >
+                        Detalhes
+                    </button>
+                    </div>
+                )) : (
+                    <div className="py-20 text-center bg-gray-50/50 rounded-3xl border-2 border-dashed border-gray-100 flex flex-col items-center">
+                        <Zap size={32} className="text-gray-200 mb-4" />
+                        <p className="text-[10px] text-gray-300 uppercase font-black tracking-[0.2em]">Aguardando as primeiras interações da IA hoje...</p>
+                    </div>
+                )
+            ) : (
+                <div className="py-20 text-center flex flex-col items-center">
+                    <div className="w-8 h-8 border-4 border-gray-100 border-t-red-600 rounded-full animate-spin mb-4"></div>
+                </div>
+            )}
+            </div>
+        </div>
+
       </div>
-
-      {/* Bottom Row - Reviews & Inventory Preview */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Statistics Area */}
-        <div className="lg:col-span-2 bg-white rounded-[2.5rem] border border-gray-100 p-8 shadow-sm h-[350px]">
-           <div className="flex justify-between items-center mb-8">
-              <h3 className="text-[11px] font-black uppercase text-gray-400 tracking-widest flex items-center gap-2">
-                Tendências de Compra
-                <span className="text-[#d65243] text-[10px] lowercase font-bold cursor-pointer hover:underline">Expand</span>
-              </h3>
-              <div className="flex gap-4">
-                <span className="text-[10px] font-black text-gray-300 uppercase">Compare</span>
-                <span className="text-[10px] font-black text-gray-300 uppercase">Sep 2025</span>
-              </div>
-           </div>
-           
-           <div className="flex items-end h-40 gap-4 justify-between px-10">
-              {Array.from({length: 12}).map((_, i) => (
-                <div key={i} className="flex flex-col items-center gap-1 group">
-                   <div className="w-0.5 bg-gray-100 group-hover:bg-red-200 transition-all rounded-full relative" style={{ height: `${40 + Math.random() * 60}px` }}>
-                      <div className="absolute -top-1 -left-1 w-2.5 h-2.5 rounded-full bg-blue-400 border-2 border-white shadow-sm"></div>
-                      <div className="absolute -bottom-1 -left-1 w-2.5 h-2.5 rounded-full bg-yellow-400 border-2 border-white shadow-sm"></div>
-                   </div>
-                </div>
-              ))}
-           </div>
-        </div>
-
-        {/* Reviews Section */}
-        <div className="bg-white rounded-[2.5rem] border border-gray-100 p-8 shadow-sm h-[350px]">
-          <div className="flex justify-between items-center mb-8">
-              <h3 className="text-[11px] font-black uppercase text-gray-400 tracking-widest flex items-center gap-2">
-                Satisfação
-                <span className="text-[#d65243] text-[10px] lowercase font-bold cursor-pointer hover:underline">View All</span>
-              </h3>
-              <div className="flex items-center gap-1">
-                 <span className="text-sm font-black text-gray-900">4.4</span>
-                 <div className="flex gap-0.5">
-                   {[1,2,3,4,5].map(s => <div key={s} className={`w-2.5 h-2.5 rounded-full ${s <= 4 ? 'bg-yellow-400' : 'bg-gray-100'}`}></div>)}
-                 </div>
-              </div>
-           </div>
-
-           <div className="grid grid-cols-3 gap-2 mb-8">
-              <div className="bg-gray-50/50 p-4 rounded-xl flex flex-col items-center">
-                 <p className="text-[14px] font-black text-gray-900">399</p>
-                 <p className="text-[7px] font-black text-gray-300 uppercase mt-1">Total</p>
-              </div>
-              <div className="bg-gray-50/50 p-4 rounded-xl flex flex-col items-center">
-                 <p className="text-[14px] font-black text-gray-900">300</p>
-                 <p className="text-[7px] font-black text-gray-300 uppercase mt-1">Respondidas</p>
-              </div>
-              <div className="bg-gray-50/50 p-4 rounded-xl flex flex-col items-center">
-                 <p className="text-[14px] font-black text-gray-900">21</p>
-                 <p className="text-[7px] font-black text-gray-300 uppercase mt-1">Novas</p>
-              </div>
-           </div>
-
-           <div className="space-y-3">
-              {[84, 10, 4, 1, 1].map((p, i) => (
-                <div key={i} className="flex items-center gap-3">
-                   <span className="text-[9px] font-black text-gray-300 w-3">{5-i}</span>
-                   <div className="flex-1 h-1.5 bg-gray-50 rounded-full overflow-hidden">
-                      <div className="h-full bg-yellow-400" style={{ width: `${p}%` }}></div>
-                   </div>
-                   <span className="text-[9px] font-black text-gray-300 w-6 text-right">{p}%</span>
-                </div>
-              ))}
-           </div>
-        </div>
-      </div>
-    </main>
+    </div>
   );
 }

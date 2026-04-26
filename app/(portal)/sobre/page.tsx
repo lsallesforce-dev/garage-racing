@@ -152,7 +152,7 @@ export default function SobrePage() {
           <p className="text-gray-400 mb-8 text-lg">
             Junte-se às revendas que já trabalham com IA. 14 dias grátis, sem compromisso.
           </p>
-          <Link href="/portal/planos"
+          <Link href="/planos"
             className="inline-flex items-center gap-3 px-8 py-4 bg-red-600 text-white rounded-2xl font-black uppercase tracking-widest text-sm hover:bg-red-500 transition-all hover:gap-4 group">
             Ver planos
             <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />

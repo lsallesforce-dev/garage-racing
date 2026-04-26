@@ -14,9 +14,9 @@ export const metadata: Metadata = {
 };
 
 const navLinks = [
-  { href: "/portal#funcionalidades", label: "Funcionalidades" },
-  { href: "/portal/sobre",           label: "Sobre"            },
-  { href: "/portal/planos",          label: "Planos"           },
+  { href: "/#funcionalidades", label: "Funcionalidades" },
+  { href: "/sobre",           label: "Sobre"            },
+  { href: "/planos",          label: "Planos"           },
 ];
 
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
@@ -25,7 +25,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
       {/* Navbar */}
       <header className="fixed top-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-md border-b border-gray-100">
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-          <Link href="/portal" className="flex items-center">
+          <Link href="/" className="flex items-center">
             <svg width="90" height="42" viewBox="0 0 240 110" fill="none" xmlns="http://www.w3.org/2000/svg">
               <rect x="0" y="0" width="240" height="48" fill="#E0130F"/>
               <polygon points="0,42 240,48 240,53 0,47" fill="#0D0D0F" opacity="0.25"/>
@@ -49,7 +49,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
               className="hidden md:block text-[11px] font-black uppercase tracking-widest text-gray-500 hover:text-gray-900 transition-colors px-4 py-2">
               Entrar
             </Link>
-            <Link href="/portal/planos"
+            <Link href="/planos"
               className="px-5 py-2 bg-gray-900 text-white rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-red-600 transition-colors">
               Começar grátis
             </Link>
@@ -81,9 +81,9 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
               <p className="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-4">Produto</p>
               <ul className="space-y-2">
                 {[
-                  ["Funcionalidades", "/portal#funcionalidades"],
-                  ["Planos e Preços",  "/portal/planos"],
-                  ["Sobre nós",        "/portal/sobre"],
+                  ["Funcionalidades", "/#funcionalidades"],
+                  ["Planos e Preços",  "/planos"],
+                  ["Sobre nós",        "/sobre"],
                 ].map(([label, href]) => (
                   <li key={href}>
                     <Link href={href} className="text-sm text-gray-400 hover:text-white transition-colors">{label}</Link>
@@ -96,7 +96,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
               <ul className="space-y-2">
                 {[
                   ["Fazer login",   "/login"],
-                  ["Cadastrar",     "/portal/planos"],
+                  ["Cadastrar",     "/planos"],
                   ["Suporte",       "https://wa.me/5511999999999"],
                 ].map(([label, href]) => (
                   <li key={href}>
@@ -111,10 +111,10 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
               © {new Date().getFullYear()} AutoZap · LS Tecnologias. Todos os direitos reservados.
             </p>
             <div className="flex items-center gap-4">
-              <Link href="/portal/privacidade" className="text-[10px] text-gray-600 hover:text-gray-400 uppercase tracking-widest font-bold transition-colors">
+              <Link href="/privacidade" className="text-[10px] text-gray-600 hover:text-gray-400 uppercase tracking-widest font-bold transition-colors">
                 Privacidade
               </Link>
-              <Link href="/portal/termos" className="text-[10px] text-gray-600 hover:text-gray-400 uppercase tracking-widest font-bold transition-colors">
+              <Link href="/termos" className="text-[10px] text-gray-600 hover:text-gray-400 uppercase tracking-widest font-bold transition-colors">
                 Termos
               </Link>
             </div>

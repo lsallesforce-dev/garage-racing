@@ -13,7 +13,7 @@ export default function TermosPage() {
         <p>
           Ao criar uma conta na <strong className="text-white">AutoZap</strong> (LS Tecnologias),
           você concorda com estes Termos de Serviço e com nossa{" "}
-          <a href="/portal/privacidade" className="text-blue-400 underline">
+          <a href="/privacidade" className="text-blue-400 underline">
             Política de Privacidade
           </a>
           .
@@ -49,7 +49,7 @@ export default function TermosPage() {
       <Section title="5. Planos e pagamento">
         <p>
           Os planos e preços estão descritos em{" "}
-          <a href="/portal/planos" className="text-blue-400 underline">/portal/planos</a>. O
+          <a href="/planos" className="text-blue-400 underline">/planos</a>. O
           pagamento é mensal e antecipado. A falta de pagamento suspende o acesso após 7 dias de
           atraso. Não há reembolso de períodos já pagos, salvo garantia legal de 7 dias para
           novas assinaturas.
