@@ -12,7 +12,7 @@ const PLANO_INFO: Record<string, { nome: string; preco: string; desc: string }> 
   pro:     { nome: "Pro",     preco: "R$ 1.500/mês", desc: "Tudo do Starter + Financeiro + Multi-vendedor" },
 };
 
-const stepLabels = ["Sua conta", "Identidade", "Integração", "WhatsApp"];
+const stepLabels = ["Sua conta", "Identidade", "Integração"];
 
 function OnboardingInner() {
   const router = useRouter();
@@ -158,7 +158,7 @@ function OnboardingInner() {
                 Configure sua revenda
               </p>
               <div className="flex items-center justify-center gap-2 mt-5">
-                {([1, 2, 3] as const).map(s => (
+                {([1, 2] as const).map(s => (
                   <div key={s} className="flex items-center gap-2">
                     <div className="flex flex-col items-center gap-1">
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-black border-2 transition-all ${
@@ -172,7 +172,7 @@ function OnboardingInner() {
                         {stepLabels[s]}
                       </span>
                     </div>
-                    {s < 3 && <div className={`w-10 h-0.5 mb-4 ${step > s ? "bg-green-500" : "bg-gray-200"}`} />}
+                    {s < 2 && <div className={`w-10 h-0.5 mb-4 ${step > s ? "bg-green-500" : "bg-gray-200"}`} />}
                   </div>
                 ))}
               </div>
@@ -301,7 +301,7 @@ function OnboardingInner() {
 
           {/* ── Step 2: Integração ──────────────────────────────────────── */}
           {step === 2 && (
-            <form onSubmit={e => { e.preventDefault(); setStep(3); }} className="flex flex-col gap-5">
+            <form onSubmit={handleFinish} className="flex flex-col gap-5">
               <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">
                 Passo 3 — Integração e vitrine
               </p>
@@ -334,58 +334,11 @@ function OnboardingInner() {
                   className="flex-1 py-3 rounded-2xl font-black uppercase text-[11px] tracking-widest border-2 border-gray-200 text-gray-500 hover:border-gray-400 transition-all">
                   Voltar
                 </button>
-                <button type="submit"
-                  className="flex-1 py-3 rounded-2xl font-black uppercase text-[11px] tracking-widest bg-gray-900 text-white hover:bg-red-600 transition-all flex items-center justify-center gap-2">
-                  Próximo <ArrowRight size={14} />
-                </button>
-              </div>
-            </form>
-          )}
-
-          {/* ── Step 3: WhatsApp Business ────────────────────────────────── */}
-          {step === 3 && (
-            <form onSubmit={handleFinish} className="flex flex-col gap-5">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">
-                  Passo 4 — Conectar WhatsApp Business
-                </p>
-                <p className="text-[11px] text-gray-500 leading-relaxed">
-                  Conecte seu número via <strong>Meta WhatsApp Cloud API</strong>. Pode pular e configurar depois em <strong>Configurações</strong>.
-                </p>
-              </div>
-
-              <div className="flex flex-col gap-4 bg-blue-50/50 p-4 border border-blue-100 rounded-2xl">
-                <p className="text-[10px] text-blue-600">
-                  Configure o webhook no <strong>Meta for Developers</strong>:
-                  <br />URL: <strong className="font-mono">https://autozap.digital/api/webhook/meta</strong>
-                  <br />Token: <strong className="font-mono">autozap_webhook_2026</strong>
-                </p>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-blue-800">Phone Number ID</label>
-                  <input type="text" value={form.meta_phone_id}
-                    onChange={e => setF("meta_phone_id", e.target.value.trim())}
-                    placeholder="Ex: 390538797515329"
-                    className="bg-white border border-blue-200 rounded-xl px-4 py-3 text-sm font-mono text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-3 mt-2">
-                <button type="button" onClick={() => setStep(2)}
-                  className="flex-1 py-3 rounded-2xl font-black uppercase text-[11px] tracking-widest border-2 border-gray-200 text-gray-500 hover:border-gray-400 transition-all">
-                  Voltar
-                </button>
                 <button type="submit" disabled={saving}
                   className="flex-1 py-3 rounded-2xl font-black uppercase text-[11px] tracking-widest bg-red-600 text-white hover:bg-red-700 transition-all flex items-center justify-center gap-2 disabled:opacity-60">
                   {saving ? <><Loader2 size={14} className="animate-spin" /> Salvando...</> : "Entrar no Painel"}
                 </button>
               </div>
-
-              <button type="button"
-                onClick={() => handleFinish({ preventDefault: () => {} } as any)}
-                className="text-[10px] text-gray-400 hover:text-gray-600 font-black uppercase tracking-widest transition-colors text-center">
-                Pular por agora →
-              </button>
             </form>
           )}
 
