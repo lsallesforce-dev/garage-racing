@@ -381,14 +381,16 @@ function formatVehicleCard(v: Vehicle): string {
   const hist = v as any;
   const historicoPartes = [
     hist.qtd_proprietarios != null && `Proprietários anteriores: ${hist.qtd_proprietarios}`,
-    hist.procedencia && `Procedência: ${hist.procedencia}`,
+    hist.procedencia
+      ? `Procedência: ${hist.procedencia}`
+      : `⚠️ Procedência NÃO informada — se o cliente perguntar de onde veio o carro ou sobre histórico de proprietários anteriores, acione o gerente via precisa_instrucao`,
     hist.passou_leilao != null && `Passou por leilão: ${hist.passou_leilao ? "Sim" : "Não"}`,
     `Restrições: ${hist.restricoes_veiculo || "nada consta"}`,
     `Sinistros: ${hist.historico_sinistros || "nada consta"}`,
     `Manutenção: ${hist.historico_manutencao || "nada consta"}`,
     hist.observacoes_vistoria && `Vistoria: ${hist.observacoes_vistoria}`,
   ].filter(Boolean);
-  const historico = historicoPartes.length > 2
+  const historico = historicoPartes.length > 0
     ? `  📋 Histórico: ${historicoPartes.join(" | ")}\n`
     : "";
 
