@@ -1,6 +1,6 @@
 "use client";
 
-import { LayoutDashboard, MessageSquare, DollarSign, Users, ShieldCheck, Car, Store, Settings, LogOut, X, UserCircle, Contact, FileSignature } from "lucide-react";
+import { LayoutDashboard, MessageSquare, DollarSign, Users, ShieldCheck, Car, Store, Settings, LogOut, X, UserCircle, Contact, FileSignature, BarChart3 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -10,7 +10,8 @@ const adminMenuItems = [
   { icon: LayoutDashboard, label: "Pátio Digital", href: "/" },
   { icon: Car, label: "Estoque Inteligente", href: "/estoque" },
   { icon: MessageSquare, label: "Central de Chat", href: "/chat" },
-  { icon: DollarSign, label: "Vendas / Financeiro", href: "/vendas" },
+  { icon: DollarSign,  label: "Vendas / Financeiro", href: "/vendas" },
+  { icon: BarChart3,   label: "Painel Financeiro",  href: "/financeiro" },
   { icon: Contact, label: "Clientes", href: "/clientes" },
   { icon: FileSignature, label: "Contratos", href: "/contratos" },
   { icon: Users, label: "Equipe de Vendas", href: "/vendedores" },
