@@ -45,10 +45,10 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
           </nav>
 
           <div className="flex items-center gap-3">
-            <Link href="/login"
+            <a href="/login"
               className="text-[11px] font-black uppercase tracking-widest text-gray-500 hover:text-gray-900 transition-colors px-4 py-2">
               Entrar
-            </Link>
+            </a>
             <Link href="/planos"
               className="hidden md:block px-5 py-2 bg-gray-900 text-white rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-red-600 transition-colors">
               Começar grátis
