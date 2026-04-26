@@ -377,11 +377,27 @@ function formatVehicleCard(v: Vehicle): string {
     .filter(Boolean)
     .join(" | ");
 
+  // Histórico — se nenhum campo preenchido, omite a seção inteira
+  const hist = v as any;
+  const historicoPartes = [
+    hist.qtd_proprietarios != null && `Proprietários anteriores: ${hist.qtd_proprietarios}`,
+    hist.procedencia && `Procedência: ${hist.procedencia}`,
+    hist.passou_leilao != null && `Passou por leilão: ${hist.passou_leilao ? "Sim" : "Não"}`,
+    `Restrições: ${hist.restricoes_veiculo || "nada consta"}`,
+    `Sinistros: ${hist.historico_sinistros || "nada consta"}`,
+    `Manutenção: ${hist.historico_manutencao || "nada consta"}`,
+    hist.observacoes_vistoria && `Vistoria: ${hist.observacoes_vistoria}`,
+  ].filter(Boolean);
+  const historico = historicoPartes.length > 2
+    ? `  📋 Histórico: ${historicoPartes.join(" | ")}\n`
+    : "";
+
   return (
     `[ID:${v.id}] ${v.marca} ${v.modelo}${versao} (${ano}) | Cor: ${cor} | KM: ${km} | Preço: ${preco} | Foto: ${temFoto} | Vídeo: ${temVideo}\n` +
     (ficha ? `  Ficha: ${ficha}\n` : "") +
     opcionaisStr +
     pontosFortes +
+    historico +
     `  Detalhes: ${detalhes}`
   );
 }

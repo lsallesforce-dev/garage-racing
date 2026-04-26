@@ -1358,6 +1358,137 @@ export default function DetalheVeiculo() {
                 </div>
               </div>
             </SectionCard>
+
+            {/* Histórico do Veículo */}
+            <SectionCard
+              title="Histórico do Veículo"
+              subtitle="Informações sobre procedência, sinistros e restrições — visíveis ao agente de IA"
+              defaultOpen={false}
+            >
+              <div className="space-y-4">
+                {/* Proprietários + Passou por leilão */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-1">Nº de Proprietários Anteriores</p>
+                    <input
+                      type="number"
+                      min={0}
+                      key={`qtd_proprietarios-${veiculo?.qtd_proprietarios}`}
+                      defaultValue={veiculo?.qtd_proprietarios ?? ""}
+                      onBlur={(e) => {
+                        const val = e.target.value.trim();
+                        patch({ qtd_proprietarios: val !== "" ? parseInt(val) : null });
+                      }}
+                      className="w-full text-[11px] font-bold text-gray-700 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-red-500/10 focus:border-red-300 transition-all"
+                      placeholder="Ex: 1"
+                    />
+                  </div>
+                  <div>
+                    <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-1">Procedência</p>
+                    <input
+                      type="text"
+                      key={`procedencia-${veiculo?.procedencia}`}
+                      defaultValue={veiculo?.procedencia ?? ""}
+                      onBlur={(e) => patch({ procedencia: e.target.value.trim() || null })}
+                      className="w-full text-[11px] font-bold text-gray-700 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-red-500/10 focus:border-red-300 transition-all"
+                      placeholder="Ex: Único dono, pessoa física"
+                    />
+                  </div>
+                </div>
+
+                {/* Passou por leilão */}
+                <div>
+                  <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-2">Passou por Leilão?</p>
+                  <div className="flex gap-3">
+                    {[{ label: "Não", value: false }, { label: "Sim", value: true }].map(({ label, value }) => (
+                      <label
+                        key={label}
+                        className={`flex items-center gap-2 border rounded-xl px-4 py-2 cursor-pointer transition-all text-[10px] font-black uppercase tracking-widest ${
+                          veiculo?.passou_leilao === value
+                            ? "bg-gray-900 border-gray-900 text-white"
+                            : "bg-gray-50 border-gray-100 text-gray-500 hover:border-gray-300"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          className="hidden"
+                          checked={veiculo?.passou_leilao === value}
+                          onChange={() => {
+                            patch({ passou_leilao: value });
+                            setVeiculo((p: any) => ({ ...p, passou_leilao: value }));
+                          }}
+                        />
+                        {label}
+                      </label>
+                    ))}
+                    {veiculo?.passou_leilao !== undefined && veiculo?.passou_leilao !== null && (
+                      <button
+                        onClick={() => { patch({ passou_leilao: null }); setVeiculo((p: any) => ({ ...p, passou_leilao: null })); }}
+                        className="text-[9px] text-gray-300 hover:text-gray-500 font-bold uppercase tracking-widest transition-colors"
+                      >
+                        Limpar
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Restrições */}
+                <div>
+                  <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-1">Restrições (Detran, dívidas, financiamento)</p>
+                  <textarea
+                    key={`restricoes_veiculo-${veiculo?.restricoes_veiculo}`}
+                    defaultValue={veiculo?.restricoes_veiculo ?? ""}
+                    onBlur={(e) => patch({ restricoes_veiculo: e.target.value.trim() || null })}
+                    rows={2}
+                    placeholder="Ex: Nenhuma restrição | ou: Multa de licenciamento em aberto"
+                    className="w-full p-3 bg-gray-50 rounded-xl border border-gray-100 text-[11px] font-medium leading-relaxed text-gray-700 outline-none focus:ring-2 focus:ring-red-500/10 resize-none transition-all"
+                  />
+                </div>
+
+                {/* Histórico de Sinistros */}
+                <div>
+                  <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-1">Histórico de Sinistros / Batidas</p>
+                  <textarea
+                    key={`historico_sinistros-${veiculo?.historico_sinistros}`}
+                    defaultValue={veiculo?.historico_sinistros ?? ""}
+                    onBlur={(e) => patch({ historico_sinistros: e.target.value.trim() || null })}
+                    rows={2}
+                    placeholder="Ex: Nada consta | ou: Batida leve na traseira em 2022, reparada"
+                    className="w-full p-3 bg-gray-50 rounded-xl border border-gray-100 text-[11px] font-medium leading-relaxed text-gray-700 outline-none focus:ring-2 focus:ring-red-500/10 resize-none transition-all"
+                  />
+                </div>
+
+                {/* Histórico de Manutenção */}
+                <div>
+                  <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-1">Histórico de Manutenção</p>
+                  <textarea
+                    key={`historico_manutencao-${veiculo?.historico_manutencao}`}
+                    defaultValue={veiculo?.historico_manutencao ?? ""}
+                    onBlur={(e) => patch({ historico_manutencao: e.target.value.trim() || null })}
+                    rows={2}
+                    placeholder="Ex: Revisões em dia na concessionária até 80.000km"
+                    className="w-full p-3 bg-gray-50 rounded-xl border border-gray-100 text-[11px] font-medium leading-relaxed text-gray-700 outline-none focus:ring-2 focus:ring-red-500/10 resize-none transition-all"
+                  />
+                </div>
+
+                {/* Observações de Vistoria */}
+                <div>
+                  <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-1">Observações de Vistoria</p>
+                  <textarea
+                    key={`observacoes_vistoria-${veiculo?.observacoes_vistoria}`}
+                    defaultValue={veiculo?.observacoes_vistoria ?? ""}
+                    onBlur={(e) => patch({ observacoes_vistoria: e.target.value.trim() || null })}
+                    rows={2}
+                    placeholder="Ex: Pintura original em todos os painéis, sem amassados"
+                    className="w-full p-3 bg-gray-50 rounded-xl border border-gray-100 text-[11px] font-medium leading-relaxed text-gray-700 outline-none focus:ring-2 focus:ring-red-500/10 resize-none transition-all"
+                  />
+                </div>
+
+                <p className="text-[9px] text-gray-400 italic">
+                  Salvo automaticamente ao sair de cada campo. Campos em branco: a IA responde "nada consta".
+                </p>
+              </div>
+            </SectionCard>
           </div>
 
           {/* ── COLUNA DIREITA (1/3) ── */}
