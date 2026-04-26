@@ -7,9 +7,9 @@ import { CheckCircle2, Loader2, ArrowRight, Eye, EyeOff } from "lucide-react";
 
 type Step = 0 | 1 | 2 | 3;
 
-const PLANO_INFO: Record<string, { nome: string; preco: string }> = {
-  starter: { nome: "Starter", preco: "R$ 1.150/mês" },
-  pro:     { nome: "Pro",     preco: "R$ 1.500/mês"  },
+const PLANO_INFO: Record<string, { nome: string; preco: string; desc: string }> = {
+  starter: { nome: "Starter", preco: "R$ 1.150/mês", desc: "IA no WhatsApp + Vitrine + 15 vídeos/mês" },
+  pro:     { nome: "Pro",     preco: "R$ 1.500/mês", desc: "Tudo do Starter + Financeiro + Multi-vendedor" },
 };
 
 const stepLabels = ["Sua conta", "Identidade", "Integração", "WhatsApp"];
@@ -22,7 +22,6 @@ function OnboardingInner() {
 
   const [step, setStep]     = useState<Step>(0);
   const [saving, setSaving] = useState(false);
-  const [emailSent, setEmailSent] = useState(false);
   const [showPass, setShowPass]   = useState(false);
   const [showConf, setShowConf]   = useState(false);
   const [error, setError]   = useState("");
@@ -45,7 +44,7 @@ function OnboardingInner() {
     setForm(f => ({ ...f, [k]: v }));
   }
 
-  // ── Step 0: criar conta ──────────────────────────────────────────────────────
+  // ── Step 0: criar conta via API (sem email confirmation) ────────────────────
   async function handleCreateAccount(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -53,24 +52,27 @@ function OnboardingInner() {
     if (account.senha.length < 6)           { setError("Senha mínima de 6 caracteres."); return; }
 
     setSaving(true);
-    const { data, error: err } = await supabase.auth.signUp({
-      email: account.email,
-      password: account.senha,
-      options: {
-        data: { nome: account.nome },
-        emailRedirectTo: `${window.location.origin}/onboarding?plano=${plano}`,
-      },
-    });
-    setSaving(false);
+    try {
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nome: account.nome, email: account.email, senha: account.senha }),
+      });
+      const json = await res.json();
 
-    if (err) { setError(err.message); return; }
+      if (!res.ok) { setError(json.error ?? "Erro ao criar conta."); return; }
 
-    if (data.session) {
-      // confirmação de e-mail desativada → sessão imediata
+      // Seta a sessão no cliente Supabase
+      await supabase.auth.setSession({
+        access_token:  json.access_token,
+        refresh_token: json.refresh_token,
+      });
+
       setStep(1);
-    } else {
-      // confirmação de e-mail ativada → aguardar confirmação
-      setEmailSent(true);
+    } catch {
+      setError("Erro de conexão. Tente novamente.");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -123,50 +125,65 @@ function OnboardingInner() {
       <div className="w-full max-w-lg">
 
         {/* Header */}
-        <div className="mb-10 text-center">
-          <h1 className="text-4xl font-black uppercase tracking-tighter italic text-gray-900">
+        <div className="mb-8 text-center">
+          <h1 className="text-3xl font-black uppercase tracking-tighter italic text-gray-900">
             <span className="text-red-600">AUTO</span>ZAP
           </h1>
-          <p className="text-[11px] font-black uppercase tracking-widest text-gray-400 mt-1">
-            {step === 0 ? "Crie sua conta — é grátis por 30 dias" : "Configure sua revenda"}
-          </p>
 
-          {/* Badge do plano */}
-          {planoInfo && (
-            <div className="inline-flex items-center gap-2 mt-3 px-4 py-1.5 bg-gray-900 text-white rounded-full text-[10px] font-black uppercase tracking-widest">
-              <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-              Plano {planoInfo.nome} · {planoInfo.preco}
+          {/* Celebração — step 0 */}
+          {step === 0 && (
+            <div className="mt-5">
+              <p className="text-2xl font-black uppercase italic tracking-tighter text-gray-900 leading-tight">
+                Bem-vindo ao maior<br />
+                <span className="text-red-600">portal de vendas inteligentes</span><br />
+                de carros do Brasil.
+              </p>
+              <p className="text-sm text-gray-500 mt-2 leading-relaxed">
+                30 dias grátis. Sem cartão. Um consultor configura tudo com você.
+              </p>
+              {planoInfo && (
+                <div className="mt-4 inline-flex flex-col items-center gap-0.5 px-6 py-3 bg-gray-50 border border-gray-200 rounded-2xl">
+                  <span className="text-[9px] font-black uppercase tracking-[0.2em] text-gray-400">Plano selecionado</span>
+                  <span className="text-lg font-black italic tracking-tight text-gray-900">{planoInfo.nome} <span className="text-red-600">·</span> {planoInfo.preco}</span>
+                  <span className="text-[10px] text-gray-500">{planoInfo.desc}</span>
+                </div>
+              )}
             </div>
           )}
 
-          {/* Progress — só mostra a partir do step 1 */}
+          {/* Título configuração — steps 1-3 */}
           {step >= 1 && (
-            <div className="flex items-center justify-center gap-2 mt-6">
-              {([1, 2, 3] as const).map(s => (
-                <div key={s} className="flex items-center gap-2">
-                  <div className="flex flex-col items-center gap-1">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-black border-2 transition-all ${
-                      s < step ? "bg-green-500 border-green-500 text-white" :
-                      s === step ? "bg-gray-900 border-gray-900 text-white" :
-                      "bg-white border-gray-200 text-gray-400"
-                    }`}>
-                      {s < step ? <CheckCircle2 size={14} /> : s}
+            <>
+              <p className="text-[11px] font-black uppercase tracking-widest text-gray-400 mt-1">
+                Configure sua revenda
+              </p>
+              <div className="flex items-center justify-center gap-2 mt-5">
+                {([1, 2, 3] as const).map(s => (
+                  <div key={s} className="flex items-center gap-2">
+                    <div className="flex flex-col items-center gap-1">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-black border-2 transition-all ${
+                        s < step ? "bg-green-500 border-green-500 text-white" :
+                        s === step ? "bg-gray-900 border-gray-900 text-white" :
+                        "bg-white border-gray-200 text-gray-400"
+                      }`}>
+                        {s < step ? <CheckCircle2 size={14} /> : s}
+                      </div>
+                      <span className="text-[8px] font-black uppercase tracking-widest text-gray-400">
+                        {stepLabels[s]}
+                      </span>
                     </div>
-                    <span className="text-[8px] font-black uppercase tracking-widest text-gray-400">
-                      {stepLabels[s]}
-                    </span>
+                    {s < 3 && <div className={`w-10 h-0.5 mb-4 ${step > s ? "bg-green-500" : "bg-gray-200"}`} />}
                   </div>
-                  {s < 3 && <div className={`w-10 h-0.5 mb-4 ${step > s ? "bg-green-500" : "bg-gray-200"}`} />}
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            </>
           )}
         </div>
 
         <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-8">
 
           {/* ── Step 0: Criar conta ──────────────────────────────────────── */}
-          {step === 0 && !emailSent && (
+          {step === 0 && (
             <form onSubmit={handleCreateAccount} className="flex flex-col gap-4">
               <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">
                 Passo 1 — Criar sua conta
@@ -238,26 +255,6 @@ function OnboardingInner() {
                 </a>
               </div>
             </form>
-          )}
-
-          {/* ── Aguardando confirmação de e-mail ────────────────────────── */}
-          {step === 0 && emailSent && (
-            <div className="flex flex-col items-center gap-4 py-4 text-center">
-              <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center">
-                <CheckCircle2 size={28} className="text-green-600" />
-              </div>
-              <p className="text-[13px] font-black uppercase tracking-widest text-gray-900">
-                Verifique seu e-mail
-              </p>
-              <p className="text-sm text-gray-500 leading-relaxed max-w-xs">
-                Enviamos um link de confirmação para <strong>{account.email}</strong>.
-                Clique no link e volte aqui para configurar sua revenda.
-              </p>
-              <p className="text-[10px] text-gray-400 uppercase tracking-widest font-bold">
-                Após confirmar, faça login em{" "}
-                <a href="/login" className="text-red-600 hover:underline">autozap.digital/login</a>
-              </p>
-            </div>
           )}
 
           {/* ── Step 1: Identidade ──────────────────────────────────────── */}
