@@ -173,11 +173,11 @@ export default function Dashboard() {
                         <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">De olho: <span className="text-red-600">{lead.veiculos?.modelo || "Maquinário"}</span></p>
                         </div>
                     </div>
-                    <p className="text-[11px] text-gray-500 italic flex-1 md:px-12 py-3 md:py-0 truncate max-w-[500px]">
+                    <p className="text-sm text-gray-500 italic flex-1 md:px-12 py-3 md:py-0 truncate max-w-[500px]">
                         "{lead.resumo_negociacao || "O Lucas (IA) está qualificando o interesse..."}"
                     </p>
-                    <button 
-                        onClick={() => router.push(`/veiculo/${lead.veiculo_id}`)}
+                    <button
+                        onClick={() => router.push(`/chat?wa_id=${lead.wa_id}`)}
                         className="px-6 py-3 bg-slate-100 rounded-2xl text-[9px] font-black uppercase hover:bg-red-600 hover:text-white transition-all tracking-widest"
                     >
                         Detalhes

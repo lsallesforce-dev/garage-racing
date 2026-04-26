@@ -1694,67 +1694,6 @@ export default function DetalheVeiculo() {
               }}
             />
 
-            {/* Leads interessados */}
-            <div>
-              <h3 className="text-lg font-black uppercase italic mb-4 text-gray-900">
-                Leads de Olho nesta Máquina
-              </h3>
-              <div className="grid gap-3">
-                {leadsDoVeiculo.length > 0 ? (
-                  leadsDoVeiculo.map((lead) => (
-                    <div
-                      key={lead.id}
-                      className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm hover:shadow-md transition-all"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div
-                            className={`w-3 h-3 rounded-full ${
-                              lead.status === "QUENTE"
-                                ? "bg-red-500 animate-pulse"
-                                : lead.status === "MORNO"
-                                ? "bg-amber-400"
-                                : "bg-blue-400"
-                            }`}
-                          />
-                          <div>
-                            <p className="font-black uppercase text-sm leading-none">
-                              {lead.nome || "Cliente Interessado"}
-                            </p>
-                            <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mt-1">
-                              {lead.status || "FRIO"}
-                            </p>
-                          </div>
-                        </div>
-                        <a
-                          href={`https://wa.me/${lead.wa_id}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-4 py-2 bg-slate-900 text-white text-[9px] font-black uppercase rounded-xl hover:bg-red-600 transition-colors"
-                        >
-                          Assumir
-                        </a>
-                      </div>
-                      {lead.resumo_negociacao && (
-                        <p className="mt-3 pt-3 border-t border-gray-50 text-[11px] text-gray-500 font-medium italic leading-relaxed">
-                          {lead.resumo_negociacao}
-                        </p>
-                      )}
-                    </div>
-                  ))
-                ) : (
-                  <div className="bg-gray-50/50 p-8 rounded-3xl border-2 border-dashed border-gray-100 text-center">
-                    <p className="text-sm text-gray-400 italic">
-                      Nenhum lead conversando sobre este veículo...
-                    </p>
-                    <p className="text-[10px] font-bold text-gray-300 uppercase tracking-widest mt-2">
-                      O Lucas (IA) está pronto para atender!
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-
           </div>
         </div>
       </div>
