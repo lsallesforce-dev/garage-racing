@@ -20,7 +20,7 @@ const planos = [
       { ok: false, text: "Relatório mensal em PDF"         },
     ],
     cta: "Começar trial grátis",
-    ctaHref: "/register?plano=starter",
+    ctaHref: "/onboarding?plano=starter",
   },
   {
     id: "pro",
@@ -41,7 +41,7 @@ const planos = [
       { ok: true, text: "Trial de 30 dias grátis"                },
     ],
     cta: "Começar trial grátis",
-    ctaHref: "/register?plano=pro",
+    ctaHref: "/onboarding?plano=pro",
   },
   {
     id: "enterprise",
@@ -191,7 +191,7 @@ export default function PlanosPage() {
               <p className="text-gray-400 text-sm mt-0.5">Configuramos tudo na sua revenda. 30 dias para testar. Zero custo.</p>
             </div>
           </div>
-          <Link href="/register"
+          <Link href="/onboarding"
             className="px-8 py-3.5 bg-red-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-red-500 transition-colors whitespace-nowrap">
             Quero testar grátis →
           </Link>
@@ -250,7 +250,7 @@ export default function PlanosPage() {
           <p className="text-gray-400 text-lg mb-10">
             A margem média de um carro usado é R$ 2.000 a R$ 5.000. Se a IA fechar um lead que você perderia respondendo tarde, o AutoZap já se pagou — e sobrou.
           </p>
-          <Link href="/register"
+          <Link href="/onboarding"
             className="inline-flex items-center gap-2 px-8 py-4 bg-red-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-red-500 transition-colors">
             Testar 30 dias grátis <ArrowRight size={14} />
           </Link>

@@ -151,6 +151,7 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith("/privacidade") ||
     pathname.startsWith("/termos") ||
     pathname.startsWith("/login") ||
+    pathname.startsWith("/onboarding") ||
     pathname.startsWith("/vitrine") ||
     pathname.startsWith("/loja-nao-encontrada") ||
     pathname.startsWith("/api/webhook") ||
