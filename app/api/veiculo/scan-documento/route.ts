@@ -5,14 +5,21 @@ import { geminiFlashSales } from "@/lib/gemini";
 const PROMPT = `Você é um especialista em documentos veiculares brasileiros.
 Analise a imagem do CRLV (Certificado de Registro e Licenciamento de Veículo) ou qualquer documento veicular e extraia os dados com precisão máxima.
 
+REGRA CRÍTICA — modelo vs versao:
+- O campo "modelo" deve conter APENAS o nome comercial do modelo como consta no CRLV.
+  Exemplos corretos: "TORO VOLCANO", "HB20 COMFORT", "COROLLA XEI", "S10 HIGH COUNTRY"
+- O campo "versao" deve conter APENAS os dados técnicos do motor/tração/câmbio que diferenciam variantes.
+  Exemplos corretos: "2.0 DIESEL AT9 4X4", "1.0 TURBO FLEX", "2.8 TURBO 4X4 AUTOMÁTICO"
+- NUNCA repita em "versao" palavras que já estão em "modelo". Se o CRLV não tiver dados técnicos separados, use null para versao.
+
 Retorne SOMENTE um JSON válido com esta estrutura exata (use null para campos não encontrados):
 {
   "placa": "AAA0000 ou AAA0A00",
   "renavam": "somente números",
   "chassi": "17 caracteres alfanuméricos",
   "marca": "nome da marca",
-  "modelo": "nome do modelo",
-  "versao": "versão/trim se disponível",
+  "modelo": "nome comercial do modelo conforme CRLV — ex: TORO VOLCANO, HB20 COMFORT",
+  "versao": "dados técnicos APENAS — ex: 2.0 DIESEL AT9 4X4 — ou null se não disponível",
   "ano_fabricacao": "AAAA",
   "ano_modelo": "AAAA",
   "combustivel": "GASOLINA | ETANOL | FLEX | DIESEL | ELÉTRICO | HÍBRIDO",

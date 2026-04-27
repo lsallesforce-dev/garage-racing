@@ -81,19 +81,26 @@ export async function buscarFipe(
     const modelosRes = await fetchJson(`${BASE}/carros/marcas/${marcaMatch.codigo}/modelos`);
     const modelos: FipeItem[] = modelosRes.modelos ?? modelosRes;
 
+    // Combina modelo + versao removendo palavras duplicadas.
+    // Ex: modelo="TORO VOLCANO" versao="VOLCANO 2.0 DIESEL 4X4"
+    //   → "TORO VOLCANO 2.0 DIESEL 4X4" (sem o segundo VOLCANO)
+    const modeloWords = norm(modelo).split(" ");
+    const versaoWords = norm(versao).split(" ").filter(w => !modeloWords.includes(w));
+    const combinado = [...modeloWords, ...versaoWords].join(" ").trim();
+
     // Tenta da query mais específica para a mais genérica:
-    // 1) modelo + versao completa   ex: "S10 LS LT"
-    // 2) modelo + primeira palavra da versao  ex: "S10 LS"
-    // 3) só o modelo                ex: "S10"
-    // 4) primeira palavra do modelo ex: "S10"
-    const versaoPrimeira = versao.split(" ")[0];
-    const modeloPrimeiro = modelo.split(" ")[0];
+    // 1) modelo + versao deduplicada  ex: "TORO VOLCANO 2.0 DIESEL 4X4"
+    // 2) só o modelo                  ex: "TORO VOLCANO"
+    // 3) primeira palavra da versao   ex: "TORO VOLCANO 2.0"
+    // 4) primeira palavra do modelo   ex: "TORO" (fallback de último recurso)
+    const versaoPrimeira = versaoWords[0] ?? "";
+    const modeloPrimeiro = modeloWords[0];
     const tentativas = [
-      `${modelo} ${versao}`,
-      versaoPrimeira ? `${modelo} ${versaoPrimeira}` : "",
-      modelo,
-      modeloPrimeiro !== modelo ? modeloPrimeiro : "",
-    ].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i); // deduplica
+      combinado,
+      norm(modelo),
+      versaoPrimeira ? `${norm(modelo)} ${versaoPrimeira}` : "",
+      modeloPrimeiro !== norm(modelo) ? modeloPrimeiro : "",
+    ].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i); // deduplica strings iguais
 
     let candidatos: FipeItem[] = [];
     for (const tentativa of tentativas) {
