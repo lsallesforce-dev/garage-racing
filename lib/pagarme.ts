@@ -142,7 +142,12 @@ export async function createCardCheckout(params: {
             credit_card: {
               capture: true,
               statement_descriptor: "AUTOZAP",
-              installments: [{ number: params.installments, total: params.amount }],
+              // Passa todas as opções de 1x até o máximo permitido.
+              // O total é o mesmo em todas (desconto já aplicado no preço anual).
+              installments: Array.from(
+                { length: params.installments },
+                (_, i) => ({ number: i + 1, total: params.amount })
+              ),
             },
           },
         },
