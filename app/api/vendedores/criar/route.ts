@@ -10,15 +10,30 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
-  const { vendedorId, email, senha, authUserId } = body as {
-    vendedorId: string;
+  const { vendedorId, email, senha, authUserId, nome: nomeSimples } = body as {
+    vendedorId?: string;
     email: string;
     senha?: string;
-    authUserId?: string; // present when updating existing vendor
+    authUserId?: string;
+    nome?: string; // simple flow from Minha Conta
   };
 
   if (!email) return NextResponse.json({ error: "Email obrigatório" }, { status: 400 });
 
+  // ── Simple flow: no vendedorId, just create auth user directly ──────────────
+  if (!vendedorId) {
+    if (!senha) return NextResponse.json({ error: "Senha obrigatória" }, { status: 400 });
+    const { data: created, error } = await supabaseAdmin.auth.admin.createUser({
+      email,
+      password: senha,
+      email_confirm: true,
+      user_metadata: { role: "vendedor", owner_user_id: user.id, nome: nomeSimples ?? email },
+    });
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true, id: created.user.id });
+  }
+
+  // ── Legacy flow: vendedor row exists in vendedores table ────────────────────
   // Ensure the vendedor row belongs to the caller, also grab whatsapp for notification
   const { data: vendedor } = await supabaseAdmin
     .from("vendedores")
