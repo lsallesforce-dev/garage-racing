@@ -41,10 +41,11 @@ interface BoletoResult { order_id: string; boleto_url: string; boleto_barcode: s
 // ─── Componente interno (usa useSearchParams) ──────────────────────────────────
 
 function AssinarContent() {
-  const params     = useSearchParams();
-  const router     = useRouter();
-  const planoId    = params.get("plano") ?? "pro";
-  const plano      = PLANOS[planoId] ?? PLANOS.pro;
+  const params  = useSearchParams();
+  const router  = useRouter();
+
+  const [planoId,      setPlanoId]      = useState(params.get("plano") ?? "pro");
+  const plano = PLANOS[planoId] ?? PLANOS.pro;
 
   const [metodo,       setMetodo]       = useState<Metodo>("pix");
   const [parcelamento, setParcelamento] = useState<Parcelamento>("mensal");
@@ -236,6 +237,36 @@ function AssinarContent() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
+
+          {/* Seletor de plano */}
+          <div className="bg-[#111] border border-white/10 rounded-2xl p-6">
+            <h2 className="text-white font-semibold mb-4">Plano escolhido</h2>
+            <div className="grid grid-cols-2 gap-3">
+              {(["starter", "pro"] as const).map(id => {
+                const p = PLANOS[id];
+                return (
+                  <button key={id} type="button" onClick={() => setPlanoId(id)}
+                    className={`flex flex-col items-start gap-1 p-4 rounded-xl border transition ${
+                      planoId === id
+                        ? "border-[#00ff88] bg-[#00ff88]/10"
+                        : "border-white/10 bg-white/5 hover:border-white/30"
+                    }`}>
+                    <div className="flex items-center justify-between w-full">
+                      <span className={`text-sm font-bold ${planoId === id ? "text-[#00ff88]" : "text-white"}`}>
+                        {p.nome}
+                      </span>
+                      {id === "pro" && (
+                        <span className="text-[9px] font-black uppercase tracking-widest bg-amber-400/20 text-amber-400 px-2 py-0.5 rounded-full">
+                          Mais completo
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-white/50 text-xs">{fmt(p.mensal)}/mês</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
           {/* Método de pagamento */}
           <div className="bg-[#111] border border-white/10 rounded-2xl p-6">
