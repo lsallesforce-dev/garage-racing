@@ -31,10 +31,12 @@ export default function MinhaContaPage() {
   const [erroSenha, setErroSenha] = useState<string | null>(null);
 
   const [planoInfo, setPlanoInfo] = useState<PlanoInfo | null>(null);
+  const [isVendedor, setIsVendedor] = useState(false);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) return;
+      if (user.user_metadata?.role === "vendedor") { setIsVendedor(true); return; }
       supabase
         .from("config_garage")
         .select("plano, plano_ativo, trial_ends_at, plano_vence_em")
@@ -95,8 +97,8 @@ export default function MinhaContaPage() {
 
       <div className="max-w-2xl flex flex-col gap-6">
 
-        {/* ── Plano Atual ── */}
-        {planoInfo && (() => {
+        {/* ── Plano Atual — oculto para vendedores ── */}
+        {!isVendedor && planoInfo && (() => {
           const agora = new Date();
           const planoAtivo = planoInfo.plano_ativo && planoInfo.plano_vence_em && new Date(planoInfo.plano_vence_em) > agora;
           const trialAtivo = !planoAtivo && planoInfo.trial_ends_at && new Date(planoInfo.trial_ends_at) > agora;
