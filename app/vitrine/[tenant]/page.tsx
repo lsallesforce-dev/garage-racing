@@ -14,12 +14,53 @@ interface Props {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { tenant } = await params;
-  let garagem = (await supabaseAdmin.from("config_garage").select("nome_empresa").eq("vitrine_slug", tenant).maybeSingle()).data;
-  if (!garagem) garagem = (await supabaseAdmin.from("config_garage").select("nome_empresa").eq("webhook_token", tenant).maybeSingle()).data;
+
+  let garagem = (await supabaseAdmin
+    .from("config_garage")
+    .select("nome_empresa, logo_url, user_id")
+    .eq("vitrine_slug", tenant)
+    .maybeSingle()).data;
+
+  if (!garagem) {
+    garagem = (await supabaseAdmin
+      .from("config_garage")
+      .select("nome_empresa, logo_url, user_id")
+      .eq("webhook_token", tenant)
+      .maybeSingle()).data;
+  }
+
   const nome = garagem?.nome_empresa ?? "Vitrine";
+  const desc = `Confira o estoque disponível da ${nome}. Veículos verificados com análise de IA.`;
+
+  // Usa logo da garagem como imagem; se não tiver, pega a capa do primeiro carro
+  let ogImage: string | null = garagem?.logo_url ?? null;
+  if (!ogImage && garagem?.user_id) {
+    const { data: carro } = await supabaseAdmin
+      .from("veiculos")
+      .select("capa_marketing_url, fotos")
+      .eq("user_id", garagem.user_id)
+      .eq("status_venda", "DISPONIVEL")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    ogImage = carro?.capa_marketing_url ?? carro?.fotos?.[0] ?? null;
+  }
+
   return {
     title: `${nome} — Estoque`,
-    description: `Confira o estoque disponível da ${nome}. Veículos verificados com análise de IA.`,
+    description: desc,
+    openGraph: {
+      title: `${nome} — Estoque`,
+      description: desc,
+      ...(ogImage ? { images: [{ url: ogImage, width: 1200, height: 630, alt: nome }] } : {}),
+      type: "website",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: `${nome} — Estoque`,
+      description: desc,
+      ...(ogImage ? { images: [ogImage] } : {}),
+    },
   };
 }
 
