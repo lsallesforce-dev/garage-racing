@@ -6,6 +6,7 @@ import {
   XCircle, ExternalLink, Copy, Plus, X, Loader2, RefreshCw, Activity,
   Music, Upload, CheckCircle, DollarSign, Lock, Unlock, Eye, TrendingUp,
   Clock, AlertCircle, BarChart3, Shield, Settings, ChevronDown, ChevronUp,
+  Wallet, ArrowDownToLine, Hourglass, CreditCard,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -48,6 +49,21 @@ interface Health {
   redis: { status: ServiceStatus; latency_ms: number };
   supabase: { status: ServiceStatus; latency_ms: number };
   avisa: { status: ServiceStatus; latency_ms: number };
+}
+
+interface PagarmeBalance {
+  available_amount: number;
+  waiting_funds_amount: number;
+  transferred_amount: number;
+}
+
+interface PagarmeOrder {
+  id: string;
+  status: string;
+  amount: number;
+  created_at: string;
+  customer?: { name?: string; email?: string };
+  charges?: { payment_method?: string }[];
 }
 
 interface Pagamento {
@@ -359,6 +375,8 @@ export default function AdminPage() {
   const [loading, setLoading]       = useState(false);
   const [search, setSearch]         = useState("");
   const [filtroPlano, setFiltroPlano] = useState<"todos" | "trial" | "ativo" | "expirado" | "bloqueado">("todos");
+  const [pagarmeBalance, setPagarmeBalance] = useState<PagarmeBalance | null>(null);
+  const [pagarmeOrders, setPagarmeOrders]   = useState<PagarmeOrder[]>([]);
   const [showNovoTenant, setShowNovoTenant] = useState(false);
   const [showNovoPag, setShowNovoPag]       = useState(false);
   const [acaoLoading, setAcaoLoading]       = useState<string | null>(null);
@@ -386,6 +404,15 @@ export default function AdminPage() {
     }
   }, []);
 
+  const carregarPagarme = useCallback(async (s: string) => {
+    const res = await fetch("/api/admin/pagarme-financeiro", { headers: { "x-admin-secret": s } });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.balance) setPagarmeBalance(data.balance);
+      setPagarmeOrders(data.orders ?? []);
+    }
+  }, []);
+
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
@@ -393,6 +420,7 @@ export default function AdminPage() {
     if (ok) {
       setAutenticado(true);
       carregarPagamentos(secret);
+      carregarPagarme(secret);
     } else {
       alert("Senha incorreta.");
       setLoading(false);
@@ -547,7 +575,7 @@ export default function AdminPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => { carregar(secret); carregarPagamentos(secret); }}
+            <button onClick={() => { carregar(secret); carregarPagamentos(secret); carregarPagarme(secret); }}
               className="p-2 text-gray-400 hover:text-gray-700 rounded-xl hover:bg-gray-100 transition" title="Recarregar">
               <RefreshCw size={15} />
             </button>
@@ -896,6 +924,73 @@ export default function AdminPage() {
                 </div>
               ))}
             </div>
+
+            {/* ── Saldo PagarMe ── */}
+            {pagarmeBalance && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {[
+                  { label: "Disponível para Saque", value: pagarmeBalance.available_amount / 100, icon: Wallet,          color: "text-green-600",  bg: "bg-green-50"  },
+                  { label: "A Receber (PagarMe)",   value: pagarmeBalance.waiting_funds_amount / 100, icon: Hourglass,   color: "text-amber-600",  bg: "bg-amber-50"  },
+                  { label: "Total Transferido",     value: pagarmeBalance.transferred_amount / 100, icon: ArrowDownToLine, color: "text-blue-600", bg: "bg-blue-50"   },
+                ].map(({ label, value, icon: Icon, color, bg }) => (
+                  <div key={label} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center gap-4">
+                    <div className={`w-10 h-10 rounded-xl ${bg} flex items-center justify-center shrink-0`}>
+                      <Icon size={16} className={color} />
+                    </div>
+                    <div>
+                      <p className={`text-xl font-black ${color}`}>{fmtBRL(value)}</p>
+                      <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">{label}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* ── Transações PagarMe ── */}
+            {pagarmeOrders.length > 0 && (
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
+                  <CreditCard size={13} className="text-gray-400" />
+                  <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">Últimas Transações PagarMe</p>
+                </div>
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="border-b border-gray-100">
+                      {["Data", "Cliente", "Valor", "Método", "Status"].map(h => (
+                        <th key={h} className="px-4 py-3 text-[9px] font-black uppercase tracking-widest text-gray-400">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pagarmeOrders.map(o => {
+                      const metodo = o.charges?.[0]?.payment_method ?? "—";
+                      const statusColor: Record<string, string> = {
+                        paid:    "bg-green-50 text-green-700 border-green-100",
+                        pending: "bg-amber-50 text-amber-700 border-amber-100",
+                        failed:  "bg-red-50 text-red-700 border-red-100",
+                        canceled:"bg-gray-100 text-gray-500 border-gray-200",
+                      };
+                      return (
+                        <tr key={o.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+                          <td className="px-4 py-3 text-[11px] text-gray-500 font-bold">{fmtDate(o.created_at)}</td>
+                          <td className="px-4 py-3">
+                            <p className="text-[11px] font-black text-gray-900">{o.customer?.name ?? "—"}</p>
+                            <p className="text-[9px] text-gray-400">{o.customer?.email ?? ""}</p>
+                          </td>
+                          <td className="px-4 py-3 text-[13px] font-black text-gray-900">{fmtBRL(o.amount / 100)}</td>
+                          <td className="px-4 py-3 text-[10px] font-bold uppercase text-gray-500">{metodo.replace("_", " ")}</td>
+                          <td className="px-4 py-3">
+                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest border ${statusColor[o.status] ?? "bg-gray-100 text-gray-500 border-gray-200"}`}>
+                              {o.status}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
 
             {/* Cobranças */}
             {pagamentos.length === 0 ? (
