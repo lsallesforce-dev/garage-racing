@@ -19,15 +19,19 @@ function norm(s: string): string {
     .trim();
 }
 
-// Retorna score de similaridade entre dois strings normalizados (0–1)
-function score(a: string, b: string): number {
-  if (a === b) return 1;
-  if (a.startsWith(b) || b.startsWith(a)) return 0.9;
-  const wordsA = new Set(a.split(" "));
-  const wordsB = b.split(" ");
-  // inclui dígitos mesmo sendo 1 char (ex: "2" e "0" de "2.0") — crítico pro match de motorização
-  const matches = wordsB.filter(w => wordsA.has(w) && (w.length > 1 || /^\d+$/.test(w))).length;
-  return matches / Math.max(wordsA.size, wordsB.length);
+// Retorna score de similaridade (0–1).
+// Usa recall sobre a query: quantas palavras da query aparecem no nome FIPE.
+// Nomes FIPE são sempre verbosos ("S10 LS 2.8 CD TDI 4x4 Diesel Mec."),
+// então Jaccard penaliza injustamente queries curtas como "S10 LS LT".
+function score(fipeNome: string, query: string): number {
+  if (fipeNome === query) return 1;
+  if (fipeNome.startsWith(query) || query.startsWith(fipeNome)) return 0.9;
+  const wordsF = new Set(fipeNome.split(" "));
+  const wordsQ = query.split(" ").filter(w => w.length > 1 || /^\d+$/.test(w));
+  if (wordsQ.length === 0) return 0;
+  const matches = wordsQ.filter(w => wordsF.has(w)).length;
+  // recall: fração das palavras da query encontradas no nome FIPE
+  return matches / wordsQ.length;
 }
 
 function bestMatch(list: FipeItem[], query: string): FipeItem | null {
@@ -38,11 +42,11 @@ function bestMatch(list: FipeItem[], query: string): FipeItem | null {
     const s = score(norm(item.nome), q);
     if (s > bestScore) { bestScore = s; best = item; }
   }
-  return bestScore >= 0.3 ? best : null;
+  return bestScore >= 0.4 ? best : null;
 }
 
 // Retorna todos os candidatos ordenados por score decrescente
-function topMatches(list: FipeItem[], query: string, minScore = 0.25): FipeItem[] {
+function topMatches(list: FipeItem[], query: string, minScore = 0.4): FipeItem[] {
   const q = norm(query);
   return list
     .map(item => ({ item, s: score(norm(item.nome), q) }))
@@ -73,13 +77,32 @@ export async function buscarFipe(
       return null;
     }
 
-    // 2. Modelos — pega top candidatos e escolhe o primeiro que tiver o ano disponível
+    // 2. Modelos — pega top candidatos com fallback progressivo
     const modelosRes = await fetchJson(`${BASE}/carros/marcas/${marcaMatch.codigo}/modelos`);
     const modelos: FipeItem[] = modelosRes.modelos ?? modelosRes;
 
-    const candidatos = topMatches(modelos, `${modelo} ${versao}`).length
-      ? topMatches(modelos, `${modelo} ${versao}`)
-      : topMatches(modelos, modelo);
+    // Tenta da query mais específica para a mais genérica:
+    // 1) modelo + versao completa   ex: "S10 LS LT"
+    // 2) modelo + primeira palavra da versao  ex: "S10 LS"
+    // 3) só o modelo                ex: "S10"
+    // 4) primeira palavra do modelo ex: "S10"
+    const versaoPrimeira = versao.split(" ")[0];
+    const modeloPrimeiro = modelo.split(" ")[0];
+    const tentativas = [
+      `${modelo} ${versao}`,
+      versaoPrimeira ? `${modelo} ${versaoPrimeira}` : "",
+      modelo,
+      modeloPrimeiro !== modelo ? modeloPrimeiro : "",
+    ].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i); // deduplica
+
+    let candidatos: FipeItem[] = [];
+    for (const tentativa of tentativas) {
+      candidatos = topMatches(modelos, tentativa);
+      if (candidatos.length) {
+        console.log(`ℹ️ FIPE: match de modelos via query "${tentativa}" (${candidatos.length} candidatos)`);
+        break;
+      }
+    }
 
     if (!candidatos.length) {
       console.warn(`⚠️ FIPE: modelo não encontrado para "${modelo} ${versao}"`);
@@ -101,7 +124,7 @@ export async function buscarFipe(
     let modeloMatch: FipeItem | null = null;
     let anoMatch: FipeItem | undefined;
 
-    for (const candidato of candidatos.slice(0, 6)) {
+    for (const candidato of candidatos.slice(0, 10)) {
       const anos: FipeItem[] = await fetchJson(
         `${BASE}/carros/marcas/${marcaMatch.codigo}/modelos/${candidato.codigo}/anos`
       );
