@@ -218,7 +218,7 @@ export default function VitrineDetalheClient({ veiculo, relacionados, nomeEmpres
             {pontos.length > 0 && (
               <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
                 <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-4">
-                  ✦ Diferenciais verificados pela IA
+                  ✦ Diferenciais do carro
                 </p>
                 <ul className="space-y-2.5">
                   {pontos.map((ponto, i) => (
