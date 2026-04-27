@@ -65,10 +65,15 @@ export async function createPixOrder(params: {
   const data = await res.json();
   if (!res.ok) throw new Error(data.message ?? "Erro PagarMe PIX");
   const tx = data.charges?.[0]?.last_transaction;
+  const pixText: string = tx?.pix_qr_code ?? tx?.qr_code ?? "";
+  // Gera imagem do QR code via serviço público a partir do código EMV
+  const qrImageUrl = pixText
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(pixText)}`
+    : "";
   return {
     order_id: data.id as string,
-    qr_code: tx?.pix_png_image as string,
-    qr_code_text: tx?.pix_qr_code as string,
+    qr_code: qrImageUrl,
+    qr_code_text: pixText,
   };
 }
 
