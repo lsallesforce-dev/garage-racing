@@ -133,10 +133,20 @@ export async function POST(req: NextRequest) {
 
   const botPhone = cfg?.whatsapp_agente || cfg?.whatsapp || null;
 
+  // Constrói versao rica: usa versao do banco se preenchida,
+  // senão combina motor + combustivel + cambio para ter discriminadores técnicos na busca FIPE.
+  // Ex: versao="" motor="2.0" combustivel="DIESEL" cambio="AT9" → "2.0 DIESEL AT9"
+  const versaoRica = [
+    carro.versao,
+    carro.motor,
+    carro.combustivel,
+    carro.cambio,
+  ].filter(Boolean).join(" ").trim();
+
   // Busca em paralelo: FIPE oficial + média web via Gemini
   const [fipe, mediaWeb] = await Promise.all([
-    buscarFipe(carro.marca, carro.modelo, carro.versao || "", carro.ano_modelo),
-    buscarMediaWeb(carro.marca, carro.modelo, carro.versao || "", carro.ano_modelo),
+    buscarFipe(carro.marca, carro.modelo, versaoRica, carro.ano_modelo),
+    buscarMediaWeb(carro.marca, carro.modelo, versaoRica, carro.ano_modelo),
   ]);
 
   const texto = gerarTextoRepasse(carro, fipe, mediaWeb, botPhone, tipo);
