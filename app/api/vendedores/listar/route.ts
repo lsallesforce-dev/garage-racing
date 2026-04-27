@@ -11,7 +11,8 @@ export async function GET() {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const vendedores = (data.users ?? []).filter(
-    u => u.user_metadata?.role === "vendedor" && u.user_metadata?.owner_user_id === user.id
+    u => ["vendedor", "dono"].includes(u.user_metadata?.role) &&
+         u.user_metadata?.owner_user_id === user.id
   );
 
   return NextResponse.json({ vendedores });

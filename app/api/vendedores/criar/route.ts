@@ -10,12 +10,13 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = await req.json();
-  const { vendedorId, email, senha, authUserId, nome: nomeSimples } = body as {
+  const { vendedorId, email, senha, authUserId, nome: nomeSimples, role: novoRole } = body as {
     vendedorId?: string;
     email: string;
     senha?: string;
     authUserId?: string;
-    nome?: string; // simple flow from Minha Conta
+    nome?: string;
+    role?: "vendedor" | "dono";
   };
 
   if (!email) return NextResponse.json({ error: "Email obrigatório" }, { status: 400 });
@@ -27,7 +28,7 @@ export async function POST(req: NextRequest) {
       email,
       password: senha,
       email_confirm: true,
-      user_metadata: { role: "vendedor", owner_user_id: user.id, nome: nomeSimples ?? email },
+      user_metadata: { role: novoRole ?? "vendedor", owner_user_id: user.id, nome: nomeSimples ?? email },
     });
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true, id: created.user.id });

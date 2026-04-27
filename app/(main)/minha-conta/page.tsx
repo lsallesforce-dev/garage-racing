@@ -45,6 +45,7 @@ export default function MinhaContaPage() {
   const [novoNome, setNovoNome]       = useState("");
   const [novoMail, setNovoMail]       = useState("");
   const [novoPwd, setNovoPwd]         = useState("");
+  const [novoRole, setNovoRole]        = useState<"vendedor" | "dono">("vendedor");
   const [addingMembro, setAddingMembro] = useState(false);
   const [erroMembro, setErroMembro]   = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -66,19 +67,18 @@ export default function MinhaContaPage() {
     setLoadingMembros(true);
     const res = await fetch("/api/vendedores/listar");
     const data = await res.json();
-    const vendedores: Membro[] = (data.vendedores ?? []).map((v: any) => ({
+    const membrosExt: Membro[] = (data.vendedores ?? []).map((v: any) => ({
       id: v.id, email: v.email,
       nome: v.user_metadata?.nome ?? v.email,
-      role: "vendedor" as const,
+      role: (v.user_metadata?.role === "dono" ? "dono" : "vendedor") as "dono" | "vendedor",
       created_at: v.created_at,
     }));
-    // Dono sempre no topo
     const { data: { user } } = await supabase.auth.getUser();
     const dono: Membro = {
       id: ownerId, email: user?.email ?? "", nome: user?.user_metadata?.nome ?? "Você",
       role: "dono", created_at: user?.created_at ?? "",
     };
-    setMembros([dono, ...vendedores]);
+    setMembros([dono, ...membrosExt]);
     setLoadingMembros(false);
   }
 
@@ -119,11 +119,11 @@ export default function MinhaContaPage() {
       const res = await fetch("/api/vendedores/criar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nome: novoNome, email: novoMail, senha: novoPwd }),
+        body: JSON.stringify({ nome: novoNome, email: novoMail, senha: novoPwd, role: novoRole }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Erro ao criar usuário");
-      setNovoNome(""); setNovoMail(""); setNovoPwd("");
+      setNovoNome(""); setNovoMail(""); setNovoPwd(""); setNovoRole("vendedor");
       setShowAddForm(false);
       const { data: { user } } = await supabase.auth.getUser();
       if (user) carregarMembros(user.id);
@@ -265,7 +265,18 @@ export default function MinhaContaPage() {
             {/* Formulário de novo usuário */}
             {showAddForm && (
               <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 mb-4">
-                <p className={`${LABEL} mb-3`}>Novo usuário</p>
+                <div className="flex items-center justify-between mb-3">
+                  <p className={LABEL}>Novo usuário</p>
+                  {/* Role toggle */}
+                  <div className="flex rounded-xl overflow-hidden border border-gray-200 bg-white">
+                    {(["vendedor", "dono"] as const).map(r => (
+                      <button key={r} onClick={() => setNovoRole(r)}
+                        className={`px-3 py-1 text-[10px] font-black uppercase tracking-widest transition-all ${novoRole === r ? "bg-gray-900 text-white" : "text-gray-400 hover:text-gray-700"}`}>
+                        {r === "vendedor" ? "Vendedor" : "Sócio"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
                   <div>
                     <label className={LABEL}>Nome</label>
@@ -284,19 +295,30 @@ export default function MinhaContaPage() {
                   </div>
                 </div>
 
-                <div className="mb-3 p-3 bg-blue-50 border border-blue-100 rounded-xl">
-                  <p className="text-[10px] font-black text-blue-700 uppercase tracking-widest mb-1">Permissões — Vendedor</p>
+                <div className={`mb-3 p-3 border rounded-xl ${novoRole === "dono" ? "bg-amber-50 border-amber-100" : "bg-blue-50 border-blue-100"}`}>
+                  <p className={`text-[10px] font-black uppercase tracking-widest mb-1 ${novoRole === "dono" ? "text-amber-700" : "text-blue-700"}`}>
+                    Permissões — {novoRole === "dono" ? "Sócio (acesso total)" : "Vendedor"}
+                  </p>
                   <div className="flex flex-wrap gap-2">
-                    {["Estoque Inteligente", "Central de Chat"].map(p => (
-                      <span key={p} className="flex items-center gap-1 text-[10px] text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full">
-                        <CheckCircle2 size={9} /> {p}
-                      </span>
-                    ))}
-                    {["Configurações", "Financeiro", "Contratos"].map(p => (
-                      <span key={p} className="flex items-center gap-1 text-[10px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full line-through">
-                        {p}
-                      </span>
-                    ))}
+                    {novoRole === "dono"
+                      ? ["Estoque Inteligente", "Central de Chat", "Configurações", "Financeiro", "Contratos"].map(p => (
+                          <span key={p} className="flex items-center gap-1 text-[10px] text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+                            <CheckCircle2 size={9} /> {p}
+                          </span>
+                        ))
+                      : <>
+                          {["Estoque Inteligente", "Central de Chat"].map(p => (
+                            <span key={p} className="flex items-center gap-1 text-[10px] text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full">
+                              <CheckCircle2 size={9} /> {p}
+                            </span>
+                          ))}
+                          {["Configurações", "Financeiro", "Contratos"].map(p => (
+                            <span key={p} className="flex items-center gap-1 text-[10px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full line-through">
+                              {p}
+                            </span>
+                          ))}
+                        </>
+                    }
                   </div>
                 </div>
 
@@ -332,13 +354,19 @@ export default function MinhaContaPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest border ${
-                        m.role === "dono"
+                        m.id === membros[0]?.id
                           ? "bg-gray-900 text-white border-gray-900"
+                          : m.role === "dono"
+                          ? "bg-amber-50 text-amber-700 border-amber-100"
                           : "bg-blue-50 text-blue-700 border-blue-100"
                       }`}>
-                        {m.role === "dono" ? <span className="flex items-center gap-1"><Shield size={9} /> Dono</span> : <span className="flex items-center gap-1"><Eye size={9} /> Vendedor</span>}
+                        {m.id === membros[0]?.id
+                          ? <span className="flex items-center gap-1"><Shield size={9} /> Dono</span>
+                          : m.role === "dono"
+                          ? <span className="flex items-center gap-1"><Shield size={9} /> Sócio</span>
+                          : <span className="flex items-center gap-1"><Eye size={9} /> Vendedor</span>}
                       </span>
-                      {m.role !== "dono" && (
+                      {m.id !== membros[0]?.id && (
                         <button onClick={() => handleRemoverMembro(m.id)}
                           className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition">
                           <Trash2 size={12} />
