@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { Flame, TrendingUp, Users, Car, Zap, Brain, LayoutDashboard } from "lucide-react";
+import { Flame, TrendingUp, Users, Car, Zap, Brain, LayoutDashboard, AlertTriangle } from "lucide-react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 export default function Dashboard() {
   const router = useRouter();
@@ -19,6 +20,8 @@ export default function Dashboard() {
   const [atividades, setAtividades] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [nomeEmpresa, setNomeEmpresa] = useState("");
+  const [diasTrial, setDiasTrial] = useState<number | null>(null);
+  const [planoId, setPlanoId] = useState<string>("pro");
 
   // Flash: Função que puxa a realidade do banco de dados
   const carregarDashboard = async () => {
@@ -80,13 +83,19 @@ export default function Dashboard() {
       if (!user) return;
       supabase
         .from("config_garage")
-        .select("nome_empresa")
+        .select("nome_empresa, trial_ends_at, plano_ativo, plano_vence_em, plano")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false })
         .limit(1)
         .then(({ data }) => {
           const row = data?.[0];
           if (row?.nome_empresa) setNomeEmpresa(row.nome_empresa);
+          if (row?.plano) setPlanoId(row.plano);
+          if (row?.trial_ends_at && !row?.plano_ativo) {
+            const diff = new Date(row.trial_ends_at).getTime() - Date.now();
+            const dias = Math.max(0, Math.ceil(diff / 86400000));
+            if (dias <= 7) setDiasTrial(dias);
+          }
         });
     });
   }, []);
@@ -101,6 +110,33 @@ export default function Dashboard() {
             <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-gray-400">Bem-vindo à {nomeEmpresa || "AutoZap"}, Comandante.</p>
             </div>
         </div>
+
+        {/* Banner trial expirando */}
+        {diasTrial !== null && (
+          <div className={`flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-2xl px-5 py-4 mb-6 border ${
+            diasTrial === 0
+              ? "bg-red-50 border-red-200"
+              : "bg-amber-50 border-amber-200"
+          }`}>
+            <div className="flex items-center gap-3">
+              <AlertTriangle className={`w-5 h-5 shrink-0 ${diasTrial === 0 ? "text-red-500" : "text-amber-500"}`} />
+              <div>
+                <p className={`font-black text-sm uppercase italic tracking-tight ${diasTrial === 0 ? "text-red-700" : "text-amber-700"}`}>
+                  {diasTrial === 0 ? "Seu trial encerrou hoje!" : `${diasTrial} ${diasTrial === 1 ? "dia restante" : "dias restantes"} no trial`}
+                </p>
+                <p className={`text-xs mt-0.5 ${diasTrial === 0 ? "text-red-500" : "text-amber-600"}`}>
+                  Assine agora para não perder nenhum lead
+                </p>
+              </div>
+            </div>
+            <Link href={`/assinar?plano=${planoId}`}
+              className={`shrink-0 px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest text-white transition whitespace-nowrap ${
+                diasTrial === 0 ? "bg-red-600 hover:bg-red-500" : "bg-amber-500 hover:bg-amber-400"
+              }`}>
+              Assinar agora →
+            </Link>
+          </div>
+        )}
 
         {/* Flash: Cards de Performance (Telemetria) */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mb-8">

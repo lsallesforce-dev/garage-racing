@@ -180,8 +180,16 @@ export default function PlanosPage() {
           ))}
         </div>
 
+        {/* Link para quem já tem conta */}
+        <p className="text-center text-gray-400 text-sm mt-8">
+          Já tem uma conta?{" "}
+          <Link href="/assinar" className="text-red-500 hover:text-red-400 font-bold underline underline-offset-2 transition-colors">
+            Clique aqui para assinar
+          </Link>
+        </p>
+
         {/* Banner trial */}
-        <div className="mt-10 bg-gray-900 rounded-[2rem] px-8 py-7 flex flex-col md:flex-row items-center justify-between gap-6">
+        <div className="mt-6 bg-gray-900 rounded-[2rem] px-8 py-7 flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 bg-red-600 rounded-2xl flex items-center justify-center shrink-0">
               <Zap size={20} className="text-white" fill="white" />
