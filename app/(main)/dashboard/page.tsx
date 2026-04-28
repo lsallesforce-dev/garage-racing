@@ -83,13 +83,13 @@ export default function Dashboard() {
       if (!user) return;
       supabase
         .from("config_garage")
-        .select("nome_empresa, trial_ends_at, plano_ativo, plano_vence_em, plano")
+        .select("nome_empresa, nome_fantasia, trial_ends_at, plano_ativo, plano_vence_em, plano")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false })
         .limit(1)
         .then(({ data }) => {
           const row = data?.[0];
-          if (row?.nome_empresa) setNomeEmpresa(row.nome_empresa);
+          if (row?.nome_empresa) setNomeEmpresa(row.nome_fantasia || row.nome_empresa);
           if (row?.plano) setPlanoId(row.plano);
           if (row?.trial_ends_at && !row?.plano_ativo) {
             const diff = new Date(row.trial_ends_at).getTime() - Date.now();
