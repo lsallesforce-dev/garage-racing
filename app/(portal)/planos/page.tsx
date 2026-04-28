@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CheckCircle2, X, Zap, ArrowRight, Star, Phone } from "lucide-react";
+import { CheckCircle2, X, Zap, ArrowRight, Star, FileText } from "lucide-react";
 
 const planos = [
   {
@@ -17,7 +17,7 @@ const planos = [
       { ok: true,  text: "Trial de 30 dias grátis"         },
       { ok: false, text: "Multi-vendedor"                  },
       { ok: false, text: "Financeiro completo + comissões" },
-      { ok: false, text: "Relatório mensal em PDF"         },
+      { ok: false, text: "Emissão de NF-e"                 },
     ],
     cta: "Começar trial grátis",
     ctaHref: "/onboarding?plano=starter",
@@ -26,41 +26,41 @@ const planos = [
     id: "pro",
     nome: "Pro",
     preco: "1.500",
-    destaque: true,
-    badge: "Mais completo",
+    destaque: false,
     desc: "Para revendas que já rodam e querem controle total: equipe, financeiro e marketing.",
     itens: [
-      { ok: true, text: "Veículos ilimitados"                   },
-      { ok: true, text: "Até 5 vendedores com acesso individual" },
-      { ok: true, text: "IA de atendimento no WhatsApp"          },
-      { ok: true, text: "Vitrine digital por veículo"            },
-      { ok: true, text: "30 vídeos de marketing IA/mês"          },
-      { ok: true, text: "Financeiro completo + comissões"        },
-      { ok: true, text: "Relatório mensal em PDF"                },
-      { ok: true, text: "Multi-vendedor com controle de acesso"  },
-      { ok: true, text: "Trial de 30 dias grátis"                },
+      { ok: true,  text: "Veículos ilimitados"                   },
+      { ok: true,  text: "Até 5 vendedores com acesso individual" },
+      { ok: true,  text: "IA de atendimento no WhatsApp"          },
+      { ok: true,  text: "Vitrine digital por veículo"            },
+      { ok: true,  text: "30 vídeos de marketing IA/mês"          },
+      { ok: true,  text: "Financeiro completo + comissões"        },
+      { ok: true,  text: "Relatório mensal em PDF"                },
+      { ok: true,  text: "Multi-vendedor com controle de acesso"  },
+      { ok: true,  text: "Trial de 30 dias grátis"                },
+      { ok: false, text: "Emissão de NF-e"                        },
     ],
     cta: "Começar trial grátis",
     ctaHref: "/onboarding?plano=pro",
   },
   {
-    id: "enterprise",
-    nome: "Enterprise",
-    preco: null,
-    destaque: false,
-    desc: "Para redes e grupos com múltiplas lojas. Negociamos juntos.",
+    id: "premium",
+    nome: "Premium",
+    preco: "2.135",
+    preco12x: "1.935",
+    destaque: true,
+    badge: "NF-e inclusa",
+    desc: "Tudo do Pro mais emissão de nota fiscal diretamente pelo sistema. 50 NFs por mês.",
     itens: [
-      { ok: true, text: "Tudo do Pro"                                   },
-      { ok: true, text: "Múltiplas lojas (multi-tenant)"                },
-      { ok: true, text: "Vídeos de marketing IA ilimitados"             },
-      { ok: true, text: "Onboarding presencial ou remoto"               },
-      { ok: true, text: "Suporte dedicado via WhatsApp"                 },
-      { ok: true, text: "SLA e contrato personalizado"                  },
-      { ok: true, text: "Personalização de marca (white-label parcial)" },
+      { ok: true, text: "Tudo do plano Pro"                      },
+      { ok: true, text: "50 NF-e por mês incluídas"              },
+      { ok: true, text: "Emissão de NF-e direto no sistema"      },
+      { ok: true, text: "DANFE e XML gerados automaticamente"    },
+      { ok: true, text: "Suporte prioritário via WhatsApp"       },
+      { ok: true, text: "Trial de 30 dias grátis"                },
     ],
-    cta: "Falar com vendas",
-    ctaHref: "https://wa.me/5511999999999?text=Olá!%20Quero%20saber%20mais%20sobre%20o%20AutoZap%20Enterprise.",
-    ctaExterno: true,
+    cta: "Começar trial grátis",
+    ctaHref: "/onboarding?plano=premium",
   },
 ];
 
@@ -123,8 +123,8 @@ export default function PlanosPage() {
 
               {p.badge && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                  <span className="bg-red-600 text-white text-[9px] font-black uppercase tracking-widest px-4 py-1.5 rounded-full flex items-center gap-1">
-                    <Star size={9} fill="white" /> {p.badge}
+                  <span className="bg-purple-600 text-white text-[9px] font-black uppercase tracking-widest px-4 py-1.5 rounded-full flex items-center gap-1">
+                    <FileText size={9} /> {p.badge}
                   </span>
                 </div>
               )}
@@ -218,28 +218,28 @@ export default function PlanosPage() {
                 <th className="text-left py-5 px-6 text-[10px] font-black uppercase tracking-widest text-gray-400">Recurso</th>
                 <th className="py-5 px-4 text-center text-[10px] font-black uppercase tracking-widest text-gray-500">Starter</th>
                 <th className="py-5 px-4 text-center text-[10px] font-black uppercase tracking-widest text-red-600">Pro</th>
-                <th className="py-5 px-4 text-center text-[10px] font-black uppercase tracking-widest text-gray-500">Enterprise</th>
+                <th className="py-5 px-4 text-center text-[10px] font-black uppercase tracking-widest text-purple-600">Premium</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {[
-                ["Veículos",                  "Até 30",     "Ilimitados",  "Ilimitados"      ],
-                ["Vendedores",                "1",          "Até 5",       "Ilimitados"      ],
-                ["IA no WhatsApp",            "✓",          "✓",           "✓"               ],
-                ["Vitrine digital",           "✓",          "✓",           "✓"               ],
-                ["Vídeos de marketing IA",    "15/mês",     "30/mês",      "Ilimitados"      ],
-                ["Financeiro + Comissões",    "—",          "✓",           "✓"               ],
-                ["Relatório mensal PDF",      "—",          "✓",           "✓"               ],
-                ["Multi-vendedor",            "—",          "✓",           "✓"               ],
-                ["Múltiplas lojas",           "—",          "—",           "✓"               ],
-                ["Suporte",                   "Email",      "Email",       "WhatsApp direto" ],
-                ["Trial",                     "30 dias",    "30 dias",     "Personalizado"   ],
-              ].map(([recurso, starter, pro, enterprise]) => (
+                ["Veículos",                  "Até 30",     "Ilimitados",  "Ilimitados"   ],
+                ["Vendedores",                "1",          "Até 5",       "Até 5"        ],
+                ["IA no WhatsApp",            "✓",          "✓",           "✓"            ],
+                ["Vitrine digital",           "✓",          "✓",           "✓"            ],
+                ["Vídeos de marketing IA",    "15/mês",     "30/mês",      "30/mês"       ],
+                ["Financeiro + Comissões",    "—",          "✓",           "✓"            ],
+                ["Relatório mensal PDF",      "—",          "✓",           "✓"            ],
+                ["Multi-vendedor",            "—",          "✓",           "✓"            ],
+                ["Emissão de NF-e",           "—",          "—",           "50/mês"       ],
+                ["Suporte",                   "Email",      "Email",       "WhatsApp"     ],
+                ["Trial",                     "30 dias",    "30 dias",     "30 dias"      ],
+              ].map(([recurso, starter, pro, premium]) => (
                 <tr key={recurso} className="hover:bg-gray-50/50 transition-colors">
                   <td className="py-4 px-6 font-bold text-gray-700">{recurso}</td>
                   <td className={`py-4 px-4 text-center text-[12px] font-bold ${starter === "—" ? "text-gray-200" : "text-gray-600"}`}>{starter}</td>
                   <td className={`py-4 px-4 text-center text-[12px] font-bold ${pro === "—" ? "text-gray-200" : "text-red-600"}`}>{pro}</td>
-                  <td className={`py-4 px-4 text-center text-[12px] font-bold ${enterprise === "—" ? "text-gray-200" : "text-gray-600"}`}>{enterprise}</td>
+                  <td className={`py-4 px-4 text-center text-[12px] font-bold ${premium === "—" ? "text-gray-200" : "text-purple-600"}`}>{premium}</td>
                 </tr>
               ))}
             </tbody>
