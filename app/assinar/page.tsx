@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
   QrCode, FileText, CreditCard, CheckCircle2, Copy, Loader2,
-  ChevronRight, Tag, Zap, Building2,
+  ChevronRight, Tag, Building2, Shield, Zap,
 } from "lucide-react";
 import Image from "next/image";
 
@@ -28,6 +28,9 @@ function maskInput(value: string, type: "cpf" | "phone" | "cep") {
   return value;
 }
 
+const inputCls = "w-full bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition";
+const labelCls = "block text-[10px] font-black uppercase tracking-widest text-gray-500 mb-1.5";
+
 type Metodo = "pix" | "boleto" | "cartao";
 type Parcelamento = "mensal" | "anual12x";
 type Step = "form" | "pix" | "boleto";
@@ -36,14 +39,14 @@ interface Customer {
   nome: string; email: string; cpf: string; telefone: string;
   cep: string; logradouro: string; numero: string; bairro: string; cidade: string; estado: string;
 }
-interface PixResult   { order_id: string; qr_code: string; qr_code_text: string }
+interface PixResult    { order_id: string; qr_code: string; qr_code_text: string }
 interface BoletoResult { order_id: string; boleto_url: string; boleto_barcode: string; boleto_pdf: string }
 
-// ─── Componente interno (usa useSearchParams) ──────────────────────────────────
+// ─── Componente interno ────────────────────────────────────────────────────────
 
 function AssinarContent() {
-  const params  = useSearchParams();
-  const router  = useRouter();
+  const params = useSearchParams();
+  const router = useRouter();
 
   const [planoId,      setPlanoId]      = useState(params.get("plano") ?? "pro");
   const plano = PLANOS[planoId] ?? PLANOS.pro;
@@ -63,36 +66,31 @@ function AssinarContent() {
     cep: "", logradouro: "", numero: "", bairro: "", cidade: "", estado: "",
   });
 
-  // Preenche dados do usuário logado
   useEffect(() => {
     import("@/lib/supabase").then(({ supabase }) => {
       supabase.auth.getUser().then(({ data }) => {
-        if (data.user?.email)                  setCustomer(c => ({ ...c, email: data.user!.email! }));
-        if (data.user?.user_metadata?.nome)    setCustomer(c => ({ ...c, nome:  data.user!.user_metadata.nome }));
+        if (data.user?.email)               setCustomer(c => ({ ...c, email: data.user!.email! }));
+        if (data.user?.user_metadata?.nome) setCustomer(c => ({ ...c, nome:  data.user!.user_metadata.nome }));
       });
     });
   }, []);
 
-  // Autopreenchimento de endereço por CEP
   async function fetchCep(cep: string) {
     const digits = cep.replace(/\D/g, "");
     if (digits.length !== 8) return;
     try {
       const res  = await fetch(`https://viacep.com.br/ws/${digits}/json/`);
       const data = await res.json();
-      if (!data.erro) {
-        setCustomer(c => ({
-          ...c,
-          logradouro: data.logradouro ?? c.logradouro,
-          bairro:     data.bairro     ?? c.bairro,
-          cidade:     data.localidade ?? c.cidade,
-          estado:     data.uf         ?? c.estado,
-        }));
-      }
+      if (!data.erro) setCustomer(c => ({
+        ...c,
+        logradouro: data.logradouro ?? c.logradouro,
+        bairro:     data.bairro     ?? c.bairro,
+        cidade:     data.localidade ?? c.cidade,
+        estado:     data.uf         ?? c.estado,
+      }));
     } catch { /* silencioso */ }
   }
 
-  // Polling de confirmação PIX (a cada 5s)
   const pollPix = useCallback(async (orderId: string) => {
     if (pixStatus === "pago") return;
     try {
@@ -146,40 +144,48 @@ function AssinarContent() {
     setTimeout(() => setCopied(false), 2000);
   }
 
-  // ── Tela PIX ─────────────────────────────────────────────────────────────────
+  // ── Tela PIX ──────────────────────────────────────────────────────────────────
   if (step === "pix" && pixResult) {
     return (
-      <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-4">
-        <div className="w-full max-w-sm bg-[#111] border border-white/10 rounded-2xl p-8 text-center">
+      <div className="min-h-screen bg-[#efefed] flex items-center justify-center p-4">
+        <div className="w-full max-w-sm bg-white rounded-[2rem] border border-gray-100 shadow-sm p-8 text-center">
           {pixStatus === "pago" ? (
             <>
-              <CheckCircle2 className="w-16 h-16 text-green-400 mx-auto mb-4" />
-              <h2 className="text-xl font-bold text-white mb-2">Pagamento confirmado!</h2>
-              <p className="text-white/50 text-sm">Redirecionando…</p>
+              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <CheckCircle2 size={32} className="text-green-600" />
+              </div>
+              <h2 className="text-xl font-black uppercase tracking-tight text-gray-900 mb-2">Pago!</h2>
+              <p className="text-gray-400 text-sm">Redirecionando…</p>
             </>
           ) : (
             <>
-              <div className="flex items-center gap-2 justify-center mb-6">
-                <QrCode className="w-5 h-5 text-[#00ff88]" />
-                <span className="text-white font-semibold">Pague com PIX</span>
+              <div className="flex items-center gap-2 justify-center mb-2">
+                <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">AutoZap · Plano {plano.nome}</span>
               </div>
-              {pixResult.qr_code ? (
-                <Image src={pixResult.qr_code} alt="QR Code PIX" width={200} height={200}
-                  className="mx-auto rounded-xl mb-4" unoptimized />
-              ) : (
-                <div className="w-[200px] h-[200px] bg-white/10 rounded-xl mx-auto mb-4 flex items-center justify-center">
-                  <QrCode className="w-16 h-16 text-white/30" />
-                </div>
-              )}
-              <p className="text-white/50 text-xs mb-4">Expira em 1 hora · Aguardando confirmação…</p>
+              <p className="text-2xl font-black text-gray-900 mb-6">
+                {fmt(metodo === "cartao" && parcelamento === "anual12x" ? plano.parcela12x : plano.mensal)}
+                <span className="text-sm font-normal text-gray-400">/mês</span>
+              </p>
+              <div className="bg-gray-50 rounded-2xl p-4 mb-4 flex items-center justify-center">
+                {pixResult.qr_code ? (
+                  <Image src={pixResult.qr_code} alt="QR Code PIX" width={200} height={200}
+                    className="rounded-xl" unoptimized />
+                ) : (
+                  <div className="w-[200px] h-[200px] bg-gray-100 rounded-xl flex items-center justify-center">
+                    <QrCode size={48} className="text-gray-300" />
+                  </div>
+                )}
+              </div>
+              <p className="text-[10px] text-gray-400 mb-4 font-bold uppercase tracking-widest">
+                Expira em 1 hora · Verificando automaticamente
+              </p>
               <button onClick={() => copyText(pixResult.qr_code_text)}
-                className="w-full flex items-center justify-center gap-2 bg-[#00ff88]/10 hover:bg-[#00ff88]/20 border border-[#00ff88]/30 text-[#00ff88] rounded-xl py-3 text-sm font-medium transition">
-                {copied ? <CheckCircle2 className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                className="w-full flex items-center justify-center gap-2 bg-gray-900 hover:bg-red-600 text-white rounded-2xl py-3 text-[11px] font-black uppercase tracking-widest transition">
+                {copied ? <CheckCircle2 size={14} /> : <Copy size={14} />}
                 {copied ? "Copiado!" : "Copiar código PIX"}
               </button>
-              <div className="mt-4 flex items-center justify-center gap-2 text-white/30 text-xs">
-                <Loader2 className="w-3 h-3 animate-spin" />
-                Verificando pagamento automaticamente…
+              <div className="mt-4 flex items-center justify-center gap-2 text-gray-400 text-xs">
+                <Loader2 size={12} className="animate-spin" /> Aguardando confirmação…
               </div>
             </>
           )}
@@ -191,29 +197,31 @@ function AssinarContent() {
   // ── Tela Boleto ───────────────────────────────────────────────────────────────
   if (step === "boleto" && boletoResult) {
     return (
-      <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-4">
-        <div className="w-full max-w-sm bg-[#111] border border-white/10 rounded-2xl p-8 text-center">
-          <FileText className="w-12 h-12 text-blue-400 mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-white mb-2">Boleto gerado!</h2>
-          <p className="text-white/50 text-sm mb-6">
-            Vence em 7 dias. O plano ativa após a compensação (até 3 dias úteis).
+      <div className="min-h-screen bg-[#efefed] flex items-center justify-center p-4">
+        <div className="w-full max-w-sm bg-white rounded-[2rem] border border-gray-100 shadow-sm p-8 text-center">
+          <div className="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <FileText size={24} className="text-blue-600" />
+          </div>
+          <h2 className="text-xl font-black uppercase tracking-tight text-gray-900 mb-2">Boleto gerado!</h2>
+          <p className="text-gray-400 text-sm mb-6">
+            Vence em 7 dias. Plano ativa após compensação (até 3 dias úteis).
           </p>
           {boletoResult.boleto_barcode && (
-            <div className="bg-white/5 border border-white/10 rounded-xl p-3 mb-4 break-all text-xs text-white/60 font-mono text-left">
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 mb-4 break-all text-xs text-gray-500 font-mono text-left">
               {boletoResult.boleto_barcode}
             </div>
           )}
           <div className="flex flex-col gap-3">
             {boletoResult.boleto_pdf && (
               <a href={boletoResult.boleto_pdf} target="_blank" rel="noopener noreferrer"
-                className="w-full flex items-center justify-center gap-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 text-blue-400 rounded-xl py-3 text-sm font-medium transition">
-                <FileText className="w-4 h-4" /> Abrir boleto PDF
+                className="w-full flex items-center justify-center gap-2 bg-gray-900 hover:bg-red-600 text-white rounded-2xl py-3 text-[11px] font-black uppercase tracking-widest transition">
+                <FileText size={14} /> Abrir boleto PDF
               </a>
             )}
             {boletoResult.boleto_barcode && (
               <button onClick={() => copyText(boletoResult.boleto_barcode)}
-                className="w-full flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white/70 rounded-xl py-3 text-sm font-medium transition">
-                {copied ? <CheckCircle2 className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
+                className="w-full flex items-center justify-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-2xl py-3 text-[11px] font-black uppercase tracking-widest transition">
+                {copied ? <CheckCircle2 size={14} className="text-green-500" /> : <Copy size={14} />}
                 {copied ? "Copiado!" : "Copiar código de barras"}
               </button>
             )}
@@ -224,51 +232,54 @@ function AssinarContent() {
   }
 
   // ── Formulário ────────────────────────────────────────────────────────────────
-  return (
-    <div className="min-h-screen bg-[#0a0a0a] py-12 px-4">
-      <div className="max-w-2xl mx-auto">
+  const valorExibido = metodo === "cartao" && parcelamento === "anual12x" ? plano.parcela12x : plano.mensal;
 
+  return (
+    <div className="min-h-screen bg-[#efefed] py-12 px-4">
+      <div className="max-w-xl mx-auto">
+
+        {/* Header */}
         <div className="text-center mb-10">
-          <div className="flex items-center justify-center gap-2 mb-3">
-            <Zap className="w-5 h-5 text-[#00ff88]" />
-            <span className="text-[#00ff88] text-sm font-semibold tracking-wide uppercase">AutoZap</span>
+          <div className="flex items-center justify-center gap-1.5 mb-4">
+            <span className="text-2xl font-black uppercase italic tracking-tighter">
+              <span className="text-gray-900">AUTO</span><span className="text-red-600">ZAP</span>
+            </span>
           </div>
-          <h1 className="text-3xl font-bold text-white mb-2">Assinar plano {plano.nome}</h1>
-          <p className="text-white/50 text-sm">Escolha a forma de pagamento e ative seu plano agora</p>
+          <h1 className="text-3xl font-black uppercase tracking-tighter italic text-gray-900">
+            Assinar plano {plano.nome}
+          </h1>
+          <p className="text-gray-400 text-sm mt-2">Trial grátis de 30 dias · Cancele quando quiser</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-5">
 
           {/* Seletor de plano */}
-          <div className="bg-[#111] border border-white/10 rounded-2xl p-6">
-            <h2 className="text-white font-semibold mb-4">Plano escolhido</h2>
-            <div className="grid grid-cols-3 gap-3">
+          <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-6">
+            <p className={labelCls}>Plano escolhido</p>
+            <div className="grid grid-cols-3 gap-2 mt-2">
               {(["starter", "pro", "premium"] as const).map(id => {
                 const p = PLANOS[id];
-                const badge = id === "pro" ? { label: "Popular", color: "bg-amber-400/20 text-amber-400" }
-                            : id === "premium" ? { label: "NF-e inclusa", color: "bg-purple-400/20 text-purple-400" }
+                const badge = id === "pro"     ? { label: "Popular",    cls: "bg-amber-100 text-amber-700" }
+                            : id === "premium" ? { label: "NF-e",       cls: "bg-purple-100 text-purple-700" }
                             : null;
                 return (
                   <button key={id} type="button" onClick={() => setPlanoId(id)}
-                    className={`flex flex-col items-start gap-1 p-4 rounded-xl border transition ${
-                      planoId === id
-                        ? "border-[#00ff88] bg-[#00ff88]/10"
-                        : "border-white/10 bg-white/5 hover:border-white/30"
+                    className={`flex flex-col items-start gap-1 p-3 rounded-2xl border-2 transition ${
+                      planoId === id ? "border-gray-900 bg-gray-900 text-white" : "border-gray-100 bg-gray-50 hover:border-gray-300 text-gray-700"
                     }`}>
                     <div className="flex items-center justify-between w-full gap-1">
-                      <span className={`text-sm font-bold ${planoId === id ? "text-[#00ff88]" : "text-white"}`}>
+                      <span className={`text-[11px] font-black uppercase tracking-widest ${planoId === id ? "text-white" : "text-gray-900"}`}>
                         {p.nome}
                       </span>
                       {badge && (
-                        <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full whitespace-nowrap ${badge.color}`}>
+                        <span className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-full ${badge.cls}`}>
                           {badge.label}
                         </span>
                       )}
                     </div>
-                    <span className="text-white/50 text-xs">{fmt(p.mensal)}/mês</span>
-                    {p.destaque && (
-                      <span className="text-purple-400/70 text-[10px] font-medium">{p.destaque}</span>
-                    )}
+                    <span className={`text-[10px] ${planoId === id ? "text-white/70" : "text-gray-400"}`}>
+                      {fmt(p.mensal)}/mês
+                    </span>
                   </button>
                 );
               })}
@@ -276,46 +287,47 @@ function AssinarContent() {
           </div>
 
           {/* Método de pagamento */}
-          <div className="bg-[#111] border border-white/10 rounded-2xl p-6">
-            <h2 className="text-white font-semibold mb-4">Forma de pagamento</h2>
-            <div className="grid grid-cols-3 gap-3">
+          <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-6">
+            <p className={labelCls}>Forma de pagamento</p>
+            <div className="grid grid-cols-3 gap-2 mt-2">
               {([
-                { id: "pix",    icon: <QrCode className="w-5 h-5" />,     label: "PIX",    badge: "Instantâneo" },
-                { id: "boleto", icon: <FileText className="w-5 h-5" />,   label: "Boleto", badge: "3 dias úteis" },
-                { id: "cartao", icon: <CreditCard className="w-5 h-5" />, label: "Cartão", badge: "Parcelado" },
-              ] as const).map(({ id, icon, label, badge }) => (
+                { id: "pix",    icon: <QrCode size={18} />,     label: "PIX",    sub: "Instantâneo" },
+                { id: "boleto", icon: <FileText size={18} />,   label: "Boleto", sub: "3 dias úteis" },
+                { id: "cartao", icon: <CreditCard size={18} />, label: "Cartão", sub: "Parcelado" },
+              ] as const).map(({ id, icon, label, sub }) => (
                 <button key={id} type="button" onClick={() => setMetodo(id)}
-                  className={`flex flex-col items-center gap-2 p-4 rounded-xl border transition ${
-                    metodo === id
-                      ? "border-[#00ff88] bg-[#00ff88]/10 text-[#00ff88]"
-                      : "border-white/10 bg-white/5 text-white/60 hover:border-white/30"
+                  className={`flex flex-col items-center gap-1.5 py-4 rounded-2xl border-2 transition ${
+                    metodo === id ? "border-red-600 bg-red-50 text-red-600" : "border-gray-100 bg-gray-50 text-gray-500 hover:border-gray-300"
                   }`}>
                   {icon}
-                  <span className="text-sm font-medium">{label}</span>
-                  <span className="text-[10px] opacity-60">{badge}</span>
+                  <span className="text-[11px] font-black uppercase tracking-widest">{label}</span>
+                  <span className="text-[9px] text-gray-400">{sub}</span>
                 </button>
               ))}
             </div>
 
             {/* Toggle mensal / anual — só cartão */}
             {metodo === "cartao" && (
-              <div className="mt-4 flex gap-3">
+              <div className="mt-4 flex gap-2">
                 {([
-                  { id: "mensal",   label: `Mensal — ${fmt(plano.mensal)}/mês`,    tag: null },
-                  { id: "anual12x", label: `12x de ${fmt(plano.parcela12x)}`,      tag: "10% OFF — Melhor opção" },
-                ] as const).map(({ id, label, tag }) => (
+                  { id: "mensal",   label: `Mensal`,        sub: fmt(plano.mensal) + "/mês",     tag: null },
+                  { id: "anual12x", label: `Anual 12x`,     sub: fmt(plano.parcela12x) + "/mês", tag: "10% OFF" },
+                ] as const).map(({ id, label, sub, tag }) => (
                   <button key={id} type="button" onClick={() => setParcelamento(id)}
-                    className={`flex-1 flex flex-col items-center gap-1 p-3 rounded-xl border text-sm transition ${
-                      parcelamento === id
-                        ? "border-[#00ff88] bg-[#00ff88]/10 text-[#00ff88]"
-                        : "border-white/10 bg-white/5 text-white/60 hover:border-white/30"
+                    className={`flex-1 flex flex-col items-center gap-0.5 py-3 rounded-2xl border-2 transition ${
+                      parcelamento === id ? "border-red-600 bg-red-50" : "border-gray-100 bg-gray-50 hover:border-gray-300"
                     }`}>
-                    {tag && (
-                      <span className="flex items-center gap-1 text-[10px] font-semibold text-amber-400">
-                        <Tag className="w-3 h-3" /> {tag}
+                    <div className="flex items-center gap-1.5">
+                      <span className={`text-[11px] font-black uppercase tracking-widest ${parcelamento === id ? "text-red-600" : "text-gray-700"}`}>
+                        {label}
                       </span>
-                    )}
-                    <span>{label}</span>
+                      {tag && (
+                        <span className="flex items-center gap-0.5 text-[8px] font-black text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">
+                          <Tag size={8} /> {tag}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[10px] text-gray-400">{sub}</span>
                   </button>
                 ))}
               </div>
@@ -323,113 +335,97 @@ function AssinarContent() {
           </div>
 
           {/* Resumo do valor */}
-          <div className="bg-[#00ff88]/5 border border-[#00ff88]/20 rounded-2xl p-4 flex items-center justify-between">
+          <div className="bg-gray-900 rounded-[2rem] p-5 flex items-center justify-between">
             <div>
-              <div className="text-white font-semibold">Plano {plano.nome}</div>
-              <div className="text-white/50 text-sm">
+              <p className="text-[10px] font-black uppercase tracking-widest text-white/50">Plano {plano.nome}</p>
+              <p className="text-[11px] text-white/40 mt-0.5">
                 {metodo === "cartao" && parcelamento === "anual12x"
-                  ? `12x · Total ${fmt(plano.anual12x)} (economize ${fmt(plano.mensal * 12 - plano.anual12x)})`
-                  : `${fmt(plano.mensal)}/mês · renovação mensal`}
-              </div>
+                  ? `12x · Total ${fmt(plano.anual12x)} · economia de ${fmt(plano.mensal * 12 - plano.anual12x)}`
+                  : "Renovação mensal · cancele quando quiser"}
+              </p>
             </div>
             <div className="text-right">
-              <div className="text-2xl font-bold text-[#00ff88]">
-                {metodo === "cartao" && parcelamento === "anual12x" ? fmt(plano.parcela12x) : fmt(plano.mensal)}
-              </div>
-              {metodo === "cartao" && parcelamento === "anual12x" && (
-                <div className="text-xs text-white/40">por mês</div>
-              )}
+              <p className="text-2xl font-black text-white italic">{fmt(valorExibido)}</p>
+              <p className="text-[10px] text-white/40">/mês</p>
             </div>
           </div>
 
           {/* Dados do titular */}
-          <div className="bg-[#111] border border-white/10 rounded-2xl p-6 space-y-4">
-            <h2 className="text-white font-semibold flex items-center gap-2">
-              <Building2 className="w-4 h-4 text-white/40" /> Dados do titular
-            </h2>
+          <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-6 space-y-4">
+            <p className={labelCls + " flex items-center gap-2"}>
+              <Building2 size={11} /> Dados do titular
+            </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="sm:col-span-2">
-                <label className="block text-xs text-white/50 mb-1">Nome completo</label>
+                <label className={labelCls}>Nome completo</label>
                 <input required value={customer.nome}
                   onChange={e => setCustomer(c => ({ ...c, nome: e.target.value }))}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-[#00ff88]/50"
-                  placeholder="João da Silva" />
+                  className={inputCls} placeholder="João da Silva" />
               </div>
               <div>
-                <label className="block text-xs text-white/50 mb-1">E-mail</label>
+                <label className={labelCls}>E-mail</label>
                 <input required type="email" value={customer.email}
                   onChange={e => setCustomer(c => ({ ...c, email: e.target.value }))}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-[#00ff88]/50"
-                  placeholder="joao@email.com" />
+                  className={inputCls} placeholder="joao@email.com" />
               </div>
               <div>
-                <label className="block text-xs text-white/50 mb-1">CPF</label>
+                <label className={labelCls}>CPF</label>
                 <input required value={customer.cpf}
                   onChange={e => setCustomer(c => ({ ...c, cpf: maskInput(e.target.value, "cpf") }))}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-[#00ff88]/50"
-                  placeholder="000.000.000-00" />
+                  className={inputCls} placeholder="000.000.000-00" />
               </div>
-              <div>
-                <label className="block text-xs text-white/50 mb-1">Telefone / WhatsApp</label>
+              <div className="sm:col-span-2">
+                <label className={labelCls}>Telefone / WhatsApp</label>
                 <input required value={customer.telefone}
                   onChange={e => setCustomer(c => ({ ...c, telefone: maskInput(e.target.value, "phone") }))}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-[#00ff88]/50"
-                  placeholder="(11) 99999-9999" />
+                  className={inputCls} placeholder="(11) 99999-9999" />
               </div>
             </div>
 
             {/* Endereço — apenas para boleto */}
             {metodo === "boleto" && (
-              <div className="border-t border-white/10 pt-4">
-                <h3 className="text-white/60 text-xs font-semibold uppercase tracking-wide mb-3">
-                  Endereço para boleto
-                </h3>
+              <div className="border-t border-gray-100 pt-4 space-y-4">
+                <p className={labelCls}>Endereço para boleto</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs text-white/50 mb-1">CEP</label>
+                    <label className={labelCls}>CEP</label>
                     <input required value={customer.cep}
                       onChange={e => {
                         const v = maskInput(e.target.value, "cep");
                         setCustomer(c => ({ ...c, cep: v }));
                         if (v.replace(/\D/g, "").length === 8) fetchCep(v);
                       }}
-                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-[#00ff88]/50"
-                      placeholder="00000-000" />
+                      className={inputCls} placeholder="00000-000" />
                   </div>
                   <div>
-                    <label className="block text-xs text-white/50 mb-1">Número</label>
+                    <label className={labelCls}>Número</label>
                     <input required value={customer.numero}
                       onChange={e => setCustomer(c => ({ ...c, numero: e.target.value }))}
-                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-[#00ff88]/50"
-                      placeholder="123" />
+                      className={inputCls} placeholder="123" />
                   </div>
                   <div className="sm:col-span-2">
-                    <label className="block text-xs text-white/50 mb-1">Logradouro</label>
+                    <label className={labelCls}>Logradouro</label>
                     <input required value={customer.logradouro}
                       onChange={e => setCustomer(c => ({ ...c, logradouro: e.target.value }))}
-                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-[#00ff88]/50"
-                      placeholder="Rua das Flores" />
+                      className={inputCls} placeholder="Rua das Flores" />
                   </div>
                   <div>
-                    <label className="block text-xs text-white/50 mb-1">Bairro</label>
+                    <label className={labelCls}>Bairro</label>
                     <input required value={customer.bairro}
                       onChange={e => setCustomer(c => ({ ...c, bairro: e.target.value }))}
-                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-[#00ff88]/50"
-                      placeholder="Centro" />
+                      className={inputCls} placeholder="Centro" />
                   </div>
                   <div>
-                    <label className="block text-xs text-white/50 mb-1">Cidade</label>
+                    <label className={labelCls}>Cidade</label>
                     <input required value={customer.cidade}
                       onChange={e => setCustomer(c => ({ ...c, cidade: e.target.value }))}
-                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-[#00ff88]/50"
-                      placeholder="São Paulo" />
+                      className={inputCls} placeholder="São Paulo" />
                   </div>
                   <div>
-                    <label className="block text-xs text-white/50 mb-1">Estado (UF)</label>
+                    <label className={labelCls}>Estado (UF)</label>
                     <input required maxLength={2} value={customer.estado}
                       onChange={e => setCustomer(c => ({ ...c, estado: e.target.value.toUpperCase() }))}
-                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-[#00ff88]/50 uppercase"
-                      placeholder="SP" />
+                      className={inputCls + " uppercase"} placeholder="SP" />
                   </div>
                 </div>
               </div>
@@ -437,28 +433,33 @@ function AssinarContent() {
           </div>
 
           {error && (
-            <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 text-red-400 text-sm">
+            <div className="bg-red-50 border border-red-200 rounded-2xl p-4 text-red-600 text-sm font-bold">
               {error}
             </div>
           )}
 
           <button type="submit" disabled={loading}
-            className="w-full flex items-center justify-center gap-2 bg-[#00ff88] hover:bg-[#00dd77] text-black font-bold py-4 rounded-xl text-base transition disabled:opacity-50">
+            className="w-full flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-black uppercase tracking-widest py-4 rounded-2xl text-[12px] transition">
             {loading ? (
-              <><Loader2 className="w-5 h-5 animate-spin" /> Processando…</>
+              <><Loader2 size={16} className="animate-spin" /> Processando…</>
             ) : (
               <>
-                {metodo === "pix"    && <><QrCode    className="w-5 h-5" /> Gerar QR Code PIX</>}
-                {metodo === "boleto" && <><FileText   className="w-5 h-5" /> Gerar boleto</>}
-                {metodo === "cartao" && <><CreditCard className="w-5 h-5" /> Ir para pagamento</>}
-                <ChevronRight className="w-5 h-5" />
+                {metodo === "pix"    && <><QrCode    size={16} /> Gerar QR Code PIX</>}
+                {metodo === "boleto" && <><FileText   size={16} /> Gerar boleto</>}
+                {metodo === "cartao" && <><CreditCard size={16} /> Ir para pagamento</>}
+                <ChevronRight size={16} />
               </>
             )}
           </button>
 
-          <p className="text-center text-white/30 text-xs">
-            Pagamento processado por PagarMe · Dados criptografados · SSL
-          </p>
+          <div className="flex items-center justify-center gap-4 text-[10px] text-gray-400 font-bold uppercase tracking-widest">
+            <span className="flex items-center gap-1"><Shield size={10} /> SSL</span>
+            <span>·</span>
+            <span className="flex items-center gap-1"><Zap size={10} /> PagarMe</span>
+            <span>·</span>
+            <span className="flex items-center gap-1"><CheckCircle2 size={10} /> Trial 30 dias</span>
+          </div>
+
         </form>
       </div>
     </div>
