@@ -52,12 +52,16 @@ const planos = [
     badge: "NF-e inclusa",
     desc: "Tudo do Pro mais emissão de nota fiscal diretamente pelo sistema. 50 NFs por mês.",
     itens: [
-      { ok: true, text: "Tudo do plano Pro"                      },
-      { ok: true, text: "50 NF-e por mês incluídas"              },
-      { ok: true, text: "Emissão de NF-e direto no sistema"      },
-      { ok: true, text: "DANFE e XML gerados automaticamente"    },
-      { ok: true, text: "Suporte prioritário via WhatsApp"       },
-      { ok: true, text: "Trial de 30 dias grátis"                },
+      { ok: true, text: "Veículos ilimitados"                          },
+      { ok: true, text: "Vendedores ilimitados com acesso individual"  },
+      { ok: true, text: "IA de atendimento no WhatsApp"                },
+      { ok: true, text: "Vitrine digital por veículo"                  },
+      { ok: true, text: "50 vídeos de marketing IA/mês"               },
+      { ok: true, text: "Financeiro completo + comissões + contrato"  },
+      { ok: true, text: "Relatório mensal em PDF"                      },
+      { ok: true, text: "Multi-vendedor com controle de acesso"        },
+      { ok: true, text: "Trial de 30 dias grátis"                      },
+      { ok: true, text: "Emissão de NF-e (50/mês)"                    },
     ],
     cta: "Começar trial grátis",
     ctaHref: "/onboarding?plano=premium",
@@ -112,24 +116,24 @@ export default function PlanosPage() {
 
       {/* Cards */}
       <section className="py-20 max-w-6xl mx-auto px-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
           {planos.map(p => (
             <div key={p.id}
               className={`rounded-[2rem] p-8 border relative flex flex-col
                 ${p.destaque
-                  ? "bg-gray-900 text-white border-gray-900 shadow-2xl md:scale-[1.03]"
+                  ? "bg-gray-900 text-white border-gray-800 shadow-2xl ring-2 ring-purple-500/40"
                   : "bg-gray-50 text-gray-900 border-gray-100"
                 }`}>
 
               {p.badge && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 whitespace-nowrap">
                   <span className="bg-purple-600 text-white text-[9px] font-black uppercase tracking-widest px-4 py-1.5 rounded-full flex items-center gap-1">
                     <FileText size={9} /> {p.badge}
                   </span>
                 </div>
               )}
 
-              <div className="mb-6">
+              <div className={`mb-6 ${p.badge ? "mt-3" : ""}`}>
                 <p className={`text-[10px] font-black uppercase tracking-widest mb-2 ${p.destaque ? "text-red-400" : "text-gray-400"}`}>
                   {p.nome}
                 </p>
