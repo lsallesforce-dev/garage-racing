@@ -482,9 +482,12 @@ export default function AdminPage() {
     return false;
   });
 
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  // Pendentes com vencimento passado contam como atrasados mesmo sem marcação manual
   const pag_pago     = pagamentos.filter(p => p.status === "pago").reduce((a, p) => a + p.valor, 0);
-  const pag_pendente = pagamentos.filter(p => p.status === "pendente").reduce((a, p) => a + p.valor, 0);
-  const pag_atrasado = pagamentos.filter(p => p.status === "atrasado").reduce((a, p) => a + p.valor, 0);
+  const pag_pendente = pagamentos.filter(p => p.status === "pendente" && new Date(p.vencimento) >= hoje).reduce((a, p) => a + p.valor, 0);
+  const pag_atrasado = pagamentos.filter(p => p.status === "atrasado" || (p.status === "pendente" && new Date(p.vencimento) < hoje)).reduce((a, p) => a + p.valor, 0);
+  const pags_vencidos = pagamentos.filter(p => p.status === "pendente" && new Date(p.vencimento) < hoje);
 
   // Gráfico: cadastros por mês (últimos 6 meses)
   const chartData = (() => {
@@ -905,6 +908,38 @@ export default function AdminPage() {
         {/* ══════════════════════════════════════════════════════════════════ */}
         {tab === "financeiro" && (
           <div className="flex flex-col gap-6">
+
+            {/* Alerta de pagamentos vencidos não marcados */}
+            {pags_vencidos.length > 0 && (
+              <div className="flex items-center justify-between p-4 bg-red-50 border border-red-200 rounded-2xl">
+                <div className="flex items-center gap-3">
+                  <AlertCircle size={16} className="text-red-600 shrink-0" />
+                  <div>
+                    <p className="text-[11px] font-black uppercase tracking-widest text-red-700">
+                      {pags_vencidos.length} pagamento{pags_vencidos.length > 1 ? "s" : ""} vencido{pags_vencidos.length > 1 ? "s" : ""} sem marcação
+                    </p>
+                    <p className="text-[10px] text-red-500 mt-0.5">
+                      {pags_vencidos.map(p => p.config_garage?.nome_empresa ?? p.user_id).join(", ")}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={async () => {
+                    for (const p of pags_vencidos) {
+                      await fetch("/api/admin/pagamentos", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", "x-admin-secret": secret },
+                        body: JSON.stringify({ acao: "marcar_atrasado", id: p.id }),
+                      });
+                    }
+                    carregarPagamentos(secret);
+                  }}
+                  className="px-3 py-1.5 bg-red-600 text-white text-[9px] font-black uppercase tracking-widest rounded-xl hover:bg-red-700 transition whitespace-nowrap"
+                >
+                  Marcar Todos Atrasados
+                </button>
+              </div>
+            )}
 
             {/* KPIs financeiros */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
