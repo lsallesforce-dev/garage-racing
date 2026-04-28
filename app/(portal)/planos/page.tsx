@@ -122,7 +122,9 @@ export default function PlanosPage() {
               className={`rounded-[2rem] p-8 border relative flex flex-col
                 ${p.destaque
                   ? "bg-gray-900 text-white border-gray-800 shadow-2xl ring-2 ring-purple-500/40"
-                  : "bg-gray-200 text-gray-900 border-gray-300"
+                  : p.id === "pro"
+                    ? "bg-gray-400 text-gray-900 border-gray-400"
+                    : "bg-gray-100 text-gray-900 border-gray-200"
                 }`}>
 
               {p.badge && (
@@ -134,29 +136,31 @@ export default function PlanosPage() {
               )}
 
               <div className={`mb-6 ${p.badge ? "mt-3" : ""}`}>
-                <p className={`text-sm font-black uppercase tracking-[0.2em] mb-3 ${p.destaque ? "text-red-400" : "text-gray-700"}`}>
+                <p className={`text-sm font-black uppercase tracking-[0.2em] mb-3 ${
+                  p.destaque ? "text-red-400" : p.id === "pro" ? "text-gray-800" : "text-gray-600"
+                }`}>
                   {p.nome}
                 </p>
                 {p.preco ? (
                   <div className="flex items-end gap-2 mb-1">
-                    <span className={`text-[11px] font-black ${p.destaque ? "text-gray-400" : "text-gray-500"}`}>R$</span>
+                    <span className={`text-[11px] font-black ${p.destaque ? "text-gray-400" : "text-gray-600"}`}>R$</span>
                     <span className="text-4xl font-black italic tracking-tighter">{p.preco}</span>
-                    <span className={`text-sm font-bold mb-1 ${p.destaque ? "text-gray-400" : "text-gray-500"}`}>/mês</span>
+                    <span className={`text-sm font-bold mb-1 ${p.destaque ? "text-gray-400" : "text-gray-600"}`}>/mês</span>
                   </div>
                 ) : (
                   <p className="text-3xl font-black italic tracking-tighter mb-1">Sob consulta</p>
                 )}
-                <p className={`text-xs mt-3 leading-relaxed ${p.destaque ? "text-gray-400" : "text-gray-500"}`}>{p.desc}</p>
+                <p className={`text-xs mt-3 leading-relaxed ${p.destaque ? "text-gray-400" : "text-gray-600"}`}>{p.desc}</p>
               </div>
 
               <ul className="space-y-3 mb-8 flex-1">
                 {p.itens.map((item, i) => (
-                  <li key={i} className={`flex items-start gap-3 text-sm ${!item.ok ? "opacity-35" : ""}`}>
+                  <li key={i} className={`flex items-start gap-3 text-sm ${!item.ok ? "opacity-40" : ""}`}>
                     {item.ok
-                      ? <CheckCircle2 size={15} className={`mt-0.5 shrink-0 ${p.destaque ? "text-green-400" : "text-green-600"}`} />
-                      : <X size={15} className="mt-0.5 shrink-0" />
+                      ? <CheckCircle2 size={15} className={`mt-0.5 shrink-0 ${p.destaque ? "text-green-400" : "text-green-700"}`} />
+                      : <X size={15} className="mt-0.5 shrink-0 text-gray-500" />
                     }
-                    <span className={item.ok ? (p.destaque ? "text-gray-200" : "text-gray-700") : "text-gray-400"}>
+                    <span className={item.ok ? (p.destaque ? "text-gray-200" : "text-gray-800") : "text-gray-500"}>
                       {item.text}
                     </span>
                   </li>
