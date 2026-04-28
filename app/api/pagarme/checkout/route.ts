@@ -9,12 +9,13 @@ import {
 } from "@/lib/pagarme";
 
 // Preços em centavos
-const VALORES: Record<string, number> = { starter: 115000, pro: 150000 };
+const VALORES: Record<string, number> = { starter: 115000, pro: 150000, premium: 213500 };
 
 // R$ X por mês → desc string
 const DESCRICOES: Record<string, string> = {
   starter: "AutoZap Starter",
   pro: "AutoZap Pro",
+  premium: "AutoZap Premium",
 };
 
 function calcAmount(plano: string, parcelamento: "mensal" | "anual12x") {

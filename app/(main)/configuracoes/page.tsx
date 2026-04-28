@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Upload, CheckCircle2, Loader2, ImageIcon, Trash2, Sparkles, FileImage, Save, Copy, Eye, EyeOff } from "lucide-react";
+import { Upload, CheckCircle2, Loader2, ImageIcon, Trash2, Sparkles, FileImage, Save, Copy, Eye, EyeOff, FileText, ShieldCheck } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 declare global {
@@ -12,6 +12,20 @@ declare global {
 }
 
 type Mode = "auto" | "manual";
+
+interface NFConfig {
+  regime_tributario: 1 | 2 | 3;
+  inscricao_estadual: string;
+  cep: string;
+  logradouro: string;
+  numero: string;
+  bairro: string;
+  municipio: string;
+  uf: string;
+  telefone: string;
+  certificado_senha: string;
+  habilitado: boolean;
+}
 
 interface GarageConfig {
   id?: string;
@@ -75,6 +89,26 @@ export default function ConfiguracoesPage() {
     horario_funcionamento: "",
   });
   const fileRef = useRef<HTMLInputElement>(null);
+  const pfxRef = useRef<HTMLInputElement>(null);
+  const [plano, setPlano] = useState<string | null>(null);
+  const [nfConfig, setNfConfig] = useState<NFConfig>({
+    regime_tributario: 1,
+    inscricao_estadual: "",
+    cep: "",
+    logradouro: "",
+    numero: "",
+    bairro: "",
+    municipio: "",
+    uf: "",
+    telefone: "",
+    certificado_senha: "",
+    habilitado: false,
+  });
+  const [pfxBase64, setPfxBase64] = useState<string>("");
+  const [pfxFileName, setPfxFileName] = useState<string>("");
+  const [savingNF, setSavingNF] = useState(false);
+  const [savedNF, setSavedNF] = useState(false);
+  const [showNFSenha, setShowNFSenha] = useState(false);
 
   // Carrega o Facebook SDK para Embedded Signup
   useEffect(() => {
@@ -175,6 +209,22 @@ export default function ConfiguracoesPage() {
           const row = data?.[0];
           if (row) {
             if (row.webhook_token) setWebhookToken(row.webhook_token);
+            if (row.plano) setPlano(row.plano);
+            if (row.nf_habilitado !== undefined) {
+              setNfConfig({
+                regime_tributario: row.nf_regime_tributario ?? 1,
+                inscricao_estadual: row.nf_inscricao_estadual ?? "",
+                cep: row.nf_cep ?? "",
+                logradouro: row.nf_logradouro ?? "",
+                numero: row.nf_numero_end ?? "",
+                bairro: row.nf_bairro ?? "",
+                municipio: row.nf_municipio ?? "",
+                uf: row.nf_uf ?? "",
+                telefone: "",
+                certificado_senha: "",
+                habilitado: row.nf_habilitado ?? false,
+              });
+            }
             setConfig({
               id: row.id,
               nome_empresa: row.nome_empresa ?? "",
@@ -366,6 +416,54 @@ export default function ConfiguracoesPage() {
       alert("Erro ao salvar: " + err.message);
     } finally {
       setSavingInfo(false);
+    }
+  };
+
+  const handlePfxSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setPfxFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      // Strip data URL prefix, keep only base64
+      setPfxBase64(result.split(",")[1] ?? "");
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveNF = async () => {
+    if (!pfxBase64) { alert("Selecione o arquivo .pfx do certificado digital."); return; }
+    if (!nfConfig.certificado_senha) { alert("Informe a senha do certificado."); return; }
+    setSavingNF(true);
+    try {
+      const res = await fetch("/api/nf/configurar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          regime_tributario: nfConfig.regime_tributario,
+          inscricao_estadual: nfConfig.inscricao_estadual || undefined,
+          cep: nfConfig.cep,
+          logradouro: nfConfig.logradouro,
+          numero: nfConfig.numero,
+          bairro: nfConfig.bairro,
+          municipio: nfConfig.municipio,
+          uf: nfConfig.uf,
+          telefone: nfConfig.telefone || undefined,
+          certificado_pfx: pfxBase64,
+          certificado_senha: nfConfig.certificado_senha,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erro ao configurar NF-e");
+      setNfConfig(c => ({ ...c, habilitado: true }));
+      setSavedNF(true);
+      setTimeout(() => setSavedNF(false), 4000);
+    } catch (err: any) {
+      alert("Erro: " + err.message);
+    } finally {
+      setSavingNF(false);
     }
   };
 
@@ -695,6 +793,173 @@ export default function ConfiguracoesPage() {
             </button>
           </div>
         </div>
+
+        {/* ── Nota Fiscal Eletrônica (Premium) ── */}
+        {plano === "premium" ? (
+          <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-8">
+            <div className="flex items-center gap-3 mb-1">
+              <FileText size={18} className="text-purple-600" />
+              <h2 className="text-[11px] font-black uppercase tracking-widest text-gray-400">
+                Nota Fiscal Eletrônica
+              </h2>
+              {nfConfig.habilitado && (
+                <span className="ml-auto flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
+                  <ShieldCheck size={10} /> Habilitado
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-gray-500 mb-6">
+              Configure o certificado digital A1 para emissão de NF-e diretamente nos veículos vendidos.
+            </p>
+
+            <div className="flex flex-col gap-4">
+              {/* Regime tributário */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+                  Regime Tributário
+                </label>
+                <select
+                  value={nfConfig.regime_tributario}
+                  onChange={e => setNfConfig(c => ({ ...c, regime_tributario: Number(e.target.value) as 1|2|3 }))}
+                  className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition"
+                >
+                  <option value={1}>1 — Simples Nacional</option>
+                  <option value={2}>2 — Lucro Presumido</option>
+                  <option value={3}>3 — Lucro Real</option>
+                </select>
+              </div>
+
+              {/* Inscrição estadual */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+                  Inscrição Estadual <span className="text-gray-400 normal-case font-normal">(deixe em branco para ISENTO)</span>
+                </label>
+                <input
+                  type="text"
+                  value={nfConfig.inscricao_estadual}
+                  onChange={e => setNfConfig(c => ({ ...c, inscricao_estadual: e.target.value }))}
+                  placeholder="Ex: 123.456.789.000"
+                  className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition"
+                />
+              </div>
+
+              {/* Endereço fiscal */}
+              <div className="flex gap-3">
+                <div className="flex flex-col gap-1.5 w-32">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">CEP</label>
+                  <input type="text" value={nfConfig.cep} onChange={e => setNfConfig(c => ({ ...c, cep: e.target.value }))}
+                    placeholder="00000-000"
+                    className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition" />
+                </div>
+                <div className="flex flex-col gap-1.5 flex-1">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">Logradouro</label>
+                  <input type="text" value={nfConfig.logradouro} onChange={e => setNfConfig(c => ({ ...c, logradouro: e.target.value }))}
+                    placeholder="Ex: Av. Paulista"
+                    className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition" />
+                </div>
+                <div className="flex flex-col gap-1.5 w-20">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">Nº</label>
+                  <input type="text" value={nfConfig.numero} onChange={e => setNfConfig(c => ({ ...c, numero: e.target.value }))}
+                    placeholder="100"
+                    className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition" />
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <div className="flex flex-col gap-1.5 flex-1">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">Bairro</label>
+                  <input type="text" value={nfConfig.bairro} onChange={e => setNfConfig(c => ({ ...c, bairro: e.target.value }))}
+                    placeholder="Ex: Bela Vista"
+                    className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition" />
+                </div>
+                <div className="flex flex-col gap-1.5 flex-1">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">Município</label>
+                  <input type="text" value={nfConfig.municipio} onChange={e => setNfConfig(c => ({ ...c, municipio: e.target.value }))}
+                    placeholder="Ex: São Paulo"
+                    className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition" />
+                </div>
+                <div className="flex flex-col gap-1.5 w-20">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">UF</label>
+                  <input type="text" value={nfConfig.uf} onChange={e => setNfConfig(c => ({ ...c, uf: e.target.value.toUpperCase().slice(0, 2) }))}
+                    placeholder="SP" maxLength={2}
+                    className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition" />
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">Telefone <span className="text-gray-400 normal-case font-normal">(opcional)</span></label>
+                <input type="text" value={nfConfig.telefone} onChange={e => setNfConfig(c => ({ ...c, telefone: e.target.value }))}
+                  placeholder="Ex: 1133334444"
+                  className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition" />
+              </div>
+
+              {/* Certificado A1 */}
+              <div className="mt-2 flex flex-col gap-3 bg-purple-50/60 p-4 border border-purple-100 rounded-2xl">
+                <p className="text-[10px] font-black uppercase tracking-widest text-purple-800">Certificado Digital A1 (.pfx)</p>
+                <p className="text-[10px] text-purple-600">
+                  O arquivo é enviado diretamente para a Focus NFe e não fica armazenado no AutoZap.
+                </p>
+
+                <label className="cursor-pointer">
+                  <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all ${
+                    pfxBase64 ? "border-purple-400 bg-purple-100" : "border-dashed border-purple-200 hover:border-purple-400"
+                  }`}>
+                    <Upload size={16} className="text-purple-500 shrink-0" />
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-purple-700">
+                        {pfxFileName || "Selecionar arquivo .pfx"}
+                      </p>
+                      {pfxBase64 && <p className="text-[9px] text-purple-500 mt-0.5">Pronto para envio</p>}
+                    </div>
+                    {pfxBase64 && <CheckCircle2 size={14} className="ml-auto text-purple-500" />}
+                  </div>
+                  <input ref={pfxRef} type="file" accept=".pfx,.p12" className="hidden" onChange={handlePfxSelect} />
+                </label>
+
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-purple-700">Senha do Certificado</label>
+                  <div className="relative">
+                    <input
+                      type={showNFSenha ? "text" : "password"}
+                      value={nfConfig.certificado_senha}
+                      onChange={e => setNfConfig(c => ({ ...c, certificado_senha: e.target.value }))}
+                      placeholder="Senha do arquivo .pfx"
+                      className="w-full bg-white border border-purple-200 rounded-xl px-4 py-2.5 pr-10 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition"
+                    />
+                    <button type="button" onClick={() => setShowNFSenha(v => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-purple-400 hover:text-purple-700 transition-colors">
+                      {showNFSenha ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={handleSaveNF}
+                disabled={savingNF || savedNF}
+                className={`mt-2 w-full py-3 rounded-2xl font-black uppercase text-[11px] tracking-widest transition-all flex items-center justify-center gap-2 ${
+                  savedNF ? "bg-green-500 text-white" : "bg-purple-700 text-white hover:bg-purple-800"
+                }`}
+              >
+                {savingNF ? (
+                  <><Loader2 size={16} className="animate-spin" /> Configurando...</>
+                ) : savedNF ? (
+                  <><CheckCircle2 size={16} /> NF-e habilitada com sucesso!</>
+                ) : (
+                  <><ShieldCheck size={14} /> Habilitar emissão de NF-e</>
+                )}
+              </button>
+            </div>
+          </div>
+        ) : plano !== null ? (
+          <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-8 flex items-center gap-4 opacity-70">
+            <FileText size={20} className="text-gray-300 shrink-0" />
+            <div>
+              <p className="text-[11px] font-black uppercase tracking-widest text-gray-400">Nota Fiscal Eletrônica</p>
+              <p className="text-[10px] text-gray-400 mt-0.5">Disponível apenas no plano <strong className="text-purple-600">Premium</strong>. Faça upgrade para habilitar.</p>
+            </div>
+          </div>
+        ) : null}
 
         {/* ── Logo da Garagem ── */}
         <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-8">

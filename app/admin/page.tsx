@@ -81,7 +81,7 @@ interface Pagamento {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const PRECOS = { starter: 1150, pro: 1500 };
+const PRECOS = { starter: 1150, pro: 1500, premium: 2135 };
 const APP_URL = "https://autozap.digital";
 
 function dias(dataISO?: string | null) {
@@ -267,6 +267,7 @@ function NovoPagamentoModal({ secret, tenants, onClose, onSuccess }: {
                 className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-red-500 transition">
                 <option value="starter">Starter · R$1.150</option>
                 <option value="pro">Pro · R$1.500</option>
+                <option value="premium">Premium · R$2.135</option>
               </select>
             </div>
             <div className="flex flex-col gap-1">
@@ -868,7 +869,7 @@ export default function AdminPage() {
                               <div>
                                 <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">Mudar Plano</p>
                                 <div className="flex gap-2">
-                                  {["starter", "pro"].map(p => (
+                                  {["starter", "pro", "premium"].map(p => (
                                     <button key={p} onClick={() => acao(t.user_id, "mudar_plano", p)}
                                       className={`px-2 py-1 text-[9px] font-black uppercase tracking-widest rounded-lg transition ${
                                         (t.plano ?? "pro") === p
@@ -1143,7 +1144,31 @@ CREATE TABLE IF NOT EXISTS admin_audit_log (
   user_id_alvo uuid,
   email_alvo text,
   created_at timestamptz DEFAULT now()
-);`}</pre>
+);
+
+-- Colunas NF-e em config_garage
+ALTER TABLE config_garage
+  ADD COLUMN IF NOT EXISTS nf_habilitado boolean DEFAULT false,
+  ADD COLUMN IF NOT EXISTS nf_regime_tributario integer DEFAULT 1,
+  ADD COLUMN IF NOT EXISTS nf_inscricao_estadual text,
+  ADD COLUMN IF NOT EXISTS nf_cep text,
+  ADD COLUMN IF NOT EXISTS nf_logradouro text,
+  ADD COLUMN IF NOT EXISTS nf_numero_end text,
+  ADD COLUMN IF NOT EXISTS nf_bairro text,
+  ADD COLUMN IF NOT EXISTS nf_municipio text,
+  ADD COLUMN IF NOT EXISTS nf_uf text;
+
+-- Colunas NF-e em veiculos
+ALTER TABLE veiculos
+  ADD COLUMN IF NOT EXISTS nf_ref text,
+  ADD COLUMN IF NOT EXISTS nf_chave text,
+  ADD COLUMN IF NOT EXISTS nf_numero text,
+  ADD COLUMN IF NOT EXISTS nf_status text,
+  ADD COLUMN IF NOT EXISTS nf_pdf_url text,
+  ADD COLUMN IF NOT EXISTS nf_xml_url text,
+  ADD COLUMN IF NOT EXISTS nf_emitida_em timestamptz,
+  ADD COLUMN IF NOT EXISTS nf_comprador_nome text,
+  ADD COLUMN IF NOT EXISTS nf_comprador_doc text;`}</pre>
               <button onClick={() => copy(`CREATE TABLE IF NOT EXISTS pagamentos (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, user_id uuid NOT NULL, valor numeric NOT NULL, plano text NOT NULL, metodo text DEFAULT 'manual', status text DEFAULT 'pendente', vencimento date NOT NULL, pago_em timestamptz, notas text, created_at timestamptz DEFAULT now()); ALTER TABLE config_garage ADD COLUMN IF NOT EXISTS plano text DEFAULT 'pro', ADD COLUMN IF NOT EXISTS bloqueado boolean DEFAULT false; CREATE TABLE IF NOT EXISTS admin_audit_log (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, acao text NOT NULL, user_id_alvo uuid, email_alvo text, created_at timestamptz DEFAULT now());`)}
                 className="mt-3 flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-gray-400 hover:text-gray-700 transition">
                 <Copy size={11} /> Copiar SQL

@@ -10,9 +10,10 @@ import Image from "next/image";
 
 // ─── Preços ────────────────────────────────────────────────────────────────────
 
-const PLANOS: Record<string, { nome: string; mensal: number; anual12x: number; parcela12x: number }> = {
-  starter: { nome: "Starter", mensal: 1150, anual12x: 12420, parcela12x: 1035 },
-  pro:     { nome: "Pro",     mensal: 1500, anual12x: 16200, parcela12x: 1350 },
+const PLANOS: Record<string, { nome: string; mensal: number; anual12x: number; parcela12x: number; destaque?: string }> = {
+  starter: { nome: "Starter",  mensal: 1150,  anual12x: 12420,  parcela12x: 1035 },
+  pro:     { nome: "Pro",      mensal: 1500,  anual12x: 16200,  parcela12x: 1350 },
+  premium: { nome: "Premium",  mensal: 2135,  anual12x: 23220,  parcela12x: 1935, destaque: "50 NFs/mês incluídas" },
 };
 
 function fmt(v: number) {
@@ -241,9 +242,12 @@ function AssinarContent() {
           {/* Seletor de plano */}
           <div className="bg-[#111] border border-white/10 rounded-2xl p-6">
             <h2 className="text-white font-semibold mb-4">Plano escolhido</h2>
-            <div className="grid grid-cols-2 gap-3">
-              {(["starter", "pro"] as const).map(id => {
+            <div className="grid grid-cols-3 gap-3">
+              {(["starter", "pro", "premium"] as const).map(id => {
                 const p = PLANOS[id];
+                const badge = id === "pro" ? { label: "Popular", color: "bg-amber-400/20 text-amber-400" }
+                            : id === "premium" ? { label: "NF-e inclusa", color: "bg-purple-400/20 text-purple-400" }
+                            : null;
                 return (
                   <button key={id} type="button" onClick={() => setPlanoId(id)}
                     className={`flex flex-col items-start gap-1 p-4 rounded-xl border transition ${
@@ -251,17 +255,20 @@ function AssinarContent() {
                         ? "border-[#00ff88] bg-[#00ff88]/10"
                         : "border-white/10 bg-white/5 hover:border-white/30"
                     }`}>
-                    <div className="flex items-center justify-between w-full">
+                    <div className="flex items-center justify-between w-full gap-1">
                       <span className={`text-sm font-bold ${planoId === id ? "text-[#00ff88]" : "text-white"}`}>
                         {p.nome}
                       </span>
-                      {id === "pro" && (
-                        <span className="text-[9px] font-black uppercase tracking-widest bg-amber-400/20 text-amber-400 px-2 py-0.5 rounded-full">
-                          Mais completo
+                      {badge && (
+                        <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full whitespace-nowrap ${badge.color}`}>
+                          {badge.label}
                         </span>
                       )}
                     </div>
                     <span className="text-white/50 text-xs">{fmt(p.mensal)}/mês</span>
+                    {p.destaque && (
+                      <span className="text-purple-400/70 text-[10px] font-medium">{p.destaque}</span>
+                    )}
                   </button>
                 );
               })}

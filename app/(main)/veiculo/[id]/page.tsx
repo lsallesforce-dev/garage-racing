@@ -8,6 +8,7 @@ import {
   ArrowLeft, Save, Edit2, X, Check, Video, Plus,
   ChevronDown, ChevronUp, Instagram, Download, Loader2,
   ScanLine, FileCheck, Upload, AlertCircle, Trash2,
+  FileText, Eye, EyeOff,
 } from "lucide-react";
 import { GenerateMarketingVideoButton } from "@/components/GenerateMarketingVideoButton";
 import { toVideoUrl } from "@/lib/r2-url";
@@ -625,6 +626,135 @@ function ScanDocumento({ veiculoId, onAplicar, veiculo: veic, placa, renavam, ch
   );
 }
 
+// ─── Modal NF-e ───────────────────────────────────────────────────────────────
+
+function NFModal({ veiculo, onClose, onEmitida }: {
+  veiculo: any;
+  onClose: () => void;
+  onEmitida: (resultado: any) => void;
+}) {
+  const [dest, setDest] = useState({ nome: "", cpf: "", cnpj: "", email: "", cep: "", logradouro: "", numero: "", bairro: "", municipio: "", uf: "" });
+  const [formaPagamento, setFormaPagamento] = useState<"01"|"02"|"03"|"15"|"99">("99");
+  const [emitindo, setEmitindo] = useState(false);
+  const [showSenha, setShowSenha] = useState(false);
+
+  const handleEmitir = async () => {
+    if (!dest.nome || (!dest.cpf && !dest.cnpj)) { alert("Informe nome e CPF ou CNPJ do comprador."); return; }
+    setEmitindo(true);
+    try {
+      const res = await fetch("/api/nf/emitir", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          veiculoId: veiculo.id,
+          destinatario: {
+            nome: dest.nome,
+            cpf: dest.cpf || undefined,
+            cnpj: dest.cnpj || undefined,
+            email: dest.email || undefined,
+            cep: dest.cep || undefined,
+            logradouro: dest.logradouro || undefined,
+            numero: dest.numero || undefined,
+            bairro: dest.bairro || undefined,
+            municipio: dest.municipio || undefined,
+            uf: dest.uf || undefined,
+          },
+          forma_pagamento: formaPagamento,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      onEmitida(data);
+    } catch (e: any) {
+      alert("Erro ao emitir NF-e: " + e.message);
+    } finally {
+      setEmitindo(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-[2.5rem] w-full max-w-lg max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-8 py-6 border-b border-gray-100">
+          <div>
+            <p className="text-sm font-black uppercase italic tracking-tight text-gray-900">Emitir NF-e</p>
+            <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mt-0.5">
+              {veiculo.marca} {veiculo.modelo} {veiculo.ano_modelo}
+            </p>
+          </div>
+          <button onClick={onClose} className="w-9 h-9 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center">
+            <X size={14} className="text-gray-600" />
+          </button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 px-8 py-6 space-y-4">
+          <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Dados do Comprador</p>
+
+          <input type="text" value={dest.nome} onChange={e => setDest(d => ({ ...d, nome: e.target.value }))}
+            placeholder="Nome completo *"
+            className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition" />
+
+          <div className="flex gap-3">
+            <input type="text" value={dest.cpf} onChange={e => setDest(d => ({ ...d, cpf: e.target.value }))}
+              placeholder="CPF"
+              className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition" />
+            <input type="text" value={dest.cnpj} onChange={e => setDest(d => ({ ...d, cnpj: e.target.value }))}
+              placeholder="CNPJ (PJ)"
+              className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition" />
+          </div>
+
+          <input type="email" value={dest.email} onChange={e => setDest(d => ({ ...d, email: e.target.value }))}
+            placeholder="E-mail (opcional)"
+            className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition" />
+
+          <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 pt-2">Endereço do Comprador <span className="font-normal normal-case text-gray-300">(opcional)</span></p>
+
+          <div className="flex gap-3">
+            <input type="text" value={dest.cep} onChange={e => setDest(d => ({ ...d, cep: e.target.value }))}
+              placeholder="CEP" className="w-28 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm placeholder-gray-400 focus:outline-none focus:border-purple-500 transition" />
+            <input type="text" value={dest.logradouro} onChange={e => setDest(d => ({ ...d, logradouro: e.target.value }))}
+              placeholder="Logradouro" className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm placeholder-gray-400 focus:outline-none focus:border-purple-500 transition" />
+            <input type="text" value={dest.numero} onChange={e => setDest(d => ({ ...d, numero: e.target.value }))}
+              placeholder="Nº" className="w-16 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm placeholder-gray-400 focus:outline-none focus:border-purple-500 transition" />
+          </div>
+
+          <div className="flex gap-3">
+            <input type="text" value={dest.bairro} onChange={e => setDest(d => ({ ...d, bairro: e.target.value }))}
+              placeholder="Bairro" className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm placeholder-gray-400 focus:outline-none focus:border-purple-500 transition" />
+            <input type="text" value={dest.municipio} onChange={e => setDest(d => ({ ...d, municipio: e.target.value }))}
+              placeholder="Município" className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm placeholder-gray-400 focus:outline-none focus:border-purple-500 transition" />
+            <input type="text" value={dest.uf} onChange={e => setDest(d => ({ ...d, uf: e.target.value.toUpperCase().slice(0, 2) }))}
+              placeholder="UF" maxLength={2} className="w-16 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm placeholder-gray-400 focus:outline-none focus:border-purple-500 transition" />
+          </div>
+
+          <div className="flex flex-col gap-1.5 pt-2">
+            <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Forma de Pagamento</label>
+            <select value={formaPagamento} onChange={e => setFormaPagamento(e.target.value as any)}
+              className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-purple-500 transition">
+              <option value="01">Dinheiro</option>
+              <option value="02">Cheque</option>
+              <option value="03">Cartão de Crédito</option>
+              <option value="15">Boleto Bancário</option>
+              <option value="99">Outros</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="px-8 py-5 border-t border-gray-100 flex justify-end gap-3">
+          <button onClick={onClose}
+            className="px-5 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest text-gray-500 hover:bg-gray-100 transition-colors">
+            Cancelar
+          </button>
+          <button onClick={handleEmitir} disabled={emitindo}
+            className="px-6 py-2.5 bg-purple-700 hover:bg-purple-800 disabled:opacity-50 text-white rounded-xl text-[11px] font-black uppercase tracking-widest transition-colors flex items-center gap-2">
+            {emitindo ? <><Loader2 size={12} className="animate-spin" /> Emitindo...</> : <><FileText size={12} /> Emitir NF-e</>}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Página Principal ─────────────────────────────────────────────────────────
 
 export default function DetalheVeiculo() {
@@ -671,6 +801,10 @@ export default function DetalheVeiculo() {
   const [igStatus, setIgStatus] = useState<"idle" | "ok" | "error">("idle");
   const [igMsg, setIgMsg] = useState("");
 
+  // NF-e
+  const [showNFModal, setShowNFModal] = useState(false);
+  const [nfHabilitado, setNfHabilitado] = useState(false);
+
   // ── Carrega veículo ──────────────────────────────────────────────────────
   useEffect(() => {
     if (!id) return;
@@ -706,11 +840,14 @@ export default function DetalheVeiculo() {
       if (!user) return;
       supabase
         .from("config_garage")
-        .select("logo_url")
+        .select("logo_url, nf_habilitado, plano, plano_ativo, plano_vence_em")
         .eq("user_id", user.id)
         .single()
         .then(({ data }) => {
           if (data?.logo_url) setLogoUrl(data.logo_url);
+          const agora = new Date();
+          const premium = data?.plano === "premium" && data?.plano_ativo && data?.plano_vence_em && new Date(data.plano_vence_em) > agora;
+          if (premium && data?.nf_habilitado) setNfHabilitado(true);
         });
     });
   }, []);
@@ -1694,9 +1831,71 @@ export default function DetalheVeiculo() {
               }}
             />
 
+            {/* ── NF-e (só VENDIDO + premium habilitado) ── */}
+            {nfHabilitado && veiculo.status_venda === "VENDIDO" && (
+              <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm p-8">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-2xl bg-purple-100 flex items-center justify-center">
+                    <FileText size={18} className="text-purple-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black uppercase italic tracking-tight text-gray-900">Nota Fiscal</h3>
+                    <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">
+                      {veiculo.nf_status === "autorizada" ? "NF-e emitida" : "Emitir NF-e"}
+                    </p>
+                  </div>
+                  {veiculo.nf_status === "autorizada" && (
+                    <span className="ml-auto text-[9px] font-black uppercase tracking-widest text-green-700 bg-green-100 px-2 py-1 rounded-full">
+                      Autorizada
+                    </span>
+                  )}
+                </div>
+
+                {veiculo.nf_status === "autorizada" ? (
+                  <div className="space-y-2">
+                    {veiculo.nf_numero && <p className="text-[10px] text-gray-500">NF-e nº <strong>{veiculo.nf_numero}</strong></p>}
+                    {veiculo.nf_chave && <p className="text-[10px] text-gray-400 break-all font-mono">{veiculo.nf_chave}</p>}
+                    <div className="flex gap-2 pt-2">
+                      {veiculo.nf_pdf_url && (
+                        <a href={veiculo.nf_pdf_url} target="_blank" rel="noopener noreferrer"
+                          className="flex-1 py-2.5 bg-purple-700 text-white text-[10px] font-black uppercase tracking-widest rounded-xl text-center hover:bg-purple-800 transition-colors">
+                          Baixar DANFE
+                        </a>
+                      )}
+                      {veiculo.nf_xml_url && (
+                        <a href={veiculo.nf_xml_url} target="_blank" rel="noopener noreferrer"
+                          className="flex-1 py-2.5 bg-gray-100 text-gray-700 text-[10px] font-black uppercase tracking-widest rounded-xl text-center hover:bg-gray-200 transition-colors">
+                          Baixar XML
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowNFModal(true)}
+                    className="w-full py-3 bg-purple-700 text-white font-black uppercase text-[10px] tracking-widest rounded-2xl hover:bg-purple-800 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <FileText size={14} /> Emitir NF-e
+                  </button>
+                )}
+              </div>
+            )}
+
           </div>
         </div>
       </div>
+
+      {/* Modal NF-e */}
+      {showNFModal && (
+        <NFModal
+          veiculo={veiculo}
+          onClose={() => setShowNFModal(false)}
+          onEmitida={(resultado) => {
+            setVeiculo((p: any) => ({ ...p, nf_status: resultado.status ?? "processando", nf_chave: resultado.chave_nfe ?? null, nf_numero: resultado.numero ?? null, nf_pdf_url: resultado.danfe_url ?? null, nf_xml_url: resultado.xml_url ?? null }));
+            setShowNFModal(false);
+          }}
+        />
+      )}
 
       {/* Modal de Opcionais */}
       {showOpcionaisModal && (
