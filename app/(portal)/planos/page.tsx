@@ -123,7 +123,7 @@ export default function PlanosPage() {
                 ${p.destaque
                   ? "bg-gray-900 text-white border-gray-800 shadow-2xl ring-2 ring-purple-500/40"
                   : p.id === "pro"
-                    ? "bg-gray-300 text-gray-900 border-gray-300"
+                    ? "bg-gray-200 text-gray-900 border-gray-200"
                     : "bg-gray-100 text-gray-900 border-gray-200"
                 }`}>
 
