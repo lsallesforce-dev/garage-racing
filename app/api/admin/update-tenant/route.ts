@@ -13,7 +13,16 @@ export async function POST(req: NextRequest) {
 
   switch (acao) {
     case "mudar_plano":
-      update = { plano: valor }; // 'starter' | 'pro'
+      // Muda o plano e garante que está ativo por pelo menos 30 dias
+      const { data: planoAtual } = await supabaseAdmin
+        .from("config_garage")
+        .select("plano_ativo, plano_vence_em")
+        .eq("user_id", user_id)
+        .maybeSingle();
+      const venceEm = planoAtual?.plano_vence_em && new Date(planoAtual.plano_vence_em) > new Date()
+        ? planoAtual.plano_vence_em
+        : new Date(Date.now() + 30 * 86400000).toISOString();
+      update = { plano: valor, plano_ativo: true, plano_vence_em: venceEm };
       break;
 
     case "ativar":
