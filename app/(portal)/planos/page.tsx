@@ -122,7 +122,7 @@ export default function PlanosPage() {
               className={`rounded-[2rem] p-8 border relative flex flex-col
                 ${p.destaque
                   ? "bg-gray-900 text-white border-gray-800 shadow-2xl ring-2 ring-purple-500/40"
-                  : "bg-gray-50 text-gray-900 border-gray-100"
+                  : "bg-gray-200 text-gray-900 border-gray-300"
                 }`}>
 
               {p.badge && (
@@ -134,7 +134,7 @@ export default function PlanosPage() {
               )}
 
               <div className={`mb-6 ${p.badge ? "mt-3" : ""}`}>
-                <p className={`text-[10px] font-black uppercase tracking-widest mb-2 ${p.destaque ? "text-red-400" : "text-gray-400"}`}>
+                <p className={`text-sm font-black uppercase tracking-[0.2em] mb-3 ${p.destaque ? "text-red-400" : "text-gray-700"}`}>
                   {p.nome}
                 </p>
                 {p.preco ? (
