@@ -301,21 +301,13 @@ function ModalEvento({
         {/* Ações */}
         <div className="flex gap-2">
           {evento && (
-            <>
-              {evento.status !== "feito" && (
-                <button onClick={() => { onMarcarFeito(evento.id); onClose(); }}
-                  className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-green-500 text-white text-[10px] font-black uppercase tracking-widest hover:bg-green-400 transition-colors">
-                  <Check size={12} /> Feito
-                </button>
-              )}
-              <button onClick={() => onDeletar(evento.id)}
-                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-gray-100 text-gray-500 text-[10px] font-black uppercase tracking-widest hover:bg-red-50 hover:text-red-500 transition-colors">
-                <X size={12} /> Excluir
-              </button>
-            </>
+            <button onClick={() => onDeletar(evento.id)}
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-gray-100 text-gray-500 text-[10px] font-black uppercase tracking-widest hover:bg-red-50 hover:text-red-500 transition-colors">
+              <X size={12} /> Excluir
+            </button>
           )}
           <button onClick={handleSalvar} disabled={saving || !titulo.trim()}
-            className="flex-1 py-2.5 rounded-xl bg-red-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-red-500 disabled:opacity-40 transition-colors">
+            className="flex-1 py-2.5 rounded-xl bg-green-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-green-500 disabled:opacity-40 transition-colors">
             {saving ? "Salvando..." : "Salvar"}
           </button>
         </div>

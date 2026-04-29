@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireAuth } from "@/lib/api-auth";
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const { user, error } = await requireAuth();
   if (error) return error;
 
@@ -11,7 +12,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const { data: existing } = await supabaseAdmin
     .from("agenda")
     .select("user_id")
-    .eq("id", params.id)
+    .eq("id", id)
     .single();
 
   if (!existing || existing.user_id !== user!.id) {
@@ -27,7 +28,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       ...(body.tipo !== undefined && { tipo: body.tipo }),
       ...(body.status !== undefined && { status: body.status }),
     })
-    .eq("id", params.id)
+    .eq("id", id)
     .select()
     .single();
 
@@ -36,14 +37,15 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   return NextResponse.json(data);
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const { user, error } = await requireAuth();
   if (error) return error;
 
   const { data: existing } = await supabaseAdmin
     .from("agenda")
     .select("user_id")
-    .eq("id", params.id)
+    .eq("id", id)
     .single();
 
   if (!existing || existing.user_id !== user!.id) {
@@ -53,7 +55,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
   const { error: dbError } = await supabaseAdmin
     .from("agenda")
     .delete()
-    .eq("id", params.id);
+    .eq("id", id);
 
   if (dbError) return NextResponse.json({ error: dbError.message }, { status: 500 });
 
