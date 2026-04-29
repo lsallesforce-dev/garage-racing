@@ -9,7 +9,7 @@ export const revalidate = 300; // cache 5 min
 export async function GET() {
   const { data: garagens } = await supabaseAdmin
     .from("config_garage")
-    .select("user_id, nome_empresa, endereco, logo_url, vitrine_slug, webhook_token")
+    .select("user_id, nome_empresa, nome_fantasia, endereco, logo_url, vitrine_slug, webhook_token")
     .not("vitrine_slug", "is", null)
     .not("nome_empresa", "is", null);
 
@@ -32,7 +32,7 @@ export async function GET() {
 
       return {
         slug: g.vitrine_slug,
-        nome: g.nome_empresa,
+        nome: g.nome_fantasia || g.nome_empresa,
         logo_url: g.logo_url ?? null,
         cidade,
         veiculos: count,

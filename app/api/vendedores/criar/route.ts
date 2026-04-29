@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
   if (vendedor.whatsapp) {
     const { data: garageConfig } = await supabaseAdmin
       .from("config_garage")
-      .select("nome_empresa, meta_phone_id, meta_access_token")
+      .select("nome_empresa, nome_fantasia, meta_phone_id, meta_access_token")
       .eq("user_id", user.id)
       .maybeSingle();
 
@@ -99,7 +99,7 @@ export async function POST(req: NextRequest) {
       accessToken: garageConfig?.meta_access_token || process.env.META_ACCESS_TOKEN || "",
     };
 
-    const nomeLoja = garageConfig?.nome_empresa || "AutoZap";
+    const nomeLoja = garageConfig?.nome_fantasia || garageConfig?.nome_empresa || "AutoZap";
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://autozap.digital";
 
     // Gera link de acesso único (expira em 24h) — sem senha no WhatsApp

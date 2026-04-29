@@ -91,7 +91,7 @@ export async function GET(req: NextRequest) {
     .select(`
       id, wa_id, nome, user_id, veiculo_id, status,
       resumo_negociacao, ultimo_followup,
-      config_garagem:user_id (nome_empresa, nome_agente, whatsapp, meta_phone_id, meta_access_token)
+      config_garagem:user_id (nome_empresa, nome_fantasia, nome_agente, whatsapp, meta_phone_id, meta_access_token)
     `)
     .in("status", ["MORNO", "QUENTE"])
     .eq("em_atendimento_humano", false)
@@ -130,7 +130,7 @@ export async function GET(req: NextRequest) {
         ? lead.config_garagem[0]
         : lead.config_garagem;
       const nomeAgente = (garagem as any)?.nome_agente || "André";
-      const nomeEmpresa = (garagem as any)?.nome_empresa || "a loja";
+      const nomeEmpresa = (garagem as any)?.nome_fantasia || (garagem as any)?.nome_empresa || "a loja";
       const metaCreds = {
         phoneNumberId: (garagem as any)?.meta_phone_id ?? "",
         accessToken: (garagem as any)?.meta_access_token || process.env.META_ACCESS_TOKEN || "",

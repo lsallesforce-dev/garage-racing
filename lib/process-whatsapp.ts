@@ -111,6 +111,7 @@ async function decryptWhatsAppAudio(encUrl: string, mediaKeyB64: string): Promis
 
 export interface GarageConfig {
   nome_empresa?: string;
+  nome_fantasia?: string;
   nome_agente?: string;
   endereco?: string;
   endereco_complemento?: string;
@@ -519,7 +520,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   const isAuthorized = !!admin || (!!adminPhone && phone.includes(adminPhone));
   if (isAuthorized && userMessage.trim().toLowerCase() === "!status") {
     const relatorio = await gerarRelatorioPista(
-      garageConfig?.nome_empresa || "nossa loja",
+      garageConfig?.nome_fantasia || garageConfig?.nome_empresa || "nossa loja",
       garageConfig?.nome_agente || "IA",
       tenantUserId
     );
@@ -639,7 +640,7 @@ Responda apenas com o JSON, sem markdown.`;
   }
 
   // ── 5. Config da Garagem ────────────────────────────────────────────────────
-  const nomeEmpresa = garageConfig?.nome_empresa || "nossa loja";
+  const nomeEmpresa = garageConfig?.nome_fantasia || garageConfig?.nome_empresa || "nossa loja";
   const nomeAgente = garageConfig?.nome_agente || "Assistente";
   const enderecoGaragem = garageConfig?.endereco || "";
   const enderecoComplemento = garageConfig?.endereco_complemento || "";
