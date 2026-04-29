@@ -634,6 +634,18 @@ export default function ConfiguracoesPage() {
               <p className="text-[10px] text-blue-500">Encontrado em: Meta for Developers → WhatsApp → Configuração → Número de telefone.</p>
 
               <label className="text-[10px] font-black uppercase tracking-widest text-blue-800 mt-3 block">
+                Número do WhatsApp Business (com DDI)
+              </label>
+              <input
+                type="text"
+                value={config.whatsapp_agente || ""}
+                onChange={e => setConfig(c => ({ ...c, whatsapp_agente: e.target.value.trim() }))}
+                placeholder="Ex: 5517991127787"
+                className="bg-white border border-blue-200 rounded-xl px-4 py-2.5 font-mono text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
+              />
+              <p className="text-[10px] text-blue-500">Número que aparece no link "Falar com Vendedor" dos repasses. Sem espaços ou traços.</p>
+
+              <label className="text-[10px] font-black uppercase tracking-widest text-blue-800 mt-3 block">
                 Access Token
               </label>
               <div className="relative">
