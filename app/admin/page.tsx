@@ -1209,6 +1209,37 @@ ALTER TABLE veiculos
                 <Copy size={11} /> Copiar SQL
               </button>
             </div>
+
+            {/* SQL Agenda */}
+            <div className="bg-gray-900 rounded-2xl p-5 mt-4">
+              <p className="text-[10px] font-black text-purple-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                <Shield size={11} /> SQL — Tabela agenda
+              </p>
+              <pre className="text-[10px] text-gray-300 leading-relaxed whitespace-pre-wrap font-mono">{`CREATE TABLE IF NOT EXISTS agenda (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  titulo text NOT NULL,
+  descricao text,
+  data_hora timestamptz NOT NULL,
+  tipo text DEFAULT 'outro' CHECK (tipo IN ('visita','ligacao','reuniao','outro')),
+  lead_id uuid REFERENCES leads(id) ON DELETE SET NULL,
+  status text DEFAULT 'pendente' CHECK (status IN ('pendente','feito','cancelado')),
+  created_by text DEFAULT 'manual' CHECK (created_by IN ('manual','ia','whatsapp')),
+  created_at timestamptz DEFAULT now()
+);
+
+ALTER TABLE agenda ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "users manage own agenda" ON agenda
+  USING (user_id = auth.uid())
+  WITH CHECK (user_id = auth.uid());
+
+CREATE INDEX IF NOT EXISTS agenda_user_data ON agenda (user_id, data_hora);`}</pre>
+              <button onClick={() => copy(`CREATE TABLE IF NOT EXISTS agenda (\n  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,\n  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,\n  titulo text NOT NULL,\n  descricao text,\n  data_hora timestamptz NOT NULL,\n  tipo text DEFAULT 'outro' CHECK (tipo IN ('visita','ligacao','reuniao','outro')),\n  lead_id uuid REFERENCES leads(id) ON DELETE SET NULL,\n  status text DEFAULT 'pendente' CHECK (status IN ('pendente','feito','cancelado')),\n  created_by text DEFAULT 'manual' CHECK (created_by IN ('manual','ia','whatsapp')),\n  created_at timestamptz DEFAULT now()\n);\n\nALTER TABLE agenda ENABLE ROW LEVEL SECURITY;\n\nCREATE POLICY "users manage own agenda" ON agenda\n  USING (user_id = auth.uid())\n  WITH CHECK (user_id = auth.uid());\n\nCREATE INDEX IF NOT EXISTS agenda_user_data ON agenda (user_id, data_hora);`)}
+                className="mt-3 flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-gray-400 hover:text-gray-700 transition">
+                <Copy size={11} /> Copiar SQL
+              </button>
+            </div>
           </div>
         )}
 

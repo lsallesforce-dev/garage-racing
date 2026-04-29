@@ -553,6 +553,65 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
     return;
   }
 
+  // ── 2b. Comando do Gerente → Agenda ─────────────────────────────────────────
+  // Detecta quando o dono/gerente manda mensagem para a IA criar um agendamento.
+  // Identificação: phone normalizado bate com config_garage.whatsapp (número do gerente).
+  const normalizeWa = (n: string) => n.replace(/\D/g, "").replace(/^55/, "").slice(-9);
+  const ownerWa = garageConfig?.whatsapp ? normalizeWa(garageConfig.whatsapp) : null;
+  const isOwner = ownerWa ? normalizeWa(phone).endsWith(ownerWa) || ownerWa.endsWith(normalizeWa(phone)) : false;
+
+  if (isOwner && userMessage.trim()) {
+    const agendaKeywords = /agenda|agendar|compromisso|reunião|reuniao|visita|liga(r|ção|cao)|lembrar|lembrete|marcar/i;
+    if (agendaKeywords.test(userMessage)) {
+      try {
+        const hoje = new Date().toLocaleDateString("pt-BR", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+        const agendaPrompt = `Hoje é ${hoje}. Interprete esta mensagem como um compromisso de agenda de uma revenda de carros:
+"${userMessage}"
+
+Retorne JSON com:
+{
+  "agenda": true,
+  "titulo": "string curto descritivo (ex: Visita - João Silva)",
+  "tipo": "visita" | "ligacao" | "reuniao" | "outro",
+  "data_hora": "ISO8601 com data e hora (se hora não mencionada, use 09:00)",
+  "descricao": "string ou null"
+}
+
+Se não for possível identificar uma data, retorne { "agenda": false }.
+Responda apenas com o JSON, sem markdown.`;
+
+        const geminiResult = await geminiFlashSales.generateContent({
+          contents: [{ role: "user", parts: [{ text: agendaPrompt }] }],
+          generationConfig: { responseMimeType: "application/json" },
+        });
+
+        const parsed = JSON.parse(geminiResult.response.text());
+
+        if (parsed.agenda && parsed.titulo && parsed.data_hora) {
+          await supabaseAdmin.from("agenda").insert({
+            user_id: tenantUserId,
+            titulo: parsed.titulo,
+            descricao: parsed.descricao || null,
+            data_hora: parsed.data_hora,
+            tipo: parsed.tipo || "outro",
+            created_by: "whatsapp",
+          });
+
+          const dataFormatada = new Date(parsed.data_hora).toLocaleString("pt-BR", {
+            weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+          });
+          await sendMetaMessage(phone,
+            `✅ *Agendado!*\n\n📅 ${parsed.titulo}\n🕐 ${dataFormatada}\n${parsed.descricao ? `📝 ${parsed.descricao}` : ""}\n\n_Aparece na agenda do dashboard._`,
+            metaCreds
+          );
+          return;
+        }
+      } catch (e) {
+        console.warn("⚠️ Falha ao parsear agenda via Gemini:", e);
+      }
+    }
+  }
+
   // ── 3. Lead + salvar mensagem do usuário ────────────────────────────────────
   const { data: lead } = await supabaseAdmin
     .from("leads")
@@ -1055,6 +1114,42 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
     // Invalida o cache de histórico após salvar a resposta do agente.
     // A próxima mensagem do lead buscará histórico atualizado do Supabase.
     await invalidateHistory(tenantUserId, lead.id);
+
+    // Auto-agenda: quando lead vira QUENTE com menção a visita/agendamento,
+    // cria entrada na agenda para o gerente não perder o compromisso.
+    if (temperatura === "QUENTE") {
+      const temVisita = /visita|agendad|confirm|vai vir|vem (ver|amanhã|hoje|sábado|domingo|segunda|terça|quarta|quinta|sexta)/i.test(resumo + " " + aiResponse);
+      if (temVisita) {
+        const { data: jaExiste } = await supabaseAdmin
+          .from("agenda")
+          .select("id")
+          .eq("lead_id", lead.id)
+          .eq("created_by", "ia")
+          .gte("data_hora", new Date().toISOString())
+          .maybeSingle();
+
+        if (!jaExiste) {
+          const nomeLead = lead.nome || `Lead ${phone.slice(-4)}`;
+          const veiculoLabel = topVeiculos[0] ? ` — ${topVeiculos[0].marca} ${topVeiculos[0].modelo}` : "";
+          // Data padrão: próximo dia útil às 10h (a IA não sabe a data exata se o cliente não informou)
+          const proximoDiaUtil = new Date();
+          proximoDiaUtil.setDate(proximoDiaUtil.getDate() + 1);
+          if (proximoDiaUtil.getDay() === 0) proximoDiaUtil.setDate(proximoDiaUtil.getDate() + 1);
+          proximoDiaUtil.setHours(10, 0, 0, 0);
+
+          await supabaseAdmin.from("agenda").insert({
+            user_id: tenantUserId,
+            titulo: `Visita - ${nomeLead}${veiculoLabel}`,
+            descricao: resumo || null,
+            data_hora: proximoDiaUtil.toISOString(),
+            tipo: "visita",
+            lead_id: lead.id,
+            created_by: "ia",
+          }).then(() => console.log(`📅 Auto-agenda criada para lead ${lead.id}`))
+            .catch(() => {});
+        }
+      }
+    }
   }
 
   // ── 14. Transbordo com Briefing (QUENTE) ─────────────────────────────────────

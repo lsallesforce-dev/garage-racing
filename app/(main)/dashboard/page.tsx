@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { Flame, TrendingUp, Users, Car, Zap, Brain, LayoutDashboard, AlertTriangle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import AgendaSemana from "@/components/AgendaSemana";
 
 export default function Dashboard() {
   const router = useRouter();
@@ -188,6 +189,9 @@ export default function Dashboard() {
             <p className="text-[9px] text-red-600/60 font-bold uppercase mt-2">Visita Agendada</p>
             </div>
         </div>
+
+        {/* Agenda da Semana */}
+        <AgendaSemana />
 
         {/* Flash: Movimentação ao Vivo */}
         <div className="bg-white p-10 rounded-[3rem] border border-gray-100 shadow-sm">
