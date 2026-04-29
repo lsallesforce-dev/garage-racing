@@ -18,10 +18,10 @@ interface Evento {
 }
 
 const tipoConfig: Record<Tipo, { label: string; cor: string; icone: React.ElementType }> = {
-  visita:   { label: "Visita",   cor: "bg-red-500",    icone: Users    },
-  ligacao:  { label: "Ligação",  cor: "bg-blue-500",   icone: Phone    },
-  reuniao:  { label: "Reunião",  cor: "bg-purple-500", icone: Calendar },
-  outro:    { label: "Outro",    cor: "bg-gray-400",   icone: Tag      },
+  visita:   { label: "Visita",   cor: "bg-gray-500",   icone: Users    },
+  ligacao:  { label: "Ligação",  cor: "bg-gray-400",   icone: Phone    },
+  reuniao:  { label: "Reunião",  cor: "bg-gray-600",   icone: Calendar },
+  outro:    { label: "Outro",    cor: "bg-gray-300",   icone: Tag      },
 };
 
 function startOfWeek(d: Date): Date {
@@ -113,7 +113,7 @@ export default function AgendaSemana() {
           </button>
           <button onClick={() => setSemanaBase(startOfWeek(new Date()))}
             className="px-3 py-1.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-[10px] font-black uppercase tracking-widest transition-colors">
-            Hoje
+            Semana
           </button>
           <button onClick={() => setSemanaBase(s => addDays(s, 7))}
             className="w-8 h-8 rounded-xl bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors">
@@ -163,14 +163,13 @@ export default function AgendaSemana() {
                     onClick={() => setModal({ open: true, evento: ev })}
                     className={`w-full text-left rounded-xl px-2 py-1.5 transition-all hover:opacity-90 group
                       ${ev.status === "feito" ? "opacity-40" : ""}`}>
-                    <div className={`flex items-center gap-1 rounded-lg px-1.5 py-1 ${cfg.cor} bg-opacity-10`}>
+                    <div className="flex items-center gap-1 rounded-lg px-1.5 py-1 bg-gray-100">
                       <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${cfg.cor}`} />
                       <div className="min-w-0">
-                        <p className={`text-[9px] font-black uppercase tracking-wide truncate ${ev.status === "feito" ? "line-through" : ""}`}
-                          style={{ color: ev.status === "feito" ? "#9ca3af" : undefined }}>
+                        <p className={`text-[9px] font-black uppercase tracking-wide truncate text-gray-700 ${ev.status === "feito" ? "line-through" : ""}`}>
                           {ev.titulo}
                         </p>
-                        <p className="text-[8px] text-gray-400 font-bold">{hora}</p>
+                        <p className="text-[8px] text-gray-500 font-bold">{hora}</p>
                       </div>
                     </div>
                   </button>
