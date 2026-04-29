@@ -1131,21 +1131,41 @@ Responda apenas com o JSON, sem markdown.`;
         if (!jaExiste) {
           const nomeLead = lead.nome || `Lead ${phone.slice(-4)}`;
           const veiculoLabel = topVeiculos[0] ? ` — ${topVeiculos[0].marca} ${topVeiculos[0].modelo}` : "";
-          // Data padrão: próximo dia útil às 10h (a IA não sabe a data exata se o cliente não informou)
-          const proximoDiaUtil = new Date();
-          proximoDiaUtil.setDate(proximoDiaUtil.getDate() + 1);
-          if (proximoDiaUtil.getDay() === 0) proximoDiaUtil.setDate(proximoDiaUtil.getDate() + 1);
-          proximoDiaUtil.setHours(10, 0, 0, 0);
+
+          // Tenta extrair a data real do resumo/resposta via Gemini
+          let dataHoraAgenda: string;
+          try {
+            const hoje = new Date().toLocaleDateString("pt-BR", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+            const parseResult = await geminiFlashSales.generateContent({
+              contents: [{ role: "user", parts: [{ text:
+                `Hoje é ${hoje}. Extraia a data e hora de visita desta conversa:\n"${resumo} ${aiResponse}"\n\nRetorne apenas JSON: {"data_hora": "ISO8601"} ou {"data_hora": null} se não houver data específica.`
+              }] }],
+              generationConfig: { responseMimeType: "application/json" },
+            });
+            const parsed = JSON.parse(parseResult.response.text());
+            if (parsed.data_hora) {
+              dataHoraAgenda = parsed.data_hora;
+            } else {
+              throw new Error("sem data");
+            }
+          } catch {
+            // Fallback: próximo dia útil às 10h
+            const fallback = new Date();
+            fallback.setDate(fallback.getDate() + 1);
+            if (fallback.getDay() === 0) fallback.setDate(fallback.getDate() + 1);
+            fallback.setHours(10, 0, 0, 0);
+            dataHoraAgenda = fallback.toISOString();
+          }
 
           await supabaseAdmin.from("agenda").insert({
             user_id: tenantUserId,
             titulo: `Visita - ${nomeLead}${veiculoLabel}`,
             descricao: resumo || null,
-            data_hora: proximoDiaUtil.toISOString(),
+            data_hora: dataHoraAgenda,
             tipo: "visita",
             lead_id: lead.id,
             created_by: "ia",
-          }).then(() => console.log(`📅 Auto-agenda criada para lead ${lead.id}`))
+          }).then(() => console.log(`📅 Auto-agenda criada para lead ${lead.id} — ${dataHoraAgenda}`))
             .catch(() => {});
         }
       }
