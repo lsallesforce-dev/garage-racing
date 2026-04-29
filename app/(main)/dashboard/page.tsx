@@ -140,53 +140,53 @@ export default function Dashboard() {
         )}
 
         {/* Flash: Cards de Performance (Telemetria) */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mb-8">
-            <div className="bg-slate-900 p-5 md:p-8 rounded-[2rem] md:rounded-[2.5rem] text-white shadow-2xl relative overflow-hidden group col-span-2 md:col-span-1">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            <div className="bg-slate-900 p-4 md:p-5 rounded-2xl text-white shadow-xl relative overflow-hidden group col-span-2 md:col-span-1">
             <div className="absolute -right-4 -top-4 text-white/5 group-hover:text-white/10 transition-colors">
-                <TrendingUp size={120} />
+                <TrendingUp size={80} />
             </div>
-            <p className="text-[9px] font-black uppercase tracking-widest text-gray-500 mb-1">Faturamento (Pátio)</p>
-            <h4 className="text-3xl font-black italic tracking-tighter">
+            <p className="text-[9px] font-black uppercase tracking-widest text-gray-500 mb-0.5">Faturamento (Pátio)</p>
+            <h4 className="text-2xl font-black italic tracking-tighter">
                 {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', notation: 'compact' }).format(stats.faturamento)}
             </h4>
-            <p className="text-[9px] text-green-400 font-bold uppercase mt-2 italic">↑ Performance Estável</p>
-            </div>
-            
-            <div className="bg-white p-5 md:p-8 rounded-[2rem] md:rounded-[2.5rem] border border-gray-100 shadow-sm hover:shadow-lg transition-all">
-            <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Eficiencia IA (Lucas)</p>
-            <h4 className="text-3xl md:text-4xl font-black italic tracking-tighter">{stats.eficienciaIA}%</h4>
-            <p className="text-[9px] text-slate-900 font-bold uppercase mt-2 italic">Conversão p/ Quente</p>
+            <p className="text-[9px] text-green-400 font-bold uppercase mt-1 italic">↑ Performance Estável</p>
             </div>
 
-            <div className="bg-white p-5 md:p-8 rounded-[2rem] md:rounded-[2.5rem] border border-gray-100 shadow-sm hover:shadow-lg transition-all">
-            <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Total de Leads</p>
-            <h4 className="text-3xl md:text-4xl font-black italic tracking-tighter">{stats.leadsTotais}</h4>
-            <p className="text-[9px] text-blue-500 font-bold uppercase mt-2 italic">Novas Oportunidades</p>
+            <div className="bg-white p-4 md:p-5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all">
+            <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-0.5">Eficiencia IA</p>
+            <h4 className="text-2xl font-black italic tracking-tighter">{stats.eficienciaIA}%</h4>
+            <p className="text-[9px] text-slate-900 font-bold uppercase mt-1 italic">Conversão p/ Quente</p>
             </div>
 
-            <div className="bg-white p-5 md:p-8 rounded-[2rem] md:rounded-[2.5rem] border border-gray-100 shadow-sm hover:shadow-lg transition-all">
-            <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Carros em Pátio</p>
-            <h4 className="text-3xl md:text-4xl font-black italic tracking-tighter">{stats.carrosPatio}</h4>
-            <p className="text-[9px] text-orange-500 font-bold uppercase mt-2 italic">Giro de Estoque</p>
+            <div className="bg-white p-4 md:p-5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all">
+            <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-0.5">Total de Leads</p>
+            <h4 className="text-2xl font-black italic tracking-tighter">{stats.leadsTotais}</h4>
+            <p className="text-[9px] text-blue-500 font-bold uppercase mt-1 italic">Novas Oportunidades</p>
+            </div>
+
+            <div className="bg-white p-4 md:p-5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all">
+            <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-0.5">Carros em Pátio</p>
+            <h4 className="text-2xl font-black italic tracking-tighter">{stats.carrosPatio}</h4>
+            <p className="text-[9px] text-orange-500 font-bold uppercase mt-1 italic">Giro de Estoque</p>
             </div>
         </div>
 
         {/* Flash: Termômetro de Leads */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-            <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 hover:shadow-md transition-all">
-            <p className="text-[10px] font-black uppercase text-blue-500 mb-1 tracking-widest">Leads Frios</p>
-            <h4 className="text-3xl font-black italic tracking-tighter">{stats.frios}</h4>
-            <p className="text-[9px] text-gray-400 font-bold uppercase mt-2">Apenas Curiosos</p>
+        <div className="grid grid-cols-3 gap-3 mb-4">
+            <div className="bg-white p-4 md:p-5 rounded-2xl border border-gray-100 hover:shadow-md transition-all">
+            <p className="text-[9px] font-black uppercase text-blue-500 mb-0.5 tracking-widest">Leads Frios</p>
+            <h4 className="text-2xl font-black italic tracking-tighter">{stats.frios}</h4>
+            <p className="text-[9px] text-gray-400 font-bold uppercase mt-1">Apenas Curiosos</p>
             </div>
-            <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 hover:shadow-md transition-all">
-            <p className="text-[10px] font-black uppercase text-amber-500 mb-1 tracking-widest">Interesse Real</p>
-            <h4 className="text-3xl font-black italic tracking-tighter">{stats.mornos}</h4>
-            <p className="text-[9px] text-gray-400 font-bold uppercase mt-2">Simulando Troca</p>
+            <div className="bg-white p-4 md:p-5 rounded-2xl border border-gray-100 hover:shadow-md transition-all">
+            <p className="text-[9px] font-black uppercase text-amber-500 mb-0.5 tracking-widest">Interesse Real</p>
+            <h4 className="text-2xl font-black italic tracking-tighter">{stats.mornos}</h4>
+            <p className="text-[9px] text-gray-400 font-bold uppercase mt-1">Simulando Troca</p>
             </div>
-            <div className="bg-white p-8 rounded-[2.5rem] border-2 border-red-100 bg-red-50/20 hover:scale-[1.02] transition-all">
-            <p className="text-[10px] font-black uppercase text-red-600 mb-1 tracking-widest text-left">🔥 Oportunidade</p>
-            <h4 className="text-3xl font-black italic text-red-600 tracking-tighter">{stats.quentes}</h4>
-            <p className="text-[9px] text-red-600/60 font-bold uppercase mt-2">Visita Agendada</p>
+            <div className="bg-white p-4 md:p-5 rounded-2xl border-2 border-red-100 bg-red-50/20 hover:scale-[1.01] transition-all">
+            <p className="text-[9px] font-black uppercase text-red-600 mb-0.5 tracking-widest">🔥 Oportunidade</p>
+            <h4 className="text-2xl font-black italic text-red-600 tracking-tighter">{stats.quentes}</h4>
+            <p className="text-[9px] text-red-600/60 font-bold uppercase mt-1">Visita Agendada</p>
             </div>
         </div>
 
