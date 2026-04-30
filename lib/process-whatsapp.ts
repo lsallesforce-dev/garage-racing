@@ -50,25 +50,19 @@ async function ensureCompressedVideo(videoUrl: string | null, veiculoId: string)
     const ffmpegPath = "/tmp/ffmpeg_whatsapp";
     try { await fs.copyFile(ffmpegSrc, ffmpegPath); await fs.chmod(ffmpegPath, 0o755); } catch (e: any) { if (e.code !== "ETXTBSY") throw e; }
 
-    const res = await fetch(videoUrl);
-    if (!res.ok) { console.warn(`⚠️ Falha ao baixar vídeo: ${res.status}`); return videoUrl; }
-    const inputBuf = Buffer.from(await res.arrayBuffer());
-
-    const tmpIn  = `/tmp/wpp_in_${veiculoId}.mp4`;
     const tmpOut = `/tmp/wpp_out_${veiculoId}.mp4`;
     try {
-      await fs.writeFile(tmpIn, inputBuf);
       await execFileAsync(ffmpegPath, [
-        "-i", tmpIn,
-        "-vf", "scale='min(640,iw)':-2",
-        "-c:v", "libx264", "-preset", "fast", "-crf", "32",
+        "-i", videoUrl,
+        "-vf", "scale='min(480,iw)':-2",
+        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "34",
         "-c:a", "aac", "-b:a", "64k",
         "-movflags", "+faststart",
         "-y", tmpOut,
       ], { maxBuffer: 100 * 1024 * 1024 });
 
       const compressed = await fs.readFile(tmpOut);
-      console.log(`🗜️ ${(inputBuf.length/1024/1024).toFixed(1)}MB → ${(compressed.length/1024/1024).toFixed(1)}MB`);
+      console.log(`🗜️ ${(size/1024/1024).toFixed(1)}MB → ${(compressed.length/1024/1024).toFixed(1)}MB`);
 
       // Salva no R2 com sufixo _wpp.mp4
       const r2Key = videoUrl.split("/").pop()!.replace(/\.mp4$/i, "_wpp.mp4");
@@ -88,7 +82,7 @@ async function ensureCompressedVideo(videoUrl: string | null, veiculoId: string)
       console.log(`✅ Vídeo comprimido salvo: ${compressedUrl}`);
       return compressedUrl;
     } finally {
-      await Promise.allSettled([fs.unlink(tmpIn).catch(() => {}), fs.unlink(tmpOut).catch(() => {})]);
+      await Promise.allSettled([fs.unlink(tmpOut).catch(() => {})]);
     }
   } catch (e) {
     console.warn(`⚠️ Compressão falhou, usando URL original:`, String(e).slice(0, 200));
