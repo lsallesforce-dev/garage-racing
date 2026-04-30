@@ -16,7 +16,6 @@ export const metadata: Metadata = {
 const navLinks = [
   { href: "/#funcionalidades", label: "Funcionalidades" },
   { href: "/sobre",           label: "Sobre"            },
-  { href: "/planos",          label: "Planos"           },
 ];
 
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
@@ -49,10 +48,10 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
               className="text-[11px] font-black uppercase tracking-widest text-gray-500 hover:text-gray-900 transition-colors px-4 py-2">
               Entrar
             </a>
-            <Link href="/planos"
+            <a href="/login"
               className="hidden md:block px-5 py-2 bg-gray-900 text-white rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-red-600 transition-colors">
               Começar grátis
-            </Link>
+            </a>
           </div>
         </div>
       </header>
@@ -82,7 +81,6 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
               <ul className="space-y-2">
                 {[
                   ["Funcionalidades", "/#funcionalidades"],
-                  ["Planos e Preços",  "/planos"],
                   ["Sobre nós",        "/sobre"],
                 ].map(([label, href]) => (
                   <li key={href}>
@@ -96,7 +94,6 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
               <ul className="space-y-2">
                 {[
                   ["Fazer login",   "/login"],
-                  ["Cadastrar",     "/planos"],
                   ["Suporte",       "https://wa.me/5511999999999"],
                 ].map(([label, href]) => (
                   <li key={href}>
