@@ -152,6 +152,7 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith("/termos") ||
     pathname.startsWith("/login") ||
     pathname.startsWith("/admin") ||
+    pathname.startsWith("/api/admin") ||
     pathname.startsWith("/aguardando") ||
     pathname.startsWith("/onboarding") ||
     pathname.startsWith("/api/auth/register") ||
