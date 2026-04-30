@@ -233,20 +233,18 @@ function ViewSemana({ eventos, baseDate, hoje, loading, onAdd, onEdit }: {
         const iso = dia.toISOString().slice(0, 10) + "T09:00:00";
 
         return (
-          <div key={i} className={`rounded-2xl p-2 flex flex-col gap-1 transition-colors
+          <div key={i} className={`rounded-2xl p-2 flex flex-col gap-1 min-h-[120px] transition-colors
             ${isHoje ? "bg-red-50 border border-red-100" : "bg-gray-50/60 border border-transparent hover:border-gray-100"}`}>
-            <div className="flex items-center justify-between mb-1 px-1">
-              <div>
-                <p className={`text-[9px] font-black uppercase tracking-widest ${isHoje ? "text-red-500" : "text-gray-400"}`}>
-                  {DIAS_SEMANA[i]}
-                </p>
-                <p className={`text-sm font-black leading-none ${isHoje ? "text-red-600" : "text-gray-700"}`}>
-                  {dia.getDate()}
-                </p>
-              </div>
+            <div className="relative flex flex-col items-center mb-1 group/header">
+              <p className={`text-[9px] font-black uppercase tracking-widest ${isHoje ? "text-red-500" : "text-gray-400"}`}>
+                {DIAS_SEMANA[i]}
+              </p>
+              <p className={`text-sm font-black leading-none ${isHoje ? "text-red-600" : "text-gray-700"}`}>
+                {dia.getDate()}
+              </p>
               <button onClick={() => onAdd(iso)}
-                className="w-5 h-5 rounded-full bg-gray-200 hover:bg-red-500 hover:text-white text-gray-500 flex items-center justify-center transition-colors">
-                <Plus size={10} />
+                className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-gray-200 hover:bg-red-500 hover:text-white text-gray-500 items-center justify-center transition-colors opacity-0 group-hover/header:opacity-100 flex">
+                <Plus size={8} />
               </button>
             </div>
             <div className="overflow-y-auto max-h-52 space-y-1">
