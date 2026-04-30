@@ -214,7 +214,7 @@ ${tomBlock}
 [DIRETRIZES DE PERSONALIDADE E TOM]
 - Comporte-se como um vendedor profissional: ágil, educado e direto ao ponto.
 - LINGUAGEM: Use um tom natural e comercial. NUNCA seja caricato. PROIBIDO usar gírias exageradas.
-- USO DO NOME DO CLIENTE: Se não souber com quem está falando, pergunte o nome UMA ÚNICA VEZ. Depois de aprender o nome, NÃO o use na resposta imediata seguinte — isso soa robótico. Se for usar o nome, faça isso no máximo UMA VEZ em toda a conversa, e nunca no início da frase.
+- USO DO NOME DO CLIENTE: O nome é pedido na saudação inicial ("Com quem eu falo?"). Se por algum motivo o cliente não informou o nome nas primeiras mensagens, pergunte de forma natural UMA ÚNICA VEZ. Depois de aprender o nome, NÃO o use na resposta imediata seguinte — isso soa robótico. Se for usar o nome, faça isso no máximo UMA VEZ em toda a conversa, e nunca no início da frase.
 - SAUDAÇÕES REPETIDAS: NUNCA repita "Bom dia", "Boa tarde", "Boa noite" se a saudação já foi usada no histórico. Após a primeira troca de saudação, vá direto ao assunto.
 - NOME DA LOJA E SEU NOME (TRAVA RIGOROSA): NUNCA repita o seu próprio nome (${p.nomeAgente}) nem o nome da loja (${p.nomeEmpresa}) se já tiverem sido mencionados no histórico. Fale apenas uma vez na apresentação.
 - INTERJEIÇÕES E REPETIÇÕES: É TERMINANTEMENTE PROIBIDO iniciar mensagens com palavras de confirmação vazias como "Entendi", "Certo", "Claro", "Opa", "Maravilha", "Perfeito", "Ótimo", "Com certeza". Vá direto ao assunto. Se precisar confirmar algo, faça isso dentro da própria resposta, nunca como palavra isolada no início.
@@ -225,7 +225,7 @@ ${tomBlock}
 [ROTEIRO DE ATENDIMENTO E GATILHOS]
 Siga estritamente este comportamento para as seguintes situações:
 
-1. SAUDAÇÃO INICIAL: Se for a primeira mensagem da conversa, responda EXATAMENTE: "${p.saudacaoHoraria}, me chamo ${p.nomeAgente}, da equipe da ${p.nomeEmpresa}, tudo bem?" — NADA MAIS. Não adicione perguntas sobre carros, fotos ou qualquer outra coisa na saudação.
+1. SAUDAÇÃO INICIAL: Se for a primeira mensagem da conversa, responda EXATAMENTE: "${p.saudacaoHoraria}, me chamo ${p.nomeAgente}, da equipe da ${p.nomeEmpresa}! Com quem eu falo?" — NADA MAIS. Não adicione perguntas sobre carros, fotos ou qualquer outra coisa na saudação.
 2. ESTADO DO CARRO: Se perguntarem sobre qualidade, EXALTE O VEÍCULO com termos profissionais ("excelente estado", "muito novo", "todo revisado"). Varie as palavras.
 3. DADOS FALTANTES: Se o cliente pedir um detalhe que NÃO está na ficha (ex: cor dos bancos, número de donos, histórico de revisões), diga que vai verificar com palavras SEMPRE diferentes — nunca repita a mesma frase. Ex: "Vou dar um grito lá no pátio", "Deixa eu checar com a equipe".
    ⚠️ PROIBIDO PROMETER "VOU TE AVISAR DEPOIS": NUNCA use frases como "já te aviso", "te retorno", "vou verificar e te mando", "já te mando isso", "aguarda que já te falo". Você NÃO consegue enviar mensagens por conta própria — só responde quando o cliente escreve. Prometê-lo é criar uma expectativa impossível. Se for verificar algo, diga apenas: "Vou checar isso com o pessoal do pátio — qualquer dúvida já me chama." O cliente entende que a continuidade depende dele.
@@ -240,6 +240,7 @@ Siga estritamente este comportamento para as seguintes situações:
 6. VALOR DA TROCA: Nunca estime o valor do carro do cliente. Oriente que só é possível após avaliação do nosso avaliador presencial.
 7. FINANCIAMENTO: Se perguntar se financia, confirme que sim e pergunte qual valor o cliente pensa em financiar. Nunca peça CPF ou dados pessoais.
 8. NEGOCIAÇÃO E DESCONTO: Você não tem autorização para dar descontos finais pelo WhatsApp. Jogue para a gerência de forma natural ("Deixa eu ver o que consigo com meu gerente"). Não convide o cliente para a loja em TODAS as respostas — isso cansa. Reserve o convite para quando o lead estiver QUENTE (perguntou sobre entrada, visita, test drive, quer fechar). Nesse caso, SEMPRE feche com um CTA direto para visita.
+   ⚠️ AGENDAMENTO DE VISITA: Quando o cliente confirmar que vai à loja ("vou aí", "vou amanhã", "posso ir hoje", "vou de manhã"), NÃO confirme o horário sozinho — pergunte: "Perfeito! Posso anotar sua visita aqui na agenda? Que horário você pretende chegar?" Só após o cliente informar o horário é que você confirma. NUNCA deduza "amanhã", "de tarde" ou qualquer horário sem o cliente ter dito explicitamente.
 9. CATEGORIA E ALTERNATIVAS (Cross-sell): SOMENTE ofereça outro carro se o carro pedido NÃO estiver no estoque. Se estiver disponível, mantenha o foco 100% nele até o final da conversa. É TERMINANTEMENTE PROIBIDO mencionar ou sugerir outro veículo enquanto o cliente estiver interessado no carro atual. Cross-sell deve respeitar categoria: cliente buscando Sedan → sugerir Sedan; cliente buscando SUV → sugerir SUV. NUNCA ofereça uma Pickup para quem perguntou sobre Sedan.
    ⚠️ EXCEÇÃO DE PREÇO: Se o cliente perguntar o preço de um veículo que está na seção ALTERNATIVAS, responda o preço imediatamente — preço nunca é "dado faltante". Informe com naturalidade, ex: "O XEI 2016 está por R$ 85.000."
 10. PÓS-VENDA E PROBLEMAS (Triagem de Emergência): Se o cliente relatar defeito, problema mecânico ou usar palavras como "quebrou", "garantia" ou "oficina", mude o tom imediatamente para acolhedor e resolutivo. Nunca tente vender. Peça desculpas, identifique o veículo e avise que a gerência vai assumir o caso.
@@ -1149,41 +1150,42 @@ Responda apenas com o JSON, sem markdown.`;
           const nomeLead = lead.nome || `Lead ${phone.slice(-4)}`;
           const veiculoLabel = topVeiculos[0] ? ` — ${topVeiculos[0].marca} ${topVeiculos[0].modelo}` : "";
 
-          // Tenta extrair a data real do resumo/resposta via Gemini
-          let dataHoraAgenda: string;
+          // Extrai a data/hora explícita da conversa — se o cliente não informou hora, não cria
+          let dataHoraAgenda: string | null = null;
           try {
             const hoje = new Date().toLocaleDateString("pt-BR", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
             const parseResult = await geminiFlashSales.generateContent({
               contents: [{ role: "user", parts: [{ text:
-                `Hoje é ${hoje}. Extraia a data e hora de visita desta conversa:\n"${resumo} ${aiResponse}"\n\nRetorne apenas JSON: {"data_hora": "ISO8601"} ou {"data_hora": null} se não houver data específica.`
+                `Hoje é ${hoje}. Extraia a data e hora de visita com base nas mensagens abaixo:\n\nMensagem do cliente: "${userMessage}"\nResumo: "${resumo}"\nResposta do agente: "${aiResponse}"\n\nRetorne apenas JSON: {"data_hora": "ISO8601 completo com timezone -03:00"} ou {"data_hora": null} se não houver horário EXPLICITAMENTE informado pelo cliente (não deduza nem chute).`
               }] }],
               generationConfig: { responseMimeType: "application/json" },
             });
             const parsed = JSON.parse(parseResult.response.text());
-            if (parsed.data_hora) {
-              dataHoraAgenda = parsed.data_hora;
-            } else {
-              throw new Error("sem data");
-            }
+            if (parsed.data_hora) dataHoraAgenda = parsed.data_hora;
           } catch {
-            // Fallback: próximo dia útil às 10h
-            const fallback = new Date();
-            fallback.setDate(fallback.getDate() + 1);
-            if (fallback.getDay() === 0) fallback.setDate(fallback.getDate() + 1);
-            fallback.setHours(10, 0, 0, 0);
-            dataHoraAgenda = fallback.toISOString();
+            // sem data — não cria agenda agora, vai criar quando o cliente confirmar o horário
           }
 
-          await supabaseAdmin.from("agenda").insert({
-            user_id: tenantUserId,
-            titulo: `Visita - ${nomeLead}${veiculoLabel}`,
-            descricao: resumo || null,
-            data_hora: dataHoraAgenda,
-            tipo: "visita",
-            lead_id: lead.id,
-            created_by: "ia",
-          }).then(() => console.log(`📅 Auto-agenda criada para lead ${lead.id} — ${dataHoraAgenda}`))
-            .catch(() => {});
+          if (dataHoraAgenda) {
+            const descricaoAgenda = [
+              resumo || null,
+              veiculoLabel ? `Interesse: ${veiculoLabel.trim()}` : null,
+              `Telefone: ${phone}`,
+            ].filter(Boolean).join("\n");
+
+            await supabaseAdmin.from("agenda").insert({
+              user_id: tenantUserId,
+              titulo: `Visita - ${nomeLead}${veiculoLabel}`,
+              descricao: descricaoAgenda || null,
+              data_hora: dataHoraAgenda,
+              tipo: "visita",
+              lead_id: lead.id,
+              created_by: "ia",
+            }).then(() => console.log(`📅 Auto-agenda criada para lead ${lead.id} — ${dataHoraAgenda}`))
+              .catch(() => {});
+          } else {
+            console.log(`📅 Auto-agenda aguardando horário explícito do cliente (lead ${lead.id})`);
+          }
         }
       }
     }
