@@ -25,6 +25,16 @@ async function ensureCompressedVideo(videoUrl: string | null, veiculoId: string)
   if (size > 0 && size <= 15 * 1024 * 1024) return videoUrl; // já pequeno, usa direto
   if (size === 0) return videoUrl; // não conseguiu checar, tenta direto
 
+  // Verifica se versão comprimida já existe no R2 (evita compressão dupla em paralelo)
+  const r2KeyPrecheck = videoUrl.split("/").pop()!.replace(/\.mp4$/i, "_wpp.mp4");
+  const existingWppUrl = `${process.env.R2_PUBLIC_URL}/${r2KeyPrecheck}`;
+  const existingHead = await fetch(existingWppUrl, { method: "HEAD" }).catch(() => null);
+  if (existingHead?.ok) {
+    console.log(`✅ Vídeo comprimido já existe no R2: ${existingWppUrl}`);
+    await supabaseAdmin.from("veiculos").update({ video_url: existingWppUrl }).eq("id", veiculoId);
+    return existingWppUrl;
+  }
+
   // Precisa comprimir
   console.log(`🗜️ Comprimindo vídeo ${(size / 1024 / 1024).toFixed(1)}MB para envio WhatsApp...`);
   try {
@@ -930,12 +940,24 @@ Responda apenas com o JSON, sem markdown.`;
     if (veiculoParaVideo) {
       // Prioridade: reel de marketing (já otimizado) → vídeo bruto
       const videoUrlRaw = (veiculoParaVideo as any).video_marketing_url ?? (veiculoParaVideo as any).video_url ?? null;
+
+      // Avisa o cliente antes de iniciar possível compressão longa
+      await sendMetaMessage(phone, "🎥 Um momento...", metaCreds);
+
       const videoUrl = await ensureCompressedVideo(videoUrlRaw, veiculoParaVideo.id);
       console.log(`🎥 vídeo enviado ao Meta: ${videoUrl} (marketing=${!!(veiculoParaVideo as any).video_marketing_url})`);
       if (videoUrl) {
         try {
           await sendMetaVideo(phone, videoUrl, undefined, metaCreds);
           videoEnviado = true;
+
+          // Mensagem de texto junto ao vídeo para não deixar mídia órfã
+          const veiculoLabel = `${veiculoParaVideo.marca} ${veiculoParaVideo.modelo}`;
+          const textoVideo = vitrineUrl
+            ? `🎥 *${veiculoLabel}*\n\nSe quiser ver todos os detalhes: ${vitrineUrl}`
+            : `🎥 *${veiculoLabel}*`;
+          await sendMetaMessage(phone, textoVideo, metaCreds);
+
           if (lead && veiculoParaVideo.id !== veiculoIdAnterior) {
             await supabaseAdmin
               .from("leads")

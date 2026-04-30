@@ -21,7 +21,7 @@ export const geminiFlashFallback = genAI.getGenerativeModel(
 export async function generateEmbedding(text: string): Promise<number[] | null> {
   const model = genAI.getGenerativeModel(
     { model: "text-embedding-005" },
-    { apiVersion: "v1beta" }
+    { apiVersion: "v1" }
   );
 
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -31,7 +31,13 @@ export async function generateEmbedding(text: string): Promise<number[] | null> 
       if (!embedding || embedding.length === 0) return null;
       return embedding; // text-embedding-005 retorna 768 dims
     } catch (error: any) {
-      const is429 = error?.status === 429 || String(error).includes("429");
+      const status = error?.status ?? error?.httpErrorCode;
+      // 404 = modelo indisponível nesta API key — não adianta tentar de novo
+      if (status === 404 || String(error).includes("404")) {
+        console.warn(`⚠️ Embedding indisponível (modelo não encontrado — 404)`);
+        return null;
+      }
+      const is429 = status === 429 || String(error).includes("429");
       if (is429 && attempt < 2) {
         const wait = (attempt + 1) * 2000;
         console.warn(`⏳ Embedding rate limit, aguardando ${wait}ms (tentativa ${attempt + 1}/3)`);
