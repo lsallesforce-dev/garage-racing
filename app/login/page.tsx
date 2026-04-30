@@ -55,6 +55,8 @@ function PasswordField({
 export default function LoginPage() {
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
+  const [nomeEmpresa, setNomeEmpresa] = useState("");
+  const [whatsapp, setWhatsapp] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -106,10 +108,21 @@ export default function LoginPage() {
     }
     setLoading(true);
 
+    if (!nomeEmpresa.trim()) {
+      setError("Informe o nome da sua empresa.");
+      setLoading(false);
+      return;
+    }
+
     const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
+        data: {
+          nome_empresa: nomeEmpresa.trim(),
+          whatsapp: whatsapp.trim(),
+          aprovado: false,
+        },
         emailRedirectTo: `${window.location.origin}/`,
       },
     });
@@ -122,14 +135,7 @@ export default function LoginPage() {
       return;
     }
 
-    // Envia email de confirmação branded (fire-and-forget)
-    fetch("/api/email/confirmacao", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
-    }).catch(() => {});
-
-    setSuccess("Conta criada! Verifique seu e-mail para confirmar o cadastro.");
+    setSuccess("Cadastro enviado! Nossa equipe vai analisar e entrar em contato em breve.");
   }
 
   async function handleForgot(e: React.FormEvent) {
@@ -224,6 +230,24 @@ export default function LoginPage() {
           {/* ── CADASTRO ── */}
           {mode === "register" && (
             <form onSubmit={handleRegister} className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">Nome da Empresa</label>
+                <input
+                  type="text" required value={nomeEmpresa}
+                  onChange={(e) => setNomeEmpresa(e.target.value)}
+                  placeholder="Ex: Garage Motors"
+                  className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">WhatsApp</label>
+                <input
+                  type="tel" value={whatsapp}
+                  onChange={(e) => setWhatsapp(e.target.value)}
+                  placeholder="(17) 99999-9999"
+                  className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
+                />
+              </div>
               <div className="flex flex-col gap-1.5">
                 <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">E-mail</label>
                 <input

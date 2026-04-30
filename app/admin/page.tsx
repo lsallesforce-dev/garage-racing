@@ -15,7 +15,7 @@ import {
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
-type Tab = "overview" | "clientes" | "financeiro" | "sistema";
+type Tab = "overview" | "clientes" | "financeiro" | "sistema" | "pendentes";
 type ServiceStatus = "ok" | "degraded" | "error" | "loading";
 type PlanoStatus = "trial" | "ativo" | "expirado";
 
@@ -370,6 +370,8 @@ export default function AdminPage() {
   const [secret, setSecret]         = useState("");
   const [autenticado, setAutenticado] = useState(false);
   const [tab, setTab]               = useState<Tab>("overview");
+  const [pendentes, setPendentes]   = useState<{ user_id: string; email: string; nome_empresa: string | null; whatsapp: string | null; created_at: string }[]>([]);
+  const [aprovando, setAprovando]   = useState<string | null>(null);
   const [stats, setStats]           = useState<Stats | null>(null);
   const [health, setHealth]         = useState<Health | null>(null);
   const [pagamentos, setPagamentos] = useState<Pagamento[]>([]);
@@ -405,6 +407,11 @@ export default function AdminPage() {
     }
   }, []);
 
+  const carregarPendentes = useCallback(async (s: string) => {
+    const res = await fetch("/api/admin/pendentes", { headers: { "x-admin-secret": s } });
+    if (res.ok) setPendentes(await res.json());
+  }, []);
+
   const carregarPagarme = useCallback(async (s: string) => {
     const res = await fetch("/api/admin/pagarme-financeiro", { headers: { "x-admin-secret": s } });
     if (res.ok) {
@@ -422,6 +429,7 @@ export default function AdminPage() {
       setAutenticado(true);
       carregarPagamentos(secret);
       carregarPagarme(secret);
+      carregarPendentes(secret);
     } else {
       alert("Senha incorreta.");
       setLoading(false);
@@ -539,11 +547,12 @@ export default function AdminPage() {
   }
 
   // ── Painel ─────────────────────────────────────────────────────────────────
-  const TABS: { id: Tab; label: string; icon: any }[] = [
-    { id: "overview",   label: "Visão Geral", icon: BarChart3   },
-    { id: "clientes",   label: "Clientes",    icon: Building2   },
-    { id: "financeiro", label: "Financeiro",  icon: DollarSign  },
-    { id: "sistema",    label: "Sistema",     icon: Settings    },
+  const TABS: { id: Tab; label: string; icon: any; badge?: number }[] = [
+    { id: "overview",   label: "Visão Geral", icon: BarChart3                           },
+    { id: "clientes",   label: "Clientes",    icon: Building2                           },
+    { id: "financeiro", label: "Financeiro",  icon: DollarSign                          },
+    { id: "pendentes",  label: "Pendentes",   icon: Hourglass,  badge: pendentes.length },
+    { id: "sistema",    label: "Sistema",     icon: Settings                            },
   ];
 
   return (
@@ -568,12 +577,17 @@ export default function AdminPage() {
               <span className="text-gray-900">AUTO</span><span className="text-red-600">ZAP</span>
             </span>
             <div className="flex items-center gap-1 border-l border-gray-200 pl-4">
-              {TABS.map(({ id, label, icon: Icon }) => (
+              {TABS.map(({ id, label, icon: Icon, badge }) => (
                 <button key={id} onClick={() => setTab(id)}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
                     tab === id ? "bg-gray-900 text-white" : "text-gray-500 hover:bg-gray-100"
                   }`}>
                   <Icon size={11} /> {label}
+                  {badge != null && badge > 0 && (
+                    <span className="bg-red-500 text-white text-[8px] font-black rounded-full w-4 h-4 flex items-center justify-center leading-none">
+                      {badge}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
@@ -1098,6 +1112,68 @@ export default function AdminPage() {
         )}
 
         {/* ══════════════════════════════════════════════════════════════════ */}
+        {/* ══════════════════════════════════════════════════════════════════ */}
+        {/* ABA: PENDENTES                                                    */}
+        {/* ══════════════════════════════════════════════════════════════════ */}
+        {tab === "pendentes" && (
+          <div className="flex flex-col gap-6">
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+              <div className="flex items-center justify-between mb-5">
+                <div>
+                  <h3 className="text-sm font-black uppercase tracking-widest text-gray-900">Cadastros Aguardando Aprovação</h3>
+                  <p className="text-[11px] text-gray-400 mt-0.5">{pendentes.length} pendente{pendentes.length !== 1 ? "s" : ""}</p>
+                </div>
+                <button onClick={() => carregarPendentes(secret)}
+                  className="p-2 text-gray-400 hover:text-gray-700 rounded-xl hover:bg-gray-100 transition">
+                  <RefreshCw size={15} />
+                </button>
+              </div>
+
+              {pendentes.length === 0 ? (
+                <div className="text-center py-12 text-gray-300 text-sm font-black uppercase tracking-widest">
+                  Nenhum cadastro pendente
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {pendentes.map(p => (
+                    <div key={p.user_id} className="flex items-center justify-between gap-4 p-4 bg-amber-50 border border-amber-100 rounded-2xl">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-black text-gray-900 truncate">{p.nome_empresa || "Sem nome"}</p>
+                        <p className="text-[11px] text-gray-500 truncate">{p.email}</p>
+                        {p.whatsapp && (
+                          <a href={`https://wa.me/55${p.whatsapp.replace(/\D/g,"")}`} target="_blank" rel="noreferrer"
+                            className="text-[10px] text-green-600 font-bold hover:underline">
+                            📱 {p.whatsapp}
+                          </a>
+                        )}
+                        <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">
+                          Cadastrado em {new Date(p.created_at).toLocaleDateString("pt-BR")}
+                        </p>
+                      </div>
+                      <button
+                        disabled={aprovando === p.user_id}
+                        onClick={async () => {
+                          setAprovando(p.user_id);
+                          await fetch("/api/admin/aprovar", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json", "x-admin-secret": secret },
+                            body: JSON.stringify({ user_id: p.user_id }),
+                          });
+                          setAprovando(null);
+                          carregarPendentes(secret);
+                        }}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-green-600 hover:bg-green-500 disabled:opacity-40 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-colors shrink-0">
+                        {aprovando === p.user_id ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle size={12} />}
+                        Aprovar
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* ABA: SISTEMA                                                      */}
         {/* ══════════════════════════════════════════════════════════════════ */}
         {tab === "sistema" && (

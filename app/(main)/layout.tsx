@@ -8,9 +8,11 @@ export default async function MainLayout({ children }: { children: React.ReactNo
 
   if (!user) redirect("/login");
 
-  // Detect vendor role from user metadata
-  const meta = user.user_metadata as { role?: string; owner_user_id?: string } | undefined;
+  // Cadastro aguardando aprovação do admin
+  const meta = user.user_metadata as { role?: string; owner_user_id?: string; aprovado?: boolean } | undefined;
+  if (meta?.aprovado === false) redirect("/aguardando");
   const isVendedor = meta?.role === "vendedor";
+
   const effectiveUserId = isVendedor ? (meta?.owner_user_id ?? user.id) : user.id;
 
   if (isVendedor) {
