@@ -3,6 +3,8 @@
 import { useState, useRef, useEffect } from "react";
 import { X, Send, Loader2, ChevronDown, Trash2, Headphones } from "lucide-react";
 import Image from "next/image";
+import { usePathname } from "next/navigation";
+import { useUserRole } from "./SidebarWrapper";
 
 const SUPPORT_WHATSAPP = "5517991141010";
 
@@ -11,34 +13,42 @@ interface Message {
   text: string;
 }
 
-const STORAGE_KEY = "zap_chat_history";
 const WELCOME: Message = { role: "assistant", text: "Oi! Eu sou o **Zap**, assistente do AutoZap. Como posso te ajudar hoje?" };
 
 export function ZapWidget() {
+  const pathname = usePathname();
+  const { effectiveUserId } = useUserRole();
+  const storageKey = effectiveUserId ? `zap_chat_history_${effectiveUserId}` : null;
   const [open, setOpen] = useState(false);
+
+  if (pathname === "/chat") return null;
   const [messages, setMessages] = useState<Message[]>([WELCOME]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Carrega histórico salvo ao montar
+  // Carrega histórico salvo ao montar (ou quando o userId resolver)
   useEffect(() => {
+    if (!storageKey) return;
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
+      const saved = localStorage.getItem(storageKey);
       if (saved) {
         const parsed = JSON.parse(saved) as Message[];
         if (parsed.length > 0) setMessages(parsed);
+      } else {
+        setMessages([WELCOME]);
       }
     } catch {}
-  }, []);
+  }, [storageKey]);
 
   // Salva histórico sempre que muda
   useEffect(() => {
+    if (!storageKey) return;
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
+      localStorage.setItem(storageKey, JSON.stringify(messages));
     } catch {}
-  }, [messages]);
+  }, [messages, storageKey]);
 
   useEffect(() => {
     if (open) {
@@ -161,7 +171,7 @@ export function ZapWidget() {
             <p className="text-green-400 text-[9px] font-bold uppercase tracking-widest mt-0.5">● Online</p>
           </div>
           <button
-            onClick={() => { setMessages([WELCOME]); localStorage.removeItem(STORAGE_KEY); }}
+            onClick={() => { setMessages([WELCOME]); if (storageKey) localStorage.removeItem(storageKey); }}
             title="Limpar conversa"
             className="text-gray-500 hover:text-red-400 transition-colors p-1"
           >
