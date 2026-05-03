@@ -2,6 +2,7 @@
 
 import { useEffect, useState, createContext, useContext } from "react";
 import { Sidebar } from "./Sidebar";
+import { ZapWidget } from "./ZapWidget";
 import { Menu } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
@@ -100,6 +101,7 @@ export function SidebarWrapper({ children, isVendedor = false, effectiveUserId =
           {children}
         </div>
       </div>
+      <ZapWidget />
     </UserRoleContext.Provider>
   );
 }
