@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendMetaMessage } from "@/lib/meta";
+import { cronGuard } from "@/lib/redis";
 
 export const maxDuration = 300;
 
@@ -17,6 +18,15 @@ function isAuthorized(req: NextRequest): boolean {
 
 function fmtNum(n: number) {
   return n.toLocaleString("pt-BR");
+}
+
+// Retorna "2025-W18" para a data fornecida — chave de idempotência semanal
+function isoWeekKey(date: Date): string {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const week = Math.ceil(((d.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7);
+  return `${d.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
 }
 
 export async function GET(req: NextRequest) {
@@ -41,10 +51,20 @@ export async function GET(req: NextRequest) {
   }
 
   let enviados = 0;
+  let pulados = 0;
+  const semana = isoWeekKey(agora);
 
   for (const t of tenants) {
     try {
       const uid = t.user_id;
+
+      // Guard de idempotência: pula se já enviamos para este tenant esta semana
+      const primeiraVez = await cronGuard(`relatorio:${uid}:${semana}`, 8 * 86_400);
+      if (!primeiraVez) {
+        console.log(`⏭️ Relatório semanal já enviado para tenant ${uid} na semana ${semana} — skip`);
+        pulados++;
+        continue;
+      }
       const metaCreds = { phoneNumberId: t.meta_phone_id, accessToken: t.meta_access_token };
 
       const [
@@ -112,6 +132,6 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  console.log(`📊 Relatório semanal: ${enviados}/${tenants.length} enviados`);
-  return NextResponse.json({ ok: true, enviados, total: tenants.length });
+  console.log(`📊 Relatório semanal: ${enviados} enviados, ${pulados} pulados (já enviados), ${tenants.length - enviados - pulados} erros`);
+  return NextResponse.json({ ok: true, enviados, pulados, total: tenants.length });
 }

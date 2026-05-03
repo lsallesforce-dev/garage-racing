@@ -20,6 +20,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendMetaMessage } from "@/lib/meta";
 import { geminiFlashSales } from "@/lib/gemini";
+import { cronGuard } from "@/lib/redis";
 
 export const maxDuration = 300;
 
@@ -82,6 +83,14 @@ export async function GET(req: NextRequest) {
   }
 
   const agora = new Date();
+
+  // Guard de idempotência: impede duplo disparo no mesmo dia (retry da Vercel, deploy duplo)
+  const hoje = agora.toISOString().slice(0, 10); // "2025-05-03"
+  const primeiraVez = await cronGuard(`followup:${hoje}`, 86_400);
+  if (!primeiraVez) {
+    console.log(`⏭️ Follow-up já executado hoje (${hoje}) — skip`);
+    return NextResponse.json({ ok: true, skipped: true, motivo: "already_ran_today" });
+  }
   const limite24h = new Date(agora.getTime() - 24 * 60 * 60 * 1000).toISOString();
   const limite7d = new Date(agora.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
 

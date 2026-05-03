@@ -162,6 +162,26 @@ export async function rateLimit(
   }
 }
 
+// ─── Guard de Idempotência para Cron Jobs ────────────────────────────────────
+//
+// Usa SET NX: retorna true se esta é a primeira execução para a chave dada,
+// false se já foi executado (chave já existia). Fail-open: se o Redis estiver
+// offline, permite a execução para não bloquear o cron silenciosamente.
+//
+// Uso:
+//   const primeiraVez = await cronGuard("relatorio:uid123:2025-W18", 8 * 86400);
+//   if (!primeiraVez) { console.log("já enviado — skip"); continue; }
+//
+export async function cronGuard(key: string, ttlSeconds: number): Promise<boolean> {
+  try {
+    const result = await getClient().set(`cron:${key}`, 1, { nx: true, ex: ttlSeconds });
+    return result !== null; // null = chave já existia = já rodou
+  } catch (e) {
+    console.warn("⚠️ [Redis] cronGuard falhou — cron permitido (fail-open):", e);
+    return true;
+  }
+}
+
 // ─── Cache de Slug da Vitrine (usado pelo Middleware Multi-Tenant) ────────────
 //
 // O middleware.ts roda no Edge Runtime e valida slugs via Redis REST API.
