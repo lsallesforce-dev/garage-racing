@@ -128,6 +128,7 @@ export interface GarageConfig {
   tom_venda?: string;               // ex: "descontraído", "formal", "apressado"
   instrucoes_adicionais?: string;   // bloco livre de instruções do dono
   horario_funcionamento?: string;   // ex: "Seg a Sex das 8h às 18h"
+  oferta_especial?: string;         // oferta ativa do mês para mencionar na negociação
 }
 
 export interface WhatsAppJobPayload {
@@ -193,6 +194,7 @@ interface BuildPromptParams {
   // Layer 2 & 4
   tomVenda?: string | null;
   instrucoesAdicionais?: string | null;
+  ofertaEspecial?: string | null;
   horarioFuncionamento?: string | null;
 }
 
@@ -205,6 +207,11 @@ function buildSystemInstruction(p: BuildPromptParams): string {
   // ── Layer 4: Free instructions ───────────────────────────────────────────────
   const instrucoesBlock = p.instrucoesAdicionais
     ? `\n[INSTRUÇÕES PERSONALIZADAS DO DONO DA LOJA — PRIORIDADE ALTA]\n${p.instrucoesAdicionais}\n`
+    : "";
+
+  // ── Layer 5: Oferta especial ativa ───────────────────────────────────────────
+  const ofertaBlock = p.ofertaEspecial
+    ? `\n[OFERTA ESPECIAL ATIVA ESTE MÊS — mencione naturalmente quando o lead perguntar sobre preço, entrada ou financiamento]\n${p.ofertaEspecial}\n`
     : "";
 
   return `
@@ -289,7 +296,7 @@ ${p.vitrineUrl ? `▶ VITRINE — QUANDO NÃO ENCONTRAR O QUE O CLIENTE PEDIU:
   - Não inicie sugestão de outro carro enquanto o cliente estiver focado no VEÍCULO EM NEGOCIAÇÃO.
   - EXCEÇÃO: se o cliente perguntar o preço ou detalhes de um veículo em ALTERNATIVAS, responda imediatamente — preço é sempre compartilhável.
   - Só sugira alternativas espontaneamente se: (a) o cliente pedir explicitamente outro carro, ou (b) o veículo em negociação não aparece mais no contexto.
-${instrucoesBlock}
+${instrucoesBlock}${ofertaBlock}
 [DADOS DE CONTEXTO]
 NOME DO CLIENTE: ${p.nomeCliente ?? "Não informado"}
 ${p.enderecoGaragem ? `ENDEREÇO DA LOJA: ${p.enderecoGaragem}${p.enderecoComplemento ? ` (${p.enderecoComplemento})` : ""}` : ""}
@@ -1010,6 +1017,7 @@ Responda apenas com o JSON, sem markdown.`;
       clientePediuVideo,
       tomVenda: garageConfig?.tom_venda,
       instrucoesAdicionais: garageConfig?.instrucoes_adicionais,
+      ofertaEspecial: garageConfig?.oferta_especial,
       horarioFuncionamento: garageConfig?.horario_funcionamento,
     });
 
@@ -1191,8 +1199,9 @@ Responda apenas com o JSON, sem markdown.`;
     }
   }
 
-  // ── 14. Transbordo com Briefing (QUENTE) ─────────────────────────────────────
-  if (temperatura === "QUENTE" && lead) {
+  // ── 14. Transbordo com Briefing (QUENTE) — só dispara na transição para QUENTE ─
+  const eraPreviamenteQuente = (lead as any)?.status === "QUENTE";
+  if (temperatura === "QUENTE" && !eraPreviamenteQuente && lead) {
     const topVeiculo = topVeiculos[0];
     const gerenteWa = garageConfig?.whatsapp ?? null;
     if (topVeiculo?.id && gerenteWa) {

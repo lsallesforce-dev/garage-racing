@@ -48,6 +48,7 @@ interface GarageConfig {
   tom_venda?: string;
   instrucoes_adicionais?: string;
   horario_funcionamento?: string;
+  oferta_especial?: string;
 }
 
 export default function ConfiguracoesPage() {
@@ -87,6 +88,7 @@ export default function ConfiguracoesPage() {
     tom_venda: "",
     instrucoes_adicionais: "",
     horario_funcionamento: "",
+    oferta_especial: "",
   });
   const fileRef = useRef<HTMLInputElement>(null);
   const pfxRef = useRef<HTMLInputElement>(null);
@@ -246,6 +248,7 @@ export default function ConfiguracoesPage() {
               tom_venda: row.tom_venda ?? "",
               instrucoes_adicionais: row.instrucoes_adicionais ?? "",
               horario_funcionamento: row.horario_funcionamento ?? "",
+              oferta_especial: row.oferta_especial ?? "",
             });
             if (row.logo_url) {
               setCurrentLogo(row.logo_url);
@@ -391,6 +394,7 @@ export default function ConfiguracoesPage() {
             tom_venda: config.tom_venda || null,
             instrucoes_adicionais: config.instrucoes_adicionais || null,
             horario_funcionamento: config.horario_funcionamento || null,
+            oferta_especial: config.oferta_especial || null,
           },
           { onConflict: "user_id" }
         )
@@ -785,6 +789,20 @@ export default function ConfiguracoesPage() {
                   className="w-full bg-white border border-amber-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-400 transition resize-none"
                 />
                 <p className="text-[10px] text-amber-700 mt-1">Regras específicas da sua loja. O agente seguirá com prioridade alta.</p>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-widest text-amber-800 block mb-1.5">
+                  🎯 Oferta Especial Ativa
+                </label>
+                <textarea
+                  value={config.oferta_especial || ""}
+                  onChange={e => setConfig(c => ({ ...c, oferta_especial: e.target.value }))}
+                  placeholder="Ex: Este mês: entrada mínima de 20% + parcelas a partir de R$899. Todas as revisões do 1º ano inclusas."
+                  rows={3}
+                  className="w-full bg-white border border-amber-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-400 transition resize-none"
+                />
+                <p className="text-[10px] text-amber-700 mt-1">A IA menciona essa oferta nos momentos certos da negociação. Deixe em branco para desativar.</p>
               </div>
             </div>
 
