@@ -625,17 +625,23 @@ export default function ConfiguracoesPage() {
                 {" "}· Token de verificação: <strong className="font-mono">autozap_webhook_2026</strong>
               </p>
 
+              {/* Aviso de campo bloqueado */}
+              <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2.5 mb-1">
+                <ShieldCheck size={13} className="text-blue-400 shrink-0 mt-0.5" />
+                <p className="text-[10px] text-blue-600 leading-relaxed">
+                  Estes campos são configurados pelo <strong>suporte AutoZap</strong>. Para alterar, entre em contato conosco.
+                </p>
+              </div>
+
               <label className="text-[10px] font-black uppercase tracking-widest text-blue-800 block">
                 Phone Number ID
               </label>
               <input
                 type="text"
                 value={config.meta_phone_id || ""}
-                onChange={e => setConfig(c => ({ ...c, meta_phone_id: e.target.value.trim() }))}
-                placeholder="Ex: 390538797515329"
-                className="bg-white border border-blue-200 rounded-xl px-4 py-2.5 font-mono text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
+                readOnly
+                className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-2.5 font-mono text-sm text-gray-500 cursor-not-allowed select-all w-full"
               />
-              <p className="text-[10px] text-blue-500">Encontrado em: Meta for Developers → WhatsApp → Configuração → Número de telefone.</p>
 
               <label className="text-[10px] font-black uppercase tracking-widest text-blue-800 mt-3 block">
                 Número do WhatsApp Business (com DDI)
@@ -643,11 +649,9 @@ export default function ConfiguracoesPage() {
               <input
                 type="text"
                 value={config.whatsapp_agente || ""}
-                onChange={e => setConfig(c => ({ ...c, whatsapp_agente: e.target.value.trim() }))}
-                placeholder="Ex: 5517991127787"
-                className="bg-white border border-blue-200 rounded-xl px-4 py-2.5 font-mono text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
+                readOnly
+                className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-2.5 font-mono text-sm text-gray-500 cursor-not-allowed select-all w-full"
               />
-              <p className="text-[10px] text-blue-500">Número que aparece no link "Falar com Vendedor" dos repasses. Sem espaços ou traços.</p>
 
               <label className="text-[10px] font-black uppercase tracking-widest text-blue-800 mt-3 block">
                 Access Token
@@ -656,9 +660,8 @@ export default function ConfiguracoesPage() {
                 <input
                   type={showToken ? "text" : "password"}
                   value={config.meta_access_token || ""}
-                  onChange={e => setConfig(c => ({ ...c, meta_access_token: e.target.value.trim() }))}
-                  placeholder="EAAxxxxxxxxxxxxxxxx..."
-                  className="w-full bg-white border border-blue-200 rounded-xl px-4 py-2.5 pr-20 font-mono text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
+                  readOnly
+                  className="w-full bg-blue-50 border border-blue-100 rounded-xl px-4 py-2.5 pr-20 font-mono text-sm text-gray-500 cursor-not-allowed"
                 />
                 <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
                   <button type="button" onClick={() => setShowToken(v => !v)}
@@ -673,7 +676,6 @@ export default function ConfiguracoesPage() {
                   )}
                 </div>
               </div>
-              <p className="text-[10px] text-blue-500">Encontrado em: Meta for Developers → WhatsApp → Configuração → Token de acesso temporário (ou token permanente do sistema).</p>
 
               <div className="mt-4 pt-4 border-t border-blue-100">
                 <p className="text-[10px] font-black uppercase tracking-widest text-blue-800 mb-2">
