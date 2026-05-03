@@ -107,7 +107,15 @@ export function ZapWidget() {
     return text
       .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
       .replace(/\*(.*?)\*/g, "<em>$1</em>")
-      .replace(/\n/g, "<br />");
+      .replace(/\n/g, "<br />")
+      .replace(
+        /(\+?55[\s\-]?\d{2}[\s\-]?\d{4,5}[\s\-]?\d{4})/g,
+        (match) => {
+          const digits = match.replace(/\D/g, "");
+          const num = digits.startsWith("55") ? digits : `55${digits}`;
+          return `<a href="https://wa.me/${num}" target="_blank" rel="noopener noreferrer" style="color:#16a34a;font-weight:600;text-decoration:underline;">${match}</a>`;
+        }
+      );
   }
 
   return (
