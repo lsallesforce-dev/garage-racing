@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { X, Send, Loader2, ChevronDown, Trash2 } from "lucide-react";
+import { X, Send, Loader2, ChevronDown, Trash2, Headphones } from "lucide-react";
 import Image from "next/image";
+
+const SUPPORT_WHATSAPP = "5517991141010";
 
 interface Message {
   role: "user" | "assistant";
@@ -81,6 +83,14 @@ export function ZapWidget() {
       e.preventDefault();
       send();
     }
+  }
+
+  function getSupportLink() {
+    const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
+    const text = lastUserMsg
+      ? `Olá! Preciso de ajuda com o AutoZap. Minha dúvida: ${lastUserMsg.text}`
+      : "Olá! Preciso de ajuda com o AutoZap.";
+    return `https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent(text)}`;
   }
 
   function renderText(text: string) {
@@ -205,8 +215,21 @@ export function ZapWidget() {
           <div ref={bottomRef} />
         </div>
 
+        {/* Suporte humano */}
+        <div className="px-3 pt-1.5 pb-0 bg-white flex justify-center">
+          <a
+            href={getSupportLink()}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 text-[10px] text-gray-400 hover:text-red-600 transition-colors group"
+          >
+            <Headphones size={11} className="group-hover:text-red-600" />
+            Falar com suporte humano
+          </a>
+        </div>
+
         {/* Input */}
-        <div className="border-t border-gray-200 bg-white px-3 py-2.5 flex items-center gap-2">
+        <div className="border-t border-gray-200 bg-white px-3 py-2.5 flex items-center gap-2 mt-1.5">
           <input
             ref={inputRef}
             type="text"

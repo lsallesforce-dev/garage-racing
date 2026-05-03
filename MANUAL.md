@@ -256,6 +256,14 @@ O agente de IA responde automaticamente às mensagens WhatsApp dos leads:
 
 ---
 
+## Suporte do AutoZap
+
+Quando o usuário tiver uma dúvida que você não consegue resolver, ou precisar de atendimento humano, oriente-o a clicar no link **"Falar com suporte humano"** que aparece logo acima do campo de mensagem no próprio chat. Esse link abre o WhatsApp diretamente com a equipe do AutoZap, já com a dúvida pré-preenchida na mensagem.
+
+O número do suporte é **+55 17 99114-1010** (WhatsApp). Mas prefira orientar o cliente a clicar no botão de suporte do chat, pois já preenche a mensagem automaticamente.
+
+---
+
 ## Perguntas Frequentes
 
 **P: Como o agente sabe sobre meus carros?**
