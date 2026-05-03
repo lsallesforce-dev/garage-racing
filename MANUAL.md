@@ -189,29 +189,21 @@ Gerenciamento dos vendedores da revenda.
 
 Personalizações da conta e integração com WhatsApp.
 
-**Aba Geral:**
+**Aba Geral — você mesmo pode editar:**
 - Nome da empresa / Nome fantasia
 - Endereço da garagem
 - Horário de funcionamento
 - Oferta especial (aparece no contexto do agente de IA)
 
-**Aba WhatsApp / Meta:**
-- Configuração do número de WhatsApp Business (Meta Cloud API)
-- Phone Number ID e Access Token da Meta
-- Verify Token do webhook
-
-**Aba Agente de IA:**
+**Aba Agente de IA — você mesmo pode editar:**
 - Nome do agente (ex: "Max", "Ana")
 - Tom de venda (entusiasta, consultivo, direto)
 - Instruções adicionais para o agente
 - Slug da vitrine pública
 
-**Como conectar o WhatsApp:**
-1. Crie um app no [Meta for Developers](https://developers.facebook.com)
-2. Ative o produto "WhatsApp Business"
-3. Copie o Phone Number ID e o Access Token
-4. Configure o webhook apontando para `https://seudominio.com/api/webhook/meta`
-5. Cole as credenciais nas Configurações do AutoZap
+**Aba WhatsApp / Meta — campos técnicos de integração:**
+Os campos desta aba (Phone Number ID, Access Token, Verify Token) são credenciais técnicas da API da Meta e foram configurados durante o seu onboarding pelo consultor do AutoZap.
+**Se esses campos precisarem ser atualizados ou você tiver dúvidas sobre eles, entre em contato com o suporte do AutoZap.** Mexer nesses campos sem orientação pode interromper o funcionamento do WhatsApp.
 
 ---
 
@@ -270,7 +262,13 @@ O agente de IA responde automaticamente às mensagens WhatsApp dos leads:
 R: Ele busca em tempo real no seu estoque cadastrado. Adicione ou atualize veículos no Estoque Inteligente e o agente passa a falar sobre eles imediatamente.
 
 **P: O que acontece se a Meta bloquear o token?**
-R: O webhook retorna erro 401. Acesse o Meta for Developers, regenere o Access Token e atualize nas Configurações.
+R: O WhatsApp para de responder e aparece erro 401 no Log de Erros. Entre em contato com o suporte do AutoZap para que o Access Token seja renovado.
+
+**P: Onde acho o Phone Number ID ou o Access Token?**
+R: Esses campos são configurados pelo consultor do AutoZap durante o onboarding. Se precisar atualizá-los, entre em contato com o suporte — mexer neles sem orientação pode derrubar a integração com o WhatsApp.
+
+**P: Posso editar as configurações de WhatsApp / Meta sozinho?**
+R: Não recomendamos. Os campos técnicos (Phone Number ID, Access Token, Verify Token) foram configurados pelo AutoZap. Qualquer alteração deve ser feita com suporte.
 
 **P: Posso personalizar o que o agente fala?**
 R: Sim. Em Configurações → Agente de IA, defina o tom de venda, instruções adicionais e oferta especial. O agente incorpora essas instruções em toda conversa.
