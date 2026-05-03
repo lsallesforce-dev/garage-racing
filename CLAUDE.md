@@ -11,6 +11,12 @@
 - OpenAI TTS + Whisper (voiceover e timestamps)
 - FFmpeg (dois binários — ver seção abaixo)
 
+## Modelos Gemini — regras obrigatórias
+- **Modelo principal:** `gemini-2.5-flash` com `{ apiVersion: "v1beta" }`
+- **`gemini-2.0-flash-lite` está DESCONTINUADO** — retorna 404. Nunca usar.
+- `systemInstruction` deve ser passado no `getGenerativeModel(...)`, **nunca** no `startChat(...)` — a API rejeita com 400.
+- Histórico do `startChat` deve começar sempre com role `"user"` — nunca `"model"`. Filtrar mensagens iniciais do assistente antes de montar o histórico.
+
 ## Regra crítica de storage
 | Tipo de arquivo | Onde vai | Como acessar |
 |-----------------|----------|--------------|
