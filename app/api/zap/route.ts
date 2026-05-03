@@ -22,9 +22,13 @@ export async function POST(req: NextRequest) {
 
     const manual = getManual();
 
+    // Gemini exige histórico começando com 'user' — descarta saudação inicial do assistente
+    const firstUserIdx = history.findIndex((m: { role: string }) => m.role === "user");
+    const validHistory = firstUserIdx === -1 ? [] : history.slice(firstUserIdx);
+
     const chat = geminiFlashFallback.startChat({
       systemInstruction: manual,
-      history: history.map((m: { role: string; text: string }) => ({
+      history: validHistory.map((m: { role: string; text: string }) => ({
         role: m.role === "user" ? "user" : "model",
         parts: [{ text: m.text }],
       })),
