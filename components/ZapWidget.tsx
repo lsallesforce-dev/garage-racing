@@ -93,27 +93,40 @@ export function ZapWidget() {
   return (
     <>
       {/* Botão flutuante */}
-      <button
-        onClick={() => setOpen((v) => !v)}
-        aria-label={open ? "Fechar Zap" : "Abrir Zap"}
-        className={`fixed bottom-6 right-6 z-50 w-16 h-16 rounded-full shadow-xl flex items-center justify-center transition-all duration-300 overflow-hidden ${
-          open
-            ? "bg-gray-800 scale-95"
-            : "bg-white hover:scale-110 ring-2 ring-red-600"
-        }`}
-      >
-        {open ? (
-          <ChevronDown size={22} className="text-white" />
-        ) : (
-          <Image
-            src="/zap-mascot.png"
-            alt="Zap"
-            width={64}
-            height={64}
-            className="object-cover scale-110"
-          />
+      <div className="fixed bottom-6 right-6 z-50 group">
+        {/* Balão "Posso te ajudar?" — aparece no hover quando fechado */}
+        {!open && (
+          <div className="absolute bottom-full right-1 mb-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+            <div className="bg-white text-gray-800 text-[11px] font-bold px-3 py-1.5 rounded-2xl shadow-lg border border-gray-100 whitespace-nowrap">
+              Posso te ajudar?
+            </div>
+            {/* Ponteiro do balão */}
+            <div className="absolute bottom-[-5px] right-5 w-3 h-3 bg-white border-b border-r border-gray-100 rotate-45" />
+          </div>
         )}
-      </button>
+
+        <button
+          onClick={() => setOpen((v) => !v)}
+          aria-label={open ? "Fechar Zap" : "Abrir Zap"}
+          className={`w-16 h-16 rounded-full shadow-xl flex items-center justify-center transition-all duration-300 overflow-hidden ${
+            open
+              ? "bg-gray-800 scale-95"
+              : "bg-white hover:scale-110 ring-2 ring-red-600"
+          }`}
+        >
+          {open ? (
+            <ChevronDown size={22} className="text-white" />
+          ) : (
+            <Image
+              src="/zap-mascot.png"
+              alt="Zap"
+              width={64}
+              height={64}
+              className="object-cover scale-110"
+            />
+          )}
+        </button>
+      </div>
 
       {/* Painel de chat */}
       <div
