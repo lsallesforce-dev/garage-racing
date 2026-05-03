@@ -35,19 +35,24 @@ function fmtData(iso: string) {
 export default function FunilPage() {
   const router = useRouter();
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [totalLeads, setTotalLeads] = useState(0);
   const [loading, setLoading] = useState(true);
   const [movendo, setMovendo] = useState<string | null>(null);
+  const LIMIT = 200;
 
   const carregar = useCallback(async () => {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const { data } = await supabase
+    const { data, count } = await supabase
       .from("leads")
-      .select("id, nome, wa_id, etapa_funil, status, resumo_negociacao, created_at, veiculos(marca, modelo, ano)")
+      .select("id, nome, wa_id, etapa_funil, status, resumo_negociacao, created_at, veiculos(marca, modelo, ano)", { count: "exact" })
       .eq("user_id", user.id)
-      .order("created_at", { ascending: false });
+      .order("updated_at", { ascending: false })
+      .limit(LIMIT);
+
+    if (count !== null) setTotalLeads(count);
 
     // Leads sem etapa_funil → "NOVO"
     const normalized = (data ?? []).map((l: any) => ({
@@ -109,7 +114,10 @@ export default function FunilPage() {
             Funil de Vendas
           </h1>
           <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-gray-400">
-            {leads.length} leads · {totalValor} vendidos
+            {totalLeads} leads · {totalValor} vendidos
+            {totalLeads > LIMIT && (
+              <span className="ml-2 text-amber-500">· exibindo {LIMIT} mais recentes</span>
+            )}
           </p>
         </div>
 

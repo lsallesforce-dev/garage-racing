@@ -1,6 +1,6 @@
 "use client";
 
-import { LayoutDashboard, MessageSquare, DollarSign, Users, ShieldCheck, Car, Store, Settings, LogOut, X, UserCircle, Contact, FileSignature, BarChart3, GitBranch } from "lucide-react";
+import { LayoutDashboard, MessageSquare, DollarSign, Users, ShieldCheck, Car, Store, Settings, LogOut, X, UserCircle, Contact, FileSignature, BarChart3, GitBranch, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -16,6 +16,7 @@ const adminMenuItems = [
   { icon: FileSignature, label: "Contratos", href: "/contratos" },
   { icon: Users, label: "Equipe de Vendas", href: "/vendedores" },
   { icon: Settings, label: "Configurações", href: "/configuracoes" },
+  { icon: AlertCircle, label: "Log de Erros", href: "/erros" },
   { icon: UserCircle, label: "Minha Conta", href: "/minha-conta" },
 ];
 

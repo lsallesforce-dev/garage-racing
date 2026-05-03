@@ -85,18 +85,24 @@ export default function CentralChat() {
   const [showChat, setShowChat] = useState(false);
   const [busca, setBusca] = useState("");
   const [filtro, setFiltro] = useState<Filtro>("Todos");
+  const [paginaLeads, setPaginaLeads] = useState(0);
+  const [totalLeads, setTotalLeads] = useState(0);
+  const [carregandoMais, setCarregandoMais] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const PAGE_SIZE = 60;
 
-  const carregarLeads = useCallback(async () => {
+  const carregarLeads = useCallback(async (pagina = 0, acumular = false) => {
     if (!effectiveUserId) return;
 
-    const { data: leadsData } = await supabase
+    const { data: leadsData, count } = await supabase
       .from("leads")
-      .select("*, veiculos(marca, modelo)")
+      .select("*, veiculos(marca, modelo)", { count: "exact" })
       .eq("user_id", effectiveUserId)
-      .order("updated_at", { ascending: false });
+      .order("updated_at", { ascending: false })
+      .range(pagina * PAGE_SIZE, (pagina + 1) * PAGE_SIZE - 1);
 
     if (!leadsData) return;
+    if (count !== null) setTotalLeads(count);
 
     // Busca a última mensagem de cada lead em uma query só
     const leadIds = leadsData.map((l) => l.id);
@@ -105,7 +111,7 @@ export default function CentralChat() {
       .select("lead_id, content, created_at, remetente")
       .in("lead_id", leadIds)
       .order("created_at", { ascending: false })
-      .limit(500);
+      .limit(leadIds.length);
 
     const ultimasMap = new Map<string, UltimaMensagem>();
     if (msgsData) {
@@ -116,14 +122,21 @@ export default function CentralChat() {
       }
     }
 
-    setLeads(
-      leadsData.map((l) => ({
-        ...l,
-        em_atendimento_humano: l.em_atendimento_humano ?? false,
-        ultimaMensagem: ultimasMap.get(l.id) ?? null,
-      })) as Lead[]
-    );
-  }, []);
+    const novos = leadsData.map((l) => ({
+      ...l,
+      em_atendimento_humano: l.em_atendimento_humano ?? false,
+      ultimaMensagem: ultimasMap.get(l.id) ?? null,
+    })) as Lead[];
+
+    setLeads(prev => acumular ? [...prev, ...novos] : novos);
+    setPaginaLeads(pagina);
+  }, [effectiveUserId]);
+
+  const carregarMais = async () => {
+    setCarregandoMais(true);
+    await carregarLeads(paginaLeads + 1, true);
+    setCarregandoMais(false);
+  };
 
   const carregarMensagens = useCallback(async (leadId: string) => {
     setLoadingMsgs(true);
@@ -401,6 +414,17 @@ export default function CentralChat() {
               </button>
             );
           })}
+
+          {/* Carregar mais leads */}
+          {leads.length < totalLeads && (
+            <button
+              onClick={carregarMais}
+              disabled={carregandoMais}
+              className="w-full py-3 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-all disabled:opacity-50"
+            >
+              {carregandoMais ? "Carregando..." : `Ver mais (${totalLeads - leads.length} restantes)`}
+            </button>
+          )}
         </div>
       </div>
 

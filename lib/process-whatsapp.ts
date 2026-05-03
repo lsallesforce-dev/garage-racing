@@ -8,7 +8,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendMetaMessage, sendMetaImage, sendMetaVideo, sendMetaPreview, sendMetaCtaButton, markMetaRead } from "@/lib/meta";
 import { buscarDadosTransbordo, gerarRelatorioPista } from "@/lib/leads";
 import { hybridVehicleSearch, findVehicleForMedia } from "@/lib/hybrid-search";
-import { getCachedHistory, cacheHistory, invalidateHistory } from "@/lib/redis";
+import { getCachedHistory, cacheHistory, invalidateHistory, circuitIsOpen, circuitRecordFailure, circuitRecordSuccess } from "@/lib/redis";
 import { toVideoUrlAbsolute } from "@/lib/r2-url";
 import { Vehicle } from "@/types/vehicle";
 
@@ -1030,24 +1030,34 @@ Responda apenas com o JSON, sem markdown.`;
       generationConfig: { responseMimeType: "application/json" },
     };
 
+    // Circuit breaker: se Gemini acumulou falhas recentes, responde imediatamente
+    // sem nem tentar a chamada — poupa timeout e cota desperdiçada
+    if (await circuitIsOpen("gemini")) {
+      console.warn("⚡ Circuit breaker ABERTO para Gemini — resposta de fallback sem chamar API");
+      aiResponse = "Oi! Estou com uma instabilidade técnica agora, mas já vou resolver. Me manda uma mensagem em alguns minutinhos? 🙏";
+    } else {
     let result;
     try {
       result = await geminiFlashSales.generateContent(chatRequest);
+      await circuitRecordSuccess("gemini");
     } catch (primaryError: any) {
       if (primaryError?.status === 429) {
         console.warn("⚠️ gemini-2.5-flash atingiu spending cap, tentando fallback...");
         try {
           result = await geminiFlashFallback.generateContent(chatRequest);
+          await circuitRecordSuccess("gemini");
         } catch (fallbackError: any) {
           if (fallbackError?.status === 429) {
             console.error("❌ Todos os modelos Gemini indisponíveis (spending cap)");
             aiResponse =
               "Oi! Estou com uma instabilidade técnica agora, mas já vou resolver. Me manda uma mensagem em alguns minutinhos? 🙏";
           } else {
+            await circuitRecordFailure("gemini");
             throw fallbackError;
           }
         }
       } else {
+        await circuitRecordFailure("gemini");
         throw primaryError;
       }
     }
@@ -1116,6 +1126,7 @@ Responda apenas com o JSON, sem markdown.`;
         aiResponse = "Olá! Tivemos uma pequena instabilidade aqui, mas já estou de volta.";
       }
     }
+    } // fim do else do circuit breaker
   } catch (aiError) {
     console.error("❌ ERRO FATAL NO GEMINI:", aiError);
     aiResponse =

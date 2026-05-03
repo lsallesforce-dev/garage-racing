@@ -162,6 +162,58 @@ export async function rateLimit(
   }
 }
 
+// ─── Circuit Breaker ─────────────────────────────────────────────────────────
+//
+// Padrão: CLOSED (normal) → OPEN (falha rápida) → CLOSED (auto-recuperação)
+//
+// Lógica:
+//   - Cada falha incrementa `circuit:{key}:failures` (TTL 60s)
+//   - Ao atingir o threshold → seta `circuit:{key}:open` (TTL halfOpenMs/1000)
+//   - Antes de chamar o serviço → verifica se `circuit:{key}:open` existe
+//   - Sucesso → deleta ambas as chaves
+//
+// Uso:
+//   if (await circuitIsOpen("gemini")) throw new Error("circuit open");
+//   try { ... } catch { await circuitRecordFailure("gemini"); throw; }
+//   await circuitRecordSuccess("gemini");
+//
+const CIRCUIT_THRESHOLD = 5;          // falhas em 60s para abrir
+const CIRCUIT_FAILURE_TTL = 60;       // janela de contagem (segundos)
+const CIRCUIT_OPEN_TTL = 30;          // tempo aberto antes de tentar novamente (segundos)
+
+export async function circuitIsOpen(key: string): Promise<boolean> {
+  try {
+    const val = await getClient().get(`circuit:${key}:open`);
+    return val !== null;
+  } catch {
+    return false; // fail-open: se Redis offline, deixa o serviço tentar
+  }
+}
+
+export async function circuitRecordFailure(key: string): Promise<void> {
+  try {
+    const client = getClient();
+    const count = await client.incr(`circuit:${key}:failures`);
+    if (count === 1) await client.expire(`circuit:${key}:failures`, CIRCUIT_FAILURE_TTL);
+    if (count >= CIRCUIT_THRESHOLD) {
+      await client.set(`circuit:${key}:open`, 1, { ex: CIRCUIT_OPEN_TTL });
+      console.warn(`⚡ Circuit breaker ABERTO para "${key}" (${count} falhas em ${CIRCUIT_FAILURE_TTL}s)`);
+    }
+  } catch (e) {
+    console.warn("⚠️ [Redis] circuitRecordFailure falhou (non-fatal):", e);
+  }
+}
+
+export async function circuitRecordSuccess(key: string): Promise<void> {
+  try {
+    const client = getClient();
+    await client.del(`circuit:${key}:failures`);
+    await client.del(`circuit:${key}:open`);
+  } catch (e) {
+    console.warn("⚠️ [Redis] circuitRecordSuccess falhou (non-fatal):", e);
+  }
+}
+
 // ─── Guard de Idempotência para Cron Jobs ────────────────────────────────────
 //
 // Usa SET NX: retorna true se esta é a primeira execução para a chave dada,
