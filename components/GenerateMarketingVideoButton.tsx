@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { toVideoUrl } from "@/lib/r2-url";
-import { Video, Loader2, CheckCircle, AlertCircle, Download, RotateCcw } from "lucide-react";
+import { Video, Loader2, CheckCircle, AlertCircle, Download, RotateCcw, Trash2 } from "lucide-react";
 
 const MUSIC_PRESETS = [
   { label: "Configurada na garagem", value: "" },
@@ -57,6 +57,15 @@ export function GenerateMarketingVideoButton({ veiculoId, statusInicial, videoFi
   const resetStatus = async () => {
     await supabase.from("veiculos").update({ marketing_status: null }).eq("id", veiculoId);
     setStatus(null);
+  };
+
+  const apagarVideo = async () => {
+    await supabase.from("veiculos").update({ marketing_status: null, video_marketing_url: null, marketing_roteiro: null }).eq("id", veiculoId);
+    setStatus(null);
+    setVideoUrl(null);
+    setRoteiro("");
+    setRoteiroVisivel(false);
+    setPrefsAlteradas(false);
   };
 
   // Polling enquanto processando — timeout de 5 min vira erro automaticamente
@@ -212,6 +221,13 @@ export function GenerateMarketingVideoButton({ veiculoId, statusInicial, videoFi
             title="Gerar novamente"
           >
             <RotateCcw size={14} />
+          </button>
+          <button
+            onClick={apagarVideo}
+            className="px-4 py-3 bg-gray-100 text-gray-400 rounded-2xl hover:bg-red-50 hover:text-red-500 transition-all"
+            title="Apagar vídeo gerado"
+          >
+            <Trash2 size={14} />
           </button>
         </div>
 
