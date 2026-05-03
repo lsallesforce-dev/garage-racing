@@ -399,10 +399,17 @@ function ModalEvento({
   const [titulo,    setTitulo]    = useState(evento?.titulo || "");
   const [descricao, setDescricao] = useState(evento?.descricao || "");
   const [tipo,      setTipo]      = useState<Tipo>(evento?.tipo || "visita");
+  // Converte ISO UTC → string local para o input datetime-local (sem toISOString que força UTC)
+  const toLocalInput = (iso: string) => {
+    const d = new Date(iso);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
   const [dataHora,  setDataHora]  = useState(
     evento
-      ? new Date(evento.data_hora).toISOString().slice(0, 16)
-      : (diaPreSelecionado ? diaPreSelecionado.slice(0, 16) : new Date().toISOString().slice(0, 16))
+      ? toLocalInput(evento.data_hora)
+      : (diaPreSelecionado ? diaPreSelecionado.slice(0, 16) : toLocalInput(new Date().toISOString()))
   );
   const [saving, setSaving] = useState(false);
 

@@ -1167,7 +1167,9 @@ Responda apenas com o JSON, sem markdown.`;
 
         if (!jaExiste) {
           const nomeLead = lead.nome || `Lead ${phone.slice(-4)}`;
-          const veiculoLabel = topVeiculos[0] ? ` — ${topVeiculos[0].marca} ${topVeiculos[0].modelo}` : "";
+          // Usa o veículo confirmado do lead (veiculo_id), não o resultado de busca semântica
+          const veiculoFoco = veiculoPrincipal ?? topVeiculos[0] ?? null;
+          const veiculoLabel = veiculoFoco ? ` — ${veiculoFoco.marca} ${veiculoFoco.modelo}` : "";
 
           // Extrai a data/hora explícita da conversa — se o cliente não informou hora, não cria
           let dataHoraAgenda: string | null = null;
