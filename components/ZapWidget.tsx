@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { X, Send, Loader2, ChevronDown } from "lucide-react";
+import { X, Send, Loader2, ChevronDown, Trash2 } from "lucide-react";
 import Image from "next/image";
 
 interface Message {
@@ -9,15 +9,34 @@ interface Message {
   text: string;
 }
 
+const STORAGE_KEY = "zap_chat_history";
+const WELCOME: Message = { role: "assistant", text: "Oi! Eu sou o **Zap**, assistente do AutoZap. Como posso te ajudar hoje?" };
+
 export function ZapWidget() {
   const [open, setOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([
-    { role: "assistant", text: "Oi! Eu sou o **Zap**, assistente do AutoZap. Como posso te ajudar hoje?" },
-  ]);
+  const [messages, setMessages] = useState<Message[]>([WELCOME]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Carrega histórico salvo ao montar
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved) as Message[];
+        if (parsed.length > 0) setMessages(parsed);
+      }
+    } catch {}
+  }, []);
+
+  // Salva histórico sempre que muda
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
+    } catch {}
+  }, [messages]);
 
   useEffect(() => {
     if (open) {
@@ -118,6 +137,13 @@ export function ZapWidget() {
             <p className="text-white font-black text-sm uppercase tracking-wider leading-none">ZAP AI</p>
             <p className="text-green-400 text-[9px] font-bold uppercase tracking-widest mt-0.5">● Online</p>
           </div>
+          <button
+            onClick={() => { setMessages([WELCOME]); localStorage.removeItem(STORAGE_KEY); }}
+            title="Limpar conversa"
+            className="text-gray-500 hover:text-red-400 transition-colors p-1"
+          >
+            <Trash2 size={13} />
+          </button>
           <button
             onClick={() => setOpen(false)}
             className="text-gray-400 hover:text-white transition-colors p-1"

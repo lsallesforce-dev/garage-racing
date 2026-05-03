@@ -50,25 +50,33 @@ Gerenciamento completo do inventário de veículos.
 - Paginação automática
 
 **Cadastrar veículo:**
-- Clique em "Novo Veículo" ou "+"
+- Clique no botão **"Cadastrar Nova Máquina"** no canto superior direito
 - Preencha: marca, modelo, ano, km, cor, combustível, câmbio, preço, descrição
 - Faça upload de fotos (múltiplas, arraste e solte)
-- Opcionalmente faça upload de vídeo (enviado para o Cloudflare R2)
-- O veículo aparece automaticamente na busca do agente de IA do WhatsApp
+- Opcionalmente faça upload de vídeo principal do veículo
+- Salve — o veículo aparece imediatamente no estoque e na busca do agente de IA do WhatsApp
+
+**Dentro da página do veículo — funcionalidades de IA:**
+
+- **Takes de Vídeo**: Envie clipes curtos do veículo (vídeos de inspeção gravados pelo vendedor). Clique em "Adicionar Takes". A IA assiste ao vídeo e extrai automaticamente:
+  - **Transcrição do Vendedor** — tudo que foi dito em voz no vídeo
+  - **Detalhes de Inspeção** — análise técnica do que a IA identificou visualmente
+  - **Pontos Fortes de Venda** — chips/destaques gerados automaticamente para o agente usar no WhatsApp
+  - **Base de Conhecimento da IA** — texto mestre que alimenta o agente em todos os atendimentos daquele veículo
+
+- **Enviar CRLV / Documento**: Faça upload do documento do veículo. A IA extrai os dados automaticamente (placa, chassi, ano, validade do licenciamento etc.) e preenche os campos do cadastro.
+
+- **Histórico do Veículo**: Campo para registrar procedência, sinistros e restrições — visível ao agente de IA no WhatsApp.
+
+- **Gerar Vídeo de Marketing**: Clique no botão de vídeo de marketing. O sistema cria automaticamente: roteiro com IA, narração em voz, vídeo com fotos, música de fundo e legenda. O vídeo fica disponível para download e compartilhamento nas redes. Para gerar outro, clique no ícone de lixeira para resetar e depois gere novamente.
 
 **Editar veículo:**
-- Clique no card do veículo para abrir a página de edição
+- Clique no card do veículo no Estoque para abrir a página de edição
 - Altere qualquer campo e salve
 - Adicione ou remova fotos individualmente
 
 **Excluir veículo:**
-- Na página de edição, botão "Excluir" remove o veículo e as fotos/vídeos do storage
-
-**Gerar vídeo de marketing:**
-- Na página do veículo, clique em "Gerar Vídeo de Marketing"
-- O sistema cria automaticamente: roteiro com IA, narração em voz, vídeo com fotos, música e legenda
-- O vídeo fica disponível para download e compartilhamento
-- Para gerar outro vídeo, clique no ícone de lixeira para resetar e depois em "Gerar" novamente
+- Na página do veículo, botão "Excluir" remove o veículo e apaga todas as fotos e vídeos do storage automaticamente
 
 ---
 
