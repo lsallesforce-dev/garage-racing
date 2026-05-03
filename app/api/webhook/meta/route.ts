@@ -14,7 +14,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createHmac } from "crypto";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { processWhatsAppMessage } from "@/lib/process-whatsapp";
-import { isDuplicateMessage } from "@/lib/redis";
+import { isDuplicateMessage, rateLimit } from "@/lib/redis";
 import { logWebhookError } from "@/lib/error-log";
 
 export const maxDuration = 300;
@@ -155,7 +155,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ status: "empty_content" });
     }
 
-    // Processa em background
+    // Rate limit diário por tenant (janela deslizante de 24h via Redis INCR)
+    // Trial: 200 respostas/dia | Plano ativo: 1000 respostas/dia
+    const dailyLimit = garageConfig.plano_ativo ? 1000 : 200;
+    const { allowed: withinLimit } = await rateLimit(`msg:${tenantUserId}`, dailyLimit, 86400);
+    if (!withinLimit) {
+      console.warn(`🚫 Rate limit diário atingido — tenant=${tenantUserId} limite=${dailyLimit} msgs/dia`);
+      return NextResponse.json({ status: "rate_limited" });
+    }
+
+    // Processa em background com retry exponencial: 0s → 3s → 15s
     after(async () => {
       const job = {
         phone,
@@ -166,23 +175,31 @@ export async function POST(req: NextRequest) {
         garageConfig,
       };
 
-      try {
-        await processWhatsAppMessage(job);
-      } catch (firstError) {
-        console.warn("⚠️ Processamento falhou, tentando novamente em 3s...");
-        await new Promise(r => setTimeout(r, 3000));
+      const RETRY_DELAYS = [0, 3_000, 15_000];
+      let lastError: unknown;
+
+      for (let attempt = 0; attempt < RETRY_DELAYS.length; attempt++) {
+        if (RETRY_DELAYS[attempt] > 0) {
+          await new Promise(r => setTimeout(r, RETRY_DELAYS[attempt]));
+        }
         try {
           await processWhatsAppMessage(job);
-        } catch (finalError) {
-          await logWebhookError({
-            tenantUserId,
-            phone,
-            messageId,
-            etapa: "processamento",
-            erro: finalError,
-          });
+          return;
+        } catch (err) {
+          lastError = err;
+          if (attempt < RETRY_DELAYS.length - 1) {
+            console.warn(`⚠️ Processamento falhou (tentativa ${attempt + 1}/${RETRY_DELAYS.length}) — retry em ${RETRY_DELAYS[attempt + 1]}ms`);
+          }
         }
       }
+
+      await logWebhookError({
+        tenantUserId,
+        phone,
+        messageId,
+        etapa: "processamento",
+        erro: lastError,
+      });
     });
 
     return NextResponse.json({ status: "queued" });
