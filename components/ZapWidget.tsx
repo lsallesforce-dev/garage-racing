@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { X, Send, Zap, Loader2, ChevronDown } from "lucide-react";
+import { X, Send, Loader2, ChevronDown } from "lucide-react";
+import Image from "next/image";
 
 interface Message {
   role: "user" | "assistant";
@@ -76,30 +77,42 @@ export function ZapWidget() {
       <button
         onClick={() => setOpen((v) => !v)}
         aria-label={open ? "Fechar Zap" : "Abrir Zap"}
-        className={`fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full shadow-xl flex items-center justify-center transition-all duration-300 ${
+        className={`fixed bottom-6 right-6 z-50 w-16 h-16 rounded-full shadow-xl flex items-center justify-center transition-all duration-300 overflow-hidden ${
           open
-            ? "bg-gray-800 rotate-0 scale-95"
-            : "bg-red-600 hover:bg-red-700 hover:scale-110"
+            ? "bg-gray-800 scale-95"
+            : "bg-white hover:scale-110 ring-2 ring-red-600"
         }`}
       >
         {open ? (
           <ChevronDown size={22} className="text-white" />
         ) : (
-          <Zap size={22} className="text-white fill-white" />
+          <Image
+            src="/zap-mascot.png"
+            alt="Zap"
+            width={64}
+            height={64}
+            className="object-cover scale-110"
+          />
         )}
       </button>
 
       {/* Painel de chat */}
       <div
-        className={`fixed bottom-24 right-6 z-50 w-80 sm:w-96 flex flex-col rounded-2xl shadow-2xl overflow-hidden border border-gray-200 bg-white transition-all duration-300 origin-bottom-right ${
+        className={`fixed bottom-28 right-6 z-50 w-80 sm:w-96 flex flex-col rounded-2xl shadow-2xl overflow-hidden border border-gray-200 bg-white transition-all duration-300 origin-bottom-right ${
           open ? "scale-100 opacity-100 pointer-events-auto" : "scale-90 opacity-0 pointer-events-none"
         }`}
         style={{ maxHeight: "520px" }}
       >
         {/* Header */}
         <div className="bg-gray-900 px-4 py-3 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full bg-red-600 flex items-center justify-center shadow-md shrink-0">
-            <Zap size={16} className="text-white fill-white" />
+          <div className="w-10 h-10 rounded-full overflow-hidden shrink-0 ring-2 ring-red-600 bg-white">
+            <Image
+              src="/zap-mascot.png"
+              alt="Zap"
+              width={40}
+              height={40}
+              className="object-cover scale-110"
+            />
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-white font-black text-sm uppercase tracking-wider leading-none">ZAP AI</p>
@@ -118,8 +131,14 @@ export function ZapWidget() {
           {messages.map((msg, i) => (
             <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
               {msg.role === "assistant" && (
-                <div className="w-6 h-6 rounded-full bg-gray-900 flex items-center justify-center shrink-0 mr-2 mt-0.5">
-                  <Zap size={10} className="text-red-500 fill-red-500" />
+                <div className="w-7 h-7 rounded-full overflow-hidden shrink-0 mr-2 mt-0.5 bg-white ring-1 ring-red-300">
+                  <Image
+                    src="/zap-mascot.png"
+                    alt="Zap"
+                    width={28}
+                    height={28}
+                    className="object-cover scale-110"
+                  />
                 </div>
               )}
               <div
@@ -135,8 +154,8 @@ export function ZapWidget() {
 
           {loading && (
             <div className="flex justify-start">
-              <div className="w-6 h-6 rounded-full bg-gray-900 flex items-center justify-center shrink-0 mr-2 mt-0.5">
-                <Zap size={10} className="text-red-500 fill-red-500" />
+              <div className="w-7 h-7 rounded-full overflow-hidden shrink-0 mr-2 mt-0.5 bg-white ring-1 ring-red-300">
+                <Image src="/zap-mascot.png" alt="Zap" width={28} height={28} className="object-cover scale-110" />
               </div>
               <div className="bg-white rounded-2xl rounded-tl-sm px-3 py-2 shadow-sm border border-gray-100 flex items-center gap-1.5">
                 <Loader2 size={12} className="animate-spin text-gray-400" />
@@ -164,7 +183,7 @@ export function ZapWidget() {
             disabled={!input.trim() || loading}
             className="w-8 h-8 rounded-xl bg-red-600 hover:bg-red-700 disabled:bg-gray-200 flex items-center justify-center transition-colors shrink-0"
           >
-            <Send size={13} className="text-white disabled:text-gray-400" />
+            <Send size={13} className="text-white" />
           </button>
         </div>
       </div>
