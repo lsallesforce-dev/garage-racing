@@ -37,12 +37,20 @@ export function SidebarWrapper({ children, isVendedor = false, effectiveUserId =
   const [nomeEmpresa, setNomeEmpresa] = useState("");
   const searchParams = useSearchParams();
 
-  // Detecta sessão de impersonação do admin e persiste no sessionStorage
+  // Detecta sessão de impersonação: salva flag amarrada ao user_id atual
+  // Se o user_id mudar (logout/troca de conta), a flag é invalidada automaticamente
   useEffect(() => {
+    if (!effectiveUserId) return;
     if (searchParams.get("admin_session") === "1") {
-      sessionStorage.setItem("autozap_admin_session", "1");
+      sessionStorage.setItem("autozap_admin_uid", effectiveUserId);
+    } else {
+      // Valida se a flag existente ainda pertence ao usuário atual — limpa se não
+      const savedUid = sessionStorage.getItem("autozap_admin_uid");
+      if (savedUid && savedUid !== effectiveUserId) {
+        sessionStorage.removeItem("autozap_admin_uid");
+      }
     }
-  }, [searchParams]);
+  }, [searchParams, effectiveUserId]);
 
   useEffect(() => {
     const ownerId = effectiveUserId;

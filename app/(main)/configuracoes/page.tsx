@@ -115,7 +115,11 @@ export default function ConfiguracoesPage() {
 
   // Carrega o Facebook SDK para Embedded Signup
   useEffect(() => {
-    setIsAdminSession(sessionStorage.getItem("autozap_admin_session") === "1");
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      const savedUid = sessionStorage.getItem("autozap_admin_uid");
+      setIsAdminSession(savedUid === user.id);
+    });
   }, []);
 
   useEffect(() => {
