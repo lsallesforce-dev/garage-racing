@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { Flame, TrendingUp, Users, Car, Zap, Brain, LayoutDashboard, AlertTriangle, MessageCircle, CalendarCheck, ArrowUp, ArrowDown, Minus } from "lucide-react";
+import { Flame, TrendingUp, Users, Car, Zap, Brain, LayoutDashboard, AlertTriangle, MessageCircle, CalendarCheck, ArrowUp, ArrowDown, Minus, GitBranch } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import AgendaSemana from "@/components/AgendaSemana";
@@ -119,10 +119,17 @@ export default function Dashboard() {
       <div className="max-w-7xl mx-auto">
         {/* Flash: Header com Título e Botões de Ação */}
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4 mb-8 md:mb-12">
-            <div>
+          <div>
             <h1 className="text-3xl md:text-6xl font-black italic uppercase text-gray-300/80 leading-none mb-2 tracking-tighter">Radar do Pátio</h1>
             <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-gray-400">Bem-vindo à {nomeEmpresa || "AutoZap"}, Comandante.</p>
-            </div>
+          </div>
+          <Link
+            href="/funil"
+            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-red-200 transition-all group self-start sm:self-auto"
+          >
+            <GitBranch size={14} className="text-gray-400 group-hover:text-red-500 transition-colors" />
+            <span className="text-[10px] font-black uppercase tracking-widest text-gray-500 group-hover:text-red-600 transition-colors">Funil de Vendas</span>
+          </Link>
         </div>
 
         {/* Banner trial expirando */}

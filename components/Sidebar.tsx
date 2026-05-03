@@ -11,12 +11,10 @@ const adminMenuItems = [
   { icon: Car, label: "Estoque Inteligente", href: "/estoque" },
   { icon: MessageSquare, label: "Central de Chat", href: "/chat" },
   { icon: DollarSign,  label: "Vendas / Financeiro", href: "/vendas" },
-  { icon: GitBranch,  label: "Funil de Vendas", href: "/funil" },
   { icon: Contact, label: "Clientes", href: "/clientes" },
   { icon: FileSignature, label: "Contratos", href: "/contratos" },
   { icon: Users, label: "Equipe de Vendas", href: "/vendedores" },
   { icon: Settings, label: "Configurações", href: "/configuracoes" },
-  { icon: AlertCircle, label: "Log de Erros", href: "/erros" },
   { icon: UserCircle, label: "Minha Conta", href: "/minha-conta" },
 ];
 
@@ -169,8 +167,22 @@ export const Sidebar = ({ onClose, isVendedor = false, effectiveUserId = "" }: S
         )}
       </nav>
 
+      {/* Log de Erros — visível só para admin */}
+      {!isVendedor && (
+        <Link
+          href="/erros"
+          onClick={onClose}
+          className={`flex items-center gap-3 px-3 py-2 rounded-xl transition-all mb-2 ${
+            pathname === "/erros" ? "bg-white text-red-600 shadow-sm" : "text-gray-400 hover:bg-white/50"
+          }`}
+        >
+          <AlertCircle size={13} />
+          <span className="font-bold text-[10px] uppercase tracking-wider">Log de Erros</span>
+        </Link>
+      )}
+
       {/* Perfil do Usuário */}
-      <div className="mt-4 pt-4 border-t border-gray-300 flex items-center gap-3">
+      <div className="pt-3 border-t border-gray-300 flex items-center gap-3">
         <div className="w-10 h-10 rounded-full bg-gray-900 flex items-center justify-center text-white font-black text-sm italic shadow-lg">{iniciais}</div>
         <div className="flex flex-col flex-1 min-w-0">
           <span className="text-[11px] font-black uppercase tracking-tight text-gray-900 truncate">{nomeUsuario || "—"}</span>
