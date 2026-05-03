@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, createContext, useContext } from "react";
+import { useSearchParams } from "next/navigation";
 import { Sidebar } from "./Sidebar";
 import { ZapWidget } from "./ZapWidget";
 import { Menu } from "lucide-react";
@@ -34,6 +35,14 @@ interface SidebarWrapperProps {
 export function SidebarWrapper({ children, isVendedor = false, effectiveUserId = "" }: SidebarWrapperProps) {
   const [open, setOpen] = useState(false);
   const [nomeEmpresa, setNomeEmpresa] = useState("");
+  const searchParams = useSearchParams();
+
+  // Detecta sessão de impersonação do admin e persiste no sessionStorage
+  useEffect(() => {
+    if (searchParams.get("admin_session") === "1") {
+      sessionStorage.setItem("autozap_admin_session", "1");
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     const ownerId = effectiveUserId;
