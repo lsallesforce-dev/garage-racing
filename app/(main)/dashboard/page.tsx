@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { Flame, TrendingUp, Users, Car, Zap, Brain, LayoutDashboard, AlertTriangle } from "lucide-react";
+import { Flame, TrendingUp, Users, Car, Zap, Brain, LayoutDashboard, AlertTriangle, MessageCircle, CalendarCheck, ArrowUp, ArrowDown, Minus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import AgendaSemana from "@/components/AgendaSemana";
@@ -18,6 +18,13 @@ export default function Dashboard() {
     mornos: 0,
     quentes: 0
   });
+  const [metrics, setMetrics] = useState<{
+    leads: { hoje: number; ontem: number; semana: number; mes: number };
+    mensagensHoje: number;
+    agendamentosHoje: number;
+    topVeiculos: { marca: string; modelo: string; ano: string | null; count: number }[];
+  } | null>(null);
+  const [periodo, setPeriodo] = useState<"hoje" | "semana" | "mes">("hoje");
   const [atividades, setAtividades] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [nomeEmpresa, setNomeEmpresa] = useState("");
@@ -70,6 +77,12 @@ export default function Dashboard() {
         quentes: contagem.quentes
         });
         if (recents) setAtividades(recents);
+
+        // Métricas temporais
+        fetch("/api/dashboard/metrics")
+          .then(r => r.ok ? r.json() : null)
+          .then(d => { if (d) setMetrics(d); });
+
     } catch (error) {
         console.error("Flash Error:", error);
     } finally {
@@ -189,6 +202,99 @@ export default function Dashboard() {
             <p className="text-[9px] text-red-600/60 font-bold uppercase mt-1">Visita Agendada</p>
             </div>
         </div>
+
+        {/* Métricas temporais */}
+        {metrics && (
+          <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-6 mb-4">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-[11px] font-black uppercase tracking-widest text-gray-400">Performance da IA</h3>
+              <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+                {(["hoje", "semana", "mes"] as const).map(p => (
+                  <button key={p} onClick={() => setPeriodo(p)}
+                    className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition ${
+                      periodo === p ? "bg-white text-gray-900 shadow-sm" : "text-gray-400 hover:text-gray-600"
+                    }`}>
+                    {p === "hoje" ? "Hoje" : p === "semana" ? "7 dias" : "Mês"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+              {/* Leads no período */}
+              <div className="bg-[#f5f5f3] rounded-2xl p-4">
+                <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Novos Leads</p>
+                <p className="text-3xl font-black italic tracking-tighter text-gray-900">
+                  {periodo === "hoje" ? metrics.leads.hoje : periodo === "semana" ? metrics.leads.semana : metrics.leads.mes}
+                </p>
+                {periodo === "hoje" && (
+                  <div className="flex items-center gap-1 mt-1">
+                    {metrics.leads.hoje > metrics.leads.ontem
+                      ? <ArrowUp size={10} className="text-green-500" />
+                      : metrics.leads.hoje < metrics.leads.ontem
+                      ? <ArrowDown size={10} className="text-red-400" />
+                      : <Minus size={10} className="text-gray-400" />}
+                    <span className="text-[9px] font-bold text-gray-400">
+                      {metrics.leads.ontem} ontem
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Mensagens da IA hoje */}
+              <div className="bg-[#f5f5f3] rounded-2xl p-4">
+                <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Msgs da IA</p>
+                <p className="text-3xl font-black italic tracking-tighter text-gray-900">{metrics.mensagensHoje}</p>
+                <p className="text-[9px] font-bold text-gray-400 mt-1">Hoje</p>
+              </div>
+
+              {/* Agendamentos hoje */}
+              <div className="bg-[#f5f5f3] rounded-2xl p-4">
+                <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Agendamentos</p>
+                <p className="text-3xl font-black italic tracking-tighter text-gray-900">{metrics.agendamentosHoje}</p>
+                <p className="text-[9px] font-bold text-gray-400 mt-1">Hoje</p>
+              </div>
+
+              {/* Taxa de conversão */}
+              <div className="bg-[#f5f5f3] rounded-2xl p-4">
+                <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Conversão</p>
+                <p className="text-3xl font-black italic tracking-tighter text-gray-900">
+                  {metrics.agendamentosHoje > 0 && metrics.leads.hoje > 0
+                    ? Math.round((metrics.agendamentosHoje / metrics.leads.hoje) * 100)
+                    : 0}%
+                </p>
+                <p className="text-[9px] font-bold text-gray-400 mt-1">Lead → Visita</p>
+              </div>
+            </div>
+
+            {/* Top veículos mais consultados */}
+            {metrics.topVeiculos.length > 0 && (
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-3">Mais Consultados no Mês</p>
+                <div className="flex flex-col gap-2">
+                  {metrics.topVeiculos.map((v, i) => {
+                    const max = metrics.topVeiculos[0].count;
+                    const pct = Math.round((v.count / max) * 100);
+                    return (
+                      <div key={i} className="flex items-center gap-3">
+                        <span className="text-[9px] font-black text-gray-300 w-3">{i + 1}</span>
+                        <div className="flex-1">
+                          <div className="flex justify-between mb-1">
+                            <span className="text-[10px] font-black text-gray-700">{v.marca} {v.modelo} {v.ano}</span>
+                            <span className="text-[9px] font-black text-gray-400">{v.count} {v.count === 1 ? "lead" : "leads"}</span>
+                          </div>
+                          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                            <div className="h-full bg-red-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Agenda da Semana */}
         <AgendaSemana />
