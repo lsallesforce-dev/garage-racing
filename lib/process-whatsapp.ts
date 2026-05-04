@@ -422,6 +422,11 @@ function formatVehicleCard(v: Vehicle): string {
 // Monta o contexto de estoque com separação clara entre veículo em foco e alternativas.
 // Isso impede que o Gemini "decida" trocar de carro por conta própria ao ver outras opções.
 function buildStockContext(topVeiculos: Vehicle[], veiculoPrincipal: Vehicle | null): string {
+  if (topVeiculos.length === 0 && !veiculoPrincipal) {
+    // Sem contexto de estoque (ex: saudação inicial de lead novo).
+    // Retorna string vazia para o agente não receber carros aleatórios no prompt.
+    return "";
+  }
   if (topVeiculos.length === 0) {
     return "No momento não temos veículos disponíveis no pátio.";
   }
@@ -1032,9 +1037,14 @@ Responda apenas com o JSON, sem markdown.`;
     console.log(`✅ Mídia enviada para ${phone} — sem resposta de texto.`);
     if (lead) {
       const tipo = fotoEnviada && videoEnviado ? "foto e vídeo" : fotoEnviada ? "foto" : "vídeo";
+      const veiculoLabel = veiculoPrincipal
+        ? `${veiculoPrincipal.marca} ${veiculoPrincipal.modelo}`
+        : null;
       await supabaseAdmin.from("mensagens").insert({
         lead_id: lead.id,
-        content: `[${tipo} enviado automaticamente]`,
+        content: veiculoLabel
+          ? `[${tipo} enviada: ${veiculoLabel}]`
+          : `[${tipo} enviado automaticamente]`,
         remetente: "agente",
       });
       await invalidateHistory(tenantUserId, lead.id);
@@ -1286,7 +1296,8 @@ Responda apenas com o JSON, sem markdown.`;
   // ── 14. Transbordo com Briefing (QUENTE) — só dispara na transição para QUENTE ─
   const eraPreviamenteQuente = (lead as any)?.status === "QUENTE";
   if (temperatura === "QUENTE" && !eraPreviamenteQuente && lead) {
-    const topVeiculo = topVeiculos[0];
+    // Usa veiculoPrincipal (carro real em negociação) — topVeiculos[0] pode ser diferente
+    const topVeiculo = veiculoPrincipal ?? topVeiculos[0];
     const gerenteWa = garageConfig?.whatsapp ?? null;
     if (topVeiculo?.id && gerenteWa) {
       const transbordo = await buscarDadosTransbordo(topVeiculo.id);

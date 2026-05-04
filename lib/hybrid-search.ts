@@ -646,6 +646,12 @@ export async function hybridVehicleSearch(
     }
   }
 
+  // Mensagem curta sem carro vinculado (ex: "oi", "boa tarde") → contexto vazio.
+  // Evita que o agente receba 5 carros aleatórios e os cite espontaneamente na saudação.
+  if (msgCurta) {
+    return { topVeiculos: [], hitsTextuais: [], clientePediuCarroDiferente: false };
+  }
+
   return {
     topVeiculos: await fallbackSearch(tenantUserId),
     hitsTextuais: [],
