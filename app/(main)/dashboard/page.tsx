@@ -210,6 +210,9 @@ export default function Dashboard() {
             </div>
         </div>
 
+        {/* Agenda da Semana */}
+        <AgendaSemana />
+
         {/* Métricas temporais */}
         {metrics && (
           <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-6 mb-4">
@@ -228,7 +231,6 @@ export default function Dashboard() {
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-              {/* Leads no período */}
               <div className="bg-[#f5f5f3] rounded-2xl p-4">
                 <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Novos Leads</p>
                 <p className="text-3xl font-black italic tracking-tighter text-gray-900">
@@ -248,21 +250,18 @@ export default function Dashboard() {
                 )}
               </div>
 
-              {/* Mensagens da IA hoje */}
               <div className="bg-[#f5f5f3] rounded-2xl p-4">
                 <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Msgs da IA</p>
                 <p className="text-3xl font-black italic tracking-tighter text-gray-900">{metrics.mensagensHoje}</p>
                 <p className="text-[9px] font-bold text-gray-400 mt-1">Hoje</p>
               </div>
 
-              {/* Agendamentos hoje */}
               <div className="bg-[#f5f5f3] rounded-2xl p-4">
                 <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Agendamentos</p>
                 <p className="text-3xl font-black italic tracking-tighter text-gray-900">{metrics.agendamentosHoje}</p>
                 <p className="text-[9px] font-bold text-gray-400 mt-1">Hoje</p>
               </div>
 
-              {/* Taxa de conversão */}
               <div className="bg-[#f5f5f3] rounded-2xl p-4">
                 <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Conversão</p>
                 <p className="text-3xl font-black italic tracking-tighter text-gray-900">
@@ -274,7 +273,6 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Top veículos mais consultados */}
             {metrics.topVeiculos.length > 0 && (
               <div>
                 <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-3">Mais Consultados no Mês</p>
@@ -302,9 +300,6 @@ export default function Dashboard() {
             )}
           </div>
         )}
-
-        {/* Agenda da Semana */}
-        <AgendaSemana />
 
         {/* Flash: Movimentação ao Vivo */}
         <div className="bg-white p-10 rounded-[3rem] border border-gray-100 shadow-sm">

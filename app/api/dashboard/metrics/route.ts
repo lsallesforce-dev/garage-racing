@@ -3,9 +3,11 @@ import { requireAuth } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
 export async function GET(req: NextRequest) {
-  const auth = await requireAuth(req);
-  if (auth instanceof NextResponse) return auth;
-  const userId = auth.id;
+  const { user, error: authError } = await requireAuth();
+  if (authError) return authError;
+  const userId = user!.user_metadata?.role === "vendedor"
+    ? user!.user_metadata?.owner_user_id
+    : user!.id;
 
   const agora = new Date();
   const inicioDia = new Date(agora);
