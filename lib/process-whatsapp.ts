@@ -785,6 +785,9 @@ Responda apenas com o JSON, sem markdown.`;
   // ── 9. Histórico da Conversa ──────────────────────────────────────────────────
   // Estratégia: Redis first → cache hit usa direto | cache miss → Supabase → cacheia resultado
   // Invalidação: ocorre no step 13 após salvar a resposta do agente
+  //
+  // Histórico inteligente: sempre inclui as 2 PRIMEIRAS mensagens (saudação + nome do cliente)
+  // + as 13 MAIS RECENTES — para não perder contexto inicial em conversas longas.
   let historico: any[] = [];
   if (lead?.id) {
     const cached = await getCachedHistory(tenantUserId, lead.id);
@@ -792,22 +795,43 @@ Responda apenas com o JSON, sem markdown.`;
       historico = cached;
       console.log(`⚡ [Redis] Cache hit de histórico para lead ${lead.id} (${cached.length} msgs)`);
     } else {
-      // Cache miss — busca no Supabase e armazena para próximas mensagens
-      const { data: msgs } = await supabaseAdmin
-        .from("mensagens")
-        .select("remetente, content")
-        .eq("lead_id", lead.id)
-        .order("created_at", { ascending: false })
-        .limit(15);
+      // Cache miss — busca no Supabase: primeiras 2 + últimas 13 em paralelo
+      const [{ data: primeiras }, { data: recentes }] = await Promise.all([
+        supabaseAdmin
+          .from("mensagens")
+          .select("id, remetente, content, created_at")
+          .eq("lead_id", lead.id)
+          .order("created_at", { ascending: true })
+          .limit(2),
+        supabaseAdmin
+          .from("mensagens")
+          .select("id, remetente, content, created_at")
+          .eq("lead_id", lead.id)
+          .order("created_at", { ascending: false })
+          .limit(13),
+      ]);
 
-      if (msgs && msgs.length > 0) {
-        historico = msgs.reverse().map((m) => ({
-          role: m.remetente === "usuario" ? "user" : "model",
-          parts: [{ text: m.content }],
-        }));
-        // Cacheia para a próxima mensagem deste lead (TTL: 30min)
-        await cacheHistory(tenantUserId, lead.id, historico);
-        console.log(`💾 [Redis] Cache miss — histórico armazenado para lead ${lead.id} (${historico.length} msgs)`);
+      if (primeiras || recentes) {
+        // Mescla: primeiras + recentes (revertidas para ordem cronológica), sem duplicatas
+        const seenIds = new Set<string>();
+        const merged: { remetente: string; content: string }[] = [];
+
+        for (const m of (primeiras ?? [])) {
+          if (!seenIds.has(m.id)) { seenIds.add(m.id); merged.push(m); }
+        }
+        for (const m of [...(recentes ?? [])].reverse()) {
+          if (!seenIds.has(m.id)) { seenIds.add(m.id); merged.push(m); }
+        }
+
+        if (merged.length > 0) {
+          historico = merged.map((m) => ({
+            role: m.remetente === "usuario" ? "user" : "model",
+            parts: [{ text: m.content }],
+          }));
+          // Cacheia para a próxima mensagem deste lead (TTL: 30min)
+          await cacheHistory(tenantUserId, lead.id, historico);
+          console.log(`💾 [Redis] Cache miss — histórico inteligente armazenado para lead ${lead.id} (${historico.length} msgs)`);
+        }
       }
     }
   }

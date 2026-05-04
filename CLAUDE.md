@@ -94,7 +94,7 @@ Proxy Node.js (sem `edge` runtime) com suporte a Range requests para seek de ví
 7. `hybridVehicleSearch` — busca textual + semântica, detecta troca de carro
 8. Atualiza `veiculo_id` do lead via **heurística** (modelo explícito na mensagem)
 9. `buildStockContext` — monta contexto separando "VEÍCULO EM FOCO" de "ALTERNATIVAS"
-10. Carrega histórico (Redis → Supabase fallback, 15 mensagens)
+10. Carrega histórico **inteligente**: 2 primeiras msgs (saudação + nome) + 13 mais recentes, sem duplicatas (Redis → Supabase fallback)
 11. Interceptores: pós-venda → stand-by automático
 12. Envio de foto (se pedido) — early return sem chamar Gemini
 13. Envio de vídeo (se pedido) — early return sem chamar Gemini
