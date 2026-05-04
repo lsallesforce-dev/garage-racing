@@ -39,8 +39,8 @@ export async function GET(req: NextRequest) {
 function validateSignature(body: string, signature: string | null): boolean {
   const appSecret = process.env.META_APP_SECRET;
   if (!appSecret) {
-    console.warn("⚠️ META_APP_SECRET não configurado — assinatura não validada (fail-open)");
-    return true;
+    console.error("🚨 META_APP_SECRET não configurado — requisição rejeitada (fail-closed)");
+    return false;
   }
   if (!signature) return false;
 
