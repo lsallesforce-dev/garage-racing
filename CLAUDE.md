@@ -44,6 +44,29 @@ Paths de tmp são por job: `/tmp/ffmpeg_{veiculoId}`, `/tmp/ffmpeg_caps_{veiculo
 - Rotas que aceitam `veiculoId` devem usar `requireVehicleOwner`, nunca apenas `requireAuth`.
 - `supabaseAdmin` ignora RLS — toda validação de posse deve ser feita manualmente nas API routes.
 
+## Regras de segurança — padrões obrigatórios
+
+### Webhooks externos (Meta, PagarMe, QStash)
+- **NUNCA fail-open.** Se a env var do secret não estiver configurada, retornar 401 — nunca pular a verificação.
+- Usar `timingSafeEqual` (crypto) para comparação de HMAC — nunca `===` direto (timing attack).
+- Meta `signed_request`: verificar HMAC-SHA256 no campo encodedPayload antes de decodificar o JSON.
+
+### Registro de usuários
+- Novos usuários criados via `POST /api/auth/register` recebem `user_metadata.aprovado: false`.
+- Acesso pleno só após aprovação manual pelo admin via `POST /api/admin/aprovar`.
+
+### Upload de arquivos
+- `POST /api/upload` aceita apenas tipos de vídeo: `video/mp4`, `video/webm`, `video/quicktime`, `video/x-msvideo`, `video/mpeg`.
+- **Nunca** aceitar `text/html` ou outros tipos não-vídeo — CDN público serviria como XSS.
+
+### Fetch de URLs externas (SSRF)
+- Antes de fazer `fetch(videoUrl)` ou qualquer URL fornecida pelo cliente, validar que o hostname está na allowlist: `R2_PUBLIC_URL` e `NEXT_PUBLIC_SUPABASE_URL`.
+- Rejeitar qualquer URL não-`https:` ou com hostname fora da allowlist.
+
+### HTML em conteúdo dinâmico (dangerouslySetInnerHTML)
+- Sempre escapar `&`, `<`, `>`, `"`, `'` **antes** de aplicar substituições de markdown/links.
+- Padrão: `text.replace(/&/g,"&amp;").replace(/</g,"&lt;")...` e depois as substituições seguras.
+
 ## Variáveis de ambiente importantes
 - `R2_PUBLIC_URL` — URL pública do R2 (ex: `https://pub-xxx.r2.dev`) — server-side only
 - `NEXT_PUBLIC_R2_PUBLIC_URL` — **NÃO usar para resolver URLs de mídia** — aponta para o domínio da app, não para o R2
