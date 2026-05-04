@@ -840,7 +840,10 @@ Responda apenas com o JSON, sem markdown.`;
   // ── 10. Interceptores silenciosos ────────────────────────────────────────────
   const mensagemLower = userMessage.toLowerCase();
   // Usa o WhatsApp do gerente configurado no painel; fallback para variável de ambiente
-  const gerentePhone = garageConfig?.whatsapp || process.env.NEXT_PUBLIC_ZAPI_PHONE;
+  const _gerenteRaw = garageConfig?.whatsapp || process.env.NEXT_PUBLIC_ZAPI_PHONE;
+  const gerentePhone = _gerenteRaw
+    ? _gerenteRaw.replace(/\D/g, "").replace(/^(?!55)/, "55")
+    : undefined;
 
 
   // Pós-venda → stand-by automático
