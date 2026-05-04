@@ -1216,7 +1216,7 @@ Responda apenas com o JSON, sem markdown.`;
               `💬 Dúvida: ${precisaInstrucao}\n\n` +
               `👉 Responda a esta mensagem com a instrução para o agente continuar.`,
               metaCreds
-            ).catch(() => {});
+            ).catch((err: any) => console.error("❌ precisa_instrucao não entregue ao gerente:", err?.message?.slice(0, 300)));
           }
         }
 
@@ -1354,12 +1354,12 @@ Responda apenas com o JSON, sem markdown.`;
       );
       console.log(`🔥 Lead ${temperatura} — enviando alerta para ${destinoWa}`);
       sendMetaCtaButton(destinoWa, briefing.texto, "Abrir Conversa", briefing.waLink, metaCreds)
-        .then(() => console.log("✅ CTA button enviado ao vendedor"))
+        .then(() => console.log(`✅ CTA button enviado ao vendedor (${destinoWa})`))
         .catch(async (err: any) => {
-          console.warn("⚠️ CTA button falhou, enviando texto simples:", err?.message?.slice(0, 200));
+          console.warn(`⚠️ CTA button falhou para ${destinoWa}:`, err?.message?.slice(0, 200));
           await sendMetaMessage(destinoWa, `${briefing.texto}\n\n${briefing.waLink}`, metaCreds)
-            .then(() => console.log("✅ Fallback texto+link enviado ao vendedor"))
-            .catch((e: any) => console.error("❌ Fallback também falhou:", e?.message?.slice(0, 100)));
+            .then(() => console.log(`✅ Fallback texto+link enviado ao vendedor (${destinoWa})`))
+            .catch((e: any) => console.error(`❌ Fallback também falhou para ${destinoWa}:`, e?.message?.slice(0, 200)));
         });
     }
   }
