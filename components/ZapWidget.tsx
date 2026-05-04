@@ -18,8 +18,6 @@ export function ZapWidget({ userId }: { userId?: string }) {
   const pathname = usePathname();
   const storageKey = userId ? `zap_chat_history_${userId}` : null;
   const [open, setOpen] = useState(false);
-
-  if (pathname === "/chat") return null;
   const [messages, setMessages] = useState<Message[]>([WELCOME]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -54,6 +52,8 @@ export function ZapWidget({ userId }: { userId?: string }) {
       setTimeout(() => inputRef.current?.focus(), 100);
     }
   }, [open, messages]);
+
+  if (pathname === "/chat") return null;
 
   async function send() {
     const text = input.trim();
