@@ -481,7 +481,7 @@ export default function ConfiguracoesPage() {
   };
 
   return (
-    <main className="flex-1 p-10 bg-[#efefed] min-h-screen">
+    <main className="flex-1 p-4 sm:p-10 bg-[#efefed] min-h-screen">
       <header className="mb-10 pb-6 border-b border-gray-200">
         <h1 className="text-4xl font-black uppercase tracking-tighter italic text-gray-900">
           Configurações
@@ -529,7 +529,7 @@ export default function ConfiguracoesPage() {
               />
             </div>
 
-            <div className="flex gap-3">
+            <div className="flex flex-col sm:flex-row gap-3">
               <div className="flex flex-col gap-1.5 flex-1">
                 <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
                   CNPJ <span className="text-gray-400 normal-case font-normal">(para contratos)</span>
@@ -542,7 +542,7 @@ export default function ConfiguracoesPage() {
                   className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
                 />
               </div>
-              <div className="flex flex-col gap-1.5 w-40">
+              <div className="flex flex-col gap-1.5 sm:w-40">
                 <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">Cidade</label>
                 <input
                   type="text"
@@ -552,7 +552,7 @@ export default function ConfiguracoesPage() {
                   className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
                 />
               </div>
-              <div className="flex flex-col gap-1.5 w-20">
+              <div className="flex flex-col gap-1.5 sm:w-20">
                 <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">UF</label>
                 <input
                   type="text"
@@ -893,8 +893,8 @@ export default function ConfiguracoesPage() {
               </div>
 
               {/* Endereço fiscal */}
-              <div className="flex gap-3">
-                <div className="flex flex-col gap-1.5 w-32">
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex flex-col gap-1.5 sm:w-32">
                   <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">CEP</label>
                   <input type="text" value={nfConfig.cep} onChange={e => setNfConfig(c => ({ ...c, cep: e.target.value }))}
                     placeholder="00000-000"
@@ -906,7 +906,7 @@ export default function ConfiguracoesPage() {
                     placeholder="Ex: Av. Paulista"
                     className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition" />
                 </div>
-                <div className="flex flex-col gap-1.5 w-20">
+                <div className="flex flex-col gap-1.5 sm:w-20">
                   <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">Nº</label>
                   <input type="text" value={nfConfig.numero} onChange={e => setNfConfig(c => ({ ...c, numero: e.target.value }))}
                     placeholder="100"
@@ -914,7 +914,7 @@ export default function ConfiguracoesPage() {
                 </div>
               </div>
 
-              <div className="flex gap-3">
+              <div className="flex flex-col sm:flex-row gap-3">
                 <div className="flex flex-col gap-1.5 flex-1">
                   <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">Bairro</label>
                   <input type="text" value={nfConfig.bairro} onChange={e => setNfConfig(c => ({ ...c, bairro: e.target.value }))}
@@ -927,7 +927,7 @@ export default function ConfiguracoesPage() {
                     placeholder="Ex: São Paulo"
                     className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition" />
                 </div>
-                <div className="flex flex-col gap-1.5 w-20">
+                <div className="flex flex-col gap-1.5 sm:w-20">
                   <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">UF</label>
                   <input type="text" value={nfConfig.uf} onChange={e => setNfConfig(c => ({ ...c, uf: e.target.value.toUpperCase().slice(0, 2) }))}
                     placeholder="SP" maxLength={2}

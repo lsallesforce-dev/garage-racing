@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, createContext, useContext } from "react";
+import { useEffect, useState, createContext, useContext, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { Sidebar } from "./Sidebar";
 import { ZapWidget } from "./ZapWidget";
@@ -24,6 +24,29 @@ export function useUserRole(): UserRoleContextValue {
   return ctx;
 }
 
+// ─── AdminSessionDetector ─────────────────────────────────────────────────────
+// Isolates useSearchParams in its own component so the Suspense boundary
+// doesn't force the entire SidebarWrapper (and all child pages) into
+// client-only rendering on first mobile load.
+
+function AdminSessionDetector({ effectiveUserId }: { effectiveUserId: string }) {
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    if (!effectiveUserId) return;
+    if (searchParams.get("admin_session") === "1") {
+      sessionStorage.setItem("autozap_admin_uid", effectiveUserId);
+    } else {
+      const savedUid = sessionStorage.getItem("autozap_admin_uid");
+      if (savedUid && savedUid !== effectiveUserId) {
+        sessionStorage.removeItem("autozap_admin_uid");
+      }
+    }
+  }, [searchParams, effectiveUserId]);
+
+  return null;
+}
+
 // ─── SidebarWrapper ───────────────────────────────────────────────────────────
 
 interface SidebarWrapperProps {
@@ -35,22 +58,6 @@ interface SidebarWrapperProps {
 export function SidebarWrapper({ children, isVendedor = false, effectiveUserId = "" }: SidebarWrapperProps) {
   const [open, setOpen] = useState(false);
   const [nomeEmpresa, setNomeEmpresa] = useState("");
-  const searchParams = useSearchParams();
-
-  // Detecta sessão de impersonação: salva flag amarrada ao user_id atual
-  // Se o user_id mudar (logout/troca de conta), a flag é invalidada automaticamente
-  useEffect(() => {
-    if (!effectiveUserId) return;
-    if (searchParams.get("admin_session") === "1") {
-      sessionStorage.setItem("autozap_admin_uid", effectiveUserId);
-    } else {
-      // Valida se a flag existente ainda pertence ao usuário atual — limpa se não
-      const savedUid = sessionStorage.getItem("autozap_admin_uid");
-      if (savedUid && savedUid !== effectiveUserId) {
-        sessionStorage.removeItem("autozap_admin_uid");
-      }
-    }
-  }, [searchParams, effectiveUserId]);
 
   useEffect(() => {
     const ownerId = effectiveUserId;
@@ -71,6 +78,9 @@ export function SidebarWrapper({ children, isVendedor = false, effectiveUserId =
 
   return (
     <UserRoleContext.Provider value={{ effectiveUserId, isVendedor }}>
+      <Suspense fallback={null}>
+        <AdminSessionDetector effectiveUserId={effectiveUserId} />
+      </Suspense>
       <div className="flex min-h-screen bg-[#efefed]">
         {/* Overlay mobile */}
         {open && (
