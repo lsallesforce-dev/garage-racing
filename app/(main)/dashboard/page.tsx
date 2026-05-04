@@ -318,15 +318,15 @@ export default function Dashboard() {
             <div className="grid gap-3">
             {!loading ? (
                 atividades.length > 0 ? atividades.map((lead) => (
-                    <div key={lead.id} className="flex flex-col md:flex-row md:items-center justify-between p-6 hover:bg-gray-50/50 rounded-3xl transition-all border border-transparent hover:border-gray-100 group">
-                    <div className="flex items-center gap-6 min-w-[200px]">
-                        <div className={`w-3 h-3 rounded-full ${lead.status === 'QUENTE' ? 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]' : 'bg-blue-400'}`}></div>
-                        <div>
-                        <p className="text-sm font-black uppercase tracking-tight">{lead.nome || "Lead Interessado"}</p>
-                        <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">De olho: <span className="text-red-600">{lead.veiculos?.modelo || "Maquinário"}</span></p>
+                    <div key={lead.id} className="flex flex-col md:flex-row md:items-center justify-between p-6 hover:bg-gray-50/50 rounded-3xl transition-all border border-transparent hover:border-gray-100 group min-w-0">
+                    <div className="flex items-center gap-6 min-w-0">
+                        <div className={`w-3 h-3 rounded-full shrink-0 ${lead.status === 'QUENTE' ? 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]' : 'bg-blue-400'}`}></div>
+                        <div className="min-w-0">
+                        <p className="text-sm font-black uppercase tracking-tight truncate">{lead.nome || "Lead Interessado"}</p>
+                        <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest truncate">De olho: <span className="text-red-600">{lead.veiculos?.modelo || "Maquinário"}</span></p>
                         </div>
                     </div>
-                    <p className="text-sm text-gray-500 italic flex-1 md:px-12 py-3 md:py-0 truncate max-w-[500px]">
+                    <p className="text-sm text-gray-500 italic flex-1 md:px-12 py-3 md:py-0 truncate min-w-0 md:max-w-[500px]">
                         "{lead.resumo_negociacao || "O Lucas (IA) está qualificando o interesse..."}"
                     </p>
                     <button

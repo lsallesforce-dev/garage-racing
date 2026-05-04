@@ -342,14 +342,14 @@ export default function MinhaContaPage() {
             ) : (
               <div className="flex flex-col gap-2">
                 {membros.map(m => (
-                  <div key={m.id} className="flex items-center justify-between px-4 py-3 bg-gray-50 rounded-2xl border border-gray-100">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-[11px] font-black text-gray-600 uppercase">
+                  <div key={m.id} className="flex items-center justify-between px-4 py-3 bg-gray-50 rounded-2xl border border-gray-100 min-w-0 gap-2">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-[11px] font-black text-gray-600 uppercase shrink-0">
                         {m.nome.charAt(0)}
                       </div>
-                      <div>
-                        <p className="text-sm font-bold text-gray-800">{m.nome}</p>
-                        <p className="text-[10px] text-gray-400">{m.email}</p>
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-gray-800 truncate">{m.nome}</p>
+                        <p className="text-[10px] text-gray-400 truncate">{m.email}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">

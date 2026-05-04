@@ -1477,7 +1477,7 @@ export default function VendasPage() {
 
           {/* Tabela */}
           <div className="xl:col-span-2 bg-white rounded-[2rem] border border-gray-100 overflow-hidden">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+            <div className="flex flex-wrap items-center justify-between gap-2 px-4 sm:px-6 py-4 border-b border-gray-100">
               <div className="flex gap-1.5">
                 {(["todos", "estoque", "vendido"] as const).map((f) => (
                   <button key={f} onClick={() => setFiltro(f)}
