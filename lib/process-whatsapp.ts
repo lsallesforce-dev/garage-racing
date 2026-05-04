@@ -346,7 +346,12 @@ CRITÉRIOS DE TEMPERATURA:
 }
 
 function formatVehicleCard(v: Vehicle): string {
-  const ano = v.ano || v.ano_modelo || "N/A";
+  // Mostra fabricação/modelo quando divergem (ex: 2023/2024) para a IA reconhecer ambos os anos
+  const anoFab = v.ano;
+  const anoMod = (v as any).ano_modelo;
+  const ano = anoFab && anoMod && anoFab !== anoMod
+    ? `${anoFab}/${anoMod}`
+    : anoMod || anoFab || "N/A";
   const preco = v.preco_sugerido
     ? `R$ ${v.preco_sugerido.toLocaleString("pt-BR")}`
     : "Consulte";
