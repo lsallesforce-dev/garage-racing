@@ -43,8 +43,11 @@ export async function GET(req: NextRequest) {
     supabaseAdmin.from("leads").select("*", { count: "exact", head: true })
       .eq("user_id", userId).gte("created_at", inicioMes.toISOString()),
 
-    supabaseAdmin.from("mensagens").select("*", { count: "exact", head: true })
-      .eq("user_id", userId).eq("remetente", "agente")
+    // mensagens não tem user_id — filtra via subquery nos lead_ids do tenant
+    supabaseAdmin.from("mensagens")
+      .select("id, leads!inner(user_id)", { count: "exact", head: true })
+      .eq("remetente", "agente")
+      .eq("leads.user_id", userId)
       .gte("created_at", inicioDia.toISOString()),
 
     supabaseAdmin.from("agenda").select("*", { count: "exact", head: true })
