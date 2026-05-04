@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useUserRole } from "@/components/SidebarWrapper";
@@ -73,7 +73,7 @@ function previewMensagem(msg: UltimaMensagem | null | undefined): string {
   return prefix + (text.length > 55 ? text.slice(0, 55) + "…" : text);
 }
 
-export default function CentralChat() {
+function CentralChatInner() {
   const { effectiveUserId } = useUserRole();
   const searchParams = useSearchParams();
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -637,5 +637,13 @@ export default function CentralChat() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function CentralChat() {
+  return (
+    <Suspense>
+      <CentralChatInner />
+    </Suspense>
   );
 }
