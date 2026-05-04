@@ -81,3 +81,65 @@ Paths de tmp são por job: `/tmp/ffmpeg_{veiculoId}`, `/tmp/ffmpeg_caps_{veiculo
 ## Proxy R2 (`app/api/r2/[...path]/route.ts`)
 Proxy Node.js (sem `edge` runtime) com suporte a Range requests para seek de vídeo.
 `toVideoUrl()` em `lib/r2-url.ts` reescreve URLs `pub-xxx.r2.dev` → `/api/r2/<key>`.
+
+## Agente de Chat WhatsApp (`lib/process-whatsapp.ts`)
+
+### Arquitetura geral do processamento (em ordem)
+1. Transcrição de áudio (Whisper via Gemini)
+2. Comandos especiais (`!status`, `!reset`, agenda do gerente)
+3. Upsert do lead + salva mensagem do usuário
+4. Stand-by: se `em_atendimento_humano = true`, IA ignora
+5. Config da garagem (nome, endereço, vitrine, tom)
+6. Carrega `veiculoPrincipal` do banco via `lead.veiculo_id`
+7. `hybridVehicleSearch` — busca textual + semântica, detecta troca de carro
+8. Atualiza `veiculo_id` do lead via **heurística** (modelo explícito na mensagem)
+9. `buildStockContext` — monta contexto separando "VEÍCULO EM FOCO" de "ALTERNATIVAS"
+10. Carrega histórico (Redis → Supabase fallback, 15 mensagens)
+11. Interceptores: pós-venda → stand-by automático
+12. Envio de foto (se pedido) — early return sem chamar Gemini
+13. Envio de vídeo (se pedido) — early return sem chamar Gemini
+14. **`injectHistoryCorrection`** — injeta correção sintética antes do Gemini (ver abaixo)
+15. Gemini gera JSON: `{ resposta, veiculo_id_foco, temperatura, resumo, nome_cliente_extraido, precisa_instrucao }`
+16. Aplica `veiculo_id_foco` com validação no banco (ver abaixo)
+17. Salva resposta + invalida cache + auto-agenda + transbordo QUENTE
+18. Envia resposta ao cliente
+
+### Rastreamento do carro em foco — duas camadas
+
+**Camada 1 — Heurística (passo 8):** `hybridVehicleSearch` detecta `clientePediuCarroDiferente` quando o modelo aparece explicitamente na mensagem. Rápida e confiável para trocas explícitas.
+
+**Camada 2 — Gemini (passo 16):** O JSON de resposta inclui `veiculo_id_foco` com o ID do carro em negociação. Cobre linguagem indireta ("mas vi um prata", "e aquele?") que a heurística não pega.
+
+Validação obrigatória antes de aplicar o `veiculo_id_foco`:
+```typescript
+// Valida UUID format + existência no banco do tenant + status DISPONIVEL
+.eq("id", veiculoIdFoco)
+.eq("user_id", tenantUserId)      // ← impede cross-tenant
+.eq("status_venda", "DISPONIVEL") // ← impede carro vendido
+```
+Se inválido → log `⚠️ veiculo_id_foco inválido ou de outro tenant rejeitado` e mantém o anterior.
+
+### `injectHistoryCorrection` — quebra de loop de preço
+
+Função pura chamada antes do `chatRequest`. Detecta loop de "vou verificar o preço/km" no histórico do agente e injeta uma mensagem `role: "model"` corretiva — **apenas para aquela call, não salva no banco**.
+
+Só ativa se:
+1. Alguma mensagem do agente no histórico contém padrão de loop (ex: "vou verificar o preço")
+2. **E** o contexto atual contém o dado (preço ou km extraído por regex do `buildStockContext`)
+
+Log quando ativa: `🔧 [Loop detector] Injetando correção de histórico. Dados confirmados: preço(s): R$ X`
+
+### Resposta JSON obrigatória do Gemini
+```json
+{
+  "resposta": "texto enviado ao cliente",
+  "veiculo_id_foco": "UUID do carro em negociação ou null",
+  "temperatura": "FRIO" | "MORNO" | "QUENTE",
+  "resumo": "intenção do cliente em uma frase",
+  "nome_cliente_extraido": "nome ou null",
+  "precisa_instrucao": "dúvida para o gerente ou null"
+}
+```
+- `systemInstruction` é passado diretamente no `generateContent` (não no `startChat`) — exigência da API Gemini.
+- Histórico nunca começa com `role: "model"` — mensagens iniciais do assistente são filtradas.
+

@@ -331,9 +331,11 @@ REGRAS DO precisa_instrucao:
 
 REGRAS DO veiculo_id_foco:
 - Use o ID do "VEÍCULO EM FOCO" como padrão
-- Se o cliente mencionar explicitamente outro carro ("e aquele outro?", "vi um prata", "e o 2016?"), identifique o ID correspondente em OUTROS VEÍCULOS DISPONÍVEIS e use-o
-- Se a pergunta for vaga ("tem foto?", "qual o km?", "tem vídeo?"), mantenha o ID do VEÍCULO EM FOCO
-- O sistema usa este campo para rastrear qual carro está em negociação — preencha com precisão
+- Se o cliente mencionar EXPLICITAMENTE outro carro ("e aquele outro?", "vi um prata", "e o 2016?", "e o XEI?", "e o outro Corolla?"), identifique o ID em OUTROS VEÍCULOS DISPONÍVEIS e use-o
+- LINGUAGEM INDIRETA de troca ("mas vi um prata", "e aquele?", "esse aí", "o outro", "qual o preço daquele?") também deve resultar no ID do veículo referenciado — nunca mantenha o foco anterior se o cliente claramente mudou de carro
+- Se a pergunta for vaga e sem referência a outro carro ("tem foto?", "qual o km?", "tem vídeo?"), mantenha o ID do VEÍCULO EM FOCO
+- NUNCA retorne null se há um VEÍCULO EM FOCO definido — sempre retorne um ID válido do contexto
+- O sistema usa este campo como fonte PRIMÁRIA de rastreamento — preencha com máxima precisão
 
 CRITÉRIOS DE TEMPERATURA:
 - FRIO  → Curiosidade inicial, saudações, só vendo o que tem, sem compromisso claro
@@ -446,6 +448,57 @@ function buildStockContext(topVeiculos: Vehicle[], veiculoPrincipal: Vehicle | n
   }
 
   return sections.join("\n");
+}
+
+// ─── Injeção de Correção de Loop ─────────────────────────────────────────────
+// Detecta mensagens do agente com promessa falsa de "vou verificar" para dados
+// que JÁ estão no contexto atual. Injeta mensagem corretiva sintética como
+// role "model" para quebrar o loop ANTES de chamar o Gemini.
+// IMPORTANTE: a mensagem injetada NÃO é salva no banco — só existe nesta call.
+function injectHistoryCorrection(historico: any[], context: string): any[] {
+  const LOOP_PATTERNS = [
+    /vou verificar o pre[çc]o/i,
+    /vou checar o pre[çc]o/i,
+    /vou confirmar o pre[çc]o/i,
+    /aguarda.*pre[çc]o/i,
+    /confirmar o pre[çc]o/i,
+    /vou verificar (a|o) km/i,
+    /vou checar (a|o) (km|quilometragem)/i,
+    /vou verificar (a|o) quilometragem/i,
+  ];
+
+  const agentMessages = historico.filter((m) => m.role === "model");
+  const loopDetectado = agentMessages.some((m) =>
+    LOOP_PATTERNS.some((p) => p.test(m.parts?.[0]?.text ?? ""))
+  );
+
+  if (!loopDetectado) return historico;
+
+  // Extrai preços e kms do contexto atual
+  const precos: string[] = [];
+  const kms: string[] = [];
+  for (const match of context.matchAll(/Preço:\s*(R\$\s*[\d.,]+)/g)) {
+    precos.push(match[1].trim());
+  }
+  for (const match of context.matchAll(/KM:\s*([\d.,]+\s*km)/gi)) {
+    kms.push(match[1].trim());
+  }
+
+  if (precos.length === 0 && kms.length === 0) return historico;
+
+  const partes: string[] = [];
+  if (precos.length > 0) partes.push(`preço(s): ${precos.join(", ")}`);
+  if (kms.length > 0) partes.push(`quilometragem: ${kms.join(", ")}`);
+
+  const correcao = {
+    role: "model",
+    parts: [{
+      text: `[AUTOCORREÇÃO] Já tenho as informações no sistema — ${partes.join(" e ")}. Não preciso verificar com ninguém. Vou responder diretamente ao cliente agora.`,
+    }],
+  };
+
+  console.log(`🔧 [Loop detector] Injetando correção de histórico. Dados confirmados: ${partes.join(", ")}`);
+  return [...historico, correcao];
 }
 
 // ─── Processamento Principal ──────────────────────────────────────────────────
@@ -1024,8 +1077,9 @@ Responda apenas com o JSON, sem markdown.`;
     const partsToGenerate: any[] = [{ text: userMessage }];
     if (audioData) partsToGenerate.unshift({ inlineData: audioData });
 
+    const historicoCorigido = injectHistoryCorrection(historico, context);
     const chatRequest = {
-      contents: [...historico, { role: "user", parts: partsToGenerate }],
+      contents: [...historicoCorigido, { role: "user", parts: partsToGenerate }],
       systemInstruction,
       generationConfig: { responseMimeType: "application/json" },
     };
@@ -1076,11 +1130,28 @@ Responda apenas com o JSON, sem markdown.`;
         resumo = parsed.resumo || "";
 
         // Atualiza veiculo_id do lead com base no foco identificado pelo Gemini
+        // Valida o UUID contra o banco antes de aplicar (evita alucinações e cross-tenant)
         const veiculoIdFoco = parsed.veiculo_id_foco;
-        const isValidUuid = typeof veiculoIdFoco === "string" && veiculoIdFoco.length === 36;
-        if (isValidUuid && lead && veiculoIdFoco !== veiculoIdAnterior) {
-          console.log(`🎯 Gemini identificou foco: ${veiculoIdFoco} (anterior: ${veiculoIdAnterior})`);
-          await supabaseAdmin.from("leads").update({ veiculo_id: veiculoIdFoco }).eq("id", lead.id);
+        const isValidUuidFormat =
+          typeof veiculoIdFoco === "string" &&
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(veiculoIdFoco);
+        if (isValidUuidFormat && lead && veiculoIdFoco !== veiculoIdAnterior) {
+          const { data: veiculoFocoValidado } = await supabaseAdmin
+            .from("veiculos")
+            .select("id")
+            .eq("id", veiculoIdFoco)
+            .eq("user_id", tenantUserId)
+            .eq("status_venda", "DISPONIVEL")
+            .maybeSingle();
+          if (veiculoFocoValidado) {
+            console.log(`🎯 Gemini identificou foco validado: ${veiculoIdFoco} (anterior: ${veiculoIdAnterior})`);
+            await supabaseAdmin.from("leads").update({ veiculo_id: veiculoIdFoco }).eq("id", lead.id);
+            // Atualiza referência local para uso nas etapas seguintes (agenda, transbordo)
+            const focoLocal = topVeiculos.find((v) => v.id === veiculoIdFoco);
+            if (focoLocal) veiculoPrincipal = focoLocal;
+          } else {
+            console.warn(`⚠️ veiculo_id_foco inválido ou de outro tenant rejeitado: ${veiculoIdFoco}`);
+          }
         }
 
         const nomeRaw = parsed.nome_cliente_extraido;
