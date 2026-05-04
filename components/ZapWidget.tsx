@@ -102,7 +102,13 @@ export function ZapWidget({ userId }: { userId?: string }) {
   }
 
   function renderText(text: string) {
-    return text
+    const escaped = text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+    return escaped
       .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
       .replace(/\*(.*?)\*/g, "<em>$1</em>")
       .replace(/\n/g, "<br />")

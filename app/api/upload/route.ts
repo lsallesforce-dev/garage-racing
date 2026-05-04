@@ -33,6 +33,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "fileName e fileType são obrigatórios" }, { status: 400 });
     }
 
+    const ALLOWED_TYPES = ["video/mp4", "video/webm", "video/quicktime", "video/x-msvideo", "video/mpeg"];
+    if (!ALLOWED_TYPES.includes(fileType)) {
+      return NextResponse.json({ error: "Tipo de arquivo não permitido. Envie apenas vídeos." }, { status: 400 });
+    }
+
     const ext = fileName.split(".").pop() || "mp4";
     const baseName = fileName.replace(/\.[^/.]+$/, "").replace(/[^a-zA-Z0-9]/g, "_");
     const storageName = `${Date.now()}-${baseName}.${ext}`;

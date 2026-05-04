@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { requireAuth } from "@/lib/api-auth";
+import { requireAuth, requireVehicleOwner } from "@/lib/api-auth";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -100,9 +100,6 @@ async function fetchViaRapidApi(instagramUrl: string): Promise<string | null> {
 
 export async function POST(req: NextRequest) {
   try {
-    const { error: authError } = await requireAuth();
-    if (authError) return authError;
-
     const { url, veiculoId } = await req.json();
 
     if (!url) {
@@ -117,6 +114,15 @@ export async function POST(req: NextRequest) {
         { success: false, error: "URL inválida. Use um link de post, Reel ou IGTV do Instagram." },
         { status: 400 }
       );
+    }
+
+    // Se veiculoId foi fornecido, verifica posse antes de continuar
+    if (veiculoId) {
+      const { error: ownerError } = await requireVehicleOwner(veiculoId);
+      if (ownerError) return ownerError;
+    } else {
+      const { error: authError } = await requireAuth();
+      if (authError) return authError;
     }
 
     // Busca URL do vídeo via RapidAPI

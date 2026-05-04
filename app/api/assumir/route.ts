@@ -17,10 +17,19 @@ export async function GET(req: NextRequest) {
   if (!waId) return new NextResponse("wa_id obrigatório", { status: 400 });
   if (!uid && !token) return new NextResponse("Identificação obrigatória", { status: 401 });
 
-  let tenantUserId: string | null = uid ?? null;
+  let tenantUserId: string | null = null;
 
-  // Legado: resolve user_id pelo webhook_token
-  if (!tenantUserId && token) {
+  if (uid) {
+    // Valida que o uid realmente corresponde a um tenant existente
+    const { data: cfg } = await supabaseAdmin
+      .from("config_garage")
+      .select("user_id")
+      .eq("user_id", uid)
+      .maybeSingle();
+    if (!cfg) return new NextResponse("Identificação inválida", { status: 403 });
+    tenantUserId = cfg.user_id;
+  } else if (token) {
+    // Legado: resolve user_id pelo webhook_token
     const { data: cfg } = await supabaseAdmin
       .from("config_garage")
       .select("user_id")

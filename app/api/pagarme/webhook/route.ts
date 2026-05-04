@@ -15,11 +15,13 @@ export async function POST(req: NextRequest) {
   const secret = process.env.PAGARME_WEBHOOK_SECRET;
   const rawBody = await req.text();
 
-  if (secret) {
-    const sig = req.headers.get("x-pagarme-signature");
-    if (!verifySignature(rawBody, sig, secret)) {
-      return NextResponse.json({ error: "Assinatura inválida" }, { status: 401 });
-    }
+  if (!secret) {
+    console.error("🚨 PAGARME_WEBHOOK_SECRET não configurado — requisição rejeitada");
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const sig = req.headers.get("x-pagarme-signature");
+  if (!verifySignature(rawBody, sig, secret)) {
+    return NextResponse.json({ error: "Assinatura inválida" }, { status: 401 });
   }
 
   let payload: { type?: string; data?: { id?: string; status?: string } };

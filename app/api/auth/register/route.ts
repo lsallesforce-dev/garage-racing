@@ -10,11 +10,12 @@ export async function POST(req: NextRequest) {
   }
 
   // Cria usuário já confirmado (bypassa email confirmation)
+  // aprovado: false → aguarda aprovação manual via /admin antes de ter acesso pleno
   const { data: created, error: createErr } = await supabaseAdmin.auth.admin.createUser({
     email,
     password: senha,
     email_confirm: true,
-    user_metadata: { nome },
+    user_metadata: { nome, aprovado: false },
   });
 
   if (createErr) {

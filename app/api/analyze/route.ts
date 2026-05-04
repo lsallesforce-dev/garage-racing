@@ -38,7 +38,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 1. Fetch video from URL
+    // 1. Fetch video from URL — valida host para evitar SSRF
+    const allowedHosts = [
+      process.env.R2_PUBLIC_URL,
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+    ].filter(Boolean).map((h) => new URL(h!).hostname);
+
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(videoUrl);
+    } catch {
+      return NextResponse.json({ error: "videoUrl inválida" }, { status: 400 });
+    }
+    if (parsedUrl.protocol !== "https:" || !allowedHosts.includes(parsedUrl.hostname)) {
+      return NextResponse.json({ error: "videoUrl não permitida" }, { status: 400 });
+    }
+
     const videoResp = await fetch(videoUrl);
     if (!videoResp.ok) {
       throw new Error(`Failed to fetch video: ${videoResp.statusText}`);
