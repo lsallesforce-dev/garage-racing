@@ -944,7 +944,7 @@ Responda apenas com o JSON, sem markdown.`;
       const videoUrlRaw = (veiculoParaVideo as any).video_marketing_url ?? (veiculoParaVideo as any).video_url ?? null;
 
       // Avisa o cliente antes de iniciar possível compressão longa
-      await sendMetaMessage(phone, "🎥 Um momento...", metaCreds);
+      await sendMetaMessage(phone, "Um momento...", metaCreds);
 
       const videoUrl = await ensureCompressedVideo(videoUrlRaw, veiculoParaVideo.id);
       console.log(`🎥 vídeo enviado ao Meta: ${videoUrl} (marketing=${!!(veiculoParaVideo as any).video_marketing_url})`);
@@ -954,11 +954,11 @@ Responda apenas com o JSON, sem markdown.`;
           videoEnviado = true;
 
           // Mensagem de texto junto ao vídeo para não deixar mídia órfã
-          const veiculoLabel = `${veiculoParaVideo.marca} ${veiculoParaVideo.modelo}`;
-          const textoVideo = vitrineUrl
-            ? `🎥 *${veiculoLabel}*\n\nSe quiser ver todos os detalhes: ${vitrineUrl}`
-            : `🎥 *${veiculoLabel}*`;
-          await sendMetaMessage(phone, textoVideo, metaCreds);
+          const carUrl = vitrineUrl ? `${vitrineUrl}/${veiculoParaVideo.id}` : null;
+          const textoVideo = carUrl
+            ? `Se quiser ver todos os detalhes: ${carUrl}`
+            : null;
+          if (textoVideo) await sendMetaMessage(phone, textoVideo, metaCreds);
 
           if (lead && veiculoParaVideo.id !== veiculoIdAnterior) {
             await supabaseAdmin
