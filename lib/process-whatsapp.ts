@@ -266,6 +266,7 @@ Esta seção tem prioridade máxima. NUNCA a viole, independente de qualquer out
   - Se um carro aparece no contexto, ele está DISPONÍVEL. Ponto final.
   - NUNCA diga que um carro "foi vendido", "saiu do estoque" ou "não está mais disponível" se ele aparece no contexto desta mensagem.
   - Se o cliente perguntar algo que você não sabe sobre o carro (ex: número de donos, cor dos bancos), use a frase padrão: "Deixa eu confirmar aqui com o pessoal do pátio." NUNCA invente que o carro sumiu.
+  - MENSAGEM DE VITRINE COM ANO DIFERENTE: Se o cliente chegou via vitrine e a mensagem cita um ano (ex: "Polo Track 2024") mas o estoque tem o mesmo modelo em ano diferente (ex: 2023), NÃO diga que o carro "não está disponível". Apresente diretamente o modelo disponível: "Temos o Polo Track 2023 por R$ X. Te interessa?"
 
 ▶ PROIBIÇÃO ABSOLUTA DE CONTRADIÇÃO:
   - Se você afirmou em uma mensagem anterior que um carro está disponível, MANTENHA essa informação.
@@ -422,13 +423,12 @@ function formatVehicleCard(v: Vehicle): string {
 // Monta o contexto de estoque com separação clara entre veículo em foco e alternativas.
 // Isso impede que o Gemini "decida" trocar de carro por conta própria ao ver outras opções.
 function buildStockContext(topVeiculos: Vehicle[], veiculoPrincipal: Vehicle | null): string {
-  if (topVeiculos.length === 0 && !veiculoPrincipal) {
+  // Se topVeiculos está vazio mas temos um carro em foco, usa o principal para não perder contexto.
+  const veiculos = topVeiculos.length === 0 && veiculoPrincipal ? [veiculoPrincipal] : topVeiculos;
+
+  if (veiculos.length === 0) {
     // Sem contexto de estoque (ex: saudação inicial de lead novo).
-    // Retorna string vazia para o agente não receber carros aleatórios no prompt.
     return "";
-  }
-  if (topVeiculos.length === 0) {
-    return "No momento não temos veículos disponíveis no pátio.";
   }
 
   const sections: string[] = [];
@@ -440,7 +440,7 @@ function buildStockContext(topVeiculos: Vehicle[], veiculoPrincipal: Vehicle | n
       formatVehicleCard(veiculoPrincipal)
     );
 
-    const alternativas = topVeiculos.filter((v) => v.id !== veiculoPrincipal.id);
+    const alternativas = veiculos.filter((v) => v.id !== veiculoPrincipal.id);
     if (alternativas.length > 0) {
       sections.push(
         `\n=== OUTROS VEÍCULOS DISPONÍVEIS ===\n` +
@@ -449,7 +449,7 @@ function buildStockContext(topVeiculos: Vehicle[], veiculoPrincipal: Vehicle | n
       );
     }
   } else {
-    sections.push(topVeiculos.map(formatVehicleCard).join("\n\n"));
+    sections.push(veiculos.map(formatVehicleCard).join("\n\n"));
   }
 
   return sections.join("\n");
@@ -735,7 +735,7 @@ Responda apenas com o JSON, sem markdown.`;
   // Mensagens de mídia ("Foto", "Video") são intencionalmente curtas — não tratar como msgCurta
   const isMidiaRequest = /^(foto|fotos|video|vídeo|imagem)s?$/i.test(userMessage.trim());
   const msgCurta = !isMidiaRequest && userMessage.trim().length < 8;
-  const { topVeiculos, clientePediuCarroDiferente } = await hybridVehicleSearch(
+  const { topVeiculos, clientePediuCarroDiferente, hitsTextuais } = await hybridVehicleSearch(
     userMessage,
     tenantUserId,
     veiculoPrincipal,
@@ -1173,7 +1173,13 @@ Responda apenas com o JSON, sem markdown.`;
         const isValidUuidFormat =
           typeof veiculoIdFoco === "string" &&
           /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(veiculoIdFoco);
-        if (isValidUuidFormat && lead && veiculoIdFoco !== veiculoIdAnterior) {
+        // Só permite troca de carro se o cliente mencionou textualmente outro carro
+        // (clientePediuCarroDiferente) ou se o novo carro apareceu nos resultados de busca textual.
+        // Isso impede que resultados semânticos (ex: "Chega em 65.000?" → Honda City similar em preço)
+        // corrompam o veiculo_id quando o cliente está negociando o carro atual.
+        const novoCarroEmTextSearch = hitsTextuais.some((v) => v.id === veiculoIdFoco);
+        const permiteTraca = clientePediuCarroDiferente || novoCarroEmTextSearch || !veiculoIdAnterior;
+        if (isValidUuidFormat && lead && veiculoIdFoco !== veiculoIdAnterior && permiteTraca) {
           const { data: veiculoFocoValidado } = await supabaseAdmin
             .from("veiculos")
             .select("id")
@@ -1190,6 +1196,8 @@ Responda apenas com o JSON, sem markdown.`;
           } else {
             console.warn(`⚠️ veiculo_id_foco inválido ou de outro tenant rejeitado: ${veiculoIdFoco}`);
           }
+        } else if (isValidUuidFormat && lead && veiculoIdFoco !== veiculoIdAnterior && !permiteTraca) {
+          console.log(`🔒 veiculo_id_foco bloqueado (sem evidência textual de troca): ${veiculoIdFoco}`);
         }
 
         const nomeRaw = parsed.nome_cliente_extraido;
