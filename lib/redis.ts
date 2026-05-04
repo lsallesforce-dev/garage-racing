@@ -126,6 +126,53 @@ export async function invalidateHistory(
   }
 }
 
+// ─── Append Incremental de Histórico ─────────────────────────────────────────
+//
+// Alternativa à invalidação: appenda as novas mensagens (user + agent) ao cache
+// existente, re-aplica o limite inteligente (2 primeiras + 13 mais recentes)
+// e re-cacheia com TTL renovado — sem forçar round-trip ao Supabase.
+//
+// Se não houver cache (lead inativo > 30min), falha silenciosamente e o próximo
+// acesso reconstrói do Supabase normalmente.
+//
+// Restrição mantida: max 15 msgs = first2 (âncora de contexto) + last13 (recente).
+//
+export async function appendHistory(
+  tenantUserId: string,
+  leadId: string,
+  newMessages: Array<{ role: string; parts: Array<{ text: string }> }>
+): Promise<void> {
+  try {
+    const key = `history:${tenantUserId}:${leadId}`;
+    const client = getClient();
+    const current = await client.get<Array<{ role: string; parts: Array<{ text: string }> }>>(key);
+
+    // Cache expirou ou nunca existiu — próxima mensagem reconstruirá do Supabase
+    if (!current || !Array.isArray(current)) return;
+
+    const appended = [...current, ...newMessages];
+
+    // Re-aplica restrição: first2 (âncora) + last13 (recente), sem sobreposição
+    let trimmed: typeof appended;
+    if (appended.length <= 15) {
+      trimmed = appended;
+    } else {
+      const last13StartIndex = appended.length - 13;
+      const first2 = appended.slice(0, Math.min(2, last13StartIndex));
+      const last13 = appended.slice(-13);
+      trimmed = [...first2, ...last13];
+    }
+
+    await client.set(key, trimmed, { ex: 1800 });
+  } catch (e) {
+    // Fail gracefully: invalida o cache para que o próximo acesso reconstrua do Supabase
+    console.warn("⚠️ [Redis] appendHistory falhou — invalidando cache (non-fatal):", e);
+    try {
+      await getClient().del(`history:${tenantUserId}:${leadId}`);
+    } catch {}
+  }
+}
+
 // ─── Ping (para Health Check) ─────────────────────────────────────────────────
 export async function redisPing(): Promise<string> {
   return getClient().ping();

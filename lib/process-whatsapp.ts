@@ -8,7 +8,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendMetaMessage, sendMetaImage, sendMetaVideo, sendMetaPreview, sendMetaCtaButton, markMetaRead } from "@/lib/meta";
 import { buscarDadosTransbordo, gerarRelatorioPista } from "@/lib/leads";
 import { hybridVehicleSearch, findVehicleForMedia } from "@/lib/hybrid-search";
-import { getCachedHistory, cacheHistory, invalidateHistory, circuitIsOpen, circuitRecordFailure, circuitRecordSuccess } from "@/lib/redis";
+import { getCachedHistory, cacheHistory, invalidateHistory, appendHistory, circuitIsOpen, circuitRecordFailure, circuitRecordSuccess } from "@/lib/redis";
 import { toVideoUrlAbsolute } from "@/lib/r2-url";
 import { Vehicle } from "@/types/vehicle";
 
@@ -1253,9 +1253,13 @@ Responda apenas com o JSON, sem markdown.`;
       })
       .eq("id", lead.id);
 
-    // Invalida o cache de histórico após salvar a resposta do agente.
-    // A próxima mensagem do lead buscará histórico atualizado do Supabase.
-    await invalidateHistory(tenantUserId, lead.id);
+    // Append incremental no cache Redis — evita round-trip ao Supabase na próxima mensagem.
+    // Se o cache expirou (lead inativo > 30min), appendHistory falha silenciosamente
+    // e a próxima mensagem reconstrói do Supabase com a lógica smart (first2 + last13).
+    await appendHistory(tenantUserId, lead.id, [
+      { role: "user",  parts: [{ text: userMessage }] },
+      { role: "model", parts: [{ text: aiResponse }] },
+    ]);
 
     // Auto-agenda: quando lead vira QUENTE com menção a visita/agendamento,
     // cria entrada na agenda para o gerente não perder o compromisso.
