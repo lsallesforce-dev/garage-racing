@@ -644,7 +644,7 @@ Retorne JSON com:
   "agenda": true,
   "titulo": "string curto descritivo (ex: Visita - João Silva)",
   "tipo": "visita" | "ligacao" | "reuniao" | "outro",
-  "data_hora": "ISO8601 com data e hora (se hora não mencionada, use 09:00)",
+  "data_hora": "ISO8601 completo com timezone -03:00 (ex: 2025-04-05T16:00:00-03:00). Se hora não mencionada, use 09:00",
   "descricao": "string ou null"
 }
 
@@ -670,6 +670,7 @@ Responda apenas com o JSON, sem markdown.`;
 
           const dataFormatada = new Date(parsed.data_hora).toLocaleString("pt-BR", {
             weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+            timeZone: "America/Sao_Paulo",
           });
           await sendMetaMessage(phone,
             `✅ *Agendado!*\n\n📅 ${parsed.titulo}\n🕐 ${dataFormatada}\n${parsed.descricao ? `📝 ${parsed.descricao}` : ""}\n\n_Aparece na agenda do dashboard._`,
