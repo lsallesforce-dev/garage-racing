@@ -1330,7 +1330,11 @@ Responda apenas com o JSON, sem markdown.`;
     const gerenteWa = garageConfig?.whatsapp ?? null;
     if (topVeiculo?.id && gerenteWa) {
       const transbordo = await buscarDadosTransbordo(topVeiculo.id);
-      const destinoWa = transbordo?.vendedor_wa ?? gerenteWa;
+      const normalizarWa = (n: string) => {
+        const digits = n.replace(/\D/g, "");
+        return digits.startsWith("55") ? digits : `55${digits}`;
+      };
+      const destinoWa = normalizarWa(transbordo?.vendedor_wa ?? gerenteWa);
       const nomeCarro =
         transbordo?.carro ?? `${topVeiculo.marca} ${topVeiculo.modelo}`;
       const historicoFormatado =
