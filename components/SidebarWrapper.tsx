@@ -128,7 +128,7 @@ export function SidebarWrapper({ children, isVendedor = false, effectiveUserId =
           {children}
         </div>
       </div>
-      <ZapWidget />
+      <ZapWidget userId={effectiveUserId} />
     </UserRoleContext.Provider>
   );
 }

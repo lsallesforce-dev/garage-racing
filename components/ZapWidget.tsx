@@ -4,7 +4,6 @@ import { useState, useRef, useEffect } from "react";
 import { X, Send, Loader2, ChevronDown, Trash2, Headphones } from "lucide-react";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { useUserRole } from "./SidebarWrapper";
 
 const SUPPORT_WHATSAPP = "5517991141010";
 
@@ -15,10 +14,9 @@ interface Message {
 
 const WELCOME: Message = { role: "assistant", text: "Oi! Eu sou o **Zap**, assistente do AutoZap. Como posso te ajudar hoje?" };
 
-export function ZapWidget() {
+export function ZapWidget({ userId }: { userId?: string }) {
   const pathname = usePathname();
-  const { effectiveUserId } = useUserRole();
-  const storageKey = effectiveUserId ? `zap_chat_history_${effectiveUserId}` : null;
+  const storageKey = userId ? `zap_chat_history_${userId}` : null;
   const [open, setOpen] = useState(false);
 
   if (pathname === "/chat") return null;
