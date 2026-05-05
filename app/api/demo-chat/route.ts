@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
         .single(),
       supabaseAdmin
         .from("veiculos")
-        .select("marca, modelo, ano, ano_modelo, preco_sugerido, km, cor, descricao, opcionais")
+        .select("marca, modelo, ano, ano_modelo, preco_sugerido, quilometragem_estimada, cor, descricao, opcionais")
         .eq("user_id", DEMO_TENANT_ID)
         .eq("status_venda", "DISPONIVEL")
         .order("created_at", { ascending: false })
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
       : veiculos.map(v => {
           const ano = v.ano_modelo && v.ano_modelo !== v.ano ? `${v.ano}/${v.ano_modelo}` : v.ano;
           const preco = v.preco_sugerido ? `R$ ${Number(v.preco_sugerido).toLocaleString("pt-BR")}` : "Consulte";
-          const km    = v.km    ? `${Number(v.km).toLocaleString("pt-BR")} km` : "0 km";
+          const km    = v.quilometragem_estimada ? `${Number(v.quilometragem_estimada).toLocaleString("pt-BR")} km` : "0 km";
           const linha = [`${v.marca} ${v.modelo} ${ano}`, preco, km, v.cor].filter(Boolean).join(" · ");
           return `- ${linha}${v.descricao ? `\n  ${v.descricao.slice(0, 120)}` : ""}`;
         }).join("\n");
