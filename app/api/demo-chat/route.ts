@@ -5,11 +5,12 @@ import { rateLimit } from "@/lib/redis";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
-// Rate limit: 20 msgs/min por IP para o chat demo público
-const DEMO_TENANT_ID = process.env.DEMO_TENANT_USER_ID;
-
 export async function POST(req: NextRequest) {
   try {
+    // Lê dentro da função para garantir que pega o valor atual do env var
+    const DEMO_TENANT_ID = process.env.DEMO_TENANT_USER_ID;
+    console.log("🔍 demo-chat | DEMO_TENANT_ID:", DEMO_TENANT_ID ?? "NÃO CONFIGURADO");
+
     const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
     const rl = await rateLimit(`demo-chat:${ip}`, 20, 60);
     if (!rl.allowed) {
@@ -41,6 +42,8 @@ export async function POST(req: NextRequest) {
 
     const config = configRes.data;
     const veiculos = veiculosRes.data ?? [];
+    console.log("🚗 demo-chat | veículos encontrados:", veiculos.length, veiculos.map(v => v.modelo));
+    if (veiculosRes.error) console.error("❌ demo-chat | erro veiculos:", veiculosRes.error);
 
     const nomeEmpresa = config?.nome_empresa ?? "Revenda Demo";
     const nomeAgente  = config?.nome_agente  ?? "Lucas";
