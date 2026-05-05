@@ -1,5 +1,7 @@
+import { redirect } from "next/navigation";
 import Link from "next/link";
 import { CheckCircle2, X, Zap, ArrowRight, Star, FileText } from "lucide-react";
+import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 const planos = [
   {
@@ -95,7 +97,11 @@ const faq = [
   },
 ];
 
-export default function PlanosPage() {
+export default async function PlanosPage() {
+  const supabase = await createSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/onboarding");
+
   return (
     <>
       {/* Hero */}

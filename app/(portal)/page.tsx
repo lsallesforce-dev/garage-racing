@@ -1,5 +1,9 @@
 import Link from "next/link";
-import { Zap, MessageSquare, Video, BarChart3, Users, ArrowRight, CheckCircle2, Star, TrendingUp, Car, Brain } from "lucide-react";
+import {
+  Zap, MessageSquare, Video, BarChart3, Users, ArrowRight,
+  CheckCircle2, Star, TrendingUp, Car, Brain, Instagram,
+  Phone, Calendar, BadgeCheck,
+} from "lucide-react";
 
 const features = [
   {
@@ -68,10 +72,58 @@ const testimonials = [
 ];
 
 const stats = [
-  { value: "2.4×",  label: "mais leads qualificados"   },
-  { value: "5 min", label: "para gerar um vídeo"       },
-  { value: "0h",    label: "de atendimento noturno"    },
+  { value: "2.4×",  label: "mais leads qualificados"    },
+  { value: "5 min", label: "para gerar um vídeo"        },
+  { value: "0h",    label: "de atendimento noturno"     },
   { value: "100%",  label: "dos dados sob seu controle" },
+];
+
+const funilSteps = [
+  {
+    num: "01",
+    icon: Instagram,
+    color: "bg-pink-500",
+    title: "Cliente vê o carro",
+    desc: "Ele encontra o anúncio no Instagram ou acessa a Vitrine Digital do veículo — com fotos, ficha técnica e vídeo de marketing já prontos. Um clique leva direto ao WhatsApp.",
+  },
+  {
+    num: "02",
+    icon: Zap,
+    color: "bg-green-500",
+    title: "IA assume em segundos",
+    desc: "O Lucas — seu vendedor virtual — responde na hora, 24 horas por dia. O cliente nunca fica sem resposta, mesmo de madrugada ou no fim de semana.",
+  },
+  {
+    num: "03",
+    icon: MessageSquare,
+    color: "bg-blue-500",
+    title: "Qualificação conversacional",
+    desc: "Em vez de um formulário frio, a IA conduz uma conversa natural: tem carro pra troca? Qual a entrada disponível? Prefere financiamento? Tudo coletado sem o cliente perceber que está sendo qualificado.",
+  },
+  {
+    num: "04",
+    icon: Phone,
+    color: "bg-amber-500",
+    title: "Preço e agendamento",
+    desc: "Com o perfil do cliente formado, a IA revela as condições, simula o financiamento e já tenta agendar a visita ao pátio — tudo dentro do WhatsApp.",
+  },
+  {
+    num: "05",
+    icon: BadgeCheck,
+    color: "bg-red-600",
+    title: "Você só fecha",
+    desc: "Você recebe o alerta de lead quente com o histórico completo da conversa. Sua função: aparecer na visita e assinar o contrato.",
+  },
+];
+
+// Exemplo de conversa simulada
+const chatMock = [
+  { side: "in",  text: "Oi, vi o Polo Track 2023 no Instagram. Qual o preço?"          },
+  { side: "out", text: "Olá! O Polo Track 2023 está R$ 89.900. Você tem algum carro pra dar na troca?" },
+  { side: "in",  text: "Tenho um Gol 2019"                                               },
+  { side: "out", text: "Ótimo! Quanto você estima o seu Gol? Assim já consigo ver as melhores condições pra você 😊" },
+  { side: "in",  text: "Umas 45 mil"                                                     },
+  { side: "out", text: "Perfeito. Com R$ 45k na troca, a diferença seria R$ 44.900. Posso te mostrar uma simulação de financiamento?" },
 ];
 
 export default function PortalHome() {
@@ -95,19 +147,19 @@ export default function PortalHome() {
           </h1>
 
           <p className="text-lg md:text-xl text-gray-300 max-w-2xl leading-relaxed mb-10">
-            O <strong className="text-white">AutoZap</strong> usa inteligência artificial para qualificar seus leads no WhatsApp,
-            gerar vídeos de marketing dos seus carros e manter o controle financeiro — tudo em um só lugar.
+            O <strong className="text-white">AutoZap</strong> qualifica seus leads no WhatsApp, gera vídeos de marketing
+            dos seus carros e controla o financeiro — enquanto você dorme.
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4">
-            <Link href="/planos"
+            <Link href="/onboarding"
               className="inline-flex items-center gap-3 px-8 py-4 bg-red-600 text-white rounded-2xl font-black uppercase tracking-widest text-sm hover:bg-red-500 transition-all hover:gap-4 group">
-              Começar grátis
+              Quero uma demonstração
               <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
             </Link>
-            <Link href="#funcionalidades"
+            <Link href="#como-funciona"
               className="inline-flex items-center gap-3 px-8 py-4 bg-white/10 text-white rounded-2xl font-black uppercase tracking-widest text-sm hover:bg-white/20 transition-colors border border-white/10">
-              Ver funcionalidades
+              Ver como funciona
             </Link>
           </div>
 
@@ -126,6 +178,98 @@ export default function PortalHome() {
           <svg viewBox="0 0 1440 64" className="absolute bottom-0 w-full" preserveAspectRatio="none">
             <path d="M0,64 C360,0 1080,64 1440,0 L1440,64 Z" fill="white" />
           </svg>
+        </div>
+      </section>
+
+      {/* Funil Conversacional */}
+      <section id="como-funciona" className="py-24 bg-gray-900 text-white">
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="text-center mb-16">
+            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-red-500 mb-3">Como funciona</p>
+            <h2 className="text-4xl md:text-5xl font-black italic uppercase tracking-tighter">
+              O funil que fecha vendas<br />
+              <span className="text-red-500">enquanto você descansa.</span>
+            </h2>
+            <p className="text-gray-400 mt-4 max-w-xl mx-auto text-sm">
+              Em vez de formulários estáticos, o AutoZap conduz o cliente por uma conversa natural no WhatsApp —
+              qualificando, aquecendo e agendando sem você tocar no telefone.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+            {/* Steps */}
+            <div className="space-y-8">
+              {funilSteps.map((s, i) => (
+                <div key={s.num} className="flex gap-5">
+                  <div className="flex flex-col items-center shrink-0">
+                    <div className={`w-10 h-10 ${s.color} rounded-2xl flex items-center justify-center`}>
+                      <s.icon size={18} className="text-white" />
+                    </div>
+                    {i < funilSteps.length - 1 && (
+                      <div className="w-px flex-1 bg-gray-700 mt-2" />
+                    )}
+                  </div>
+                  <div className="pb-6">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-gray-500 mb-1">Passo {s.num}</p>
+                    <h3 className="text-base font-black uppercase italic tracking-tight text-white mb-1.5">{s.title}</h3>
+                    <p className="text-sm text-gray-400 leading-relaxed">{s.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Chat mock */}
+            <div className="relative">
+              <div className="bg-[#0b0f0e] rounded-[2rem] p-6 border border-gray-800 shadow-2xl">
+                {/* Header do chat */}
+                <div className="flex items-center gap-3 pb-4 mb-4 border-b border-gray-800">
+                  <div className="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center shrink-0">
+                    <Zap size={16} className="text-white" fill="white" />
+                  </div>
+                  <div>
+                    <p className="text-white text-sm font-black">Lucas · AutoZap</p>
+                    <p className="text-green-400 text-[10px] font-bold uppercase tracking-widest">● Online agora</p>
+                  </div>
+                </div>
+
+                {/* Mensagens */}
+                <div className="space-y-3">
+                  {chatMock.map((m, i) => (
+                    <div key={i} className={`flex ${m.side === "out" ? "justify-end" : "justify-start"}`}>
+                      <div className={`max-w-[78%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                        m.side === "out"
+                          ? "bg-green-600 text-white rounded-br-sm"
+                          : "bg-gray-800 text-gray-200 rounded-bl-sm"
+                      }`}>
+                        {m.text}
+                      </div>
+                    </div>
+                  ))}
+                  {/* Digitando */}
+                  <div className="flex justify-end">
+                    <div className="bg-green-600 rounded-2xl rounded-br-sm px-4 py-3 flex gap-1 items-center">
+                      <span className="w-1.5 h-1.5 bg-white/60 rounded-full animate-bounce [animation-delay:0ms]" />
+                      <span className="w-1.5 h-1.5 bg-white/60 rounded-full animate-bounce [animation-delay:150ms]" />
+                      <span className="w-1.5 h-1.5 bg-white/60 rounded-full animate-bounce [animation-delay:300ms]" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Badge */}
+                <div className="mt-5 flex items-center justify-center gap-2 text-[10px] text-gray-500 font-bold uppercase tracking-widest">
+                  <Zap size={10} className="text-red-500" />
+                  Respondido às 2h37 da manhã
+                </div>
+              </div>
+
+              {/* Notificação de lead quente */}
+              <div className="absolute -bottom-5 -right-4 bg-red-600 text-white rounded-2xl px-4 py-3 shadow-2xl max-w-[220px]">
+                <p className="text-[9px] font-black uppercase tracking-widest text-red-200 mb-0.5">🔥 Lead Quente</p>
+                <p className="text-[11px] font-black">João — Polo Track</p>
+                <p className="text-[10px] text-red-200 mt-0.5">Visita agendada · Amanhã 10h</p>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -155,45 +299,6 @@ export default function PortalHome() {
               <p className="text-sm text-gray-500 leading-relaxed">{f.desc}</p>
             </div>
           ))}
-        </div>
-      </section>
-
-      {/* How it works */}
-      <section className="bg-gray-900 text-white py-24">
-        <div className="max-w-6xl mx-auto px-6">
-          <div className="text-center mb-16">
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-red-500 mb-3">Como funciona</p>
-            <h2 className="text-4xl md:text-5xl font-black italic uppercase tracking-tighter">
-              Configure uma vez.<br />
-              <span className="text-red-500">Colha resultados sempre.</span>
-            </h2>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {[
-              {
-                step: "01",
-                title: "Cadastra seus carros",
-                desc: "Adicione os veículos com fotos e vídeo. A IA preenche marca, modelo e descrição automaticamente a partir do conteúdo.",
-              },
-              {
-                step: "02",
-                title: "A IA atende os leads",
-                desc: "Clientes chegam pelo WhatsApp, Instagram ou pela sua vitrine. O Lucas (seu assistente de IA) qualifica, tira dúvidas e aquece o interesse.",
-              },
-              {
-                step: "03",
-                title: "Você só fecha",
-                desc: "Receba apenas leads quentes, com histórico completo da conversa. Sua função é aparecer na visita e assinar o contrato.",
-              },
-            ].map(s => (
-              <div key={s.step} className="relative">
-                <p className="text-8xl font-black italic text-white/5 leading-none mb-4">{s.step}</p>
-                <h3 className="text-xl font-black uppercase italic tracking-tight mb-3 -mt-8">{s.title}</h3>
-                <p className="text-gray-400 leading-relaxed text-sm">{s.desc}</p>
-              </div>
-            ))}
-          </div>
         </div>
       </section>
 
@@ -234,12 +339,13 @@ export default function PortalHome() {
             Pronto para vender mais<br />sem trabalhar mais?
           </h2>
           <p className="text-red-100 text-lg mb-10 max-w-xl mx-auto">
-            Comece grátis hoje. Sem cartão de crédito. Em 10 minutos você já tem a IA trabalhando no seu pátio.
+            Um consultor visita sua revenda, configura tudo e você testa por 30 dias sem pagar nada.
+            Se gostar, assina. Se não gostar, sem custo.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link href="/planos"
+            <Link href="/onboarding"
               className="inline-flex items-center justify-center gap-3 px-8 py-4 bg-white text-red-600 rounded-2xl font-black uppercase tracking-widest text-sm hover:bg-gray-100 transition-colors">
-              Ver planos e preços
+              Quero uma demonstração
               <ArrowRight size={16} />
             </Link>
             <Link href="/login"
@@ -248,7 +354,7 @@ export default function PortalHome() {
             </Link>
           </div>
           <div className="mt-8 flex items-center justify-center gap-6 flex-wrap">
-            {["Teste grátis por 14 dias", "Sem cartão de crédito", "Suporte via WhatsApp", "Cancele quando quiser"].map(i => (
+            {["Teste grátis por 30 dias", "Consultor vai até você", "Suporte via WhatsApp", "Cancele quando quiser"].map(i => (
               <div key={i} className="flex items-center gap-2 text-red-100 text-[11px] font-bold uppercase tracking-widest">
                 <CheckCircle2 size={12} />
                 {i}
