@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
         .single(),
       supabaseAdmin
         .from("veiculos")
-        .select("marca, modelo, ano, ano_modelo, preco, km, cor, descricao, opcionais")
+        .select("marca, modelo, ano, ano_modelo, preco_sugerido, km, cor, descricao, opcionais")
         .eq("user_id", DEMO_TENANT_ID)
         .eq("status_venda", "DISPONIVEL")
         .order("created_at", { ascending: false })
@@ -46,14 +46,14 @@ export async function POST(req: NextRequest) {
     if (veiculosRes.error) console.error("❌ demo-chat | erro veiculos:", veiculosRes.error);
 
     const nomeEmpresa = config?.nome_empresa ?? "Revenda Demo";
-    const nomeAgente  = config?.nome_agente  ?? "Lucas";
+    const nomeAgente  = "Zap";
     const whatsapp    = config?.whatsapp     ?? "";
 
     const estoqueTexto = veiculos.length === 0
       ? "Nenhum veículo disponível no momento."
       : veiculos.map(v => {
           const ano = v.ano_modelo && v.ano_modelo !== v.ano ? `${v.ano}/${v.ano_modelo}` : v.ano;
-          const preco = v.preco ? `R$ ${Number(v.preco).toLocaleString("pt-BR")}` : "Consulte";
+          const preco = v.preco_sugerido ? `R$ ${Number(v.preco_sugerido).toLocaleString("pt-BR")}` : "Consulte";
           const km    = v.km    ? `${Number(v.km).toLocaleString("pt-BR")} km` : "0 km";
           const linha = [`${v.marca} ${v.modelo} ${ano}`, preco, km, v.cor].filter(Boolean).join(" · ");
           return `- ${linha}${v.descricao ? `\n  ${v.descricao.slice(0, 120)}` : ""}`;

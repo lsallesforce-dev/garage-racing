@@ -13,7 +13,7 @@ interface Message {
 }
 
 const WELCOME: Message        = { role: "assistant", text: "Oi! Eu sou o **Zap**, assistente do AutoZap. Como posso te ajudar hoje?" };
-const WELCOME_DEMO: Message   = { role: "assistant", text: "Olá! Sou o **Lucas**, assistente virtual de vendas. Aqui você pode ver como a IA do AutoZap atende seus clientes em tempo real. Me conta, qual carro você procura? 🚗" };
+const WELCOME_DEMO: Message   = { role: "assistant", text: "Olá! Sou o **Zap**, assistente virtual de vendas. Aqui você pode ver como a IA do AutoZap atende seus clientes em tempo real. Me conta, qual carro você procura? 🚗" };
 
 interface ZapWidgetProps {
   userId?: string;
