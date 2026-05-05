@@ -309,6 +309,28 @@ export default function PortalHome() {
         </div>
       </section>
 
+      {/* Convite para demo ao vivo */}
+      <section className="max-w-6xl mx-auto px-6 py-10">
+        <div className="bg-gray-900 rounded-[2rem] px-8 py-7 flex flex-col md:flex-row items-center justify-between gap-6">
+          <div className="flex items-center gap-5">
+            <div className="w-14 h-14 shrink-0 rounded-full bg-white ring-2 ring-red-600 overflow-hidden flex items-center justify-center">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/zap-mascot.png" alt="Zap" className="w-full h-full object-cover scale-110" />
+            </div>
+            <div>
+              <p className="font-black text-white uppercase italic tracking-tight text-base">Teste a IA agora, ao vivo</p>
+              <p className="text-gray-400 text-sm mt-0.5">
+                Clique no ícone do robô <span className="text-white font-bold">↘</span> e veja como a IA atende um cliente de verdade.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-gray-500 whitespace-nowrap">
+            <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
+            IA online agora
+          </div>
+        </div>
+      </section>
+
       {/* Testimonials */}
       <section className="py-24 max-w-6xl mx-auto px-6">
         <div className="text-center mb-16">

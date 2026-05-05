@@ -12,13 +12,20 @@ interface Message {
   text: string;
 }
 
-const WELCOME: Message = { role: "assistant", text: "Oi! Eu sou o **Zap**, assistente do AutoZap. Como posso te ajudar hoje?" };
+const WELCOME: Message        = { role: "assistant", text: "Oi! Eu sou o **Zap**, assistente do AutoZap. Como posso te ajudar hoje?" };
+const WELCOME_DEMO: Message   = { role: "assistant", text: "Olá! Sou o **Lucas**, assistente virtual de vendas. Aqui você pode ver como a IA do AutoZap atende seus clientes em tempo real. Me conta, qual carro você procura? 🚗" };
 
-export function ZapWidget({ userId }: { userId?: string }) {
+interface ZapWidgetProps {
+  userId?: string;
+  demoMode?: boolean;
+  initialMessage?: string;
+}
+
+export function ZapWidget({ userId, demoMode = false, initialMessage }: ZapWidgetProps) {
   const pathname = usePathname();
-  const storageKey = userId ? `zap_chat_history_${userId}` : null;
+  const storageKey = (!demoMode && userId) ? `zap_chat_history_${userId}` : null;
   const [open, setOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([WELCOME]);
+  const [messages, setMessages] = useState<Message[]>([demoMode ? WELCOME_DEMO : WELCOME]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -49,9 +56,19 @@ export function ZapWidget({ userId }: { userId?: string }) {
   useEffect(() => {
     if (open) {
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-      setTimeout(() => inputRef.current?.focus(), 100);
+      setTimeout(() => {
+        inputRef.current?.focus();
+        // Preenche o input com a mensagem inicial quando o widget abre pela primeira vez
+        if (initialMessage && messages.length <= 1) {
+          setInput(initialMessage);
+        }
+      }, 150);
     }
-  }, [open, messages]);
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   if (pathname === "/chat") return null;
 
@@ -66,7 +83,7 @@ export function ZapWidget({ userId }: { userId?: string }) {
 
     try {
       const history = messages.map((m) => ({ role: m.role, text: m.text }));
-      const res = await fetch("/api/zap", {
+      const res = await fetch(demoMode ? "/api/demo-chat" : "/api/zap", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: text, history }),

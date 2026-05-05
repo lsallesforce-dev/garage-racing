@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ZapWidgetDemo } from "@/components/ZapWidgetDemo";
 
 export const metadata: Metadata = {
   title: "AutoZap — IA para Revendas de Veículos",
@@ -57,6 +58,9 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
       </header>
 
       <main className="pt-16">{children}</main>
+
+      {/* Widget demo — visitantes podem testar a IA do AutoZap ao vivo */}
+      <ZapWidgetDemo />
 
       {/* Footer */}
       <footer className="bg-gray-900 text-white py-16 mt-24">
