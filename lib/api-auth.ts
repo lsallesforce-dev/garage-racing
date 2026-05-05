@@ -2,18 +2,19 @@
 // Helper para validar autenticação em API routes e verificar posse de recursos
 
 import { NextRequest, NextResponse } from "next/server";
+import { timingSafeEqual } from "crypto";
 import { rateLimit } from "@/lib/redis";
 
 /**
  * Valida o ADMIN_SECRET de forma segura.
- * - Retorna 429 se o IP excedeu 30 tentativas/minuto (anti brute-force)
+ * - Retorna 429 se o IP excedeu 5 tentativas/minuto (anti brute-force)
  * - Retorna 401 se o secret não estiver configurado (evita fail-open com string vazia)
- * - Retorna 401 se o header não bater
+ * - Retorna 401 se o header não bater (comparação timing-safe)
  */
 export async function requireAdminSecret(req: NextRequest): Promise<NextResponse | null> {
-  // Rate limit por IP — 30 req/min para dificultar brute-force
+  // Rate limit por IP — 5 req/min para admin (mais restritivo que rotas normais)
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
-  const rl = await rateLimit(`admin:${ip}`, 30, 60);
+  const rl = await rateLimit(`admin:${ip}`, 5, 60);
   if (!rl.allowed) {
     return NextResponse.json({ error: "Muitas tentativas" }, { status: 429 });
   }
@@ -23,7 +24,18 @@ export async function requireAdminSecret(req: NextRequest): Promise<NextResponse
     return NextResponse.json({ error: "Admin não configurado" }, { status: 401 });
   }
   const provided = req.headers.get("x-admin-secret");
-  if (!provided || provided !== configured) {
+  if (!provided) {
+    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+  }
+
+  // timingSafeEqual evita timing attacks ao comparar secrets
+  const configuredBuf = Buffer.from(configured, "utf8");
+  const providedBuf = Buffer.from(provided, "utf8");
+  const match =
+    configuredBuf.length === providedBuf.length &&
+    timingSafeEqual(configuredBuf, providedBuf);
+
+  if (!match) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
   return null; // autorizado
