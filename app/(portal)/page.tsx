@@ -136,9 +136,16 @@ export default function PortalHome() {
         <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-blue-600/10 rounded-full blur-[100px]" />
 
         <div className="relative max-w-6xl mx-auto px-6 py-32 md:py-40">
-          <div className="inline-flex items-center gap-2 bg-red-600/10 border border-red-600/20 rounded-full px-4 py-1.5 mb-8">
-            <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
-            <span className="text-[11px] font-black uppercase tracking-widest text-red-400">IA para revendas brasileiras</span>
+          <style>{`
+            @keyframes greenPulse {
+              0%, 100% { color: #4ade80; }
+              50%       { color: #14532d; }
+            }
+            .badge-green-pulse { animation: greenPulse 1.8s ease-in-out infinite; }
+          `}</style>
+          <div className="inline-flex items-center gap-2 bg-green-500/10 border border-green-500/20 rounded-full px-4 py-1.5 mb-8">
+            <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
+            <span className="badge-green-pulse text-[11px] font-black uppercase tracking-widest">IA para revendas brasileiras</span>
           </div>
 
           <h1 className="text-5xl md:text-7xl font-black italic uppercase tracking-tighter leading-none mb-6 max-w-4xl">
