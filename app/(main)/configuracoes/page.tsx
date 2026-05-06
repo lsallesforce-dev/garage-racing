@@ -69,6 +69,17 @@ export default function ConfiguracoesPage() {
   const [copied, setCopied] = useState<string | null>(null);
   const [metaConnecting, setMetaConnecting] = useState(false);
   const [metaConnected, setMetaConnected] = useState(false);
+
+  // Facebook Ads — conectar página + ad account
+  const [metaAdsLoading, setMetaAdsLoading] = useState(false);
+  const [metaAdsSaving, setMetaAdsSaving] = useState(false);
+  const [metaAdsSaved, setMetaAdsSaved] = useState(false);
+  const [metaAdsError, setMetaAdsError] = useState<string | null>(null);
+  const [metaPaginas, setMetaPaginas] = useState<any[]>([]);
+  const [metaAdAccounts, setMetaAdAccounts] = useState<any[]>([]);
+  const [metaPaginaSalva, setMetaPaginaSalva] = useState<any | null>(null);
+  const [selectedPageId, setSelectedPageId] = useState("");
+  const [selectedAdAccountId, setSelectedAdAccountId] = useState("");
   const [config, setConfig] = useState<GarageConfig>({
     nome_empresa: "",
     nome_fantasia: "",
@@ -206,6 +217,58 @@ export default function ConfiguracoesPage() {
     );
   };
 
+  const carregarMetaAds = async () => {
+    setMetaAdsLoading(true);
+    setMetaAdsError(null);
+    try {
+      const res = await fetch("/api/meta/pagina");
+      if (!res.ok) {
+        const e = await res.json();
+        setMetaAdsError(e.error ?? "Erro ao carregar páginas");
+        return;
+      }
+      const { paginas, adAccounts } = await res.json();
+      setMetaPaginas(paginas ?? []);
+      setMetaAdAccounts(adAccounts ?? []);
+      if (paginas?.length) setSelectedPageId(paginas[0].id);
+      if (adAccounts?.length) setSelectedAdAccountId(adAccounts[0].id);
+    } catch {
+      setMetaAdsError("Erro de conexão");
+    } finally {
+      setMetaAdsLoading(false);
+    }
+  };
+
+  const salvarPaginaMeta = async () => {
+    const pagina = metaPaginas.find((p) => p.id === selectedPageId);
+    if (!pagina) return;
+    setMetaAdsSaving(true);
+    setMetaAdsError(null);
+    try {
+      const res = await fetch("/api/meta/pagina", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pageId:           pagina.id,
+          pageName:         pagina.name,
+          pageAccessToken:  pagina.access_token,
+          adAccountId:      selectedAdAccountId || null,
+          instagramActorId: pagina.instagram_business_account?.id ?? null,
+        }),
+      });
+      if (!res.ok) {
+        const e = await res.json();
+        setMetaAdsError(e.error ?? "Erro ao salvar");
+        return;
+      }
+      setMetaPaginaSalva({ name: pagina.name, adAccountId: selectedAdAccountId });
+      setMetaAdsSaved(true);
+      setTimeout(() => setMetaAdsSaved(false), 3000);
+    } finally {
+      setMetaAdsSaving(false);
+    }
+  };
+
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) return;
@@ -262,6 +325,20 @@ export default function ConfiguracoesPage() {
             if (row.logo_url) {
               setCurrentLogo(row.logo_url);
               localStorage.setItem("garage_logo_url", row.logo_url);
+            }
+
+            // Carrega página Facebook já salva
+            if (row.meta_access_token) {
+              supabase
+                .from("meta_paginas")
+                .select("page_name, ad_account_id")
+                .eq("user_id", user.id)
+                .limit(1)
+                .then(({ data: pags }) => {
+                  if (pags?.[0]) {
+                    setMetaPaginaSalva({ name: pags[0].page_name, adAccountId: pags[0].ad_account_id });
+                  }
+                });
             }
           }
         });
@@ -1215,6 +1292,139 @@ export default function ConfiguracoesPage() {
               ))}
             </div>
           </div>
+        </div>
+
+        {/* ── Facebook / Instagram Ads ──────────────────────────────────────── */}
+        <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm">
+          <div className="flex items-center gap-3 mb-1">
+            <div className="w-8 h-8 rounded-xl bg-blue-50 flex items-center justify-center">
+              <svg viewBox="0 0 24 24" className="w-4 h-4 fill-blue-600">
+                <path d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.41c0-3.025 1.792-4.697 4.533-4.697 1.312 0 2.686.236 2.686.236v2.97h-1.513c-1.491 0-1.956.93-1.956 1.885v2.27h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z"/>
+              </svg>
+            </div>
+            <div>
+              <p className="text-[11px] font-black uppercase tracking-widest text-gray-900">Facebook / Instagram Ads</p>
+              <p className="text-[10px] text-gray-400">Publique anúncios Lead Ad direto da página do veículo</p>
+            </div>
+          </div>
+
+          {!config.meta_access_token ? (
+            <div className="mt-4 bg-blue-50 rounded-2xl p-4 border border-blue-100">
+              <p className="text-[11px] text-gray-600">
+                Primeiro conecte o WhatsApp Business com o botão <span className="font-bold">Conectar com Meta / Facebook</span> acima. O mesmo token é usado para criar anúncios.
+              </p>
+            </div>
+          ) : (
+            <div className="mt-4 space-y-4">
+              {metaPaginaSalva && (
+                <div className="flex items-center gap-2 bg-green-50 border border-green-100 rounded-2xl px-4 py-3">
+                  <CheckCircle2 size={14} className="text-green-500 flex-shrink-0" />
+                  <div>
+                    <p className="text-[11px] font-bold text-green-700">{metaPaginaSalva.name}</p>
+                    {metaPaginaSalva.adAccountId && (
+                      <p className="text-[10px] text-green-600">{metaPaginaSalva.adAccountId}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {metaAdsError && (
+                <div className="bg-red-50 border border-red-100 rounded-2xl px-4 py-3">
+                  <p className="text-[11px] text-red-600">{metaAdsError}</p>
+                </div>
+              )}
+
+              {metaPaginas.length === 0 && !metaAdsLoading && (
+                <button
+                  type="button"
+                  onClick={carregarMetaAds}
+                  className="w-full py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold transition-colors flex items-center justify-center gap-2"
+                >
+                  <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-white">
+                    <path d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.41c0-3.025 1.792-4.697 4.533-4.697 1.312 0 2.686.236 2.686.236v2.97h-1.513c-1.491 0-1.956.93-1.956 1.885v2.27h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z"/>
+                  </svg>
+                  Carregar minhas páginas do Facebook
+                </button>
+              )}
+
+              {metaAdsLoading && (
+                <div className="flex items-center justify-center py-4 gap-2 text-gray-400">
+                  <Loader2 size={14} className="animate-spin" />
+                  <span className="text-[11px]">Carregando páginas...</span>
+                </div>
+              )}
+
+              {metaPaginas.length > 0 && (
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Página do Facebook</p>
+                    <select
+                      value={selectedPageId}
+                      onChange={(e) => setSelectedPageId(e.target.value)}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-[12px] text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-200"
+                    >
+                      {metaPaginas.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Conta de Anúncios (Ad Account)</p>
+                    {metaAdAccounts.length > 0 ? (
+                      <select
+                        value={selectedAdAccountId}
+                        onChange={(e) => setSelectedAdAccountId(e.target.value)}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-[12px] text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-200"
+                      >
+                        <option value="">— Nenhuma —</option>
+                        {metaAdAccounts.map((a) => (
+                          <option key={a.id} value={a.id}>{a.name} ({a.id})</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <p className="text-[11px] text-gray-400 italic">
+                        Nenhuma conta de anúncios encontrada. Crie uma em business.facebook.com.
+                      </p>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={salvarPaginaMeta}
+                    disabled={metaAdsSaving || !selectedPageId}
+                    className="w-full py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white text-[11px] font-bold transition-colors flex items-center justify-center gap-2"
+                  >
+                    {metaAdsSaving ? (
+                      <><Loader2 size={13} className="animate-spin" /> Salvando...</>
+                    ) : metaAdsSaved ? (
+                      <><CheckCircle2 size={13} /> Página salva!</>
+                    ) : (
+                      "Salvar configuração"
+                    )}
+                  </button>
+                </div>
+              )}
+
+              <div className="pt-2 border-t border-gray-100">
+                <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">O que você ganha</p>
+                <div className="space-y-1.5">
+                  {[
+                    "Cria campanha Lead Ad direto da página do veículo",
+                    "Controla orçamento, raio e público sem sair do AutoZap",
+                    "Lead chega automático e a IA responde pelo WhatsApp",
+                  ].map((item, i) => (
+                    <div key={i} className="flex items-start gap-2">
+                      <div className="w-4 h-4 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <span className="text-blue-600 text-[9px] font-black">{i + 1}</span>
+                      </div>
+                      <p className="text-[11px] text-gray-600">{item}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </main>
