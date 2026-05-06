@@ -21,7 +21,7 @@ export default async function MainLayout({ children }: { children: React.ReactNo
     const headersList = await headers();
     const pathname = headersList.get("x-pathname") ?? "";
 
-    const rotasPermitidas = ["/estoque", "/chat", "/veiculo", "/upload"];
+    const rotasPermitidas = ["/estoque", "/chat", "/veiculo", "/upload", "/clientes", "/contratos", "/minha-conta"];
     const permitido = rotasPermitidas.some(
       (r) => pathname === r || pathname.startsWith(r + "/")
     );
