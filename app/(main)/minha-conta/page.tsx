@@ -354,13 +354,13 @@ export default function MinhaContaPage() {
                           </span>
                         ))
                       : <>
-                          {["Estoque Inteligente", "Central de Chat"].map(p => (
+                          {["Estoque Inteligente", "Central de Chat", "Clientes", "Contratos"].map(p => (
                             <span key={p} className="flex items-center gap-1 text-[10px] text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full">
                               <CheckCircle2 size={9} /> {p}
                             </span>
                           ))}
-                          {["Configurações", "Financeiro", "Contratos"].map(p => (
-                            <span key={p} className="flex items-center gap-1 text-[10px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full line-through">
+                          {["Configurações", "Financeiro"].map(p => (
+                            <span key={p} className="flex items-center gap-1 text-[10px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
                               {p}
                             </span>
                           ))}
@@ -373,7 +373,7 @@ export default function MinhaContaPage() {
                 <div className="flex gap-2">
                   <button onClick={handleAddMembro} disabled={addingMembro}
                     className="flex-1 py-2 rounded-xl bg-gray-900 text-white font-black uppercase text-[10px] tracking-widest hover:bg-green-600 disabled:opacity-40 flex items-center justify-center gap-1.5 transition">
-                    {addingMembro ? <Loader2 size={12} className="animate-spin" /> : <><Plus size={11} /> Criar usuário</>}
+                    {addingMembro ? <Loader2 size={12} className="animate-spin" /> : <><CheckCircle2 size={11} /> Salvar</>}
                   </button>
                   <button onClick={() => setShowAddForm(false)}
                     className="px-4 py-2 rounded-xl border border-gray-200 text-gray-500 font-black uppercase text-[10px] tracking-widest hover:bg-gray-100 transition">
