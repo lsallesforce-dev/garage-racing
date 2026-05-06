@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import {
   CheckCircle2, Loader2, Save, KeyRound, Mail, Zap, CreditCard,
   Clock, AlertTriangle, ArrowRight, Users, Plus, Trash2, Shield, Eye,
+  Pencil, X,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -49,6 +50,21 @@ export default function MinhaContaPage() {
   const [addingMembro, setAddingMembro] = useState(false);
   const [erroMembro, setErroMembro]   = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
+
+  const [editandoMembro, setEditandoMembro] = useState<Membro | null>(null);
+  const [permsEditando, setPermsEditando]   = useState<string[]>([]);
+  const [salvandoPerms, setSalvandoPerms]   = useState(false);
+
+  const PAGINAS_CONFIG = [
+    { id: "dashboard",     label: "Pátio Digital",      desc: "Métricas e visão geral" },
+    { id: "estoque",       label: "Estoque Inteligente", desc: "Cadastrar e gerenciar veículos" },
+    { id: "chat",          label: "Central de Chat",     desc: "Atendimento e leads" },
+    { id: "financeiro",    label: "Vendas / Financeiro", desc: "Vendas, despesas e lucro" },
+    { id: "clientes",      label: "Clientes",            desc: "Base de contatos" },
+    { id: "contratos",     label: "Contratos",           desc: "Emissão de contratos" },
+    { id: "vendedores",    label: "Equipe de Vendas",    desc: "Ver outros membros da equipe" },
+    { id: "configuracoes", label: "Configurações",       desc: "WhatsApp, agente e perfil" },
+  ];
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -129,6 +145,37 @@ export default function MinhaContaPage() {
       if (user) carregarMembros(user.id);
     } catch (e: any) { setErroMembro(e.message); }
     finally { setAddingMembro(false); }
+  }
+
+  function abrirEdicaoPerms(membro: Membro) {
+    setEditandoMembro(membro);
+    // Tenta ler paginas_permitidas do user_metadata via membros — fallback para padrão
+    setPermsEditando(["estoque", "chat"]);
+    fetch("/api/vendedores/listar")
+      .then(r => r.json())
+      .then(data => {
+        const v = (data.vendedores ?? []).find((x: any) => x.id === membro.id);
+        const p = v?.user_metadata?.paginas_permitidas;
+        if (Array.isArray(p)) setPermsEditando(p);
+      });
+  }
+
+  async function handleSalvarPerms() {
+    if (!editandoMembro) return;
+    setSalvandoPerms(true);
+    await fetch("/api/vendedores/permissoes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ vendedor_id: editandoMembro.id, paginas: permsEditando }),
+    });
+    setSalvandoPerms(false);
+    setEditandoMembro(null);
+  }
+
+  function togglePerm(id: string) {
+    setPermsEditando(prev =>
+      prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]
+    );
   }
 
   async function handleRemoverMembro(id: string) {
@@ -367,10 +414,18 @@ export default function MinhaContaPage() {
                           : <span className="flex items-center gap-1"><Eye size={9} /> Vendedor</span>}
                       </span>
                       {m.id !== membros[0]?.id && (
-                        <button onClick={() => handleRemoverMembro(m.id)}
-                          className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition">
-                          <Trash2 size={12} />
-                        </button>
+                        <>
+                          <button onClick={() => abrirEdicaoPerms(m)}
+                            className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition"
+                            title="Editar permissões">
+                            <Pencil size={12} />
+                          </button>
+                          <button onClick={() => handleRemoverMembro(m.id)}
+                            className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition"
+                            title="Remover">
+                            <Trash2 size={12} />
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>
@@ -381,6 +436,68 @@ export default function MinhaContaPage() {
         )}
 
       </div>
+
+      {/* Modal de permissões */}
+      {editandoMembro && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2rem] border border-gray-100 shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <p className={LABEL}>Permissões de acesso</p>
+                <p className="text-sm font-black text-gray-900 mt-0.5">{editandoMembro.nome}</p>
+                <p className="text-[10px] text-gray-400">{editandoMembro.email}</p>
+              </div>
+              <button onClick={() => setEditandoMembro(null)}
+                className="w-8 h-8 rounded-xl flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition">
+                <X size={15} />
+              </button>
+            </div>
+
+            <p className="text-[10px] text-gray-500 mb-3 uppercase tracking-widest font-bold">
+              Páginas visíveis no menu lateral
+            </p>
+
+            <div className="flex flex-col gap-2 mb-5">
+              {PAGINAS_CONFIG.map(p => {
+                const ativo = permsEditando.includes(p.id);
+                return (
+                  <button key={p.id} onClick={() => togglePerm(p.id)}
+                    className={`flex items-center justify-between px-4 py-3 rounded-2xl border transition-all text-left ${
+                      ativo
+                        ? "bg-gray-900 border-gray-900 text-white"
+                        : "bg-gray-50 border-gray-200 text-gray-500 hover:border-gray-300"
+                    }`}>
+                    <div>
+                      <p className={`text-[11px] font-black uppercase tracking-widest ${ativo ? "text-white" : "text-gray-700"}`}>
+                        {p.label}
+                      </p>
+                      <p className={`text-[10px] mt-0.5 ${ativo ? "text-gray-300" : "text-gray-400"}`}>
+                        {p.desc}
+                      </p>
+                    </div>
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${
+                      ativo ? "bg-white border-white" : "border-gray-300"
+                    }`}>
+                      {ativo && <div className="w-2.5 h-2.5 rounded-full bg-gray-900" />}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex gap-2">
+              <button onClick={handleSalvarPerms} disabled={salvandoPerms}
+                className="flex-1 py-2.5 rounded-xl bg-gray-900 text-white font-black uppercase text-[10px] tracking-widest hover:bg-green-600 disabled:opacity-40 flex items-center justify-center gap-1.5 transition">
+                {salvandoPerms ? <Loader2 size={12} className="animate-spin" /> : <><CheckCircle2 size={12} /> Salvar permissões</>}
+              </button>
+              <button onClick={() => setEditandoMembro(null)}
+                className="px-4 py-2.5 rounded-xl border border-gray-200 text-gray-500 font-black uppercase text-[10px] tracking-widest hover:bg-gray-100 transition">
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

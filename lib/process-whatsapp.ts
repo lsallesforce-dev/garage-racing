@@ -941,7 +941,7 @@ Responda apenas com o JSON, sem markdown.`;
 
       const veiculosContexto = [
         ...topVeiculos,
-        ...(veiculoPrincipal && !topVeiculos.some(v => v.id === veiculoPrincipal.id)
+        ...(veiculoPrincipal && !topVeiculos.some(v => v.id === veiculoPrincipal!.id)
           ? [veiculoPrincipal] : []),
       ];
 
@@ -1328,8 +1328,8 @@ Responda apenas com o JSON, sem markdown.`;
               tipo: "visita",
               lead_id: lead.id,
               created_by: "ia",
-            }).then(() => console.log(`📅 Auto-agenda criada para lead ${lead.id} — ${dataHoraAgenda}`))
-              .catch(() => {});
+            });
+            console.log(`📅 Auto-agenda criada para lead ${lead.id} — ${dataHoraAgenda}`);
           } else {
             console.log(`📅 Auto-agenda aguardando horário explícito do cliente (lead ${lead.id})`);
           }

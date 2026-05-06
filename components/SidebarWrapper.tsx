@@ -58,6 +58,16 @@ interface SidebarWrapperProps {
 export function SidebarWrapper({ children, isVendedor = false, effectiveUserId = "" }: SidebarWrapperProps) {
   const [open, setOpen] = useState(false);
   const [nomeEmpresa, setNomeEmpresa] = useState("");
+  const [paginasPermitidas, setPaginasPermitidas] = useState<string[] | undefined>(undefined);
+
+  useEffect(() => {
+    if (isVendedor) {
+      supabase.auth.getUser().then(({ data: { user } }) => {
+        const paginas = user?.user_metadata?.paginas_permitidas;
+        setPaginasPermitidas(Array.isArray(paginas) ? paginas : undefined);
+      });
+    }
+  }, [isVendedor]);
 
   useEffect(() => {
     const ownerId = effectiveUserId;
@@ -96,7 +106,7 @@ export function SidebarWrapper({ children, isVendedor = false, effectiveUserId =
             open ? "translate-x-0" : "-translate-x-full"
           }`}
         >
-          <Sidebar isVendedor={isVendedor} effectiveUserId={effectiveUserId} onClose={() => setOpen(false)} />
+          <Sidebar isVendedor={isVendedor} effectiveUserId={effectiveUserId} paginasPermitidas={paginasPermitidas} onClose={() => setOpen(false)} />
         </div>
 
         {/* Conteúdo principal */}

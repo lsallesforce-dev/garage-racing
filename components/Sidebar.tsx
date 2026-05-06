@@ -18,19 +18,28 @@ const adminMenuItems = [
   { icon: UserCircle, label: "Minha Conta", href: "/minha-conta" },
 ];
 
-const vendedorMenuItems = [
-  { icon: Car, label: "Estoque Inteligente", href: "/estoque" },
-  { icon: MessageSquare, label: "Central de Chat", href: "/chat" },
-  { icon: UserCircle, label: "Minha Conta", href: "/minha-conta" },
+// Mapa completo de páginas disponíveis para vendedores
+const todasPaginas = [
+  { id: "dashboard",     icon: LayoutDashboard, label: "Pátio Digital",      href: "/dashboard" },
+  { id: "estoque",       icon: Car,             label: "Estoque Inteligente", href: "/estoque" },
+  { id: "chat",          icon: MessageSquare,   label: "Central de Chat",     href: "/chat" },
+  { id: "financeiro",    icon: DollarSign,      label: "Vendas / Financeiro", href: "/vendas" },
+  { id: "clientes",      icon: Contact,         label: "Clientes",            href: "/clientes" },
+  { id: "contratos",     icon: FileSignature,   label: "Contratos",           href: "/contratos" },
+  { id: "vendedores",    icon: Users,           label: "Equipe de Vendas",    href: "/vendedores" },
+  { id: "configuracoes", icon: Settings,        label: "Configurações",       href: "/configuracoes" },
 ];
+
+const DEFAULT_VENDEDOR_PAGINAS = ["estoque", "chat"];
 
 interface SidebarProps {
   onClose?: () => void;
   isVendedor?: boolean;
   effectiveUserId?: string;
+  paginasPermitidas?: string[];
 }
 
-export const Sidebar = ({ onClose, isVendedor = false, effectiveUserId = "" }: SidebarProps) => {
+export const Sidebar = ({ onClose, isVendedor = false, effectiveUserId = "", paginasPermitidas }: SidebarProps) => {
   const pathname = usePathname();
   const router = useRouter();
   const [nomeUsuario, setNomeUsuario] = useState("");
@@ -105,6 +114,15 @@ export const Sidebar = ({ onClose, isVendedor = false, effectiveUserId = "" }: S
     router.push("/login");
     router.refresh();
   }
+
+  const vendedorMenuItems = isVendedor
+    ? [
+        ...todasPaginas.filter(p =>
+          (paginasPermitidas ?? DEFAULT_VENDEDOR_PAGINAS).includes(p.id)
+        ),
+        { id: "minha-conta", icon: UserCircle, label: "Minha Conta", href: "/minha-conta" },
+      ]
+    : [];
 
   const menuItems = isVendedor ? vendedorMenuItems : adminMenuItems;
 
