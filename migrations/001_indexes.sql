@@ -42,18 +42,6 @@ CREATE INDEX IF NOT EXISTS idx_veiculos_user_status
 CREATE INDEX IF NOT EXISTS idx_veiculos_user_status_categoria
   ON veiculos(user_id, status_venda, categoria);
 
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_name = 'veiculos' AND column_name = 'marketing_render_id'
-  ) THEN
-    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_veiculos_render_id
-             ON veiculos(marketing_render_id)
-             WHERE marketing_render_id IS NOT NULL';
-  END IF;
-END $$;
-
 -- ─── agenda ───────────────────────────────────────────────────────────────────
 CREATE INDEX IF NOT EXISTS idx_agenda_user_created
   ON agenda(user_id, created_at DESC);
