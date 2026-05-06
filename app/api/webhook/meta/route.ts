@@ -16,6 +16,8 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { processWhatsAppMessage } from "@/lib/process-whatsapp";
 import { isDuplicateMessage, rateLimit } from "@/lib/redis";
 import { logWebhookError } from "@/lib/error-log";
+import { buscarDadosLead } from "@/lib/meta-ads";
+import { sendMetaMessage, sendMetaCtaButton } from "@/lib/meta";
 
 export const maxDuration = 300;
 
@@ -46,6 +48,108 @@ function validateSignature(body: string, signature: string | null): boolean {
 
   const expected = "sha256=" + createHmac("sha256", appSecret).update(body).digest("hex");
   return signature === expected;
+}
+
+// ─── Processamento de Lead Ad (leadgen event) ─────────────────────────────────
+async function processLeadgenEvent(entry: any, pageAccessToken: string) {
+  const change = entry?.changes?.[0];
+  if (change?.field !== "leadgen") return;
+
+  const { leadgen_id, page_id, form_id, ad_id } = change.value ?? {};
+  if (!leadgen_id) return;
+
+  console.log(`📋 Lead Meta Ads recebido: leadgen_id=${leadgen_id} page_id=${page_id}`);
+
+  // Resolve tenant pela página conectada
+  const { data: paginaRow } = await supabaseAdmin
+    .from("meta_paginas")
+    .select("user_id, page_access_token")
+    .eq("page_id", page_id)
+    .maybeSingle();
+
+  if (!paginaRow) {
+    console.warn(`⚠️ Nenhum tenant para page_id=${page_id}`);
+    return;
+  }
+
+  const tenantUserId = paginaRow.user_id;
+  const token = pageAccessToken || paginaRow.page_access_token;
+
+  // Busca dados do lead na Meta API
+  const { nome, telefone, email } = await buscarDadosLead(leadgen_id, token);
+
+  if (!telefone) {
+    console.warn(`⚠️ Lead ${leadgen_id} sem telefone`);
+    return;
+  }
+
+  // Busca config da garagem para alertar o gerente
+  const { data: garage } = await supabaseAdmin
+    .from("config_garage")
+    .select("nome_fantasia, nome_empresa, whatsapp, meta_phone_id, meta_access_token")
+    .eq("user_id", tenantUserId)
+    .single();
+
+  // Busca campanha para saber qual veículo
+  const { data: campanha } = await supabaseAdmin
+    .from("meta_campanhas")
+    .select("veiculo_id, veiculos(marca, modelo, ano)")
+    .eq("leadform_id", form_id)
+    .maybeSingle() as any;
+
+  const veiculo = campanha?.veiculos;
+  const veiculoLabel = veiculo ? `${veiculo.marca} ${veiculo.modelo} ${veiculo.ano}` : "anúncio";
+
+  // Upsert do lead com origem=meta_ads
+  const { data: leadDb } = await supabaseAdmin
+    .from("leads")
+    .upsert(
+      {
+        wa_id:             telefone,
+        user_id:           tenantUserId,
+        nome:              nome ?? undefined,
+        origem:            "meta_ads",
+        origem_anuncio_id: ad_id ?? form_id,
+        origem_mensagem:   `Lead do anúncio: ${veiculoLabel}`,
+        ...(campanha?.veiculo_id ? { veiculo_id: campanha.veiculo_id } : {}),
+        status: "FRIO",
+      },
+      { onConflict: "user_id, wa_id", ignoreDuplicates: false }
+    )
+    .select()
+    .single();
+
+  // Incrementa contador de leads na campanha
+  if (form_id) {
+    await supabaseAdmin.rpc("incrementar_leads_campanha", { p_form_id: form_id }).catch(() => {});
+  }
+
+  console.log(`✅ Lead Meta Ads criado: ${nome} (${telefone}) — ${veiculoLabel}`);
+
+  // Alerta o gerente via WhatsApp
+  const metaCreds = {
+    phoneNumberId: garage?.meta_phone_id ?? "",
+    accessToken:   garage?.meta_access_token ?? "",
+  };
+  const gerentePhone = garage?.whatsapp
+    ? garage.whatsapp.replace(/\D/g, "").replace(/^(?!55)/, "55")
+    : null;
+
+  if (gerentePhone && metaCreds.phoneNumberId && metaCreds.accessToken) {
+    const nomeEmpresa = garage?.nome_fantasia || garage?.nome_empresa || "AutoZap";
+    const waLink = `https://wa.me/${telefone}`;
+    const alertBody =
+      `🎯 *LEAD META ADS — ${nomeEmpresa.toUpperCase()}*\n\n` +
+      `👤 *Nome:* ${nome ?? "Não informado"}\n` +
+      `📱 *Telefone:* +${telefone}\n` +
+      (email ? `📧 *E-mail:* ${email}\n` : "") +
+      `🚗 *Anúncio:* ${veiculoLabel}\n` +
+      `📣 *Origem:* Facebook/Instagram Lead Ad\n\n` +
+      `_Lead respondido automaticamente pelo WhatsApp em instantes_`;
+
+    sendMetaCtaButton(gerentePhone, alertBody, "Abrir WhatsApp", waLink, metaCreds)
+      .catch(() => sendMetaMessage(gerentePhone, `${alertBody}\n\n${waLink}`, metaCreds).catch(() => {}));
+  }
 }
 
 // ─── Extração de Campos do Payload Meta ──────────────────────────────────────
@@ -112,6 +216,21 @@ export async function POST(req: NextRequest) {
       payload = JSON.parse(rawBody);
     } catch {
       return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    }
+
+    // Leadgen event (Meta Lead Ads) — processa em background e retorna imediatamente
+    const isLeadgen = payload?.entry?.some((e: any) =>
+      e?.changes?.some((c: any) => c?.field === "leadgen")
+    );
+    if (isLeadgen) {
+      after(async () => {
+        for (const entry of payload.entry ?? []) {
+          await processLeadgenEvent(entry, "").catch((e) =>
+            console.error("❌ processLeadgenEvent:", e)
+          );
+        }
+      });
+      return NextResponse.json({ status: "leadgen_queued" });
     }
 
     const { phone, userMessage, fromMe, messageId, phoneNumberId, audioMediaId } = extractFields(payload);

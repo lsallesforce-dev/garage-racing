@@ -11,6 +11,7 @@ import {
   FileText, Eye, EyeOff,
 } from "lucide-react";
 import { GenerateMarketingVideoButton } from "@/components/GenerateMarketingVideoButton";
+import PublicarMetaButton from "@/components/PublicarMetaButton";
 import { toVideoUrl } from "@/lib/r2-url";
 import Link from "next/link";
 
@@ -1798,6 +1799,20 @@ export default function DetalheVeiculo() {
                   marca={veiculo.marca ?? null}
                   modelo={veiculo.modelo ?? null}
                   ano={veiculo.ano_modelo ?? null}
+                />
+              </div>
+
+              {/* Publicar no Meta (Facebook / Instagram Ads) */}
+              <div className="mt-6 pt-6 border-t border-black/10 relative z-10">
+                <p className="text-[9px] font-black uppercase tracking-widest text-gray-500 mb-3">
+                  Anunciar no Facebook / Instagram
+                </p>
+                <PublicarMetaButton
+                  veiculoId={veiculo.id}
+                  marca={veiculo.marca ?? ""}
+                  modelo={veiculo.modelo ?? ""}
+                  ano={veiculo.ano_modelo ?? veiculo.ano ?? ""}
+                  fotoUrl={veiculo.capa_marketing_url ?? veiculo.fotos?.[0] ?? null}
                 />
               </div>
             </div>
