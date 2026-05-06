@@ -460,12 +460,14 @@ function buildStockContext(topVeiculos: Vehicle[], veiculoPrincipal: Vehicle | n
   return sections.join("\n");
 }
 
-// ─── Injeção de Correção de Loop ─────────────────────────────────────────────
-// Detecta mensagens do agente com promessa falsa de "vou verificar" para dados
-// que JÁ estão no contexto atual. Injeta mensagem corretiva sintética como
-// role "model" para quebrar o loop ANTES de chamar o Gemini.
-// IMPORTANTE: a mensagem injetada NÃO é salva no banco — só existe nesta call.
-function injectHistoryCorrection(historico: any[], context: string): any[] {
+// ─── Correção de Loop no Histórico ───────────────────────────────────────────
+// Detecta mensagens de "vou verificar" para dados que JÁ estão no contexto.
+// Estratégia dupla:
+//   1. NEUTRALIZA as mensagens de loop no histórico (substitui por placeholder)
+//      — impede que o LLM siga o padrão estabelecido pelas msgs anteriores
+//   2. INJETA uma mensagem corretiva no final como âncora explícita
+// IMPORTANTE: nada disso é salvo no banco — só existe nesta call.
+function fixHistoryLoops(historico: any[], context: string): any[] {
   const LOOP_PATTERNS = [
     /vou verificar o pre[çc]o/i,
     /vou checar o pre[çc]o/i,
@@ -475,11 +477,15 @@ function injectHistoryCorrection(historico: any[], context: string): any[] {
     /vou verificar (a|o) km/i,
     /vou checar (a|o) (km|quilometragem)/i,
     /vou verificar (a|o) quilometragem/i,
+    /estou verificando/i,
+    /ainda (estou|to) verificando/i,
+    /vou checar com/i,
+    /vou confirmar com/i,
   ];
 
-  const agentMessages = historico.filter((m) => m.role === "model");
-  const loopDetectado = agentMessages.some((m) =>
-    LOOP_PATTERNS.some((p) => p.test(m.parts?.[0]?.text ?? ""))
+  // Detecta a partir do histórico ORIGINAL (antes de qualquer modificação)
+  const loopDetectado = historico.some(
+    (m) => m.role === "model" && LOOP_PATTERNS.some((p) => p.test(m.parts?.[0]?.text ?? ""))
   );
 
   if (!loopDetectado) return historico;
@@ -496,6 +502,20 @@ function injectHistoryCorrection(historico: any[], context: string): any[] {
 
   if (precos.length === 0 && kms.length === 0) return historico;
 
+  // 1. Neutraliza: substitui msgs de loop por placeholder inócuo.
+  //    Isso impede que o LLM "aprenda" o padrão de loop do próprio histórico.
+  let loopsSubstituidos = 0;
+  const sanitized = historico.map((m) => {
+    if (m.role !== "model") return m;
+    const text = m.parts?.[0]?.text ?? "";
+    if (LOOP_PATTERNS.some((p) => p.test(text))) {
+      loopsSubstituidos++;
+      return { role: "model", parts: [{ text: "[verificando com a equipe]" }] };
+    }
+    return m;
+  });
+
+  // 2. Injeta: âncora corretiva explícita no final do histórico sanitizado
   const partes: string[] = [];
   if (precos.length > 0) partes.push(`preço(s): ${precos.join(", ")}`);
   if (kms.length > 0) partes.push(`quilometragem: ${kms.join(", ")}`);
@@ -507,8 +527,8 @@ function injectHistoryCorrection(historico: any[], context: string): any[] {
     }],
   };
 
-  console.log(`🔧 [Loop detector] Injetando correção de histórico. Dados confirmados: ${partes.join(", ")}`);
-  return [...historico, correcao];
+  console.log(`🔧 [Loop fix] ${loopsSubstituidos} msg(s) de loop neutralizadas. Dados confirmados: ${partes.join(", ")}`);
+  return [...sanitized, correcao];
 }
 
 // ─── Processamento Principal ──────────────────────────────────────────────────
@@ -1120,7 +1140,7 @@ Responda apenas com o JSON, sem markdown.`;
     const partsToGenerate: any[] = [{ text: userMessage }];
     if (audioData) partsToGenerate.unshift({ inlineData: audioData });
 
-    const historicoCorigido = injectHistoryCorrection(historico, context);
+    const historicoCorigido = fixHistoryLoops(historico, context);
     const chatRequest = {
       contents: [...historicoCorigido, { role: "user", parts: partsToGenerate }],
       systemInstruction,
@@ -1178,12 +1198,11 @@ Responda apenas com o JSON, sem markdown.`;
         const isValidUuidFormat =
           typeof veiculoIdFoco === "string" &&
           /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(veiculoIdFoco);
-        // Só permite troca de carro se o cliente mencionou textualmente outro carro
-        // (clientePediuCarroDiferente) ou se o novo carro apareceu nos resultados de busca textual.
-        // Isso impede que resultados semânticos (ex: "Chega em 65.000?" → Honda City similar em preço)
-        // corrompam o veiculo_id quando o cliente está negociando o carro atual.
-        const novoCarroEmTextSearch = hitsTextuais.some((v) => v.id === veiculoIdFoco);
-        const permiteTraca = clientePediuCarroDiferente || novoCarroEmTextSearch || !veiculoIdAnterior;
+        // Permite troca se o carro estava no contexto enviado ao Gemini (topVeiculos).
+        // Isso cobre tanto hits textuais quanto semânticos ("mas vi um prata", "e aquele?")
+        // sem risco de alucinação — carro que não estava no contexto continua bloqueado.
+        const novoCarroEmContexto = topVeiculos.some((v) => v.id === veiculoIdFoco);
+        const permiteTraca = novoCarroEmContexto || !veiculoIdAnterior;
         if (isValidUuidFormat && lead && veiculoIdFoco !== veiculoIdAnterior && permiteTraca) {
           const { data: veiculoFocoValidado } = await supabaseAdmin
             .from("veiculos")
@@ -1202,7 +1221,7 @@ Responda apenas com o JSON, sem markdown.`;
             console.warn(`⚠️ veiculo_id_foco inválido ou de outro tenant rejeitado: ${veiculoIdFoco}`);
           }
         } else if (isValidUuidFormat && lead && veiculoIdFoco !== veiculoIdAnterior && !permiteTraca) {
-          console.log(`🔒 veiculo_id_foco bloqueado (sem evidência textual de troca): ${veiculoIdFoco}`);
+          console.log(`🔒 veiculo_id_foco bloqueado (carro não estava no contexto enviado ao Gemini): ${veiculoIdFoco}`);
         }
 
         const nomeRaw = parsed.nome_cliente_extraido;
