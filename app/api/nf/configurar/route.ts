@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/api-auth";
+import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { registrarEmpresa, type EmpresaFocus } from "@/lib/focusnfe";
 
@@ -7,7 +7,7 @@ export async function POST(req: NextRequest) {
   const { user, error: authError } = await requireAuth();
   if (authError) return authError;
 
-  const userId = user!.user_metadata?.owner_user_id ?? user!.id;
+  const userId = getEffectiveUserId(user!);
 
   // Só Premium pode configurar NF
   const { data: cfg } = await supabaseAdmin

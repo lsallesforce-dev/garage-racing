@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { requireAuth } from "@/lib/api-auth";
+import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
 
 export async function PATCH(req: NextRequest) {
   const { vendedorId, comissao_pct } = await req.json();
@@ -11,10 +11,7 @@ export async function PATCH(req: NextRequest) {
   const { user, error: authError } = await requireAuth();
   if (authError) return authError;
 
-  const effectiveUserId =
-    user!.user_metadata?.role === "vendedor"
-      ? user!.user_metadata?.owner_user_id
-      : user!.id;
+  const effectiveUserId = getEffectiveUserId(user!);
 
   // Verifica que o vendedor pertence ao usuário
   const { data: vend } = await supabaseAdmin

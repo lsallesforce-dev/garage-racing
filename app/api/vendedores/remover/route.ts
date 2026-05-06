@@ -12,10 +12,12 @@ export async function POST(req: NextRequest) {
 
   // Verify the target user is a vendor belonging to this owner
   const { data: target } = await supabaseAdmin.auth.admin.getUserById(vendedor_id);
+  const targetRole    = target?.user?.app_metadata?.role    ?? target?.user?.user_metadata?.role;
+  const targetOwnerId = target?.user?.app_metadata?.owner_user_id ?? target?.user?.user_metadata?.owner_user_id;
   if (
     !target?.user ||
-    target.user.user_metadata?.role !== "vendedor" ||
-    target.user.user_metadata?.owner_user_id !== user.id
+    targetRole !== "vendedor" ||
+    targetOwnerId !== user.id
   ) {
     return NextResponse.json({ error: "Vendedor não encontrado" }, { status: 404 });
   }

@@ -28,7 +28,10 @@ export async function POST(req: NextRequest) {
       email,
       password: senha,
       email_confirm: true,
-      user_metadata: { role: novoRole ?? "vendedor", owner_user_id: user.id, nome: nomeSimples ?? email },
+      // role e owner_user_id vão em app_metadata (imutável pelo usuário)
+      // nome vai em user_metadata (campo de perfil, sem impacto de segurança)
+      app_metadata: { role: novoRole ?? "vendedor", owner_user_id: user.id },
+      user_metadata: { nome: nomeSimples ?? email },
     });
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true, id: created.user.id });
@@ -66,10 +69,7 @@ export async function POST(req: NextRequest) {
       email,
       password: senha,
       email_confirm: true,
-      user_metadata: {
-        role: "vendedor",
-        owner_user_id: user.id,
-      },
+      app_metadata: { role: "vendedor", owner_user_id: user.id },
     });
 
     if (error) {

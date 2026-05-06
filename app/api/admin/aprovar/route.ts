@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
   if (!user_id) return NextResponse.json({ error: "user_id obrigatório" }, { status: 400 });
 
   const { error } = await supabaseAdmin.auth.admin.updateUserById(user_id, {
-    user_metadata: { aprovado: true },
+    app_metadata: { aprovado: true },
   });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

@@ -8,12 +8,17 @@ export default async function MainLayout({ children }: { children: React.ReactNo
 
   if (!user) redirect("/login");
 
-  // Cadastro aguardando aprovação do admin
-  const meta = user.user_metadata as { role?: string; owner_user_id?: string; aprovado?: boolean } | undefined;
-  if (meta?.aprovado === false) redirect("/aguardando");
-  const isVendedor = meta?.role === "vendedor";
+  // app_metadata é somente gravável server-side; user_metadata é fallback para usuários antigos
+  const appMeta = user.app_metadata as { role?: string; owner_user_id?: string; aprovado?: boolean } | undefined;
+  const userMeta = user.user_metadata as { role?: string; owner_user_id?: string; aprovado?: boolean } | undefined;
+  const role       = appMeta?.role       ?? userMeta?.role;
+  const aprovado   = appMeta?.aprovado   ?? userMeta?.aprovado;
+  const ownerUserId = appMeta?.owner_user_id ?? userMeta?.owner_user_id;
 
-  const effectiveUserId = isVendedor ? (meta?.owner_user_id ?? user.id) : user.id;
+  if (aprovado === false) redirect("/aguardando");
+  const isVendedor = role === "vendedor";
+
+  const effectiveUserId = isVendedor ? (ownerUserId ?? user.id) : user.id;
 
   if (isVendedor) {
     // Rotas permitidas para vendedor — qualquer outra redireciona para /estoque (fail-secure)

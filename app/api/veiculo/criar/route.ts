@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { requireAuth } from "@/lib/api-auth";
+import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
 
 export async function POST() {
   const { user, error: authError } = await requireAuth();
   if (authError) return authError;
 
-  const userId     = user!.user_metadata?.owner_user_id ?? user!.id;
+  const userId = getEffectiveUserId(user!);
   const vendedorId = user!.id;
 
   const { data, error } = await supabaseAdmin

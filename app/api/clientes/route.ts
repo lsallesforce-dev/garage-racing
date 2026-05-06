@@ -1,15 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { requireAuth } from "@/lib/api-auth";
+import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
 
 export async function GET() {
   const { user, error: authError } = await requireAuth();
   if (authError) return authError;
 
-  const effectiveUserId =
-    user!.user_metadata?.role === "vendedor"
-      ? user!.user_metadata?.owner_user_id
-      : user!.id;
+  const effectiveUserId = getEffectiveUserId(user!);
 
   const { data: clientes, error } = await supabaseAdmin
     .from("clientes")
@@ -38,10 +35,7 @@ export async function POST(req: NextRequest) {
   const { user, error: authError } = await requireAuth();
   if (authError) return authError;
 
-  const effectiveUserId =
-    user!.user_metadata?.role === "vendedor"
-      ? user!.user_metadata?.owner_user_id
-      : user!.id;
+  const effectiveUserId = getEffectiveUserId(user!);
 
   const body = await req.json();
   const { nome, cpf, telefone, email, endereco, cidade, estado, cep, observacoes } = body;

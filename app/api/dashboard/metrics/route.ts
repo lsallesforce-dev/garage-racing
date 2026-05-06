@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/api-auth";
+import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
 export async function GET(req: NextRequest) {
   const { user, error: authError } = await requireAuth();
   if (authError) return authError;
-  const userId = user!.user_metadata?.role === "vendedor"
-    ? user!.user_metadata?.owner_user_id
-    : user!.id;
+  const userId = getEffectiveUserId(user!);
 
   const agora = new Date();
   const inicioDia = new Date(agora);

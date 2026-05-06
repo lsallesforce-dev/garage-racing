@@ -15,7 +15,9 @@ export async function POST(req: NextRequest) {
     email,
     password: senha,
     email_confirm: true,
-    user_metadata: { nome, aprovado: false },
+    // aprovado vai em app_metadata (imutável pelo usuário — evita auto-aprovação)
+    app_metadata: { aprovado: false },
+    user_metadata: { nome },
   });
 
   if (createErr) {

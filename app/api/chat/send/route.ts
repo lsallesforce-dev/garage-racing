@@ -1,6 +1,6 @@
 import { sendMetaMessage } from "@/lib/meta";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { requireLeadOwner } from "@/lib/api-auth";
+import { requireLeadOwner, getEffectiveUserId } from "@/lib/api-auth";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
@@ -15,10 +15,7 @@ export async function POST(req: NextRequest) {
     const { user, error: authError } = await requireLeadOwner(lead_id);
     if (authError) return authError;
 
-    // Vendedor usa o user_id do dono, não o próprio
-    const effectiveUserId = user!.user_metadata?.role === "vendedor"
-      ? user!.user_metadata?.owner_user_id
-      : user!.id;
+    const effectiveUserId = getEffectiveUserId(user!);
 
     // Busca credenciais Meta do tenant
     const { data: cfg } = await supabaseAdmin

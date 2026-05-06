@@ -10,7 +10,7 @@ const PAGINAS_VALIDAS = [
 export async function POST(req: NextRequest) {
   const { user, error } = await requireAuth();
   if (error) return error;
-  if (user!.user_metadata?.role === "vendedor") {
+  if ((user!.app_metadata?.role ?? user!.user_metadata?.role) === "vendedor") {
     return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
   }
 
@@ -27,15 +27,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Usuário não encontrado" }, { status: 404 });
   }
 
-  // Garante que é vendedor do mesmo tenant
-  const ownerUserId = vendedorData.user.user_metadata?.owner_user_id;
+  // Garante que é vendedor do mesmo tenant (lê app_metadata primeiro)
+  const ownerUserId = vendedorData.user.app_metadata?.owner_user_id ?? vendedorData.user.user_metadata?.owner_user_id;
   if (ownerUserId !== user!.id) {
     return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
   }
 
   const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(vendedor_id, {
-    user_metadata: {
-      ...vendedorData.user.user_metadata,
+    app_metadata: {
+      ...vendedorData.user.app_metadata,
       paginas_permitidas: paginasFiltradas,
     },
   });

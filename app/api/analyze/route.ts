@@ -25,9 +25,9 @@ export async function POST(req: NextRequest) {
     if (!user) {
       return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
     }
-    const userId = user.user_metadata?.role === "vendedor"
-      ? user.user_metadata?.owner_user_id
-      : user.id;
+    const role = user.app_metadata?.role ?? user.user_metadata?.role;
+    const ownerId = user.app_metadata?.owner_user_id ?? user.user_metadata?.owner_user_id;
+    const userId = role === "vendedor" ? (ownerId ?? user.id) : user.id;
 
     // Rate limit: 10 análises por minuto por usuário (Gemini é caro)
     const rl = await rateLimit(`analyze:${userId}`, 10, 60);

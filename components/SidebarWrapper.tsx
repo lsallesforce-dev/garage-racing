@@ -63,7 +63,7 @@ export function SidebarWrapper({ children, isVendedor = false, effectiveUserId =
   useEffect(() => {
     if (isVendedor) {
       supabase.auth.getUser().then(({ data: { user } }) => {
-        const paginas = user?.user_metadata?.paginas_permitidas;
+        const paginas = user?.app_metadata?.paginas_permitidas ?? user?.user_metadata?.paginas_permitidas;
         setPaginasPermitidas(Array.isArray(paginas) ? paginas : undefined);
       });
     }

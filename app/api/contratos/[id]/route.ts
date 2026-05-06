@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { requireAuth } from "@/lib/api-auth";
+import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
 
 async function resolveOwner(contratoId: string, userId: string) {
   const { data } = await supabaseAdmin
@@ -16,10 +16,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const { user, error: authError } = await requireAuth();
   if (authError) return authError;
 
-  const effectiveUserId =
-    user!.user_metadata?.role === "vendedor"
-      ? user!.user_metadata?.owner_user_id
-      : user!.id;
+  const effectiveUserId = getEffectiveUserId(user!);
 
   const { data, error } = await supabaseAdmin
     .from("contratos")
@@ -37,10 +34,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { user, error: authError } = await requireAuth();
   if (authError) return authError;
 
-  const effectiveUserId =
-    user!.user_metadata?.role === "vendedor"
-      ? user!.user_metadata?.owner_user_id
-      : user!.id;
+  const effectiveUserId = getEffectiveUserId(user!);
 
   if (!(await resolveOwner(id, effectiveUserId))) {
     return NextResponse.json({ error: "Acesso negado" }, { status: 403 });
@@ -71,10 +65,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   const { user, error: authError } = await requireAuth();
   if (authError) return authError;
 
-  const effectiveUserId =
-    user!.user_metadata?.role === "vendedor"
-      ? user!.user_metadata?.owner_user_id
-      : user!.id;
+  const effectiveUserId = getEffectiveUserId(user!);
 
   if (!(await resolveOwner(id, effectiveUserId))) {
     return NextResponse.json({ error: "Acesso negado" }, { status: 403 });

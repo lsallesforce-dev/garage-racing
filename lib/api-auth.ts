@@ -43,6 +43,7 @@ export async function requireAdminSecret(req: NextRequest): Promise<NextResponse
 
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { NextResponse } from "next/server";
+import type { User } from "@supabase/supabase-js";
 
 /**
  * Retorna o user autenticado ou uma resposta 401.
@@ -55,6 +56,18 @@ export async function requireAuth() {
     return { user: null, error: NextResponse.json({ error: "Não autenticado" }, { status: 401 }) };
   }
   return { user, error: null };
+}
+
+/**
+ * Resolve o userId efetivo do tenant para um usuário autenticado.
+ * Lê de app_metadata primeiro (imutável pelo usuário), com fallback para user_metadata.
+ * Vendedores retornam o owner_user_id (tenant do dono), não o próprio id.
+ */
+export function getEffectiveUserId(user: User): string {
+  const role = user.app_metadata?.role ?? user.user_metadata?.role;
+  if (role !== "vendedor") return user.id;
+  const ownerId = user.app_metadata?.owner_user_id ?? user.user_metadata?.owner_user_id;
+  return ownerId ?? user.id;
 }
 
 /**
@@ -79,11 +92,7 @@ export async function requireVehicleOwner(veiculoId: string) {
 
   if (!data) return { user: null, error: NextResponse.json({ error: "Veículo não encontrado" }, { status: 404 }) };
 
-  // Vendedores têm role="vendedor" e owner_user_id no metadata — mesmo padrão do MainLayout
-  const effectiveUserId =
-    user!.user_metadata?.role === "vendedor"
-      ? user!.user_metadata?.owner_user_id
-      : user!.id;
+  const effectiveUserId = getEffectiveUserId(user!);
 
   if (data.user_id !== effectiveUserId) {
     return { user: null, error: NextResponse.json({ error: "Acesso negado" }, { status: 403 }) };
@@ -113,10 +122,7 @@ export async function requireLeadOwner(leadId: string) {
 
   if (!data) return { user: null, error: NextResponse.json({ error: "Lead não encontrado" }, { status: 404 }) };
 
-  const effectiveUserId =
-    user!.user_metadata?.role === "vendedor"
-      ? user!.user_metadata?.owner_user_id
-      : user!.id;
+  const effectiveUserId = getEffectiveUserId(user!);
 
   if (data.user_id !== effectiveUserId) {
     return { user: null, error: NextResponse.json({ error: "Acesso negado" }, { status: 403 }) };
