@@ -1147,6 +1147,75 @@ export default function ConfiguracoesPage() {
             </button>
           )}
         </div>
+
+        {/* ── Integração com Portais de Anúncio ─────────────────────────────── */}
+        <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm">
+          <div className="flex items-center gap-3 mb-1">
+            <div className="w-8 h-8 rounded-xl bg-orange-50 flex items-center justify-center">
+              <span className="text-orange-500 font-black text-sm">OLX</span>
+            </div>
+            <div>
+              <p className="text-[11px] font-black uppercase tracking-widest text-gray-900">Integração OLX</p>
+              <p className="text-[10px] text-gray-400">Leads recebidos no OLX entram automaticamente aqui</p>
+            </div>
+          </div>
+
+          <div className="mt-4 bg-orange-50 rounded-2xl p-4 border border-orange-100">
+            <p className="text-[10px] font-black uppercase tracking-widest text-orange-600 mb-3">Como configurar</p>
+            <ol className="text-[11px] text-gray-600 space-y-1.5 list-decimal list-inside">
+              <li>Acesse <span className="font-bold">olxpro.com.br</span> → Configurações → Integração / Webhook</li>
+              <li>Cole a URL abaixo no campo de webhook de leads</li>
+              <li>Salve — novos leads chegam direto no chat e você recebe alerta no WhatsApp</li>
+            </ol>
+          </div>
+
+          <div className="mt-4">
+            <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Sua URL de webhook</p>
+            {webhookToken ? (
+              <div className="flex items-center gap-2">
+                <div className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 font-mono text-[10px] text-gray-700 truncate">
+                  {`${process.env.NEXT_PUBLIC_APP_URL ?? "https://app.autozap.digital"}/api/webhook/olx?token=${webhookToken}`}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard(
+                    `${process.env.NEXT_PUBLIC_APP_URL ?? "https://app.autozap.digital"}/api/webhook/olx?token=${webhookToken}`,
+                    "olx-url"
+                  )}
+                  className="flex-shrink-0 p-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl transition-colors"
+                  title="Copiar URL"
+                >
+                  {copied === "olx-url"
+                    ? <CheckCircle2 size={14} />
+                    : <Copy size={14} />
+                  }
+                </button>
+              </div>
+            ) : (
+              <p className="text-[11px] text-gray-400 italic">
+                Token de webhook não gerado. Salve as configurações principais primeiro.
+              </p>
+            )}
+          </div>
+
+          <div className="mt-4 pt-4 border-t border-gray-100">
+            <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">O que acontece quando chega um lead</p>
+            <div className="space-y-1.5">
+              {[
+                "Lead é criado automaticamente no chat",
+                "Você recebe alerta no WhatsApp com nome, telefone e anúncio",
+                "Se o cliente mandar WhatsApp, a IA responde automaticamente",
+              ].map((item, i) => (
+                <div key={i} className="flex items-start gap-2">
+                  <div className="w-4 h-4 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <span className="text-orange-500 text-[9px] font-black">{i + 1}</span>
+                  </div>
+                  <p className="text-[11px] text-gray-600">{item}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
     </main>
   );
