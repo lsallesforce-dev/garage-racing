@@ -150,7 +150,7 @@ export default function MinhaContaPage() {
   function abrirEdicaoPerms(membro: Membro) {
     setEditandoMembro(membro);
     // Tenta ler paginas_permitidas do user_metadata via membros — fallback para padrão
-    setPermsEditando(["estoque", "chat"]);
+    setPermsEditando(["estoque", "chat", "clientes", "contratos"]);
     fetch("/api/vendedores/listar")
       .then(r => r.json())
       .then(data => {

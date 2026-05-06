@@ -30,7 +30,7 @@ const todasPaginas = [
   { id: "configuracoes", icon: Settings,        label: "Configurações",       href: "/configuracoes" },
 ];
 
-const DEFAULT_VENDEDOR_PAGINAS = ["estoque", "chat"];
+const DEFAULT_VENDEDOR_PAGINAS = ["estoque", "chat", "clientes", "contratos"];
 
 interface SidebarProps {
   onClose?: () => void;
