@@ -102,6 +102,7 @@ export async function sendAvisaImage(phone: string, imageUrlOrBase64: string, me
       number: formatPhone(phone),
       fileUrl: imageUrlOrBase64,
       type: "image",
+      fileName: "foto.jpg",
     };
     if (message) payload.message = message;
     console.log(`🖼️ Avisa sendImage (URL) → ${formatPhone(phone)}`);
