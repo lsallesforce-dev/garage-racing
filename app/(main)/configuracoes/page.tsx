@@ -221,13 +221,14 @@ export default function ConfiguracoesPage() {
     setMetaAdsLoading(true);
     setMetaAdsError(null);
     try {
-      const res = await fetch("/api/meta/pagina");
+      const res = await fetch("/api/meta/pagina?listar=1");
       if (!res.ok) {
         const e = await res.json();
         setMetaAdsError(e.error ?? "Erro ao carregar páginas");
         return;
       }
-      const { paginas, adAccounts } = await res.json();
+      const { paginas, adAccounts, error: apiErr } = await res.json();
+      if (apiErr) { setMetaAdsError(apiErr); return; }
       setMetaPaginas(paginas ?? []);
       setMetaAdAccounts(adAccounts ?? []);
       if (paginas?.length) setSelectedPageId(paginas[0].id);

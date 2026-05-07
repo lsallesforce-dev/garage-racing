@@ -29,10 +29,17 @@ interface Props {
   modelo?: string;
   ano?: string | number;
   fotoUrl?: string | null;
+  defaultOpen?: boolean;
+  onClose?: () => void;
 }
 
-export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, fotoUrl }: Props) {
-  const [open, setOpen] = useState(false);
+export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, fotoUrl, defaultOpen = false, onClose }: Props) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  const handleClose = () => {
+    setOpen(false);
+    onClose?.();
+  };
   const [paginas, setPaginas] = useState<Pagina[]>([]);
   const [campanhas, setCampanhas] = useState<Campanha[]>([]);
   const [loading, setLoading] = useState(false);
@@ -121,7 +128,7 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
                 <p className="font-black text-gray-900 text-sm">Publicar no Meta</p>
                 <p className="text-[11px] text-gray-400 truncate max-w-[220px]">{veiculoNome || "Veículo"}</p>
               </div>
-              <button onClick={() => setOpen(false)} className="p-2 hover:bg-gray-100 rounded-xl transition-colors">
+              <button onClick={handleClose} className="p-2 hover:bg-gray-100 rounded-xl transition-colors">
                 <X size={18} className="text-gray-500" />
               </button>
             </div>

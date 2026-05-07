@@ -6,11 +6,25 @@ import { requireAuth } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { listarPaginas, listarAdAccounts } from "@/lib/meta-ads";
 
-// GET — lista páginas e ad accounts disponíveis no token do tenant
+// GET — retorna páginas já salvas no banco; com ?listar=1 também busca do token Meta
 export async function GET(req: NextRequest) {
   const auth = await requireAuth(req);
   if (auth instanceof NextResponse) return auth;
 
+  const listarBrutas = req.nextUrl.searchParams.get("listar") === "1";
+
+  // Sempre retorna páginas já salvas (usadas pelo PublicarMetaButton)
+  const { data: salvas } = await supabaseAdmin
+    .from("meta_paginas")
+    .select("id, page_id, page_name, ad_account_id, instagram_actor_id")
+    .eq("user_id", auth.userId)
+    .order("created_at", { ascending: false });
+
+  if (!listarBrutas) {
+    return NextResponse.json({ salvas: salvas ?? [] });
+  }
+
+  // ?listar=1 — busca páginas e ad accounts brutas do token (tela de configuração)
   const { data: garage } = await supabaseAdmin
     .from("config_garage")
     .select("meta_access_token")
@@ -19,7 +33,7 @@ export async function GET(req: NextRequest) {
 
   const token = garage?.meta_access_token;
   if (!token) {
-    return NextResponse.json({ error: "Meta não conectado" }, { status: 400 });
+    return NextResponse.json({ salvas: salvas ?? [], error: "Meta não conectado" });
   }
 
   try {
@@ -27,10 +41,10 @@ export async function GET(req: NextRequest) {
       listarPaginas(token),
       listarAdAccounts(token),
     ]);
-    return NextResponse.json({ paginas, adAccounts });
+    return NextResponse.json({ salvas: salvas ?? [], paginas, adAccounts });
   } catch (err: any) {
     console.error("Erro ao listar páginas Meta:", err.message);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ salvas: salvas ?? [], error: err.message });
   }
 }
 
