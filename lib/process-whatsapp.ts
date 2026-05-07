@@ -6,6 +6,7 @@ import { createDecipheriv, hkdfSync } from "node:crypto";
 import { geminiFlashSales, geminiFlashFallback } from "@/lib/gemini";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendMetaMessage, sendMetaImage, sendMetaVideo, sendMetaPreview, sendMetaCtaButton, markMetaRead } from "@/lib/meta";
+import { sendAvisaMessage, sendAvisaImage, sendAvisaVideo, sendAvisaPreview } from "@/lib/avisa";
 import { buscarDadosTransbordo, gerarRelatorioPista } from "@/lib/leads";
 import { hybridVehicleSearch, findVehicleForMedia } from "@/lib/hybrid-search";
 import { getCachedHistory, cacheHistory, invalidateHistory, appendHistory, circuitIsOpen, circuitRecordFailure, circuitRecordSuccess } from "@/lib/redis";
@@ -124,6 +125,8 @@ export interface GarageConfig {
   webhook_token?: string;
   meta_phone_id?: string;
   meta_access_token?: string;
+  avisa_base_url?: string;
+  avisa_token?: string;
   // Day 2: prompt customization
   tom_venda?: string;               // ex: "descontraído", "formal", "apressado"
   instrucoes_adicionais?: string;   // bloco livre de instruções do dono
@@ -542,6 +545,35 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
     accessToken: garageConfig?.meta_access_token || process.env.META_ACCESS_TOKEN || "",
   };
 
+  // Credenciais Avisa do tenant
+  const avisaCreds = {
+    baseUrl: garageConfig?.avisa_base_url ?? "",
+    token:   garageConfig?.avisa_token    ?? "",
+  };
+
+  // Canal de envio: Avisa se tiver avisa_base_url, caso contrário Meta
+  const useAvisa = !!avisaCreds.baseUrl && !!avisaCreds.token;
+
+  const sendText  = (to: string, text: string) =>
+    useAvisa
+      ? sendAvisaMessage(to, text, avisaCreds)
+      : sendMetaMessage(to, text, metaCreds);
+
+  const sendImage = (to: string, url: string, caption?: string) =>
+    useAvisa
+      ? sendAvisaImage(to, url, caption, avisaCreds)
+      : sendMetaImage(to, url, caption, metaCreds);
+
+  const sendVideo = (to: string, url: string, caption?: string) =>
+    useAvisa
+      ? sendAvisaVideo(to, url, caption, avisaCreds)
+      : sendMetaVideo(to, url, caption, metaCreds);
+
+  const sendPreview = (to: string, text: string, url: string, title: string, desc: string) =>
+    useAvisa
+      ? sendAvisaPreview(to, text, url, title, desc, undefined, avisaCreds)
+      : sendMetaPreview(to, text, url, title, desc, metaCreds);
+
   let userMessage = rawMessage;
   let audioData: { data: string; mimeType: string } | null = null;
 
@@ -619,7 +651,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
       garageConfig?.nome_agente || "IA",
       tenantUserId
     );
-    await sendMetaMessage(phone, relatorio, metaCreds);
+    await sendText(phone, relatorio);
     return;
   }
 
@@ -645,7 +677,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
         })
         .eq("id", leadReset.id);
     }
-    await sendMetaMessage(phone, "✅ Reset completo. Conversa reiniciada.", metaCreds);
+    await sendText(phone, "✅ Reset completo. Conversa reiniciada.");
     return;
   }
 
@@ -697,9 +729,8 @@ Responda apenas com o JSON, sem markdown.`;
             weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
             timeZone: "America/Sao_Paulo",
           });
-          await sendMetaMessage(phone,
-            `✅ *Agendado!*\n\n📅 ${parsed.titulo}\n🕐 ${dataFormatada}\n${parsed.descricao ? `📝 ${parsed.descricao}` : ""}\n\n_Aparece na agenda do dashboard._`,
-            metaCreds
+          await sendText(phone,
+            `✅ *Agendado!*\n\n📅 ${parsed.titulo}\n🕐 ${dataFormatada}\n${parsed.descricao ? `📝 ${parsed.descricao}` : ""}\n\n_Aparece na agenda do dashboard._`
           );
           return;
         }
@@ -892,7 +923,7 @@ Responda apenas com o JSON, sem markdown.`;
       sendMetaCtaButton(gerentePhone, posvBody, "Abrir Conversa", posvLink, metaCreds)
         .catch(async (err: any) => {
           console.warn("⚠️ CTA button (pós-venda) falhou:", err?.message?.slice(0, 100));
-          await sendMetaMessage(gerentePhone, `${posvBody}\n\n${posvLink}`, metaCreds).catch(() => {});
+          await sendText(gerentePhone, `${posvBody}\n\n${posvLink}`).catch(() => {});
         });
     }
   }
@@ -1022,7 +1053,7 @@ Responda apenas com o JSON, sem markdown.`;
 
       for (const fotoUrl of todasFotos) {
         try {
-          await sendMetaImage(phone, fotoUrl, undefined, metaCreds);
+          await sendImage(phone, fotoUrl, undefined);
           fotoEnviada = true;
         } catch (e) {
           console.warn(`⚠️ Falha ao enviar foto de ${v.marca} ${v.modelo}:`, e);
@@ -1055,13 +1086,13 @@ Responda apenas com o JSON, sem markdown.`;
       const videoUrlRaw = (veiculoParaVideo as any).video_marketing_url ?? (veiculoParaVideo as any).video_url ?? null;
 
       // Avisa o cliente antes de iniciar possível compressão longa
-      await sendMetaMessage(phone, "Um momento...", metaCreds);
+      await sendText(phone, "Um momento...");
 
       const videoUrl = await ensureCompressedVideo(videoUrlRaw, veiculoParaVideo.id);
       console.log(`🎥 vídeo enviado ao Meta: ${videoUrl} (marketing=${!!(veiculoParaVideo as any).video_marketing_url})`);
       if (videoUrl) {
         try {
-          await sendMetaVideo(phone, videoUrl, undefined, metaCreds);
+          await sendVideo(phone, videoUrl, undefined);
           videoEnviado = true;
 
           // Mensagem de texto junto ao vídeo para não deixar mídia órfã
@@ -1069,7 +1100,7 @@ Responda apenas com o JSON, sem markdown.`;
           const textoVideo = carUrl
             ? `Se quiser ver todos os detalhes: ${carUrl}`
             : null;
-          if (textoVideo) await sendMetaMessage(phone, textoVideo, metaCreds);
+          if (textoVideo) await sendText(phone, textoVideo);
 
           if (lead && veiculoParaVideo.id !== veiculoIdAnterior) {
             await supabaseAdmin
@@ -1243,14 +1274,13 @@ Responda apenas com o JSON, sem markdown.`;
             const veiculoAlert = topVeiculos[0]
               ? `${topVeiculos[0].marca} ${topVeiculos[0].modelo}`
               : "veículo em negociação";
-            sendMetaMessage(
+            sendText(
               gerentePhone,
               `❓ *AGENTE PRECISA DE INSTRUÇÃO*\n\n` +
               `👤 Cliente: ${nomeLead}\n` +
               `🚗 Veículo: ${veiculoAlert}\n\n` +
               `💬 Dúvida: ${precisaInstrucao}\n\n` +
-              `👉 Responda a esta mensagem com a instrução para o agente continuar.`,
-              metaCreds
+              `👉 Responda a esta mensagem com a instrução para o agente continuar.`
             ).catch((err: any) => console.error("❌ precisa_instrucao não entregue ao gerente:", err?.message?.slice(0, 300)));
           }
         }
@@ -1392,7 +1422,7 @@ Responda apenas com o JSON, sem markdown.`;
         .then(() => console.log(`✅ CTA button enviado ao vendedor (${destinoWa})`))
         .catch(async (err: any) => {
           console.warn(`⚠️ CTA button falhou para ${destinoWa}:`, err?.message?.slice(0, 200));
-          await sendMetaMessage(destinoWa, `${briefing.texto}\n\n${briefing.waLink}`, metaCreds)
+          await sendText(destinoWa, `${briefing.texto}\n\n${briefing.waLink}`)
             .then(() => console.log(`✅ Fallback texto+link enviado ao vendedor (${destinoWa})`))
             .catch((e: any) => console.error(`❌ Fallback também falhou para ${destinoWa}:`, e?.message?.slice(0, 200)));
         });
@@ -1400,6 +1430,6 @@ Responda apenas com o JSON, sem markdown.`;
   }
 
   // ── 15. Enviar resposta ao cliente ────────────────────────────────────────────
-  await sendMetaMessage(phone, aiResponse, metaCreds);
+  await sendText(phone, aiResponse);
   console.log(`✅ Mensagem processada para ${phone} | temperatura: ${temperatura}`);
 }
