@@ -49,6 +49,8 @@ interface GarageConfig {
   instrucoes_adicionais?: string;
   horario_funcionamento?: string;
   oferta_especial?: string;
+  webmotors_usuario?: string;
+  webmotors_senha?: string;
 }
 
 export default function ConfiguracoesPage() {
@@ -69,6 +71,11 @@ export default function ConfiguracoesPage() {
   const [copied, setCopied] = useState<string | null>(null);
   const [metaConnecting, setMetaConnecting] = useState(false);
   const [metaConnected, setMetaConnected] = useState(false);
+
+  // Webmotors
+  const [showWmSenha, setShowWmSenha] = useState(false);
+  const [savingWm, setSavingWm] = useState(false);
+  const [savedWm, setSavedWm] = useState(false);
 
   // Facebook Ads — conectar página + ad account
   const [metaAdsLoading, setMetaAdsLoading] = useState(false);
@@ -322,6 +329,8 @@ export default function ConfiguracoesPage() {
               instrucoes_adicionais: row.instrucoes_adicionais ?? "",
               horario_funcionamento: row.horario_funcionamento ?? "",
               oferta_especial: row.oferta_especial ?? "",
+              webmotors_usuario: row.webmotors_usuario ?? "",
+              webmotors_senha:   row.webmotors_senha   ?? "",
             });
             if (row.logo_url) {
               setCurrentLogo(row.logo_url);
@@ -481,7 +490,9 @@ export default function ConfiguracoesPage() {
             tom_venda: config.tom_venda || null,
             instrucoes_adicionais: config.instrucoes_adicionais || null,
             horario_funcionamento: config.horario_funcionamento || null,
-            oferta_especial: config.oferta_especial || null,
+            oferta_especial:      config.oferta_especial      || null,
+            webmotors_usuario:    config.webmotors_usuario    || null,
+            webmotors_senha:      config.webmotors_senha      || null,
           },
           { onConflict: "user_id" }
         )
@@ -1291,6 +1302,87 @@ export default function ConfiguracoesPage() {
                   <p className="text-[11px] text-gray-600">{item}</p>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Webmotors ─────────────────────────────────────────────────────── */}
+        <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm">
+          <div className="flex items-center gap-3 mb-1">
+            <div className="w-8 h-8 rounded-xl bg-red-50 flex items-center justify-center">
+              <span className="text-red-600 font-black text-[9px] tracking-tight">WEB</span>
+            </div>
+            <div>
+              <p className="text-[11px] font-black uppercase tracking-widest text-gray-900">Webmotors</p>
+              <p className="text-[10px] text-gray-400">Leads do Webmotors entram automaticamente no chat</p>
+            </div>
+          </div>
+
+          <div className="mt-4 space-y-4">
+            <div className="bg-red-50 rounded-2xl p-4 border border-red-100">
+              <p className="text-[10px] font-black uppercase tracking-widest text-red-600 mb-2">Como configurar</p>
+              <ol className="text-[11px] text-gray-600 space-y-1.5 list-decimal list-inside">
+                <li>Acesse o <span className="font-bold">Cockpit Webmotors</span> → Configurações → Usuários</li>
+                <li>Crie um usuário com perfil <span className="font-bold">Integrador de API</span></li>
+                <li>Cole o usuário e a senha abaixo e salve</li>
+                <li>Informe à Webmotors a URL de callback: <span className="font-mono text-[9px] break-all">{`${process.env.NEXT_PUBLIC_APP_URL ?? "https://app.autozap.digital"}/api/webhook/webmotors`}</span></li>
+              </ol>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Usuário Integrador</p>
+                <input
+                  type="text"
+                  value={config.webmotors_usuario || ""}
+                  onChange={(e) => setConfig((c) => ({ ...c, webmotors_usuario: e.target.value }))}
+                  placeholder="usuario@loja.com"
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-[12px] text-gray-700 focus:outline-none focus:ring-2 focus:ring-red-200"
+                />
+              </div>
+
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Senha</p>
+                <div className="relative">
+                  <input
+                    type={showWmSenha ? "text" : "password"}
+                    value={config.webmotors_senha || ""}
+                    onChange={(e) => setConfig((c) => ({ ...c, webmotors_senha: e.target.value }))}
+                    placeholder="••••••••"
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 pr-10 text-[12px] text-gray-700 focus:outline-none focus:ring-2 focus:ring-red-200"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowWmSenha((v) => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
+                  >
+                    {showWmSenha ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <p className="text-[9px] text-gray-400 italic">
+              As credenciais são salvas junto com as demais configurações ao clicar em <span className="font-bold">Salvar</span> no topo da página.
+            </p>
+
+            <div className="pt-2 border-t border-gray-100">
+              <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">URL de Callback (copiar para a Webmotors)</p>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 font-mono text-[10px] text-gray-700 truncate">
+                  {`${process.env.NEXT_PUBLIC_APP_URL ?? "https://app.autozap.digital"}/api/webhook/webmotors`}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard(
+                    `${process.env.NEXT_PUBLIC_APP_URL ?? "https://app.autozap.digital"}/api/webhook/webmotors`,
+                    "wm-url"
+                  )}
+                  className="flex-shrink-0 p-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl transition-colors"
+                >
+                  {copied === "wm-url" ? <CheckCircle2 size={14} /> : <Copy size={14} />}
+                </button>
+              </div>
             </div>
           </div>
         </div>

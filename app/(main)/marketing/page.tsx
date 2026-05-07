@@ -72,7 +72,7 @@ function MetaBadge({ veiculoId }: { veiculoId: string }) {
 
 // ─── Card de veículo ──────────────────────────────────────────────────────────
 
-function VeiculoMarketingCard({ carro }: { carro: any }) {
+function VeiculoMarketingCard({ carro, wmConfigurado }: { carro: any; wmConfigurado: boolean }) {
   const [metaOpen, setMetaOpen] = useState(false);
   const fotoUrl = carro.capa_marketing_url ?? carro.fotos?.[0] ?? null;
   const vendido = carro.status_venda === "VENDIDO";
@@ -144,15 +144,32 @@ function VeiculoMarketingCard({ carro }: { carro: any }) {
 
           {/* Webmotors */}
           <div className="flex flex-col items-center gap-1">
-            <button
-              disabled
-              title="Em breve"
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-50 opacity-40 cursor-not-allowed border border-red-100"
-            >
-              <IconWebmotors className="w-4 h-4" />
-              <span className="text-[9px] font-black uppercase tracking-wider text-red-700">Webmotors</span>
-            </button>
-            <span className="text-[8px] text-gray-300 font-bold uppercase tracking-wider">Em breve</span>
+            {wmConfigurado ? (
+              <>
+                <div
+                  title="Leads do Webmotors chegam automaticamente via webhook"
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-50 border border-red-100"
+                >
+                  <IconWebmotors className="w-4 h-4" />
+                  <span className="text-[9px] font-black uppercase tracking-wider text-red-700">Webmotors</span>
+                </div>
+                <span className="flex items-center gap-0.5 px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-[9px] font-black uppercase tracking-wider">
+                  <CheckCircle2 size={9} /> Ativo
+                </span>
+              </>
+            ) : (
+              <>
+                <a
+                  href="/configuracoes"
+                  title="Configure as credenciais Webmotors em Configurações"
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-50 hover:bg-red-100 border border-red-100 transition-colors"
+                >
+                  <IconWebmotors className="w-4 h-4" />
+                  <span className="text-[9px] font-black uppercase tracking-wider text-red-700">Webmotors</span>
+                </a>
+                <span className="text-[8px] text-gray-300 font-bold uppercase tracking-wider">Configurar</span>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -180,19 +197,29 @@ export default function MarketingPage() {
   const [carros, setCarros] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtro, setFiltro] = useState<"todos" | "disponiveis">("disponiveis");
+  const [wmConfigurado, setWmConfigurado] = useState(false);
 
   useEffect(() => {
     if (!effectiveUserId) return;
-    supabase
-      .from("veiculos")
-      .select("id, marca, modelo, versao, ano, ano_modelo, preco_sugerido, capa_marketing_url, fotos, status_venda")
-      .eq("user_id", effectiveUserId)
-      .order("status_venda", { ascending: true })
-      .order("created_at", { ascending: false })
-      .then(({ data }) => {
-        setCarros(data ?? []);
-        setLoading(false);
-      });
+
+    // Carrega veículos e verifica credenciais Webmotors em paralelo
+    Promise.all([
+      supabase
+        .from("veiculos")
+        .select("id, marca, modelo, versao, ano, ano_modelo, preco_sugerido, capa_marketing_url, fotos, status_venda")
+        .eq("user_id", effectiveUserId)
+        .order("status_venda", { ascending: true })
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("config_garage")
+        .select("webmotors_usuario")
+        .eq("user_id", effectiveUserId)
+        .maybeSingle(),
+    ]).then(([veiculos, config]) => {
+      setCarros(veiculos.data ?? []);
+      setWmConfigurado(!!config.data?.webmotors_usuario);
+      setLoading(false);
+    });
   }, [effectiveUserId]);
 
   const carrosFiltrados = filtro === "disponiveis"
@@ -242,7 +269,7 @@ export default function MarketingPage() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {carrosFiltrados.map((carro) => (
-              <VeiculoMarketingCard key={carro.id} carro={carro} />
+              <VeiculoMarketingCard key={carro.id} carro={carro} wmConfigurado={wmConfigurado} />
             ))}
           </div>
         )}
@@ -253,7 +280,7 @@ export default function MarketingPage() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
               { nome: "OLX", cor: "bg-purple-50 border-purple-100", corText: "text-purple-600", status: "Aguardando homologação", icon: <IconOLX className="w-6 h-6" /> },
-              { nome: "Webmotors", cor: "bg-red-50 border-red-100", corText: "text-red-600", status: "Em desenvolvimento", icon: <IconWebmotors className="w-6 h-6" /> },
+              { nome: "Webmotors", cor: "bg-red-50 border-red-100", corText: "text-red-600", status: wmConfigurado ? "Webhook ativo" : "Configure em Configurações", icon: <IconWebmotors className="w-6 h-6" /> },
               { nome: "iCarros", cor: "bg-orange-50 border-orange-100", corText: "text-orange-600", status: "Planejado", icon: <span className="text-[10px] font-black text-orange-600">iCarros</span> },
               { nome: "Mercado Livre", cor: "bg-yellow-50 border-yellow-100", corText: "text-yellow-700", status: "Planejado", icon: <span className="text-[10px] font-black text-yellow-700">ML</span> },
             ].map((p) => (
