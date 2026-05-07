@@ -92,11 +92,24 @@ export async function sendAvisaMessage(phone: string, message: string, creds?: P
   return sendWithRetry(`${c.baseUrl}/actions/sendMessage`, payload, c.token);
 }
 
-export async function sendAvisaImage(phone: string, imageBase64: string, message?: string, creds?: Partial<AvisaCreds>) {
+export async function sendAvisaImage(phone: string, imageUrlOrBase64: string, message?: string, creds?: Partial<AvisaCreds>) {
   const c = resolveCreds(creds);
   if (!c) { console.warn("Avisa credentials missing"); return; }
 
-  const payload: any = { number: formatPhone(phone), image: imageBase64 };
+  // URLs (Supabase Storage, R2) → sendMedia com fileUrl
+  if (imageUrlOrBase64.startsWith("http")) {
+    const payload: any = {
+      number: formatPhone(phone),
+      fileUrl: imageUrlOrBase64,
+      type: "image",
+    };
+    if (message) payload.message = message;
+    console.log(`🖼️ Avisa sendImage (URL) → ${formatPhone(phone)}`);
+    return sendWithRetry(`${c.baseUrl}/actions/sendMedia`, payload, c.token);
+  }
+
+  // Base64 → sendImage
+  const payload: any = { number: formatPhone(phone), image: imageUrlOrBase64 };
   if (message) payload.message = message;
   return sendWithRetry(`${c.baseUrl}/actions/sendImage`, payload, c.token);
 }
