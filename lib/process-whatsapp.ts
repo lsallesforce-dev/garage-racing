@@ -1418,14 +1418,20 @@ Responda apenas com o JSON, sem markdown.`;
         nomeEmpresa
       );
       console.log(`🔥 Lead ${temperatura} — enviando alerta para ${destinoWa}`);
-      sendMetaCtaButton(destinoWa, briefing.texto, "Abrir Conversa", briefing.waLink, metaCreds)
-        .then(() => console.log(`✅ CTA button enviado ao vendedor (${destinoWa})`))
-        .catch(async (err: any) => {
-          console.warn(`⚠️ CTA button falhou para ${destinoWa}:`, err?.message?.slice(0, 200));
-          await sendText(destinoWa, `${briefing.texto}\n\n${briefing.waLink}`)
-            .then(() => console.log(`✅ Fallback texto+link enviado ao vendedor (${destinoWa})`))
-            .catch((e: any) => console.error(`❌ Fallback também falhou para ${destinoWa}:`, e?.message?.slice(0, 200)));
-        });
+      if (!useAvisa && metaCreds.phoneNumberId && metaCreds.accessToken) {
+        sendMetaCtaButton(destinoWa, briefing.texto, "Abrir Conversa", briefing.waLink, metaCreds)
+          .then(() => console.log(`✅ CTA button enviado ao vendedor (${destinoWa})`))
+          .catch(async (err: any) => {
+            console.warn(`⚠️ CTA button falhou para ${destinoWa}:`, err?.message?.slice(0, 200));
+            await sendText(destinoWa, `${briefing.texto}\n\n${briefing.waLink}`)
+              .then(() => console.log(`✅ Fallback texto+link enviado ao vendedor (${destinoWa})`))
+              .catch((e: any) => console.error(`❌ Fallback também falhou para ${destinoWa}:`, e?.message?.slice(0, 200)));
+          });
+      } else {
+        sendText(destinoWa, `${briefing.texto}\n\n${briefing.waLink}`)
+          .then(() => console.log(`✅ Alerta enviado ao vendedor via Avisa (${destinoWa})`))
+          .catch((e: any) => console.error(`❌ Alerta ao vendedor falhou (${destinoWa}):`, e?.message?.slice(0, 200)));
+      }
     }
   }
 
