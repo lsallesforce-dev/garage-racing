@@ -93,37 +93,98 @@ function WmButton({ wmConfigurado }: { wmConfigurado: boolean }) {
   }
 
   return (
-    <div className="flex flex-col items-center gap-1 relative">
-      <button
-        onClick={() => setHint((v) => !v)}
-        className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-50 hover:bg-red-100 border border-red-100 transition-colors opacity-60"
-      >
-        <IconWebmotors className="w-4 h-4" />
-        <span className="text-[9px] font-black uppercase tracking-wider text-red-700">Webmotors</span>
-      </button>
-      <span className="text-[8px] text-gray-300 font-bold uppercase tracking-wider">Configurar</span>
-
+    <>
       {hint && (
-        <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-52 bg-gray-900 text-white rounded-xl p-3 shadow-xl z-50 text-center">
-          <p className="text-[10px] font-bold leading-snug mb-2">
-            Configure as credenciais Webmotors em Configurações para ativar.
-          </p>
-          <a
-            href="/configuracoes"
-            className="inline-block px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-[9px] font-black uppercase rounded-lg transition-colors"
-          >
-            Ir para Configurações
-          </a>
-          <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900" />
-        </div>
+        <div className="fixed inset-0 z-40" onClick={() => setHint(false)} />
       )}
-    </div>
+      <div className="flex flex-col items-center gap-1 relative">
+        <button
+          onClick={() => setHint((v) => !v)}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-50 hover:bg-red-100 border border-red-100 transition-colors opacity-60"
+        >
+          <IconWebmotors className="w-4 h-4" />
+          <span className="text-[9px] font-black uppercase tracking-wider text-red-700">Webmotors</span>
+        </button>
+        <span className="text-[8px] text-gray-300 font-bold uppercase tracking-wider">Configurar</span>
+
+        {hint && (
+          <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-52 bg-gray-900 text-white rounded-xl p-3 shadow-xl z-50 text-center">
+            <p className="text-[10px] font-bold leading-snug mb-2">
+              Configure as credenciais Webmotors em Configurações para ativar.
+            </p>
+            <a
+              href="/configuracoes"
+              className="inline-block px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-[9px] font-black uppercase rounded-lg transition-colors"
+            >
+              Ir para Configurações
+            </a>
+            <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900" />
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+// ─── Botão OLX ────────────────────────────────────────────────────────────────
+
+function OlxButton({ olxConectado }: { olxConectado: boolean }) {
+  const [hint, setHint] = useState(false);
+
+  if (olxConectado) {
+    return (
+      <div className="flex flex-col items-center gap-1">
+        <div
+          title="OLX conectado — anúncios em breve"
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-purple-50 border border-purple-100"
+        >
+          <IconOLX className="w-4 h-4" />
+          <span className="text-[9px] font-black uppercase tracking-wider text-purple-700">OLX</span>
+        </div>
+        <span className="flex items-center gap-0.5 px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-[9px] font-black uppercase tracking-wider">
+          <CheckCircle2 size={9} /> Conectado
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {hint && (
+        <div className="fixed inset-0 z-40" onClick={() => setHint(false)} />
+      )}
+      <div className="flex flex-col items-center gap-1 relative">
+        <button
+          onClick={() => setHint((v) => !v)}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 border border-purple-100 transition-colors opacity-70"
+        >
+          <IconOLX className="w-4 h-4" />
+          <span className="text-[9px] font-black uppercase tracking-wider text-purple-700">OLX</span>
+        </button>
+        <span className="text-[8px] text-gray-300 font-bold uppercase tracking-wider">Conectar</span>
+
+        {hint && (
+          <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-52 bg-gray-900 text-white rounded-xl p-3 shadow-xl z-50 text-center">
+            <p className="text-[10px] font-bold leading-snug mb-2">
+              Conecte sua conta OLX para publicar anúncios automaticamente.
+            </p>
+            <a
+              href="/api/oauth/olx/authorize"
+              className="inline-block px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-[9px] font-black uppercase rounded-lg transition-colors"
+            >
+              Conectar OLX
+            </a>
+            <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900" />
+          </div>
+        )}
+      </div>
+    </>
   );
 }
 
 // ─── Card de veículo ──────────────────────────────────────────────────────────
 
-function VeiculoMarketingCard({ carro, wmConfigurado }: { carro: any; wmConfigurado: boolean }) {
+function VeiculoMarketingCard({ carro, wmConfigurado, olxConectado }: { carro: any; wmConfigurado: boolean; olxConectado: boolean }) {
   const [metaOpen, setMetaOpen] = useState(false);
   const fotoUrl = carro.capa_marketing_url ?? carro.fotos?.[0] ?? null;
   const vendido = carro.status_venda === "VENDIDO";
@@ -181,17 +242,7 @@ function VeiculoMarketingCard({ carro, wmConfigurado }: { carro: any; wmConfigur
           </div>
 
           {/* OLX */}
-          <div className="flex flex-col items-center gap-1">
-            <button
-              disabled
-              title="Em breve — aguardando homologação OLX"
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-purple-50 opacity-40 cursor-not-allowed border border-purple-100"
-            >
-              <IconOLX className="w-4 h-4" />
-              <span className="text-[9px] font-black uppercase tracking-wider text-purple-700">OLX</span>
-            </button>
-            <span className="text-[8px] text-gray-300 font-bold uppercase tracking-wider">Em breve</span>
-          </div>
+          <OlxButton olxConectado={olxConectado} />
 
           {/* Webmotors */}
           <WmButton wmConfigurado={wmConfigurado} />
@@ -222,6 +273,7 @@ export default function MarketingPage() {
   const [loading, setLoading] = useState(true);
   const [filtro, setFiltro] = useState<"todos" | "disponiveis">("disponiveis");
   const [wmConfigurado, setWmConfigurado] = useState(false);
+  const [olxConectado, setOlxConectado] = useState(false);
 
   useEffect(() => {
     if (!effectiveUserId) return;
@@ -236,12 +288,13 @@ export default function MarketingPage() {
         .order("created_at", { ascending: false }),
       supabase
         .from("config_garage")
-        .select("webmotors_usuario")
+        .select("webmotors_usuario, olx_access_token")
         .eq("user_id", effectiveUserId)
         .maybeSingle(),
     ]).then(([veiculos, config]) => {
       setCarros(veiculos.data ?? []);
       setWmConfigurado(!!config.data?.webmotors_usuario);
+      setOlxConectado(!!config.data?.olx_access_token);
       setLoading(false);
     });
   }, [effectiveUserId]);
@@ -293,7 +346,7 @@ export default function MarketingPage() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {carrosFiltrados.map((carro) => (
-              <VeiculoMarketingCard key={carro.id} carro={carro} wmConfigurado={wmConfigurado} />
+              <VeiculoMarketingCard key={carro.id} carro={carro} wmConfigurado={wmConfigurado} olxConectado={olxConectado} />
             ))}
           </div>
         )}
@@ -303,7 +356,7 @@ export default function MarketingPage() {
           <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-4">Integrações planejadas</p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
-              { nome: "OLX", cor: "bg-purple-50 border-purple-100", corText: "text-purple-600", status: "Aguardando homologação", icon: <IconOLX className="w-6 h-6" /> },
+              { nome: "OLX", cor: "bg-purple-50 border-purple-100", corText: "text-purple-600", status: olxConectado ? "Conectado" : "Clique para conectar", icon: <IconOLX className="w-6 h-6" /> },
               { nome: "Webmotors", cor: "bg-red-50 border-red-100", corText: "text-red-600", status: wmConfigurado ? "Webhook ativo" : "Configure em Configurações", icon: <IconWebmotors className="w-6 h-6" /> },
               { nome: "iCarros", cor: "bg-orange-50 border-orange-100", corText: "text-orange-600", status: "Planejado", icon: <span className="text-[10px] font-black text-orange-600">iCarros</span> },
               { nome: "Mercado Livre", cor: "bg-yellow-50 border-yellow-100", corText: "text-yellow-700", status: "Planejado", icon: <span className="text-[10px] font-black text-yellow-700">ML</span> },
