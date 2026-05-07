@@ -138,15 +138,26 @@ export async function POST(req: NextRequest) {
       bearerToken ||
       null;
 
+    const FIELDS = "user_id, nome_empresa, nome_fantasia, nome_agente, endereco, endereco_complemento, whatsapp, vitrine_slug, webhook_token, avisa_base_url, avisa_token, tom_venda, instrucoes_adicionais, plano_ativo, trial_ends_at, plano_vence_em";
     let tenantUserId: string | null = null;
     let garageConfig: any = null;
 
     if (token) {
-      const { data } = await supabaseAdmin
+
+      // Tenta pelo webhook_token primeiro, depois pelo avisa_token (URL configurada com token da Avisa API)
+      let { data } = await supabaseAdmin
         .from("config_garage")
-        .select("user_id, nome_empresa, nome_fantasia, nome_agente, endereco, endereco_complemento, whatsapp, vitrine_slug, webhook_token, avisa_base_url, avisa_token, tom_venda, instrucoes_adicionais, plano_ativo, trial_ends_at, plano_vence_em")
+        .select(FIELDS)
         .eq("webhook_token", token)
         .maybeSingle();
+
+      if (!data) {
+        ({ data } = await supabaseAdmin
+          .from("config_garage")
+          .select(FIELDS)
+          .eq("avisa_token", token)
+          .maybeSingle());
+      }
 
       if (data) {
         tenantUserId = data.user_id;
@@ -162,7 +173,7 @@ export async function POST(req: NextRequest) {
       if (tenantUserId) {
         const { data } = await supabaseAdmin
           .from("config_garage")
-          .select("user_id, nome_empresa, nome_fantasia, nome_agente, endereco, endereco_complemento, whatsapp, vitrine_slug, webhook_token, avisa_base_url, avisa_token, tom_venda, instrucoes_adicionais, plano_ativo, trial_ends_at, plano_vence_em")
+          .select(FIELDS)
           .eq("user_id", tenantUserId)
           .maybeSingle();
         garageConfig = data || null;
