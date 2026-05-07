@@ -64,6 +64,27 @@ export async function POST(req: NextRequest) {
       update = { plano_ativo: true, plano_vence_em: valor };
       break;
 
+    case "set_avisa":
+      // valor = { avisa_base_url, avisa_token }
+      if (!valor?.avisa_base_url && !valor?.avisa_token) {
+        return NextResponse.json({ error: "avisa_base_url ou avisa_token obrigatório" }, { status: 400 });
+      }
+      update = {};
+      if (valor.avisa_base_url) update.avisa_base_url = valor.avisa_base_url;
+      if (valor.avisa_token)    update.avisa_token    = valor.avisa_token;
+      break;
+
+    case "set_meta":
+      // valor = { meta_phone_id, meta_access_token, whatsapp_agente? }
+      if (!valor || (!valor.meta_phone_id && !valor.meta_access_token)) {
+        return NextResponse.json({ error: "meta_phone_id ou meta_access_token obrigatório" }, { status: 400 });
+      }
+      update = {};
+      if (valor.meta_phone_id)     update.meta_phone_id     = valor.meta_phone_id;
+      if (valor.meta_access_token) update.meta_access_token = valor.meta_access_token;
+      if (valor.whatsapp_agente)   update.whatsapp_agente   = valor.whatsapp_agente;
+      break;
+
     default:
       return NextResponse.json({ error: "Ação desconhecida" }, { status: 400 });
   }
