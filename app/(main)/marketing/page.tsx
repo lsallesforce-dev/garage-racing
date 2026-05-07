@@ -70,6 +70,57 @@ function MetaBadge({ veiculoId }: { veiculoId: string }) {
   return null;
 }
 
+// ─── Botão Webmotors com tooltip inline ──────────────────────────────────────
+
+function WmButton({ wmConfigurado }: { wmConfigurado: boolean }) {
+  const [hint, setHint] = useState(false);
+
+  if (wmConfigurado) {
+    return (
+      <div className="flex flex-col items-center gap-1">
+        <div
+          title="Leads do Webmotors chegam automaticamente via webhook"
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-50 border border-red-100"
+        >
+          <IconWebmotors className="w-4 h-4" />
+          <span className="text-[9px] font-black uppercase tracking-wider text-red-700">Webmotors</span>
+        </div>
+        <span className="flex items-center gap-0.5 px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-[9px] font-black uppercase tracking-wider">
+          <CheckCircle2 size={9} /> Ativo
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-1 relative">
+      <button
+        onClick={() => setHint((v) => !v)}
+        className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-50 hover:bg-red-100 border border-red-100 transition-colors opacity-60"
+      >
+        <IconWebmotors className="w-4 h-4" />
+        <span className="text-[9px] font-black uppercase tracking-wider text-red-700">Webmotors</span>
+      </button>
+      <span className="text-[8px] text-gray-300 font-bold uppercase tracking-wider">Configurar</span>
+
+      {hint && (
+        <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-52 bg-gray-900 text-white rounded-xl p-3 shadow-xl z-50 text-center">
+          <p className="text-[10px] font-bold leading-snug mb-2">
+            Configure as credenciais Webmotors em Configurações para ativar.
+          </p>
+          <a
+            href="/configuracoes"
+            className="inline-block px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-[9px] font-black uppercase rounded-lg transition-colors"
+          >
+            Ir para Configurações
+          </a>
+          <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900" />
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Card de veículo ──────────────────────────────────────────────────────────
 
 function VeiculoMarketingCard({ carro, wmConfigurado }: { carro: any; wmConfigurado: boolean }) {
@@ -143,34 +194,7 @@ function VeiculoMarketingCard({ carro, wmConfigurado }: { carro: any; wmConfigur
           </div>
 
           {/* Webmotors */}
-          <div className="flex flex-col items-center gap-1">
-            {wmConfigurado ? (
-              <>
-                <div
-                  title="Leads do Webmotors chegam automaticamente via webhook"
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-50 border border-red-100"
-                >
-                  <IconWebmotors className="w-4 h-4" />
-                  <span className="text-[9px] font-black uppercase tracking-wider text-red-700">Webmotors</span>
-                </div>
-                <span className="flex items-center gap-0.5 px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-[9px] font-black uppercase tracking-wider">
-                  <CheckCircle2 size={9} /> Ativo
-                </span>
-              </>
-            ) : (
-              <>
-                <a
-                  href="/configuracoes"
-                  title="Configure as credenciais Webmotors em Configurações"
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-50 hover:bg-red-100 border border-red-100 transition-colors"
-                >
-                  <IconWebmotors className="w-4 h-4" />
-                  <span className="text-[9px] font-black uppercase tracking-wider text-red-700">Webmotors</span>
-                </a>
-                <span className="text-[8px] text-gray-300 font-bold uppercase tracking-wider">Configurar</span>
-              </>
-            )}
-          </div>
+          <WmButton wmConfigurado={wmConfigurado} />
         </div>
       </div>
 
