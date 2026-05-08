@@ -121,7 +121,7 @@ async function processLeadgenEvent(entry: any, pageAccessToken: string) {
 
   // Incrementa contador de leads na campanha
   if (form_id) {
-    await supabaseAdmin.rpc("incrementar_leads_campanha", { p_form_id: form_id }).catch(() => {});
+    supabaseAdmin.rpc("incrementar_leads_campanha", { p_form_id: form_id }).then(() => {}, () => {});
   }
 
   console.log(`✅ Lead Meta Ads criado: ${nome} (${telefone}) — ${veiculoLabel}`);
@@ -160,6 +160,7 @@ function extractFields(payload: any): {
   messageId: string | null;
   phoneNumberId: string;
   audioMediaId: string | null;
+  adReferral?: { headline: string | null; body: string | null; source_type: string | null; ad_id: string | null } | null;
 } {
   try {
     const entry   = payload?.entry?.[0];

@@ -578,7 +578,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   const sendPreview = (to: string, text: string, url: string, title: string, desc: string) =>
     useAvisa
       ? sendAvisaPreview(to, text, url, title, desc, undefined, avisaCreds)
-      : sendMetaPreview(to, text, url, title, desc, metaCreds);
+      : sendMetaPreview(to, text, url, title, desc, undefined, metaCreds);
 
   let userMessage = rawMessage;
   let audioData: { data: string; mimeType: string } | null = null;
