@@ -185,6 +185,11 @@ function extractFields(payload: any): {
     // Áudio (voice note ou arquivo de áudio)
     const audioMediaId: string | null = msg.type === "audio" ? (msg.audio?.id ?? null) : null;
 
+    // Imagem enviada pelo cliente — injeta contexto para o agente responder sobre avaliação
+    if ((msg.type === "image" || msg.type === "sticker") && !userMessage) {
+      userMessage = "[Cliente enviou foto(s) do veículo]";
+    }
+
     // Referral de anúncio (Facebook/Instagram Ads Click-to-WhatsApp)
     const ref = msg.referral;
     const adReferral = ref ? {

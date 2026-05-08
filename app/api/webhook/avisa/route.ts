@@ -66,6 +66,9 @@ function extractFields(payload: any): {
     audioUrl = msg?.audioMessage?.URL ?? msg?.audioMessage?.url;
     audioMediaKey = msg?.audioMessage?.mediaKey ?? msg?.audioMessage?.MediaKey;
     messageId = info.ID;
+    if (!userMessage && !audioUrl && msg?.imageMessage) {
+      userMessage = "[Cliente enviou foto(s) do veículo]";
+    }
 
     // Link preview context (Instagram, Facebook, etc.)
     // Quando o cliente clica num post do Instagram com link preview, o título e descrição
@@ -84,7 +87,9 @@ function extractFields(payload: any): {
     userMessage =
       parsedData.message || parsedData.text?.message || parsedData.body || "";
     fromMe = parsedData.isGroup || parsedData.fromMe || false;
-    if (!userMessage && !parsedData.text && parsedData.type !== "text") {
+    if (!userMessage && parsedData.type === "image") {
+      userMessage = "[Cliente enviou foto(s) do veículo]";
+    } else if (!userMessage && !parsedData.text && parsedData.type !== "text") {
       return { phone: "", userMessage: "", fromMe: true };
     }
 
@@ -105,6 +110,9 @@ function extractFields(payload: any): {
     phone = (key.remoteJid || "").replace(/@.*$/, "");
     userMessage = msg?.conversation || msg?.extendedTextMessage?.text || "";
     messageId = key.id;
+    if (!userMessage && msg?.imageMessage) {
+      userMessage = "[Cliente enviou foto(s) do veículo]";
+    }
 
     // Link preview context (Evolution API format)
     const extTitle = msg?.extendedTextMessage?.title;
