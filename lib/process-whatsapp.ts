@@ -1175,8 +1175,12 @@ Responda apenas com o JSON, sem markdown.`;
       // Prioridade: reel de marketing (já otimizado) → vídeo bruto
       const videoUrlRaw = (veiculoParaVideo as any).video_marketing_url ?? (veiculoParaVideo as any).video_url ?? null;
 
-      // Avisa o cliente antes de iniciar possível compressão longa
-      await sendText(phone, "Um momento...");
+      // "Um momento..." só quando precisa comprimir (vídeo > 15MB)
+      if (videoUrlRaw) {
+        const headCheck = await fetch(videoUrlRaw, { method: "HEAD" }).catch(() => null);
+        const rawSize = parseInt(headCheck?.headers.get("content-length") ?? "0", 10);
+        if (rawSize > 15 * 1024 * 1024) await sendText(phone, "Um momento...");
+      }
 
       const videoUrl = await ensureCompressedVideo(videoUrlRaw, veiculoParaVideo.id);
       console.log(`🎥 vídeo enviado ao Meta: ${videoUrl} (marketing=${!!(veiculoParaVideo as any).video_marketing_url})`);
@@ -1232,8 +1236,8 @@ Responda apenas com o JSON, sem markdown.`;
   let resumo = "";
   let temperatura: Temperatura = "FRIO";
 
-  // Determina saudação correta com base na hora de Brasília (UTC-3)
-  const horaBrasilia = new Date(Date.now() - 3 * 60 * 60 * 1000).getUTCHours();
+  // Determina saudação correta com base na hora de Brasília (timezone explícito — robusto em qualquer runtime)
+  const horaBrasilia = parseInt(new Date().toLocaleString("pt-BR", { hour: "numeric", hour12: false, timeZone: "America/Sao_Paulo" }), 10);
   const saudacaoHoraria =
     horaBrasilia >= 5 && horaBrasilia < 12 ? "Bom dia" :
     horaBrasilia >= 12 && horaBrasilia < 18 ? "Boa tarde" :

@@ -176,7 +176,7 @@ export async function POST(req: NextRequest) {
       bearerToken ||
       null;
 
-    const FIELDS = "user_id, nome_empresa, nome_fantasia, nome_agente, endereco, endereco_complemento, whatsapp, vitrine_slug, webhook_token, avisa_base_url, avisa_token, tom_venda, instrucoes_adicionais, plano_ativo, trial_ends_at, plano_vence_em";
+    const FIELDS = "user_id, nome_empresa, nome_fantasia, nome_agente, endereco, endereco_complemento, whatsapp, vitrine_slug, webhook_token, avisa_base_url, avisa_token, tom_venda, instrucoes_adicionais, oferta_especial, plano_ativo, trial_ends_at, plano_vence_em";
     let tenantUserId: string | null = null;
     let garageConfig: any = null;
 

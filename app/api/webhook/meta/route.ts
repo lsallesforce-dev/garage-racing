@@ -11,7 +11,7 @@
 
 import { after } from "next/server";
 import { NextRequest, NextResponse } from "next/server";
-import { createHmac } from "crypto";
+import { createHmac, timingSafeEqual } from "crypto";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { processWhatsAppMessage } from "@/lib/process-whatsapp";
 import { isDuplicateMessage, rateLimit } from "@/lib/redis";
@@ -47,7 +47,10 @@ function validateSignature(body: string, signature: string | null): boolean {
   if (!signature) return false;
 
   const expected = "sha256=" + createHmac("sha256", appSecret).update(body).digest("hex");
-  return signature === expected;
+  const expectedBuf = Buffer.from(expected);
+  const signatureBuf = Buffer.from(signature);
+  if (expectedBuf.length !== signatureBuf.length) return false;
+  return timingSafeEqual(expectedBuf, signatureBuf);
 }
 
 // ─── Processamento de Lead Ad (leadgen event) ─────────────────────────────────
@@ -269,7 +272,7 @@ export async function POST(req: NextRequest) {
     // Resolve tenant pelo phone_number_id
     const { data: garageConfig } = await supabaseAdmin
       .from("config_garage")
-      .select("user_id, nome_empresa, nome_fantasia, nome_agente, endereco, endereco_complemento, whatsapp, vitrine_slug, meta_phone_id, meta_access_token, tom_venda, instrucoes_adicionais, horario_funcionamento, plano_ativo, trial_ends_at, plano_vence_em")
+      .select("user_id, nome_empresa, nome_fantasia, nome_agente, endereco, endereco_complemento, whatsapp, vitrine_slug, meta_phone_id, meta_access_token, tom_venda, instrucoes_adicionais, horario_funcionamento, oferta_especial, plano_ativo, trial_ends_at, plano_vence_em")
       .eq("meta_phone_id", phoneNumberId)
       .maybeSingle();
 

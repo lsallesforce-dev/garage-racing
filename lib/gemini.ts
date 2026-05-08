@@ -9,9 +9,9 @@ export const geminiFlashSales = genAI.getGenerativeModel(
   { apiVersion: "v1beta" }
 );
 
-// Fallback gratuito — gemini-2.0-flash-lite tem cota free separada do spending cap
+// Fallback quando principal atinge 429 — gemini-2.0-flash (lite está descontinuado/404)
 export const geminiFlashFallback = genAI.getGenerativeModel(
-  { model: "gemini-2.0-flash-lite" },
+  { model: "gemini-2.0-flash" },
   { apiVersion: "v1beta" }
 );
 
