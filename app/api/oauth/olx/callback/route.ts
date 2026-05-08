@@ -79,5 +79,5 @@ export async function GET(req: NextRequest) {
   }
 
   console.log(`✅ OLX OAuth concluído para tenant ${state}`);
-  return NextResponse.redirect(`${APP_URL}/configuracoes?olx_conectado=1`);
+  return NextResponse.redirect(`${APP_URL}/marketing?olx_conectado=1`);
 }

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useUserRole } from "@/components/SidebarWrapper";
 import { Megaphone, CheckCircle2, Clock, XCircle } from "lucide-react";
@@ -77,18 +78,37 @@ function WmButton({ wmConfigurado }: { wmConfigurado: boolean }) {
 
   if (wmConfigurado) {
     return (
-      <div className="flex flex-col items-center gap-1">
-        <div
-          title="Leads do Webmotors chegam automaticamente via webhook"
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-50 border border-red-100"
-        >
-          <IconWebmotors className="w-4 h-4" />
-          <span className="text-[9px] font-black uppercase tracking-wider text-red-700">Webmotors</span>
+      <>
+        {hint && (
+          <div className="fixed inset-0 z-40" onClick={() => setHint(false)} />
+        )}
+        <div className="flex flex-col items-center gap-1 relative">
+          <button
+            onClick={() => setHint((v) => !v)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-50 border border-red-100 hover:bg-red-100 transition-colors"
+          >
+            <IconWebmotors className="w-4 h-4" />
+            <span className="text-[9px] font-black uppercase tracking-wider text-red-700">Webmotors</span>
+          </button>
+          <span className="flex items-center gap-0.5 px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-[9px] font-black uppercase tracking-wider">
+            <CheckCircle2 size={9} /> Ativo
+          </span>
+          {hint && (
+            <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-52 bg-gray-900 text-white rounded-xl p-3 shadow-xl z-50 text-center">
+              <p className="text-[10px] font-bold leading-snug mb-2">
+                Leads do Webmotors chegam automaticamente pelo webhook configurado.
+              </p>
+              <a
+                href="/configuracoes"
+                className="inline-block px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-[9px] font-black uppercase rounded-lg transition-colors"
+              >
+                Ver Configurações
+              </a>
+              <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900" />
+            </div>
+          )}
         </div>
-        <span className="flex items-center gap-0.5 px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-[9px] font-black uppercase tracking-wider">
-          <CheckCircle2 size={9} /> Ativo
-        </span>
-      </div>
+      </>
     );
   }
 
@@ -170,6 +190,8 @@ function OlxButton({ olxConectado }: { olxConectado: boolean }) {
             </p>
             <a
               href="/api/oauth/olx/authorize"
+              target="_blank"
+              rel="noopener noreferrer"
               className="inline-block px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-[9px] font-black uppercase rounded-lg transition-colors"
             >
               Conectar OLX
@@ -267,18 +289,28 @@ function VeiculoMarketingCard({ carro, wmConfigurado, olxConectado }: { carro: a
 
 // ─── Página ───────────────────────────────────────────────────────────────────
 
-export default function MarketingPage() {
+function MarketingPageInner() {
   const { effectiveUserId } = useUserRole();
+  const searchParams = useSearchParams();
   const [carros, setCarros] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtro, setFiltro] = useState<"todos" | "disponiveis">("disponiveis");
   const [wmConfigurado, setWmConfigurado] = useState(false);
   const [olxConectado, setOlxConectado] = useState(false);
 
+  const fetchConfig = useCallback(async (userId: string) => {
+    const { data } = await supabase
+      .from("config_garage")
+      .select("webmotors_usuario, olx_access_token")
+      .eq("user_id", userId)
+      .maybeSingle();
+    setWmConfigurado(!!data?.webmotors_usuario);
+    setOlxConectado(!!data?.olx_access_token);
+  }, []);
+
   useEffect(() => {
     if (!effectiveUserId) return;
 
-    // Carrega veículos e verifica credenciais Webmotors em paralelo
     Promise.all([
       supabase
         .from("veiculos")
@@ -298,6 +330,21 @@ export default function MarketingPage() {
       setLoading(false);
     });
   }, [effectiveUserId]);
+
+  // Re-fetch config when tab regains focus (after OLX OAuth completes in another tab)
+  useEffect(() => {
+    if (!effectiveUserId) return;
+    const onFocus = () => fetchConfig(effectiveUserId);
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [effectiveUserId, fetchConfig]);
+
+  // Also handle redirect back from OLX callback with ?olx_conectado=1
+  useEffect(() => {
+    if (searchParams.get("olx_conectado") === "1") {
+      setOlxConectado(true);
+    }
+  }, [searchParams]);
 
   const carrosFiltrados = filtro === "disponiveis"
     ? carros.filter((c) => c.status_venda !== "VENDIDO")
@@ -374,5 +421,13 @@ export default function MarketingPage() {
 
       </div>
     </div>
+  );
+}
+
+export default function MarketingPage() {
+  return (
+    <Suspense fallback={null}>
+      <MarketingPageInner />
+    </Suspense>
   );
 }
