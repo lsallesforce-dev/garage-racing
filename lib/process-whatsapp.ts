@@ -1105,9 +1105,10 @@ Responda apenas com o JSON, sem markdown.`;
         veiculosParaFoto = [veiculoNomeado];
       } else {
         // 2. Busca direta no DB — só quando a mensagem nomeia um carro específico
-        // Para mensagens vagas ("tem foto dela?", "manda"), usa veiculoPrincipal direto
-        // hitsTextuais NUNCA é usado aqui: com embedding falho retornava carro errado
-        const veiculoMidia = await findVehicleForMedia(userMessage, tenantUserId);
+        // Usa apenas o texto digitado pelo cliente (sem contexto de anúncio injetado)
+        // para evitar que tokens do link preview identifiquem o carro errado em mensagens vagas
+        const msgSemContexto = userMessage.replace(/^\[(?:Contexto do link|Lead veio do anúncio)[^\n]*\n?/m, "").trim();
+        const veiculoMidia = msgSemContexto ? await findVehicleForMedia(msgSemContexto, tenantUserId) : null;
         veiculosParaFoto = veiculoMidia
           ? [veiculoMidia]
           : veiculoPrincipal
@@ -1167,8 +1168,9 @@ Responda apenas com o JSON, sem markdown.`;
   if (clientePediuVideo) {
     // Vídeo: veiculoPrincipal tem prioridade absoluta para mensagens vagas.
     // Se o cliente pediu um carro diferente, usa findVehicleForMedia (nunca hitsTextuais).
+    const msgSemContextoVideo = userMessage.replace(/^\[(?:Contexto do link|Lead veio do anúncio)[^\n]*\n?/m, "").trim();
     const veiculoParaVideo = clientePediuCarroDiferente
-      ? (await findVehicleForMedia(userMessage, tenantUserId)) ?? veiculoPrincipal
+      ? (msgSemContextoVideo ? (await findVehicleForMedia(msgSemContextoVideo, tenantUserId)) ?? veiculoPrincipal : veiculoPrincipal)
       : veiculoPrincipal;
 
     if (veiculoParaVideo) {
