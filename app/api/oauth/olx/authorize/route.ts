@@ -27,6 +27,6 @@ export async function GET(req: NextRequest) {
     state:         userId,
   });
 
-  const authUrl = `https://auth.olx.com.br/oauth/authorize?${params}`;
+  const authUrl = `https://auth.olx.com.br/oauth?${params}`;
   return NextResponse.redirect(authUrl);
 }
