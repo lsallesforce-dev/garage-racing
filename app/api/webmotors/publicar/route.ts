@@ -30,17 +30,18 @@ function mapCombustivel(comb: string): string {
 async function getWmToken(usuario: string, senha: string): Promise<string> {
   let resp: Response;
   try {
-    const basicAuth = Buffer.from(`${WM_CLIENT_ID}:${WM_CLIENT_SECRET}`).toString("base64");
     resp = await fetch(`${WM_BASE}/oauth/v1/access-token`, {
       method:  "POST",
       headers: {
-        "Content-Type":  "application/json",
-        "Authorization": `Basic ${basicAuth}`,
+        "Content-Type": "application/json",
+        "client_id":    WM_CLIENT_ID,
       },
       body: JSON.stringify({
-        grant_type: "password",
-        username:   usuario,
-        password:   senha,
+        grant_type:    "password",
+        username:      usuario,
+        password:      senha,
+        client_id:     WM_CLIENT_ID,
+        client_secret: WM_CLIENT_SECRET,
       }),
     });
   } catch (e: any) {
