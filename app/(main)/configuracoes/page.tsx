@@ -1324,15 +1324,6 @@ export default function ConfiguracoesPage() {
           </div>
 
           <div className="mt-4 space-y-4">
-            <div className="bg-red-50 rounded-2xl p-4 border border-red-100">
-              <p className="text-[10px] font-black uppercase tracking-widest text-red-600 mb-2">Como configurar</p>
-              <ol className="text-[11px] text-gray-600 space-y-1.5 list-decimal list-inside">
-                <li>Acesse o <span className="font-bold">Cockpit Webmotors</span> → Configurações → Usuários</li>
-                <li>Crie um usuário com perfil <span className="font-bold">Integrador de API</span></li>
-                <li>Cole o usuário e a senha abaixo e salve</li>
-                <li>Informe à Webmotors a URL de callback: <span className="font-mono text-[9px] break-all">{`${process.env.NEXT_PUBLIC_APP_URL ?? "https://app.autozap.digital"}/api/webhook/webmotors`}</span></li>
-              </ol>
-            </div>
 
             <div className="space-y-3">
               <div>
