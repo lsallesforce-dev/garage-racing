@@ -11,7 +11,8 @@ const WM_BASE =
     ? "https://api.webmotors.com.br"
     : "https://hlg-webmotors.sensedia.com";
 
-const WM_CLIENT_ID = process.env.WEBMOTORS_CLIENT_ID ?? "";
+const WM_CLIENT_ID     = process.env.WEBMOTORS_CLIENT_ID     ?? "";
+const WM_CLIENT_SECRET = process.env.WEBMOTORS_CLIENT_SECRET ?? "";
 
 function mapCombustivel(comb: string): string {
   const map: Record<string, string> = {
@@ -29,17 +30,17 @@ function mapCombustivel(comb: string): string {
 async function getWmToken(usuario: string, senha: string): Promise<string> {
   let resp: Response;
   try {
+    const basicAuth = Buffer.from(`${WM_CLIENT_ID}:${WM_CLIENT_SECRET}`).toString("base64");
     resp = await fetch(`${WM_BASE}/oauth/access-token`, {
       method:  "POST",
       headers: {
-        "Content-Type": "application/json",
-        "client_id":    WM_CLIENT_ID,
+        "Content-Type":  "application/x-www-form-urlencoded",
+        "Authorization": `Basic ${basicAuth}`,
       },
-      body: JSON.stringify({
-        username:        usuario,
-        password:        senha,
-        integracaosite:  "true",
-        grant_type:      "password",
+      body: new URLSearchParams({
+        grant_type: "password",
+        username:   usuario,
+        password:   senha,
       }),
     });
   } catch (e: any) {
@@ -66,8 +67,8 @@ export async function POST(req: NextRequest) {
   const { veiculoId } = await req.json();
   if (!veiculoId) return NextResponse.json({ error: "veiculoId obrigatório" }, { status: 400 });
 
-  if (!WM_CLIENT_ID) {
-    return NextResponse.json({ error: "WEBMOTORS_CLIENT_ID não configurado" }, { status: 500 });
+  if (!WM_CLIENT_ID || !WM_CLIENT_SECRET) {
+    return NextResponse.json({ error: "WEBMOTORS_CLIENT_ID/SECRET não configurados" }, { status: 500 });
   }
 
   const auth = await requireVehicleOwner(veiculoId);
