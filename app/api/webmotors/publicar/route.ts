@@ -44,7 +44,12 @@ async function getWmToken(usuario: string, senha: string): Promise<string> {
 
   if (!resp.ok) {
     const txt = await resp.text();
-    throw new Error(`Webmotors auth falhou (${resp.status}): ${txt.slice(0, 200)}`);
+    let msg = `Auth falhou (${resp.status})`;
+    try {
+      const j = JSON.parse(txt);
+      msg = j?.message ?? j?.error ?? j?.error_description ?? msg;
+    } catch {}
+    throw new Error(msg);
   }
 
   const data = await resp.json();
@@ -111,20 +116,32 @@ export async function POST(req: NextRequest) {
   if (v.chassi)  payload.Chassi  = v.chassi;
   if (v.renavam) payload.Renavam = v.renavam;
 
-  const resp = await fetch(`${WM_BASE}/v1/estoque/veiculos`, {
-    method:  "POST",
-    headers: {
-      "Content-Type":  "application/json",
-      "Authorization": `Bearer ${token}`,
-      "client_id":     WM_CLIENT_ID,
-    },
-    body: JSON.stringify(payload),
-  });
+  let resp: Response;
+  try {
+    resp = await fetch(`${WM_BASE}/v1/estoque/veiculos`, {
+      method:  "POST",
+      headers: {
+        "Content-Type":  "application/json",
+        "Authorization": `Bearer ${token}`,
+        "client_id":     WM_CLIENT_ID,
+      },
+      body: JSON.stringify(payload),
+    });
+  } catch (e: any) {
+    console.error("❌ Webmotors publicar rede:", e.message);
+    return NextResponse.json({ error: `Erro de rede ao publicar: ${e.message}` }, { status: 502 });
+  }
 
   if (!resp.ok) {
     const txt = await resp.text();
-    console.error("❌ Webmotors publicar falhou:", resp.status, txt.slice(0, 300));
-    return NextResponse.json({ error: `Webmotors retornou ${resp.status}` }, { status: 502 });
+    console.error("❌ Webmotors publicar falhou:", resp.status, txt.slice(0, 400));
+    // Tenta extrair mensagem legível do JSON de erro
+    let msgErro = `Webmotors retornou ${resp.status}`;
+    try {
+      const errJson = JSON.parse(txt);
+      msgErro = errJson?.message ?? errJson?.error ?? errJson?.Message ?? msgErro;
+    } catch {}
+    return NextResponse.json({ error: msgErro }, { status: 502 });
   }
 
   const data = await resp.json();
