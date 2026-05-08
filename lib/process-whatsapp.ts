@@ -976,12 +976,15 @@ Responda apenas com o JSON, sem markdown.`;
 
 
   // Pós-venda → stand-by automático
+  // Usa só o texto digitado pelo cliente — strip do contexto injetado ([Contexto do link:...], [Lead veio do anúncio:...])
+  // para evitar falsos positivos com specs do veículo (ex: "Câmbio Automático" na ficha)
+  const textoClientePosvenda = userMessage.replace(/^\[(?:Contexto do link|Lead veio do anúncio)[^\n]*(?:\n(?!\[)[^\n]*)*\n?/m, "").trim().toLowerCase();
   const gatilhosProblema = [
     "deu problema", "quebrou", "garantia", "defeito", "barulho estranho",
     "parou de funcionar", "não liga", "vazando", "batendo", "oficina",
-    "acidente", "recall", "motor travou", "câmbio", "freio",
+    "acidente", "recall", "motor travou", "câmbio com problema", "freio falhando",
   ];
-  const isPosvenda = gatilhosProblema.some((g) => mensagemLower.includes(g));
+  const isPosvenda = gatilhosProblema.some((g) => textoClientePosvenda.includes(g));
 
   if (isPosvenda && lead) {
     await supabaseAdmin
