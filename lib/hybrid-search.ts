@@ -392,9 +392,16 @@ export async function findVehicleForMedia(
   const msgNorm = normalizeStr(message);
 
   // 1. Busca textual sem context boost
-  const tokens = expandWithSynonyms(rawTokens);
-  const textResults = await textSearch(tokens, tenantUserId, undefined, undefined);
+  let tokens = expandWithSynonyms(rawTokens);
+  let textResults = await textSearch(tokens, tenantUserId, undefined, undefined);
   if (textResults.length > 0) return textResults[0];
+
+  // 1b. Fuzzy correction — corrige typos ("Freedon" → "Freedom") e tenta novamente
+  const tokensFuzzy = await fuzzyCorrectTokens(tokens, tenantUserId);
+  if (tokensFuzzy.some((t, i) => t !== tokens[i])) {
+    textResults = await textSearch(tokensFuzzy, tenantUserId, undefined, undefined);
+    if (textResults.length > 0) return textResults[0];
+  }
 
   // 2. Fallback: busca todos os veículos disponíveis e faz match em JS.
   //    Garante que encontra mesmo que o campo `modelo` esteja cadastrado de
@@ -408,13 +415,16 @@ export async function findVehicleForMedia(
 
   if (!todos || todos.length === 0) return null;
 
+  // Usa tokens corrigidos pelo fuzzy para match em JS também
+  const tokensParaMatch = tokensFuzzy.some((t, i) => t !== tokens[i]) ? tokensFuzzy : rawTokens;
+
   // Para cada veículo, monta o nome completo normalizado e verifica se
   // algum token da mensagem está contido nele.
   for (const v of todos as unknown as Vehicle[]) {
     const nomeCompleto = normalizeStr(
       `${v.marca ?? ""} ${v.modelo ?? ""} ${v.versao ?? ""} ${v.cor ?? ""}`
     );
-    if (rawTokens.some((t) => t.length >= 3 && nomeCompleto.includes(t))) {
+    if (tokensParaMatch.some((t) => t.length >= 3 && nomeCompleto.includes(t))) {
       // Busca o registro completo com todos os campos (fotos etc.)
       const { data: full } = await supabaseAdmin
         .from("veiculos")

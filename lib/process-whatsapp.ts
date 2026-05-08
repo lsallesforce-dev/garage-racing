@@ -841,7 +841,10 @@ Responda apenas com o JSON, sem markdown.`;
       veiculoPrincipal = novoVeiculo;
     }
     // Se mesma marca mas modelo não mencionado → mantém veiculoPrincipal atual
-  } else if (lead && !veiculoPrincipal && topVeiculos[0]) {
+  } else if (lead && !veiculoPrincipal && topVeiculos[0] && hitsTextuais.length > 0) {
+    // Só vincula automaticamente se a busca TEXTUAL encontrou algo explícito na mensagem.
+    // Resultados semânticos/fallback (hitsTextuais vazio) NÃO devem vincular — evita que
+    // leads genéricos ("Tenho interesse", "Olá!") sejam associados a um carro aleatório.
     await supabaseAdmin
       .from("leads")
       .update({ veiculo_id: topVeiculos[0].id })
@@ -1054,25 +1057,38 @@ Responda apenas com o JSON, sem markdown.`;
       }
     }
 
+    // Máximo de fotos por veículo — evita spam de +16 fotos no chat
+    const MAX_FOTOS_POR_VEICULO = 4;
+
     for (const v of veiculosParaFoto) {
       // Se pedindoFotosMultiplos (vários carros), envia só a capa de cada um.
-      // Se for um único carro, envia todas as fotos disponíveis.
-      const todasFotos: string[] = pedindoFotosMultiplos
+      // Se for um único carro, envia até MAX_FOTOS_POR_VEICULO fotos.
+      const todasFotosRaw: string[] = pedindoFotosMultiplos
         ? [v.capa_marketing_url ?? (v as any).fotos?.[0]].filter(Boolean) as string[]
         : [
-            ...((v as any).fotos ?? []),
-            ...(v.capa_marketing_url && !(v as any).fotos?.includes(v.capa_marketing_url) ? [v.capa_marketing_url] : []),
+            // Capa de marketing primeiro (melhor foto)
+            ...(v.capa_marketing_url ? [v.capa_marketing_url] : []),
+            ...((v as any).fotos ?? []).filter((f: string) => f !== v.capa_marketing_url),
           ].filter(Boolean);
 
-      if (todasFotos.length === 0) continue;
+      if (todasFotosRaw.length === 0) continue;
 
-      for (const fotoUrl of todasFotos) {
+      const fotosParaEnviar = todasFotosRaw.slice(0, MAX_FOTOS_POR_VEICULO);
+      const temMaisFotos = todasFotosRaw.length > MAX_FOTOS_POR_VEICULO;
+
+      for (const fotoUrl of fotosParaEnviar) {
         try {
           await sendImage(phone, fotoUrl, undefined);
           fotoEnviada = true;
         } catch (e) {
           console.warn(`⚠️ Falha ao enviar foto de ${v.marca} ${v.modelo}:`, e);
         }
+      }
+
+      // Se tem mais fotos do que o limite, envia link da vitrine para ver o restante
+      if (temMaisFotos && fotoEnviada && vitrineUrl) {
+        const carUrl = `${vitrineUrl}/${v.id}`;
+        await sendText(phone, `Tem mais fotos desse veículo! Veja todas aqui: ${carUrl}`).catch(() => {});
       }
     }
 

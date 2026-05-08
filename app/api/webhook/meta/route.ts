@@ -179,7 +179,7 @@ function extractFields(payload: any): {
 
     const phone      = msg.from ?? "";
     const messageId  = msg.id ?? null;
-    const userMessage = msg.text?.body ?? msg.interactive?.button_reply?.title ?? "";
+    let userMessage = msg.text?.body ?? msg.interactive?.button_reply?.title ?? "";
 
     // Áudio (voice note ou arquivo de áudio)
     const audioMediaId: string | null = msg.type === "audio" ? (msg.audio?.id ?? null) : null;
@@ -192,6 +192,17 @@ function extractFields(payload: any): {
       source_type: ref.source_type ?? null,
       ad_id:       ref.source_id  ?? null,
     } : null;
+
+    // Link preview context — quando o cliente envia mensagem via link de Instagram/Facebook
+    // O campo msg.context pode conter referred_product ou o próprio referral pode trazer o contexto
+    const ctxProduct = msg.context?.referred_product;
+    if (ctxProduct?.catalog_id || ctxProduct?.product_retailer_id) {
+      const productCtx = `[Produto referenciado: ${ctxProduct.product_retailer_id ?? ctxProduct.catalog_id}]`;
+      if (!userMessage.includes(productCtx)) {
+        userMessage = `${productCtx}\n${userMessage}`;
+        console.log(`🔗 [Meta product context] ${productCtx}`);
+      }
+    }
 
     // Ignorar status updates (delivered, read, sent) — não são mensagens
     if (value?.statuses?.length && !value?.messages?.length) {

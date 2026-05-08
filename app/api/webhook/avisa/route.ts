@@ -66,6 +66,17 @@ function extractFields(payload: any): {
     audioUrl = msg?.audioMessage?.URL ?? msg?.audioMessage?.url;
     audioMediaKey = msg?.audioMessage?.mediaKey ?? msg?.audioMessage?.MediaKey;
     messageId = info.ID;
+
+    // Link preview context (Instagram, Facebook, etc.)
+    // Quando o cliente clica num post do Instagram com link preview, o título e descrição
+    // do anúncio ficam em extendedTextMessage.title/.description — ex: "STRADA FREEDOM 1.4 - 2024/2024"
+    const extTitle = msg?.extendedTextMessage?.title;
+    const extDesc  = msg?.extendedTextMessage?.description;
+    const linkContext = [extTitle, extDesc].filter(Boolean).join(" — ");
+    if (linkContext && !userMessage.includes(linkContext)) {
+      userMessage = `[Contexto do link: "${linkContext}"]\n${userMessage}`;
+      console.log(`🔗 [Link preview Baileys] Contexto extraído: ${linkContext}`);
+    }
   }
   // Formato Avisa/Z-API simplificado
   else if (parsedData?.number || parsedData?.phone) {
@@ -76,6 +87,15 @@ function extractFields(payload: any): {
     if (!userMessage && !parsedData.text && parsedData.type !== "text") {
       return { phone: "", userMessage: "", fromMe: true };
     }
+
+    // Link preview context (Z-API format)
+    const linkTitle = parsedData.linkPreview?.title || parsedData.text?.title;
+    const linkDesc  = parsedData.linkPreview?.description || parsedData.text?.description;
+    const linkContext = [linkTitle, linkDesc].filter(Boolean).join(" — ");
+    if (linkContext && !userMessage.includes(linkContext)) {
+      userMessage = `[Contexto do link: "${linkContext}"]\n${userMessage}`;
+      console.log(`🔗 [Link preview Z-API] Contexto extraído: ${linkContext}`);
+    }
   }
   // Formato Evolution API
   else if (parsedData?.data?.key?.remoteJid) {
@@ -85,6 +105,15 @@ function extractFields(payload: any): {
     phone = (key.remoteJid || "").replace(/@.*$/, "");
     userMessage = msg?.conversation || msg?.extendedTextMessage?.text || "";
     messageId = key.id;
+
+    // Link preview context (Evolution API format)
+    const extTitle = msg?.extendedTextMessage?.title;
+    const extDesc  = msg?.extendedTextMessage?.description;
+    const linkContext = [extTitle, extDesc].filter(Boolean).join(" — ");
+    if (linkContext && !userMessage.includes(linkContext)) {
+      userMessage = `[Contexto do link: "${linkContext}"]\n${userMessage}`;
+      console.log(`🔗 [Link preview Evolution] Contexto extraído: ${linkContext}`);
+    }
   }
   // Formato desconhecido — modo debug
   else {
