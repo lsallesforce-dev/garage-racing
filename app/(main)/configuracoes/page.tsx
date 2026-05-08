@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { Upload, CheckCircle2, Loader2, ImageIcon, Trash2, Sparkles, FileImage, Save, Copy, Eye, EyeOff, FileText, ShieldCheck } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
@@ -68,6 +69,8 @@ export default function ConfiguracoesPage() {
   const [showToken, setShowToken] = useState(false);
   const [isAdminSession, setIsAdminSession] = useState(false);
   const [webhookToken, setWebhookToken] = useState("");
+  const [olxConectado, setOlxConectado] = useState(false);
+  const searchParams = useSearchParams();
   const [copied, setCopied] = useState<string | null>(null);
   const [metaConnecting, setMetaConnecting] = useState(false);
   const [metaConnected, setMetaConnected] = useState(false);
@@ -291,6 +294,7 @@ export default function ConfiguracoesPage() {
           const row = data?.[0];
           if (row) {
             if (row.webhook_token) setWebhookToken(row.webhook_token);
+            if (row.olx_access_token) setOlxConectado(true);
             if (row.plano) setPlano(row.plano);
             if (row.nf_habilitado !== undefined) {
               setNfConfig({
@@ -1237,53 +1241,54 @@ export default function ConfiguracoesPage() {
           )}
         </div>
 
-        {/* ── Integração com Portais de Anúncio ─────────────────────────────── */}
+        {/* ── Integração OLX (OAuth) ─────────────────────────────────────────── */}
         <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm">
-          <div className="flex items-center gap-3 mb-1">
-            <div className="w-8 h-8 rounded-xl bg-orange-50 flex items-center justify-center">
-              <span className="text-orange-500 font-black text-sm">OLX</span>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-orange-50 flex items-center justify-center">
+                <span className="text-orange-500 font-black text-sm">OLX</span>
+              </div>
+              <div>
+                <p className="text-[11px] font-black uppercase tracking-widest text-gray-900">Integração OLX</p>
+                <p className="text-[10px] text-gray-400">Publique anúncios e receba leads do OLX automaticamente</p>
+              </div>
             </div>
-            <div>
-              <p className="text-[11px] font-black uppercase tracking-widest text-gray-900">Integração OLX</p>
-              <p className="text-[10px] text-gray-400">Leads recebidos no OLX entram automaticamente aqui</p>
-            </div>
+            {olxConectado && (
+              <span className="flex items-center gap-1 px-2.5 py-1 bg-green-100 text-green-700 rounded-full text-[9px] font-black uppercase tracking-wider">
+                <CheckCircle2 size={10} /> Conectado
+              </span>
+            )}
           </div>
 
-          <div className="mt-4 bg-orange-50 rounded-2xl p-4 border border-orange-100">
-            <p className="text-[10px] font-black uppercase tracking-widest text-orange-600 mb-3">Como configurar</p>
-            <ol className="text-[11px] text-gray-600 space-y-1.5 list-decimal list-inside">
-              <li>Acesse <span className="font-bold">olxpro.com.br</span> → Configurações → Integração / Webhook</li>
-              <li>Cole a URL abaixo no campo de webhook de leads</li>
-              <li>Salve — novos leads chegam direto no chat e você recebe alerta no WhatsApp</li>
-            </ol>
-          </div>
+          {searchParams.get("olx_conectado") === "1" && (
+            <div className="mt-4 bg-green-50 border border-green-100 rounded-2xl px-4 py-3 text-[11px] text-green-700 font-bold">
+              ✅ OLX conectado com sucesso!
+            </div>
+          )}
+          {searchParams.get("olx_error") && (
+            <div className="mt-4 bg-red-50 border border-red-100 rounded-2xl px-4 py-3 text-[11px] text-red-600 font-bold">
+              ❌ Erro ao conectar: {searchParams.get("olx_error")}
+            </div>
+          )}
 
-          <div className="mt-4">
-            <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Sua URL de webhook</p>
-            {webhookToken ? (
-              <div className="flex items-center gap-2">
-                <div className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 font-mono text-[10px] text-gray-700 truncate">
-                  {`${process.env.NEXT_PUBLIC_APP_URL ?? "https://app.autozap.digital"}/api/webhook/olx?token=${webhookToken}`}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => copyToClipboard(
-                    `${process.env.NEXT_PUBLIC_APP_URL ?? "https://app.autozap.digital"}/api/webhook/olx?token=${webhookToken}`,
-                    "olx-url"
-                  )}
-                  className="flex-shrink-0 p-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl transition-colors"
-                  title="Copiar URL"
+          <div className="mt-5">
+            {olxConectado ? (
+              <div className="flex items-center justify-between bg-green-50 border border-green-100 rounded-2xl px-4 py-3">
+                <p className="text-[11px] text-green-700 font-bold">Conta OLX vinculada — leads e anúncios ativos.</p>
+                <a
+                  href="/api/oauth/olx/authorize"
+                  className="text-[10px] text-gray-400 hover:text-gray-600 underline underline-offset-2"
                 >
-                  {copied === "olx-url"
-                    ? <CheckCircle2 size={14} />
-                    : <Copy size={14} />
-                  }
-                </button>
+                  Reconectar
+                </a>
               </div>
             ) : (
-              <p className="text-[11px] text-gray-400 italic">
-                Token de webhook não gerado. Salve as configurações principais primeiro.
-              </p>
+              <a
+                href="/api/oauth/olx/authorize"
+                className="flex items-center justify-center gap-2 w-full py-3 bg-orange-500 hover:bg-orange-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest transition-colors"
+              >
+                Conectar com OLX
+              </a>
             )}
           </div>
 
