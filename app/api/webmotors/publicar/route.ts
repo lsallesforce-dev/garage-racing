@@ -31,13 +31,13 @@ async function getWmToken(usuario: string, senha: string): Promise<string> {
   let resp: Response;
   try {
     const basicAuth = Buffer.from(`${WM_CLIENT_ID}:${WM_CLIENT_SECRET}`).toString("base64");
-    resp = await fetch(`${WM_BASE}/oauth/access-token`, {
+    resp = await fetch(`${WM_BASE}/oauth/v1/access-token`, {
       method:  "POST",
       headers: {
-        "Content-Type":  "application/x-www-form-urlencoded",
+        "Content-Type":  "application/json",
         "Authorization": `Basic ${basicAuth}`,
       },
-      body: new URLSearchParams({
+      body: JSON.stringify({
         grant_type: "password",
         username:   usuario,
         password:   senha,
