@@ -790,6 +790,17 @@ export default function DetalheVeiculo() {
   const [opcionais, setOpcionais] = useState<string[]>([]);
   const [showOpcionaisModal, setShowOpcionaisModal] = useState(false);
 
+  // Histórico do veículo (estado controlado para salvar em bloco)
+  const [historico, setHistorico] = useState({
+    qtd_proprietarios:  "" as string | number,
+    procedencia:        "" as string,
+    restricoes_veiculo: "" as string,
+    historico_sinistros: "" as string,
+    historico_manutencao: "" as string,
+    observacoes_vistoria: "" as string,
+  });
+  const [salvandoHistorico, setSalvandoHistorico] = useState(false);
+
   // Leads
   const [leadsDoVeiculo, setLeadsDoVeiculo] = useState<any[]>([]);
 
@@ -833,6 +844,14 @@ export default function DetalheVeiculo() {
     setOpcionais(veiculo.opcionais || []);
     setRoteiro(veiculo.roteiro_pitch || "");
     setVendedorId(veiculo.vendedor_responsavel_id || "");
+    setHistorico({
+      qtd_proprietarios:   veiculo.qtd_proprietarios  ?? "",
+      procedencia:         veiculo.procedencia         ?? "",
+      restricoes_veiculo:  veiculo.restricoes_veiculo  ?? "",
+      historico_sinistros: veiculo.historico_sinistros ?? "",
+      historico_manutencao: veiculo.historico_manutencao ?? "",
+      observacoes_vistoria: veiculo.observacoes_vistoria ?? "",
+    });
   }, [veiculo]);
 
   // ── Carrega logo do tenant ───────────────────────────────────────────────
@@ -1504,19 +1523,15 @@ export default function DetalheVeiculo() {
               defaultOpen={false}
             >
               <div className="space-y-4">
-                {/* Proprietários + Passou por leilão */}
+                {/* Proprietários + Procedência */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-1">Nº de Proprietários Anteriores</p>
                     <input
                       type="number"
                       min={0}
-                      key={`qtd_proprietarios-${veiculo?.qtd_proprietarios}`}
-                      defaultValue={veiculo?.qtd_proprietarios ?? ""}
-                      onBlur={(e) => {
-                        const val = e.target.value.trim();
-                        patch({ qtd_proprietarios: val !== "" ? parseInt(val) : null });
-                      }}
+                      value={historico.qtd_proprietarios}
+                      onChange={(e) => setHistorico(p => ({ ...p, qtd_proprietarios: e.target.value }))}
                       className="w-full text-[11px] font-bold text-gray-700 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-red-500/10 focus:border-red-300 transition-all"
                       placeholder="Ex: 1"
                     />
@@ -1525,9 +1540,8 @@ export default function DetalheVeiculo() {
                     <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-1">Procedência</p>
                     <input
                       type="text"
-                      key={`procedencia-${veiculo?.procedencia}`}
-                      defaultValue={veiculo?.procedencia ?? ""}
-                      onBlur={(e) => patch({ procedencia: e.target.value.trim() || null })}
+                      value={historico.procedencia}
+                      onChange={(e) => setHistorico(p => ({ ...p, procedencia: e.target.value }))}
                       className="w-full text-[11px] font-bold text-gray-700 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-red-500/10 focus:border-red-300 transition-all"
                       placeholder="Ex: Único dono, pessoa física"
                     />
@@ -1574,9 +1588,8 @@ export default function DetalheVeiculo() {
                 <div>
                   <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-1">Restrições (Detran, dívidas, financiamento)</p>
                   <textarea
-                    key={`restricoes_veiculo-${veiculo?.restricoes_veiculo}`}
-                    defaultValue={veiculo?.restricoes_veiculo ?? ""}
-                    onBlur={(e) => patch({ restricoes_veiculo: e.target.value.trim() || null })}
+                    value={historico.restricoes_veiculo}
+                    onChange={(e) => setHistorico(p => ({ ...p, restricoes_veiculo: e.target.value }))}
                     rows={2}
                     placeholder="Ex: Nenhuma restrição | ou: Multa de licenciamento em aberto"
                     className="w-full p-3 bg-gray-50 rounded-xl border border-gray-100 text-[11px] font-medium leading-relaxed text-gray-700 outline-none focus:ring-2 focus:ring-red-500/10 resize-none transition-all"
@@ -1587,9 +1600,8 @@ export default function DetalheVeiculo() {
                 <div>
                   <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-1">Histórico de Sinistros / Batidas</p>
                   <textarea
-                    key={`historico_sinistros-${veiculo?.historico_sinistros}`}
-                    defaultValue={veiculo?.historico_sinistros ?? ""}
-                    onBlur={(e) => patch({ historico_sinistros: e.target.value.trim() || null })}
+                    value={historico.historico_sinistros}
+                    onChange={(e) => setHistorico(p => ({ ...p, historico_sinistros: e.target.value }))}
                     rows={2}
                     placeholder="Ex: Nada consta | ou: Batida leve na traseira em 2022, reparada"
                     className="w-full p-3 bg-gray-50 rounded-xl border border-gray-100 text-[11px] font-medium leading-relaxed text-gray-700 outline-none focus:ring-2 focus:ring-red-500/10 resize-none transition-all"
@@ -1600,9 +1612,8 @@ export default function DetalheVeiculo() {
                 <div>
                   <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-1">Histórico de Manutenção</p>
                   <textarea
-                    key={`historico_manutencao-${veiculo?.historico_manutencao}`}
-                    defaultValue={veiculo?.historico_manutencao ?? ""}
-                    onBlur={(e) => patch({ historico_manutencao: e.target.value.trim() || null })}
+                    value={historico.historico_manutencao}
+                    onChange={(e) => setHistorico(p => ({ ...p, historico_manutencao: e.target.value }))}
                     rows={2}
                     placeholder="Ex: Revisões em dia na concessionária até 80.000km"
                     className="w-full p-3 bg-gray-50 rounded-xl border border-gray-100 text-[11px] font-medium leading-relaxed text-gray-700 outline-none focus:ring-2 focus:ring-red-500/10 resize-none transition-all"
@@ -1613,18 +1624,36 @@ export default function DetalheVeiculo() {
                 <div>
                   <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-1">Observações de Vistoria</p>
                   <textarea
-                    key={`observacoes_vistoria-${veiculo?.observacoes_vistoria}`}
-                    defaultValue={veiculo?.observacoes_vistoria ?? ""}
-                    onBlur={(e) => patch({ observacoes_vistoria: e.target.value.trim() || null })}
+                    value={historico.observacoes_vistoria}
+                    onChange={(e) => setHistorico(p => ({ ...p, observacoes_vistoria: e.target.value }))}
                     rows={2}
                     placeholder="Ex: Pintura original em todos os painéis, sem amassados"
                     className="w-full p-3 bg-gray-50 rounded-xl border border-gray-100 text-[11px] font-medium leading-relaxed text-gray-700 outline-none focus:ring-2 focus:ring-red-500/10 resize-none transition-all"
                   />
                 </div>
 
-                <p className="text-[9px] text-gray-400 italic">
-                  Salvo automaticamente ao sair de cada campo. Campos em branco: a IA responde "nada consta".
-                </p>
+                {/* Botão Salvar */}
+                <button
+                  onClick={async () => {
+                    setSalvandoHistorico(true);
+                    try {
+                      await patch({
+                        qtd_proprietarios:   historico.qtd_proprietarios !== "" ? Number(historico.qtd_proprietarios) : null,
+                        procedencia:         historico.procedencia.trim()         || null,
+                        restricoes_veiculo:  historico.restricoes_veiculo.trim()  || null,
+                        historico_sinistros: historico.historico_sinistros.trim() || null,
+                        historico_manutencao: historico.historico_manutencao.trim() || null,
+                        observacoes_vistoria: historico.observacoes_vistoria.trim() || null,
+                      });
+                    } finally {
+                      setSalvandoHistorico(false);
+                    }
+                  }}
+                  disabled={salvandoHistorico}
+                  className="w-full py-2.5 bg-gray-900 hover:bg-gray-700 disabled:opacity-50 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all"
+                >
+                  {salvandoHistorico ? "Salvando…" : "Salvar Histórico"}
+                </button>
               </div>
             </SectionCard>
           </div>

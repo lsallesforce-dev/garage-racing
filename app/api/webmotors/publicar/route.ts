@@ -30,19 +30,20 @@ function mapCombustivel(comb: string): string {
 async function getWmToken(usuario: string, senha: string): Promise<string> {
   let resp: Response;
   try {
+    const body = new URLSearchParams({
+      grant_type:    "password",
+      username:      usuario,
+      password:      senha,
+      client_id:     WM_CLIENT_ID,
+      client_secret: WM_CLIENT_SECRET,
+    });
     resp = await fetch(`${WM_BASE}/oauth/v1/access-token`, {
       method:  "POST",
       headers: {
-        "Content-Type": "application/json",
+        "Content-Type": "application/x-www-form-urlencoded",
         "client_id":    WM_CLIENT_ID,
       },
-      body: JSON.stringify({
-        grant_type:    "password",
-        username:      usuario,
-        password:      senha,
-        client_id:     WM_CLIENT_ID,
-        client_secret: WM_CLIENT_SECRET,
-      }),
+      body: body.toString(),
     });
   } catch (e: any) {
     throw new Error(`Erro de rede na autenticação: ${e.message}`);
