@@ -984,7 +984,7 @@ Responda apenas com o JSON, sem markdown.`;
   if (isPosvenda && lead) {
     await supabaseAdmin
       .from("leads")
-      .update({ status: "PROBLEMA", em_atendimento_humano: true })
+      .update({ status: "PROBLEMA" })
       .eq("id", lead.id);
 
     if (gerentePhone) {
