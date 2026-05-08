@@ -923,6 +923,32 @@ Responda apenas com o JSON, sem markdown.`;
     ? _gerenteRaw.replace(/\D/g, "").replace(/^(?!55)/, "55")
     : undefined;
 
+  // ── 10a. Alerta ao gerente — carro não identificado após 2 trocas ────────────
+  // Se o lead ainda não tem carro vinculado E não houve hit textual nesta mensagem
+  // E já há pelo menos 2 trocas no histórico, o gerente precisa ajudar manualmente.
+  // Só dispara uma vez (verifica instrucao_pendente antes de enviar).
+  if (
+    lead &&
+    !veiculoPrincipal &&
+    hitsTextuais.length === 0 &&
+    historico.length >= 4 &&
+    !(lead as any).instrucao_pendente &&
+    gerentePhone
+  ) {
+    const instrucao = "Cliente não conseguiu identificar o veículo de interesse após 2 trocas de mensagem. Por favor, assuma o atendimento.";
+    await supabaseAdmin.from("leads").update({ instrucao_pendente: instrucao }).eq("id", lead.id);
+    const nomeLead = lead.nome || phone;
+    sendText(
+      gerentePhone,
+      `❓ *AGENTE PRECISA DE INSTRUÇÃO*\n\n` +
+      `👤 Cliente: ${nomeLead}\n` +
+      `📱 Número: +${phone}\n\n` +
+      `💬 Dúvida: ${instrucao}\n\n` +
+      `👉 Responda a esta mensagem com a instrução para o agente continuar.`
+    ).catch((err: any) => console.error("❌ Alerta carro-não-identificado não entregue:", err?.message));
+    console.log(`❓ [Alerta gerente] carro não identificado para lead ${lead.id} após ${historico.length} msgs`);
+  }
+
 
   // Pós-venda → stand-by automático
   const gatilhosProblema = [
