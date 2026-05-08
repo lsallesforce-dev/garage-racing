@@ -143,6 +143,12 @@ export interface WhatsAppJobPayload {
   messageId?: string | null;
   tenantUserId: string;
   garageConfig: GarageConfig | null;
+  adReferral?: {           // Click-to-WhatsApp: contexto do anúncio Meta Ads
+    headline:    string | null;
+    body:        string | null;
+    source_type: string | null;
+    ad_id:       string | null;
+  } | null;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -537,7 +543,7 @@ function fixHistoryLoops(historico: any[], context: string): any[] {
 // ─── Processamento Principal ──────────────────────────────────────────────────
 
 export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<void> {
-  const { phone, rawMessage, audioUrl, audioMediaKey, audioMediaId, tenantUserId, garageConfig } = job;
+  const { phone, rawMessage, audioUrl, audioMediaKey, audioMediaId, tenantUserId, garageConfig, adReferral } = job;
 
   // Credenciais Meta exclusivas do tenant — sem fallback global
   const metaCreds = {
@@ -630,6 +636,15 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   }
 
   if (!userMessage && !audioData) return;
+
+  // ── Contexto do anúncio (Click-to-WhatsApp) ────────────────────────────────
+  // Se o lead veio de um anúncio Meta, injeta o título do anúncio na mensagem
+  // para que o Gemini identifique o veículo mesmo sem o cliente mencionar o nome.
+  if (adReferral?.headline) {
+    const contextoAd = `[Lead veio do anúncio: "${adReferral.headline}"${adReferral.body ? ` — ${adReferral.body}` : ""}]`;
+    userMessage = `${contextoAd}\n${userMessage}`;
+    console.log(`📢 [Ad referral] ${contextoAd}`);
+  }
 
   // Marca mensagem como lida (ticks azuis) — fire-and-forget
   if (job.messageId && metaCreds.phoneNumberId && metaCreds.accessToken) {

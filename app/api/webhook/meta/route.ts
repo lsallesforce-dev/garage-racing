@@ -184,6 +184,15 @@ function extractFields(payload: any): {
     // Áudio (voice note ou arquivo de áudio)
     const audioMediaId: string | null = msg.type === "audio" ? (msg.audio?.id ?? null) : null;
 
+    // Referral de anúncio (Facebook/Instagram Ads Click-to-WhatsApp)
+    const ref = msg.referral;
+    const adReferral = ref ? {
+      headline:    ref.headline   ?? null,
+      body:        ref.body       ?? null,
+      source_type: ref.source_type ?? null,
+      ad_id:       ref.source_id  ?? null,
+    } : null;
+
     // Ignorar status updates (delivered, read, sent) — não são mensagens
     if (value?.statuses?.length && !value?.messages?.length) {
       const s = value.statuses[0];
@@ -192,7 +201,7 @@ function extractFields(payload: any): {
       return { phone: "", userMessage: "", fromMe: true, messageId: null, phoneNumberId, audioMediaId: null };
     }
 
-    return { phone, userMessage: userMessage.trim(), fromMe: false, messageId, phoneNumberId, audioMediaId };
+    return { phone, userMessage: userMessage.trim(), fromMe: false, messageId, phoneNumberId, audioMediaId, adReferral };
   } catch (e) {
     console.error("❌ Erro ao extrair campos do payload Meta:", e);
     return { phone: "", userMessage: "", fromMe: true, messageId: null, phoneNumberId: "", audioMediaId: null };
@@ -233,7 +242,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ status: "leadgen_queued" });
     }
 
-    const { phone, userMessage, fromMe, messageId, phoneNumberId, audioMediaId } = extractFields(payload);
+    const { phone, userMessage, fromMe, messageId, phoneNumberId, audioMediaId, adReferral } = extractFields(payload);
 
     // Responde 200 imediatamente (Meta requer resposta em < 20s ou vai reenviar)
     if (fromMe || !phone) {
@@ -288,7 +297,8 @@ export async function POST(req: NextRequest) {
       const job = {
         phone,
         rawMessage: userMessage,
-        ...(audioMediaId ? { audioMediaId } : {}),
+        ...(audioMediaId  ? { audioMediaId }  : {}),
+        ...(adReferral    ? { adReferral }     : {}),
         messageId,
         tenantUserId,
         garageConfig,
