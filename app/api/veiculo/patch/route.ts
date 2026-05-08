@@ -13,6 +13,8 @@ const ALLOWED_FIELDS = new Set([
   "vendedor_responsavel_id",
   "preco_compra", "placa", "preco_venda_final", "data_venda", "vendedor_id",
   "renavam", "chassi",
+  "qtd_proprietarios", "procedencia", "restricoes_veiculo",
+  "historico_sinistros", "historico_manutencao", "observacoes_vistoria",
 ]);
 
 export async function PATCH(req: NextRequest) {
