@@ -134,6 +134,9 @@ export default function ConfiguracoesPage() {
   const [savedNF, setSavedNF] = useState(false);
   const [showNFSenha, setShowNFSenha] = useState(false);
 
+  type Tab = "loja" | "portais" | "whatsapp" | "fiscal";
+  const [activeTab, setActiveTab] = useState<Tab>("loja");
+
   // Carrega o Facebook SDK para Embedded Signup
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -575,7 +578,7 @@ export default function ConfiguracoesPage() {
 
   return (
     <main className="flex-1 p-4 sm:p-10 bg-[#efefed] min-h-screen">
-      <header className="mb-10 pb-6 border-b border-gray-200">
+      <header className="mb-8 pb-6 border-b border-gray-200">
         <h1 className="text-4xl font-black uppercase tracking-tighter italic text-gray-900">
           Configurações
         </h1>
@@ -584,7 +587,27 @@ export default function ConfiguracoesPage() {
         </p>
       </header>
 
+      {/* Tabs */}
+      <div className="flex gap-1 bg-white rounded-2xl p-1 border border-gray-100 shadow-sm mb-8 max-w-2xl overflow-x-auto">
+        {(["loja","portais","whatsapp","fiscal"] as const).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`flex-1 py-2.5 px-4 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all whitespace-nowrap ${
+              activeTab === tab
+                ? "bg-gray-900 text-white shadow"
+                : "text-gray-400 hover:text-gray-700"
+            }`}
+          >
+            {{ loja: "Minha Loja", portais: "Portais", whatsapp: "WhatsApp", fiscal: "Fiscal" }[tab]}
+          </button>
+        ))}
+      </div>
+
       <div className="max-w-2xl flex flex-col gap-6">
+
+        {/* ══ ABA: MINHA LOJA ══════════════════════════════════════════════════ */}
+        {activeTab === "loja" && <>
 
         {/* ── Informações da Garagem ── */}
         <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-8">
@@ -710,7 +733,8 @@ export default function ConfiguracoesPage() {
               />
             </div>
 
-            <div className="flex flex-col gap-1.5 mt-2 bg-blue-50/50 p-4 border border-blue-100 rounded-2xl">
+            {/* bloco Meta — renderizado apenas na aba WhatsApp via portal lógico */}
+            {activeTab === "whatsapp" && <div className="flex flex-col gap-1.5 mt-2 bg-blue-50/50 p-4 border border-blue-100 rounded-2xl">
               <p className="text-[10px] font-black uppercase tracking-widest text-blue-800 mb-1">
                 WhatsApp Business (Meta Cloud API)
               </p>
@@ -831,7 +855,7 @@ export default function ConfiguracoesPage() {
                     : "SEU_SLUG.autozap.digital"}
                 </strong>
               </p>
-            </div>
+            </div>} {/* fim bloco Meta condicional */}
 
             <div className="flex flex-col gap-1.5">
               <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
@@ -935,6 +959,11 @@ export default function ConfiguracoesPage() {
             </button>
           </div>
         </div>
+
+        </> /* fim aba loja */}
+
+        {/* ══ ABA: FISCAL ══════════════════════════════════════════════════════ */}
+        {activeTab === "fiscal" && <>
 
         {/* ── Nota Fiscal Eletrônica (Premium) ── */}
         {plano === "premium" ? (
@@ -1103,6 +1132,11 @@ export default function ConfiguracoesPage() {
           </div>
         ) : null}
 
+        </> /* fim aba fiscal */}
+
+        {/* ══ ABA: MINHA LOJA (continuação — Logo) ════════════════════════════ */}
+        {activeTab === "loja" && <>
+
         {/* ── Logo da Garagem ── */}
         <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-8">
           <h2 className="text-[11px] font-black uppercase tracking-widest text-gray-400 mb-1">
@@ -1240,6 +1274,11 @@ export default function ConfiguracoesPage() {
             </button>
           )}
         </div>
+
+        </> /* fim aba loja logo */}
+
+        {/* ══ ABA: PORTAIS ═════════════════════════════════════════════════════ */}
+        {activeTab === "portais" && <>
 
         {/* ── Integração OLX (OAuth) ─────────────────────────────────────────── */}
         <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm">
@@ -1383,6 +1422,11 @@ export default function ConfiguracoesPage() {
           </div>
         </div>
 
+        </> /* fim aba portais */}
+
+        {/* ══ ABA: WHATSAPP ════════════════════════════════════════════════════ */}
+        {activeTab === "whatsapp" && <>
+
         {/* ── Facebook / Instagram Ads ──────────────────────────────────────── */}
         <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm">
           <div className="flex items-center gap-3 mb-1">
@@ -1515,6 +1559,8 @@ export default function ConfiguracoesPage() {
             </div>
           )}
         </div>
+        </> /* fim aba whatsapp */}
+
       </div>
     </main>
   );
