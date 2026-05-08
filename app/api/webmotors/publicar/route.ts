@@ -8,7 +8,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 
 const WM_BASE =
   process.env.WEBMOTORS_ENV === "producao"
-    ? "https://api.webmotors.com.br"
+    ? "https://api-webmotors.sensedia.com"
     : "https://hlg-webmotors.sensedia.com";
 
 const WM_CLIENT_ID     = process.env.WEBMOTORS_CLIENT_ID     ?? "";
