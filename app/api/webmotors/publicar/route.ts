@@ -29,7 +29,7 @@ function mapCombustivel(comb: string): string {
 async function getWmToken(usuario: string, senha: string): Promise<string> {
   let resp: Response;
   try {
-    resp = await fetch(`${WM_BASE}/oauth/v1/access-token`, {
+    resp = await fetch(`${WM_BASE}/oauth/access-token`, {
       method:  "POST",
       headers: {
         "Content-Type": "application/json",
