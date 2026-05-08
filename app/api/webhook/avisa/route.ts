@@ -71,10 +71,11 @@ function extractFields(payload: any): {
     }
 
     // Link preview context (Instagram, Facebook, etc.)
-    // Quando o cliente clica num post do Instagram com link preview, o título e descrição
-    // do anúncio ficam em extendedTextMessage.title/.description — ex: "STRADA FREEDOM 1.4 - 2024/2024"
-    const extTitle = msg?.extendedTextMessage?.title;
-    const extDesc  = msg?.extendedTextMessage?.description;
+    // Click-to-WhatsApp ads: título está em contextInfo.externalAdReply.title/.body
+    // Posts orgânicos: título está em extendedTextMessage.title/.description
+    const adReply = msg?.extendedTextMessage?.contextInfo?.externalAdReply;
+    const extTitle = adReply?.title ?? msg?.extendedTextMessage?.title;
+    const extDesc  = adReply?.body  ?? msg?.extendedTextMessage?.description;
     const linkContext = [extTitle, extDesc].filter(Boolean).join(" — ");
     if (linkContext && !userMessage.includes(linkContext)) {
       userMessage = `[Contexto do link: "${linkContext}"]\n${userMessage}`;
