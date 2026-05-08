@@ -15,6 +15,7 @@ const ALLOWED_FIELDS = new Set([
   "renavam", "chassi",
   "qtd_proprietarios", "procedencia", "restricoes_veiculo",
   "historico_sinistros", "historico_manutencao", "observacoes_vistoria",
+  "passou_leilao",
 ]);
 
 export async function PATCH(req: NextRequest) {
