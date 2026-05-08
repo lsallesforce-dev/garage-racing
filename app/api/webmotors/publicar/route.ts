@@ -1,6 +1,6 @@
 // app/api/webmotors/publicar/route.ts
-// Publica um veículo na Webmotors via API Canais (gateway Sensedia)
-// Fluxo: 1) obtém access_token com credenciais do tenant  2) POST /v1/estoque/veiculos
+// Publica um veículo na Webmotors via Sensedia gateway
+// Fluxo: 1) obtém access_token  2) POST marketplace/v1/veiculos
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireVehicleOwner, getEffectiveUserId } from "@/lib/api-auth";
@@ -9,10 +9,9 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 const WM_BASE =
   process.env.WEBMOTORS_ENV === "producao"
     ? "https://api.webmotors.com.br"
-    : "https://hml-api.webmotors.com.br";
+    : "https://hlg-webmotors.sensedia.com";
 
-const WM_CLIENT_ID     = process.env.WEBMOTORS_CLIENT_ID     ?? "";
-const WM_CLIENT_SECRET = process.env.WEBMOTORS_CLIENT_SECRET ?? "";
+const WM_CLIENT_ID = process.env.WEBMOTORS_CLIENT_ID ?? "";
 
 function mapCombustivel(comb: string): string {
   const map: Record<string, string> = {
@@ -28,19 +27,24 @@ function mapCombustivel(comb: string): string {
 }
 
 async function getWmToken(usuario: string, senha: string): Promise<string> {
-  const resp = await fetch(`${WM_BASE}/v1/oauth/token`, {
-    method:  "POST",
-    headers: {
-      "Content-Type":  "application/x-www-form-urlencoded",
-      "client_id":     WM_CLIENT_ID,
-      "client_secret": WM_CLIENT_SECRET,
-    },
-    body: new URLSearchParams({
-      grant_type: "password",
-      username:   usuario,
-      password:   senha,
-    }),
-  });
+  let resp: Response;
+  try {
+    resp = await fetch(`${WM_BASE}/oauth/v1/access-token`, {
+      method:  "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "client_id":    WM_CLIENT_ID,
+      },
+      body: JSON.stringify({
+        username:        usuario,
+        password:        senha,
+        integracaosite:  "true",
+        grant_type:      "password",
+      }),
+    });
+  } catch (e: any) {
+    throw new Error(`Erro de rede na autenticação: ${e.message}`);
+  }
 
   if (!resp.ok) {
     const txt = await resp.text();
@@ -53,16 +57,17 @@ async function getWmToken(usuario: string, senha: string): Promise<string> {
   }
 
   const data = await resp.json();
-  if (!data.access_token) throw new Error("access_token não retornado pelo Webmotors");
-  return data.access_token as string;
+  const token = data.access_token ?? data.token ?? data.accessToken;
+  if (!token) throw new Error("access_token não retornado pelo Webmotors");
+  return token as string;
 }
 
 export async function POST(req: NextRequest) {
   const { veiculoId } = await req.json();
   if (!veiculoId) return NextResponse.json({ error: "veiculoId obrigatório" }, { status: 400 });
 
-  if (!WM_CLIENT_ID || !WM_CLIENT_SECRET) {
-    return NextResponse.json({ error: "WEBMOTORS_CLIENT_ID/SECRET não configurados" }, { status: 500 });
+  if (!WM_CLIENT_ID) {
+    return NextResponse.json({ error: "WEBMOTORS_CLIENT_ID não configurado" }, { status: 500 });
   }
 
   const auth = await requireVehicleOwner(veiculoId);
@@ -82,7 +87,7 @@ export async function POST(req: NextRequest) {
       .single(),
   ]);
 
-  if (!v)  return NextResponse.json({ error: "Veículo não encontrado" }, { status: 404 });
+  if (!v) return NextResponse.json({ error: "Veículo não encontrado" }, { status: 404 });
   if (!cfg?.webmotors_usuario || !cfg?.webmotors_senha) {
     return NextResponse.json({ error: "Credenciais Webmotors não configuradas" }, { status: 400 });
   }
@@ -118,12 +123,12 @@ export async function POST(req: NextRequest) {
 
   let resp: Response;
   try {
-    resp = await fetch(`${WM_BASE}/v1/estoque/veiculos`, {
+    resp = await fetch(`${WM_BASE}/marketplace/v1/veiculos`, {
       method:  "POST",
       headers: {
-        "Content-Type":  "application/json",
-        "Authorization": `Bearer ${token}`,
-        "client_id":     WM_CLIENT_ID,
+        "Content-Type": "application/json",
+        "access_token": token,
+        "client_id":    WM_CLIENT_ID,
       },
       body: JSON.stringify(payload),
     });
@@ -135,17 +140,16 @@ export async function POST(req: NextRequest) {
   if (!resp.ok) {
     const txt = await resp.text();
     console.error("❌ Webmotors publicar falhou:", resp.status, txt.slice(0, 400));
-    // Tenta extrair mensagem legível do JSON de erro
     let msgErro = `Webmotors retornou ${resp.status}`;
     try {
-      const errJson = JSON.parse(txt);
-      msgErro = errJson?.message ?? errJson?.error ?? errJson?.Message ?? msgErro;
+      const j = JSON.parse(txt);
+      msgErro = j?.message ?? j?.error ?? j?.Message ?? j?.detail ?? msgErro;
     } catch {}
     return NextResponse.json({ error: msgErro }, { status: 502 });
   }
 
   const data = await resp.json();
-  const wmId: string | undefined = data?.IdVeiculo ?? data?.id;
+  const wmId: string | undefined = data?.IdVeiculo ?? data?.id ?? data?.Id;
 
   await supabaseAdmin
     .from("veiculos")
