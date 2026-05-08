@@ -853,8 +853,12 @@ Responda apenas com o JSON, sem markdown.`;
   }
 
   // ── 8. Contexto do Estoque para o Gemini ───────────────────────────────────
-  // Passa o veiculoPrincipal para que o contexto separe claramente "foco" de "alternativas"
-  const context = buildStockContext(topVeiculos, veiculoPrincipal);
+  // Quando não há carro vinculado E nenhum hit textual (ex: "Tenho interesse" sem contexto),
+  // não passa nenhum carro — evita que o Gemini chute o primeiro do fallback semântico.
+  const veiculosParaContexto = (!veiculoPrincipal && hitsTextuais.length === 0)
+    ? []
+    : topVeiculos;
+  const context = buildStockContext(veiculosParaContexto, veiculoPrincipal);
   console.log("🚗 CONTEXTO ENVIADO AO AGENTE:\n", context);
 
   // ── 9. Histórico da Conversa ──────────────────────────────────────────────────
