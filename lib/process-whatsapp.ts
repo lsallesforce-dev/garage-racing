@@ -991,11 +991,12 @@ Responda apenas com o JSON, sem markdown.`;
       const clientePhone = phone.replace(/\D/g, "");
       const posvBody = `🔴 *ALERTA PÓS-VENDA!*\n\n👤 ${lead.nome || phone}\n💬 "${userMessage.slice(0, 100)}"\n⚠️ Agente em stand-by automaticamente.`;
       const posvLink = `https://wa.me/${clientePhone}`;
-      sendMetaCtaButton(gerentePhone, posvBody, "Abrir Conversa", posvLink, metaCreds)
-        .catch(async (err: any) => {
-          console.warn("⚠️ CTA button (pós-venda) falhou:", err?.message?.slice(0, 100));
-          await sendText(gerentePhone, `${posvBody}\n\n${posvLink}`).catch(() => {});
-        });
+      if (!useAvisa && metaCreds.phoneNumberId && metaCreds.accessToken) {
+        sendMetaCtaButton(gerentePhone, posvBody, "Abrir Conversa", posvLink, metaCreds)
+          .catch(() => {});
+      } else {
+        sendText(gerentePhone, `${posvBody}\n\n${posvLink}`).catch(() => {});
+      }
     }
   }
 
