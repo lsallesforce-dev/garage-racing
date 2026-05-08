@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { useUserRole } from "@/components/SidebarWrapper";
 import { Megaphone, CheckCircle2, Clock, XCircle } from "lucide-react";
 import PublicarMetaButton from "@/components/PublicarMetaButton";
+import PublicarPortaisModal from "@/components/PublicarPortaisModal";
 
 // ─── Ícones de plataforma ─────────────────────────────────────────────────────
 
@@ -73,42 +74,23 @@ function MetaBadge({ veiculoId }: { veiculoId: string }) {
 
 // ─── Botão Webmotors com tooltip inline ──────────────────────────────────────
 
-function WmButton({ wmConfigurado }: { wmConfigurado: boolean }) {
+function WmButton({ wmConfigurado, publicado, onPublicar }: { wmConfigurado: boolean; publicado?: boolean; onPublicar?: () => void }) {
   const [hint, setHint] = useState(false);
 
   if (wmConfigurado) {
     return (
-      <>
-        {hint && (
-          <div className="fixed inset-0 z-40" onClick={() => setHint(false)} />
-        )}
-        <div className="flex flex-col items-center gap-1 relative">
-          <button
-            onClick={() => setHint((v) => !v)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-50 border border-red-100 hover:bg-red-100 transition-colors"
-          >
-            <IconWebmotors className="w-4 h-4" />
-            <span className="text-[9px] font-black uppercase tracking-wider text-red-700">Webmotors</span>
-          </button>
-          <span className="flex items-center gap-0.5 px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-[9px] font-black uppercase tracking-wider">
-            <CheckCircle2 size={9} /> Ativo
-          </span>
-          {hint && (
-            <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-52 bg-gray-900 text-white rounded-xl p-3 shadow-xl z-50 text-center">
-              <p className="text-[10px] font-bold leading-snug mb-2">
-                Leads do Webmotors chegam automaticamente pelo webhook configurado.
-              </p>
-              <a
-                href="/configuracoes"
-                className="inline-block px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-[9px] font-black uppercase rounded-lg transition-colors"
-              >
-                Ver Configurações
-              </a>
-              <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900" />
-            </div>
-          )}
-        </div>
-      </>
+      <div className="flex flex-col items-center gap-1">
+        <button
+          onClick={onPublicar}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-50 border border-red-100 hover:bg-red-100 transition-colors"
+        >
+          <IconWebmotors className="w-4 h-4" />
+          <span className="text-[9px] font-black uppercase tracking-wider text-red-700">Webmotors</span>
+        </button>
+        <span className="flex items-center gap-0.5 px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-[9px] font-black uppercase tracking-wider">
+          <CheckCircle2 size={9} /> {publicado ? "Publicado" : "Ativo"}
+        </span>
+      </div>
     );
   }
 
@@ -148,21 +130,21 @@ function WmButton({ wmConfigurado }: { wmConfigurado: boolean }) {
 
 // ─── Botão OLX ────────────────────────────────────────────────────────────────
 
-function OlxButton({ olxConectado }: { olxConectado: boolean }) {
+function OlxButton({ olxConectado, publicado, onPublicar }: { olxConectado: boolean; publicado?: boolean; onPublicar?: () => void }) {
   const [hint, setHint] = useState(false);
 
   if (olxConectado) {
     return (
       <div className="flex flex-col items-center gap-1">
-        <div
-          title="OLX conectado — anúncios em breve"
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-purple-50 border border-purple-100"
+        <button
+          onClick={onPublicar}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-purple-50 border border-purple-100 hover:bg-purple-100 transition-colors"
         >
           <IconOLX className="w-4 h-4" />
           <span className="text-[9px] font-black uppercase tracking-wider text-purple-700">OLX</span>
-        </div>
+        </button>
         <span className="flex items-center gap-0.5 px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-[9px] font-black uppercase tracking-wider">
-          <CheckCircle2 size={9} /> Conectado
+          <CheckCircle2 size={9} /> {publicado ? "Publicado" : "Conectado"}
         </span>
       </div>
     );
@@ -207,9 +189,11 @@ function OlxButton({ olxConectado }: { olxConectado: boolean }) {
 // ─── Card de veículo ──────────────────────────────────────────────────────────
 
 function VeiculoMarketingCard({ carro, wmConfigurado, olxConectado }: { carro: any; wmConfigurado: boolean; olxConectado: boolean }) {
-  const [metaOpen, setMetaOpen] = useState(false);
-  const fotoUrl = carro.capa_marketing_url ?? carro.fotos?.[0] ?? null;
-  const vendido = carro.status_venda === "VENDIDO";
+  const [metaOpen, setMetaOpen]       = useState(false);
+  const [portaisOpen, setPortaisOpen] = useState(false);
+  const [carroLocal, setCarroLocal]   = useState(carro);
+  const fotoUrl = carroLocal.capa_marketing_url ?? carroLocal.fotos?.[0] ?? null;
+  const vendido = carroLocal.status_venda === "VENDIDO";
 
   return (
     <div className={`bg-white rounded-[2rem] border border-gray-100 shadow-sm hover:shadow-lg transition-all ${vendido ? "opacity-60" : ""}`}>
@@ -264,23 +248,45 @@ function VeiculoMarketingCard({ carro, wmConfigurado, olxConectado }: { carro: a
           </div>
 
           {/* OLX */}
-          <OlxButton olxConectado={olxConectado} />
+          <OlxButton
+            olxConectado={olxConectado}
+            publicado={carroLocal.status_olx === "publicado"}
+            onPublicar={!vendido ? () => setPortaisOpen(true) : undefined}
+          />
 
           {/* Webmotors */}
-          <WmButton wmConfigurado={wmConfigurado} />
+          <WmButton
+            wmConfigurado={wmConfigurado}
+            publicado={carroLocal.status_webmotors === "publicado"}
+            onPublicar={!vendido ? () => setPortaisOpen(true) : undefined}
+          />
         </div>
       </div>
 
-      {/* Modal Meta Ads (montado fora do card para evitar overflow) */}
+      {/* Modal Meta Ads */}
       {metaOpen && (
         <PublicarMetaButton
-          veiculoId={carro.id}
-          marca={carro.marca ?? ""}
-          modelo={carro.modelo ?? ""}
-          ano={carro.ano_modelo ?? carro.ano ?? ""}
+          veiculoId={carroLocal.id}
+          marca={carroLocal.marca ?? ""}
+          modelo={carroLocal.modelo ?? ""}
+          ano={carroLocal.ano_modelo ?? carroLocal.ano ?? ""}
           fotoUrl={fotoUrl}
           defaultOpen
           onClose={() => setMetaOpen(false)}
+        />
+      )}
+
+      {/* Modal Portais (OLX + Webmotors) */}
+      {portaisOpen && (
+        <PublicarPortaisModal
+          veiculo={carroLocal}
+          olxConectado={olxConectado}
+          wmConfigurado={wmConfigurado}
+          isOpen={portaisOpen}
+          onClose={() => setPortaisOpen(false)}
+          onStatusChange={(campo, valor) =>
+            setCarroLocal((prev: any) => ({ ...prev, [campo]: valor }))
+          }
         />
       )}
     </div>
@@ -314,7 +320,7 @@ function MarketingPageInner() {
     Promise.all([
       supabase
         .from("veiculos")
-        .select("id, marca, modelo, versao, ano, ano_modelo, preco_sugerido, capa_marketing_url, fotos, status_venda")
+        .select("id, marca, modelo, versao, ano, ano_modelo, preco_sugerido, capa_marketing_url, fotos, status_venda, status_olx, status_webmotors")
         .eq("user_id", effectiveUserId)
         .order("status_venda", { ascending: true })
         .order("created_at", { ascending: false }),
