@@ -638,12 +638,26 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   if (!userMessage && !audioData) return;
 
   // ── Contexto do anúncio (Click-to-WhatsApp) ────────────────────────────────
-  // Se o lead veio de um anúncio Meta, injeta o título do anúncio na mensagem
-  // para que o Gemini identifique o veículo mesmo sem o cliente mencionar o nome.
+  // Prioridade 1: busca o veiculo_id diretamente via ad_id na tabela meta_campanhas.
+  // Isso garante que o carro certo é identificado mesmo com headline genérico.
+  // Prioridade 2: injeta o headline na mensagem como fallback textual.
+  let adVeiculoId: string | null = null;
+  if (adReferral?.ad_id) {
+    const { data: campanha } = await supabaseAdmin
+      .from("meta_campanhas")
+      .select("veiculo_id")
+      .eq("ad_id", adReferral.ad_id)
+      .eq("user_id", tenantUserId)
+      .maybeSingle();
+    if (campanha?.veiculo_id) {
+      adVeiculoId = campanha.veiculo_id;
+      console.log(`📢 [Ad referral] veiculo_id resolvido via ad_id=${adReferral.ad_id}: ${adVeiculoId}`);
+    }
+  }
   if (adReferral?.headline) {
     const contextoAd = `[Lead veio do anúncio: "${adReferral.headline}"${adReferral.body ? ` — ${adReferral.body}` : ""}]`;
     userMessage = `${contextoAd}\n${userMessage}`;
-    console.log(`📢 [Ad referral] ${contextoAd}`);
+    if (!adVeiculoId) console.log(`📢 [Ad referral] headline injetado (ad_id sem campanha cadastrada): ${adReferral.headline}`);
   }
 
   // Marca mensagem como lida (ticks azuis) — fire-and-forget
@@ -792,6 +806,14 @@ Responda apenas com o JSON, sem markdown.`;
 
   // ── 6. Buscar veículo principal atual do lead ───────────────────────────────
   let veiculoPrincipal: Vehicle | null = null;
+
+  // Se o lead veio via anúncio Meta com veiculo_id resolvido, vincula imediatamente
+  if (lead && adVeiculoId && !lead.veiculo_id) {
+    await supabaseAdmin.from("leads").update({ veiculo_id: adVeiculoId, origem: "meta_ads", origem_anuncio_id: adReferral?.ad_id ?? null }).eq("id", lead.id);
+    (lead as any).veiculo_id = adVeiculoId;
+    console.log(`📢 [Ad referral] lead ${lead.id} vinculado ao veículo ${adVeiculoId}`);
+  }
+
   if (lead?.veiculo_id) {
     const { data: vp } = await supabaseAdmin
       .from("veiculos")
