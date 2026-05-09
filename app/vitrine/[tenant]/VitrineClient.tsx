@@ -390,27 +390,27 @@ export default function VitrineClient({ tenant, nomeEmpresa, whatsapp, estoque, 
                 );
 
                 return (
-                  <div key={carro.id} className="bg-white rounded-3xl shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group flex flex-col overflow-hidden">
+                  <div key={carro.id} className="bg-white rounded-3xl shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group flex flex-col">
 
-                    {/* Foto — carro "flutuando" no fundo neutro */}
-                    <Link href={`/vitrine/${tenant}/${carro.id}`} className="block relative bg-gray-50 flex-shrink-0" style={{ aspectRatio: "4/3" }}>
+                    {/* Foto — com padding para o arredondamento do card aparecer */}
+                    <Link href={`/vitrine/${tenant}/${carro.id}`} className="block relative mx-3 mt-3 flex-shrink-0 rounded-2xl overflow-hidden bg-gray-100" style={{ aspectRatio: "4/3" }}>
                       {img ? (
                         <img
                           src={img}
                           alt={`${carro.marca} ${carro.modelo}`}
-                          className="w-full h-full object-contain p-4 group-hover:scale-105 transition-transform duration-500"
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-gray-200"><Zap size={32} /></div>
                       )}
                       {carro.video_url && (
-                        <div className="absolute top-3 right-3 bg-red-600 text-white px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest flex items-center gap-1">
+                        <div className="absolute top-2.5 right-2.5 bg-red-600 text-white px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest flex items-center gap-1">
                           <Play size={7} className="fill-white" /> Vídeo
                         </div>
                       )}
                       {/* Selos sobrepostos no canto inferior */}
                       {selos.length > 0 && (
-                        <div className="absolute bottom-3 left-3 flex flex-wrap gap-1">
+                        <div className="absolute bottom-2.5 left-2.5 flex flex-wrap gap-1">
                           {selos.map(({ key, label, color }) => (
                             <span key={key} className={`${color} text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full`}>
                               {label}
