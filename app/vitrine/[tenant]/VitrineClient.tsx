@@ -362,7 +362,7 @@ export default function VitrineClient({ tenant, nomeEmpresa, whatsapp, estoque, 
       <div className="max-w-[1400px] mx-auto px-6 py-8 flex gap-8 items-start">
 
         {/* Sidebar desktop */}
-        <aside className="hidden lg:block w-[260px] flex-shrink-0 sticky top-24 bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+        <aside className="hidden lg:block w-[260px] flex-shrink-0 sticky top-24 bg-white border border-gray-100 shadow-sm p-5">
           {sidebarContent}
         </aside>
 
@@ -390,10 +390,10 @@ export default function VitrineClient({ tenant, nomeEmpresa, whatsapp, estoque, 
                 );
 
                 return (
-                  <div key={carro.id} className="bg-white rounded-3xl shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group flex flex-col">
+                  <div key={carro.id} className="bg-white shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group flex flex-col">
 
-                    {/* Foto — com padding para o arredondamento do card aparecer */}
-                    <Link href={`/vitrine/${tenant}/${carro.id}`} className="block relative mx-3 mt-3 flex-shrink-0 rounded-2xl overflow-hidden bg-gray-100" style={{ aspectRatio: "4/3" }}>
+                    {/* Foto */}
+                    <Link href={`/vitrine/${tenant}/${carro.id}`} className="block relative flex-shrink-0 overflow-hidden bg-gray-100" style={{ aspectRatio: "4/3" }}>
                       {img ? (
                         <img
                           src={img}
