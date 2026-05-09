@@ -29,12 +29,12 @@ function Galeria({ fotos, capa }: { fotos: string[]; capa?: string }) {
   return (
     <div>
       <div
-        className="relative w-full rounded-3xl overflow-hidden bg-gray-100 cursor-zoom-in shadow-sm"
+        className="relative w-full rounded-none overflow-hidden bg-gray-100 cursor-zoom-in shadow-sm"
         style={{ aspectRatio: "16/9" }}
         onClick={() => setZoom(true)}
       >
         <img src={ativa} alt="Foto do veículo" className="w-full h-full object-cover hover:scale-105 transition-transform duration-700" />
-        <div className="absolute bottom-3 right-3 bg-black/50 backdrop-blur-sm px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest text-white">
+        <div className="absolute bottom-3 right-3 bg-black/50 backdrop-blur-sm px-3 py-1 rounded-none text-[9px] font-black uppercase tracking-widest text-white">
           {todas.indexOf(ativa) + 1} / {todas.length}
         </div>
       </div>
@@ -44,7 +44,7 @@ function Galeria({ fotos, capa }: { fotos: string[]; capa?: string }) {
             <button
               key={i}
               onClick={() => setAtiva(foto)}
-              className={`flex-shrink-0 w-20 h-14 rounded-xl overflow-hidden border-2 transition-all ${
+              className={`flex-shrink-0 w-20 h-14 rounded-none overflow-hidden border-2 transition-all ${
                 ativa === foto ? "border-red-500" : "border-gray-200 hover:border-gray-400"
               }`}
             >
@@ -55,7 +55,7 @@ function Galeria({ fotos, capa }: { fotos: string[]; capa?: string }) {
       )}
       {zoom && (
         <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-4" onClick={() => setZoom(false)}>
-          <img src={ativa} alt="" className="max-w-full max-h-full rounded-2xl object-contain" />
+          <img src={ativa} alt="" className="max-w-full max-h-full rounded-none object-contain" />
         </div>
       )}
     </div>
@@ -75,11 +75,11 @@ function VideoPlayer({ url }: { url: string }) {
   };
 
   return (
-    <div className="relative w-full rounded-3xl overflow-hidden bg-gray-900 shadow-xl" style={{ aspectRatio: "9/16", maxHeight: 560 }}>
+    <div className="relative w-full rounded-none overflow-hidden bg-gray-900 shadow-xl" style={{ aspectRatio: "9/16", maxHeight: 560 }}>
       <video ref={setVideoEl} src={url} className="w-full h-full object-cover" playsInline loop onEnded={() => setPlaying(false)} />
       <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent pointer-events-none" />
       <button onClick={toggle} className="absolute inset-0 flex items-center justify-center group">
-        <div className={`w-16 h-16 rounded-full border-2 border-white/70 bg-black/30 backdrop-blur-sm flex items-center justify-center transition-all group-hover:scale-110 group-hover:border-white ${playing ? "opacity-0 group-hover:opacity-100" : "opacity-100"}`}>
+        <div className={`w-16 h-16 rounded-none border-2 border-white/70 bg-black/30 backdrop-blur-sm flex items-center justify-center transition-all group-hover:scale-110 group-hover:border-white ${playing ? "opacity-0 group-hover:opacity-100" : "opacity-100"}`}>
           {playing ? <Pause size={20} className="text-white fill-white" /> : <Play size={20} className="text-white fill-white ml-1" />}
         </div>
       </button>
@@ -92,7 +92,7 @@ function VideoPlayer({ url }: { url: string }) {
 function CardRelacionado({ carro, tenant }: { carro: any; tenant: string }) {
   const img = carro.capa_marketing_url ?? carro.fotos?.[0];
   return (
-    <Link href={`/vitrine/${tenant}/${carro.id}`} className="group bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all block">
+    <Link href={`/vitrine/${tenant}/${carro.id}`} className="group bg-white rounded-none overflow-hidden border border-gray-100 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all block">
       <div className="aspect-video overflow-hidden bg-gray-100">
         {img
           ? <img src={img} alt={carro.modelo} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
@@ -161,7 +161,7 @@ export default function VitrineDetalheClient({ veiculo, relacionados, nomeEmpres
           <div className="space-y-5">
 
             {vendido && (
-              <span className="inline-block bg-gray-100 text-gray-500 text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full">
+              <span className="inline-block bg-gray-100 text-gray-500 text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-none">
                 Vendido
               </span>
             )}
@@ -176,7 +176,7 @@ export default function VitrineDetalheClient({ veiculo, relacionados, nomeEmpres
             </div>
 
             {/* Preço */}
-            <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
+            <div className="bg-white rounded-none p-6 border border-gray-100 shadow-sm">
               <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Preço de oportunidade</p>
               <p className="text-4xl font-black tracking-tighter text-gray-900">{fmt(veiculo.preco_sugerido ?? 0)}</p>
               {veiculo.parcelas && (
@@ -190,8 +190,8 @@ export default function VitrineDetalheClient({ veiculo, relacionados, nomeEmpres
             {(veiculo.ano_modelo || veiculo.cor) && (
               <div className="grid grid-cols-2 gap-3">
                 {veiculo.ano_modelo && (
-                  <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm flex items-center gap-3">
-                    <div className="w-8 h-8 bg-red-50 rounded-xl flex items-center justify-center">
+                  <div className="bg-white rounded-none p-4 border border-gray-100 shadow-sm flex items-center gap-3">
+                    <div className="w-8 h-8 bg-red-50 rounded-none flex items-center justify-center">
                       <Calendar size={14} className="text-red-500" />
                     </div>
                     <div>
@@ -201,8 +201,8 @@ export default function VitrineDetalheClient({ veiculo, relacionados, nomeEmpres
                   </div>
                 )}
                 {veiculo.cor && (
-                  <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm flex items-center gap-3">
-                    <div className="w-8 h-8 bg-red-50 rounded-xl flex items-center justify-center">
+                  <div className="bg-white rounded-none p-4 border border-gray-100 shadow-sm flex items-center gap-3">
+                    <div className="w-8 h-8 bg-red-50 rounded-none flex items-center justify-center">
                       <Palette size={14} className="text-red-500" />
                     </div>
                     <div>
@@ -216,7 +216,7 @@ export default function VitrineDetalheClient({ veiculo, relacionados, nomeEmpres
 
             {/* Pontos fortes */}
             {pontos.length > 0 && (
-              <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
+              <div className="bg-white rounded-none p-6 border border-gray-100 shadow-sm">
                 <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-4">
                   ✦ Diferenciais do carro
                 </p>
@@ -233,7 +233,7 @@ export default function VitrineDetalheClient({ veiculo, relacionados, nomeEmpres
 
             {/* Detalhes */}
             {veiculo.detalhes && (
-              <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm">
+              <div className="bg-white rounded-none p-6 border border-gray-100 shadow-sm">
                 <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-3">Sobre este veículo</p>
                 <p className="text-[11px] text-gray-500 leading-relaxed whitespace-pre-line">{veiculo.detalhes}</p>
               </div>
@@ -246,7 +246,7 @@ export default function VitrineDetalheClient({ veiculo, relacionados, nomeEmpres
                   href={whatsappLink(numeroWhats, msgWhats)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-3 w-full bg-green-500 hover:bg-green-400 text-white py-5 rounded-2xl font-black uppercase tracking-widest text-sm transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-green-200"
+                  className="flex items-center justify-center gap-3 w-full bg-green-500 hover:bg-green-400 text-white py-5 rounded-none font-black uppercase tracking-widest text-sm transition-all hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-green-200"
                 >
                   <MessageCircle size={20} strokeWidth={2.5} />
                   Quero este veículo
