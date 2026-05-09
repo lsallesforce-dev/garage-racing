@@ -3,22 +3,26 @@
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import {
-  Zap, MessageCircle, Play, Award,
-  X, ChevronDown, SlidersHorizontal, ArrowRight,
+  MessageCircle, Play, X, ChevronDown, SlidersHorizontal,
+  ArrowRight, Zap, RotateCcw,
 } from "lucide-react";
 
 function fmt(v: number) {
-  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(v);
 }
 
-// ─── Selos do veículo ─────────────────────────────────────────────────────────
+function fmtKm(v: number) {
+  return new Intl.NumberFormat("pt-BR").format(v) + " km";
+}
+
+// ─── Selos ────────────────────────────────────────────────────────────────────
 
 const SELOS: { key: string; label: string; color: string }[] = [
-  { key: "segundo_dono_false",  label: "Único Dono",         color: "bg-blue-600 text-white" },
-  { key: "vistoriado",          label: "Vistoriado",         color: "bg-green-600 text-white" },
-  { key: "vistoria_cautelar",   label: "Vistoria Cautelar",  color: "bg-teal-600 text-white" },
-  { key: "abaixo_fipe",         label: "Abaixo FIPE",        color: "bg-orange-500 text-white" },
-  { key: "de_repasse",          label: "De Repasse",         color: "bg-purple-600 text-white" },
+  { key: "segundo_dono_false", label: "Único Dono",        color: "bg-blue-600 text-white" },
+  { key: "vistoriado",         label: "Vistoriado",        color: "bg-green-600 text-white" },
+  { key: "vistoria_cautelar",  label: "Vistoria Cautelar", color: "bg-teal-600 text-white" },
+  { key: "abaixo_fipe",        label: "Abaixo FIPE",       color: "bg-orange-500 text-white" },
+  { key: "de_repasse",         label: "De Repasse",        color: "bg-purple-600 text-white" },
 ];
 
 function selosAtivos(carro: any) {
@@ -28,14 +32,26 @@ function selosAtivos(carro: any) {
   });
 }
 
+// ─── Preços predefinidos ──────────────────────────────────────────────────────
+
+const FAIXAS_PRECO = [
+  { label: "Até R$ 30 mil",   value: 30000 },
+  { label: "Até R$ 50 mil",   value: 50000 },
+  { label: "Até R$ 80 mil",   value: 80000 },
+  { label: "Até R$ 100 mil",  value: 100000 },
+  { label: "Até R$ 150 mil",  value: 150000 },
+  { label: "Até R$ 200 mil",  value: 200000 },
+];
+
 // ─── Modal de Financiamento ───────────────────────────────────────────────────
 
-function ModalFinanciamento({ carro, whatsapp, nomeEmpresa, onClose }: { carro: any; whatsapp: string; nomeEmpresa: string; onClose: () => void }) {
+function ModalFinanciamento({
+  carro, whatsapp, nomeEmpresa, onClose,
+}: { carro: any; whatsapp: string; nomeEmpresa: string; onClose: () => void }) {
   const preco = carro.preco_sugerido ?? 0;
   const [entrada, setEntrada] = useState("");
   const [parcelas, setParcelas] = useState("48");
   const [nome, setNome] = useState("");
-
   const entradaNum = parseFloat(entrada.replace(/\./g, "").replace(",", ".")) || 0;
 
   const msgWpp = encodeURIComponent(
@@ -60,7 +76,6 @@ function ModalFinanciamento({ carro, whatsapp, nomeEmpresa, onClose }: { carro: 
             <X size={14} />
           </button>
         </div>
-
         <div className="space-y-4 mb-6">
           <div>
             <label className="text-[9px] font-black uppercase tracking-widest text-gray-500 block mb-2">Seu nome</label>
@@ -83,18 +98,47 @@ function ModalFinanciamento({ carro, whatsapp, nomeEmpresa, onClose }: { carro: 
             </div>
           </div>
         </div>
-
         <div className="bg-gray-50 rounded-2xl p-4 mb-6">
           <p className="text-[9px] text-gray-400 leading-relaxed">
             Um consultor vai te enviar a simulação real com as condições do banco, taxa de juros atualizada e melhores opções de prazo.
           </p>
         </div>
-
         <a href={`https://wa.me/${whatsapp}?text=${msgWpp}`} target="_blank" rel="noopener noreferrer"
-          className="flex items-center justify-center gap-2 w-full bg-green-500 hover:bg-green-400 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-[11px] transition-all hover:scale-[1.02] active:scale-[0.98]">
+          className="flex items-center justify-center gap-2 w-full bg-green-500 hover:bg-green-400 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-[11px] transition-all">
           <MessageCircle size={16} /> Solicitar simulação real
         </a>
       </div>
+    </div>
+  );
+}
+
+// ─── Checkbox item ─────────────────────────────────────────────────────────────
+
+function CheckItem({ label, checked, onChange }: { label: string; checked: boolean; onChange: () => void }) {
+  return (
+    <label className="flex items-center gap-2.5 cursor-pointer group">
+      <span className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${
+        checked ? "bg-red-600 border-red-600" : "border-gray-300 group-hover:border-red-400"
+      }`}>
+        {checked && (
+          <svg viewBox="0 0 10 8" className="w-2.5 h-2" fill="none">
+            <path d="M1 4l2.5 2.5L9 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+      </span>
+      <span className="text-sm text-gray-700 group-hover:text-gray-900 transition-colors">{label}</span>
+      <input type="checkbox" className="sr-only" checked={checked} onChange={onChange} />
+    </label>
+  );
+}
+
+// ─── Seção do sidebar ─────────────────────────────────────────────────────────
+
+function SideSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="py-4 border-b border-gray-100 last:border-0">
+      <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-3">{title}</p>
+      {children}
     </div>
   );
 }
@@ -111,242 +155,360 @@ interface Props {
 
 export default function VitrineClient({ tenant, nomeEmpresa, whatsapp, estoque, logoUrl }: Props) {
   const [modalCarro, setModalCarro] = useState<any | null>(null);
-  const [filtroMarca, setFiltroMarca] = useState("");
-  const [filtroModelo, setFiltroModelo] = useState("");
-  const [filtroAno, setFiltroAno] = useState("");
-  const [filtroPreco, setFiltroPreco] = useState("");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const marcas = useMemo(() => [...new Set(estoque.map((c) => c.marca).filter(Boolean))].sort(), [estoque]);
-  const modelos = useMemo(
-    () => [...new Set(estoque.filter((c) => !filtroMarca || c.marca === filtroMarca).map((c) => c.modelo).filter(Boolean))].sort(),
-    [estoque, filtroMarca]
+  // Filtros
+  const [filtroMarca, setFiltroMarca]           = useState("");
+  const [filtroModelo, setFiltroModelo]         = useState("");
+  const [filtroAno, setFiltroAno]               = useState("");
+  const [filtroPreco, setFiltroPreco]           = useState(0);
+  const [filtroCombustiveis, setFiltroCombust]  = useState<string[]>([]);
+  const [filtroCategorias, setFiltroCateg]      = useState<string[]>([]);
+
+  // Opções derivadas do estoque
+  const marcas = useMemo(() =>
+    [...new Set(estoque.map((c) => c.marca).filter(Boolean))].sort(), [estoque]);
+  const modelos = useMemo(() =>
+    [...new Set(estoque.filter((c) => !filtroMarca || c.marca === filtroMarca).map((c) => c.modelo).filter(Boolean))].sort(),
+    [estoque, filtroMarca]);
+  const anos = useMemo(() =>
+    [...new Set(estoque.map((c) => c.ano_modelo).filter(Boolean))].sort((a, b) => b - a), [estoque]);
+  const combustiveis = useMemo(() =>
+    [...new Set(estoque.map((c) => c.combustivel).filter(Boolean))].sort(), [estoque]);
+  const categorias = useMemo(() =>
+    [...new Set(estoque.map((c) => c.categoria).filter(Boolean))].sort(), [estoque]);
+
+  // Estoque filtrado
+  const estoqueFiltrado = useMemo(() => estoque.filter((c) => {
+    if (filtroMarca && c.marca !== filtroMarca) return false;
+    if (filtroModelo && c.modelo !== filtroModelo) return false;
+    if (filtroAno && String(c.ano_modelo) !== filtroAno) return false;
+    if (filtroPreco > 0 && (c.preco_sugerido ?? 0) > filtroPreco) return false;
+    if (filtroCombustiveis.length > 0 && !filtroCombustiveis.includes(c.combustivel)) return false;
+    if (filtroCategorias.length > 0 && !filtroCategorias.includes(c.categoria)) return false;
+    return true;
+  }), [estoque, filtroMarca, filtroModelo, filtroAno, filtroPreco, filtroCombustiveis, filtroCategorias]);
+
+  const filtrosAtivos = !!(filtroMarca || filtroModelo || filtroAno || filtroPreco || filtroCombustiveis.length || filtroCategorias.length);
+
+  function limparFiltros() {
+    setFiltroMarca(""); setFiltroModelo(""); setFiltroAno("");
+    setFiltroPreco(0); setFiltroCombust([]); setFiltroCateg([]);
+  }
+
+  function toggleCombustivel(v: string) {
+    setFiltroCombust((p) => p.includes(v) ? p.filter((x) => x !== v) : [...p, v]);
+  }
+  function toggleCategoria(v: string) {
+    setFiltroCateg((p) => p.includes(v) ? p.filter((x) => x !== v) : [...p, v]);
+  }
+
+  const selectClass = "appearance-none bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:border-red-500 w-full cursor-pointer";
+
+  // ─── Sidebar content ──────────────────────────────────────────────────────
+  const sidebarContent = (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between mb-2 pb-4 border-b border-gray-100">
+        <span className="text-sm font-black uppercase tracking-widest text-gray-800">Filtros</span>
+        {filtrosAtivos && (
+          <button onClick={limparFiltros} className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-red-500 hover:text-red-600">
+            <RotateCcw size={10} /> Limpar
+          </button>
+        )}
+      </div>
+
+      <div className="flex-1 overflow-y-auto pr-1 space-y-0">
+
+        {/* Marca */}
+        <SideSection title="Marca">
+          <div className="relative">
+            <select value={filtroMarca} onChange={(e) => { setFiltroMarca(e.target.value); setFiltroModelo(""); }} className={selectClass}>
+              <option value="">Todas as marcas</option>
+              {marcas.map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+            <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          </div>
+        </SideSection>
+
+        {/* Modelo */}
+        <SideSection title="Modelo">
+          <div className="relative">
+            <select value={filtroModelo} onChange={(e) => setFiltroModelo(e.target.value)} className={selectClass} disabled={modelos.length === 0}>
+              <option value="">Todos os modelos</option>
+              {modelos.map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+            <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          </div>
+        </SideSection>
+
+        {/* Ano */}
+        <SideSection title="Ano">
+          <div className="relative">
+            <select value={filtroAno} onChange={(e) => setFiltroAno(e.target.value)} className={selectClass}>
+              <option value="">Qualquer ano</option>
+              {anos.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+            <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          </div>
+        </SideSection>
+
+        {/* Preço */}
+        <SideSection title="Preço máximo">
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-1.5">
+              {FAIXAS_PRECO.map((f) => (
+                <button
+                  key={f.value}
+                  onClick={() => setFiltroPreco(filtroPreco === f.value ? 0 : f.value)}
+                  className={`text-[10px] font-bold px-2.5 py-1 rounded-full border transition-colors ${
+                    filtroPreco === f.value
+                      ? "bg-red-600 border-red-600 text-white"
+                      : "border-gray-200 text-gray-600 hover:border-red-300"
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </SideSection>
+
+        {/* Combustível */}
+        {combustiveis.length > 0 && (
+          <SideSection title="Combustível">
+            <div className="space-y-2">
+              {combustiveis.map((c) => (
+                <CheckItem key={c} label={c} checked={filtroCombustiveis.includes(c)} onChange={() => toggleCombustivel(c)} />
+              ))}
+            </div>
+          </SideSection>
+        )}
+
+        {/* Categoria */}
+        {categorias.length > 0 && (
+          <SideSection title="Categoria">
+            <div className="space-y-2">
+              {categorias.map((c) => (
+                <CheckItem key={c} label={c} checked={filtroCategorias.includes(c)} onChange={() => toggleCategoria(c)} />
+              ))}
+            </div>
+          </SideSection>
+        )}
+      </div>
+    </div>
   );
-  const anos = useMemo(
-    () => [...new Set(estoque.map((c) => c.ano_modelo).filter(Boolean))].sort((a, b) => b - a),
-    [estoque]
-  );
-
-  const estoqueFiltrado = useMemo(
-    () => estoque.filter((c) => {
-      if (filtroMarca && c.marca !== filtroMarca) return false;
-      if (filtroModelo && c.modelo !== filtroModelo) return false;
-      if (filtroAno && String(c.ano_modelo) !== filtroAno) return false;
-      if (filtroPreco && (c.preco_sugerido ?? 0) > parseInt(filtroPreco)) return false;
-      return true;
-    }),
-    [estoque, filtroMarca, filtroModelo, filtroAno, filtroPreco]
-  );
-
-  const filtrosAtivos = filtroMarca || filtroModelo || filtroAno || filtroPreco;
-  function limparFiltros() { setFiltroMarca(""); setFiltroModelo(""); setFiltroAno(""); setFiltroPreco(""); }
-
-  const selectClass = "appearance-none bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-bold text-gray-700 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 pr-8 w-full cursor-pointer";
 
   return (
-    <div className="bg-gray-50 min-h-screen text-gray-900 font-sans">
+    <div className="min-h-screen bg-gray-50 text-gray-900 font-sans">
 
-      {/* ── Header ── */}
+      {/* ── Header ─────────────────────────────────────────────────────────── */}
       <header className="bg-white border-b border-gray-100 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-          {logoUrl ? (
-            <img src={logoUrl} alt={nomeEmpresa} className="h-14 w-auto object-contain" />
-          ) : (
-            <span className="text-xl font-black uppercase italic tracking-tighter text-gray-900">{nomeEmpresa}</span>
-          )}
-          <a
-            href={`https://wa.me/${whatsapp}?text=${encodeURIComponent("Olá! Preciso de ajuda para escolher um veículo.")}`}
-            target="_blank" rel="noopener noreferrer"
-            className="hidden sm:flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-green-600 hover:text-green-500 transition-colors"
-          >
-            <MessageCircle size={14} /> Falar com consultor
-          </a>
+        <div className="max-w-[1400px] mx-auto px-6 h-16 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            {/* Mobile: botão filtros */}
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="lg:hidden flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-gray-600 bg-gray-100 hover:bg-gray-200 px-3 py-2 rounded-lg transition-colors"
+            >
+              <SlidersHorizontal size={13} /> Filtros
+              {filtrosAtivos && <span className="w-1.5 h-1.5 rounded-full bg-red-600" />}
+            </button>
+
+            {logoUrl ? (
+              <img src={logoUrl} alt={nomeEmpresa} className="h-10 w-auto object-contain" />
+            ) : (
+              <span className="text-lg font-black uppercase italic tracking-tighter text-gray-900">{nomeEmpresa}</span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-4">
+            <span className="hidden sm:block text-[10px] font-bold uppercase tracking-widest text-gray-400">
+              {estoqueFiltrado.length} veículo{estoqueFiltrado.length !== 1 ? "s" : ""}
+            </span>
+            <a
+              href={`https://wa.me/${whatsapp}?text=${encodeURIComponent("Olá! Preciso de ajuda para escolher um veículo.")}`}
+              target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-2 bg-green-500 hover:bg-green-400 text-white px-4 py-2 rounded-full text-[11px] font-black uppercase tracking-widest transition-colors"
+            >
+              <MessageCircle size={13} /> Consultor
+            </a>
+          </div>
         </div>
       </header>
 
-      {/* ── Hero + Filtro ── */}
-      <div className="bg-white border-b border-gray-100 pt-12 pb-8 px-6">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-8">
-            <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-3">
-              Encontre seu próximo <span className="text-red-600">veículo</span>
+      {/* ── Drawer mobile ──────────────────────────────────────────────────── */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setSidebarOpen(false)} />
+          <div className="absolute left-0 top-0 bottom-0 w-[300px] bg-white shadow-2xl p-6 overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <span className="font-black uppercase tracking-widest text-sm">Filtros</span>
+              <button onClick={() => setSidebarOpen(false)} className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
+                <X size={14} />
+              </button>
+            </div>
+            {sidebarContent}
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="mt-6 w-full bg-red-600 hover:bg-red-500 text-white py-3 rounded-xl font-black uppercase tracking-widest text-[11px] transition-colors"
+            >
+              Ver {estoqueFiltrado.length} veículo{estoqueFiltrado.length !== 1 ? "s" : ""}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Body: sidebar + grid ────────────────────────────────────────────── */}
+      <div className="max-w-[1400px] mx-auto px-6 py-8 flex gap-8 items-start">
+
+        {/* Sidebar desktop */}
+        <aside className="hidden lg:block w-[260px] flex-shrink-0 sticky top-24 bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+          {sidebarContent}
+        </aside>
+
+        {/* Grid */}
+        <main className="flex-1 min-w-0">
+          {/* Topo do grid */}
+          <div className="flex items-center justify-between mb-6">
+            <h1 className="text-base font-black uppercase tracking-widest text-gray-800">
+              <span className="text-red-600">{estoqueFiltrado.length}</span> veículo{estoqueFiltrado.length !== 1 ? "s" : ""} disponíve{estoqueFiltrado.length !== 1 ? "is" : "l"}
             </h1>
-            <p className="text-gray-400 text-sm max-w-md mx-auto">
-              Cada veículo analisado e verificado. Vídeo completo, pontos fortes e atendimento imediato.
-            </p>
-          </div>
-
-          <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <SlidersHorizontal size={13} className="text-gray-400" />
-              <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Filtrar estoque</span>
-              {filtrosAtivos && (
-                <button onClick={limparFiltros} className="ml-auto text-[10px] font-black uppercase tracking-widest text-red-500 hover:text-red-600 flex items-center gap-1">
-                  <X size={11} /> Limpar
-                </button>
-              )}
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div className="relative">
-                <select value={filtroMarca} onChange={(e) => { setFiltroMarca(e.target.value); setFiltroModelo(""); }} className={selectClass}>
-                  <option value="">Marca</option>
-                  {marcas.map((m) => <option key={m} value={m}>{m}</option>)}
-                </select>
-                <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-              </div>
-              <div className="relative">
-                <select value={filtroModelo} onChange={(e) => setFiltroModelo(e.target.value)} className={selectClass} disabled={modelos.length === 0}>
-                  <option value="">Modelo</option>
-                  {modelos.map((m) => <option key={m} value={m}>{m}</option>)}
-                </select>
-                <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-              </div>
-              <div className="relative">
-                <select value={filtroAno} onChange={(e) => setFiltroAno(e.target.value)} className={selectClass}>
-                  <option value="">Ano</option>
-                  {anos.map((a) => <option key={a} value={a}>{a}</option>)}
-                </select>
-                <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-              </div>
-              <div className="relative">
-                <select value={filtroPreco} onChange={(e) => setFiltroPreco(e.target.value)} className={selectClass}>
-                  <option value="">Preço máx.</option>
-                  <option value="30000">Até R$ 30.000</option>
-                  <option value="50000">Até R$ 50.000</option>
-                  <option value="80000">Até R$ 80.000</option>
-                  <option value="100000">Até R$ 100.000</option>
-                  <option value="150000">Até R$ 150.000</option>
-                  <option value="200000">Até R$ 200.000</option>
-                </select>
-                <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── Banner Propaganda ── */}
-      <div className="bg-[#e2e2de] border-y border-gray-300 overflow-hidden relative">
-        <div className="absolute inset-0 bg-[repeating-linear-gradient(45deg,transparent,transparent_20px,rgba(220,38,38,0.06)_20px,rgba(220,38,38,0.06)_21px)]" />
-        <div className="max-w-7xl mx-auto px-6 py-5 flex items-center justify-center relative">
-          <p className="text-center">
-            <span className="text-gray-900 font-black uppercase italic tracking-tight text-lg md:text-2xl">MELHOR AVALIAÇÃO DO SEU USADO</span>
-            <span className="text-red-600 font-black uppercase italic tracking-tight text-lg md:text-2xl"> — VENHA CONFERIR</span>
-          </p>
-        </div>
-      </div>
-
-      {/* ── Grid ── */}
-      <div className="max-w-7xl mx-auto px-6 py-12">
-        {filtrosAtivos && (
-          <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-6">
-            {estoqueFiltrado.length} veículo{estoqueFiltrado.length !== 1 ? "s" : ""} encontrado{estoqueFiltrado.length !== 1 ? "s" : ""}
-          </p>
-        )}
-
-        {estoqueFiltrado.length > 0 ? (
-          <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-            {estoqueFiltrado.map((carro) => {
-              const img = carro.capa_marketing_url ?? carro.fotos?.[0];
-              const preco = fmt(carro.preco_sugerido ?? 0);
-              const selos = selosAtivos(carro);
-              const msgWhats = encodeURIComponent(
-                `Olá! Vi o *${carro.marca} ${carro.modelo} ${carro.ano_modelo ?? ""}* na vitrine da ${nomeEmpresa} e tenho interesse. Ainda disponível?`
-              );
-
-              return (
-                <div key={carro.id} className="bg-white rounded-3xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group flex flex-col">
-
-                  {/* Foto */}
-                  <Link href={`/vitrine/${tenant}/${carro.id}`} className="block relative aspect-video overflow-hidden bg-gray-100 flex-shrink-0">
-                    {img ? (
-                      <img src={img} alt={carro.modelo} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-gray-300"><Zap size={32} /></div>
-                    )}
-                    {carro.video_url && (
-                      <div className="absolute top-3 right-3 bg-red-600 text-white px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest flex items-center gap-1 shadow-lg">
-                        <Play size={8} className="fill-white" /> Vídeo
-                      </div>
-                    )}
-                  </Link>
-
-                  {/* Selos abaixo da foto */}
-                  {selos.length > 0 && (
-                    <div className="flex flex-wrap gap-0 border-b border-gray-100">
-                      {selos.map(({ key, label, color }) => (
-                        <span key={key} className={`${color} text-[9px] font-black uppercase tracking-widest px-3 py-1.5 flex-1 text-center`}>
-                          {label}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Info */}
-                  <div className="p-6 flex flex-col flex-1">
-                    <Link href={`/vitrine/${tenant}/${carro.id}`}>
-                      <h2 className="text-xl font-black uppercase italic tracking-tight leading-none text-gray-900 group-hover:text-red-600 transition-colors">
-                        {carro.marca} {carro.modelo}
-                      </h2>
-                      <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1.5">
-                        {carro.versao ?? "—"} • {carro.ano_modelo ?? "—"}
-                      </p>
-                    </Link>
-                    <div className="mt-4 pt-4 border-t border-gray-50 mb-5 flex items-end justify-between gap-2">
-                      <div>
-                        <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-0.5">Preço</p>
-                        <p className="text-2xl font-black tracking-tighter text-gray-900">{preco}</p>
-                      </div>
-                      <button
-                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setModalCarro(carro); }}
-                        className="text-[8px] font-black uppercase tracking-widest text-gray-400 hover:text-red-600 underline underline-offset-2 transition-colors whitespace-nowrap pb-1"
-                      >
-                        ou simular
-                      </button>
-                    </div>
-                    <div className="mt-auto grid grid-cols-2 gap-2">
-                      <a
-                        href={`https://wa.me/${whatsapp}?text=${msgWhats}`}
-                        target="_blank" rel="noopener noreferrer"
-                        className="flex items-center justify-center gap-1.5 bg-green-500 hover:bg-green-400 text-white py-2.5 rounded-xl font-black uppercase text-[9px] tracking-widest transition-colors"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <MessageCircle size={12} /> WhatsApp
-                      </a>
-                      <Link
-                        href={`/vitrine/${tenant}/${carro.id}`}
-                        className="flex items-center justify-center gap-1.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-700 py-2.5 rounded-xl font-black uppercase text-[9px] tracking-widest transition-colors"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        Ver detalhes <ArrowRight size={11} />
-                      </Link>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="py-32 text-center border-2 border-dashed border-gray-200 rounded-3xl bg-white">
-            <Zap size={32} className="mx-auto text-gray-300 mb-4" />
-            <p className="text-xs font-black uppercase tracking-widest text-gray-400 mb-1">
-              {filtrosAtivos ? "Nenhum veículo com esses filtros" : "Pátio sendo reabastecido…"}
-            </p>
             {filtrosAtivos && (
-              <button onClick={limparFiltros} className="mt-4 text-[10px] font-black uppercase tracking-widest text-red-500 hover:text-red-600">
-                Limpar filtros
+              <button onClick={limparFiltros} className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-red-500 hover:text-red-600">
+                <RotateCcw size={10} /> Limpar filtros
               </button>
             )}
           </div>
-        )}
+
+          {estoqueFiltrado.length > 0 ? (
+            <div className="grid gap-5 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
+              {estoqueFiltrado.map((carro) => {
+                const img = carro.capa_marketing_url ?? carro.fotos?.[0];
+                const selos = selosAtivos(carro);
+                const msgWhats = encodeURIComponent(
+                  `Olá! Vi o *${carro.marca} ${carro.modelo} ${carro.ano_modelo ?? ""}* na vitrine da ${nomeEmpresa} e tenho interesse. Ainda disponível?`
+                );
+
+                return (
+                  <div key={carro.id} className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 group flex flex-col">
+
+                    {/* Foto */}
+                    <Link href={`/vitrine/${tenant}/${carro.id}`} className="block relative overflow-hidden bg-gray-100 flex-shrink-0" style={{ aspectRatio: "16/9" }}>
+                      {img ? (
+                        <img src={img} alt={`${carro.marca} ${carro.modelo}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-gray-200"><Zap size={32} /></div>
+                      )}
+                      {carro.video_url && (
+                        <div className="absolute top-2.5 right-2.5 bg-red-600 text-white px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest flex items-center gap-1">
+                          <Play size={7} className="fill-white" /> Vídeo
+                        </div>
+                      )}
+                      {/* Preço flutuante */}
+                      <div className="absolute bottom-2.5 left-2.5 bg-black/75 backdrop-blur-sm text-white px-3 py-1 rounded-full text-sm font-black tracking-tight">
+                        {fmt(carro.preco_sugerido ?? 0)}
+                      </div>
+                    </Link>
+
+                    {/* Selos */}
+                    {selos.length > 0 && (
+                      <div className="flex border-b border-gray-100">
+                        {selos.map(({ key, label, color }) => (
+                          <span key={key} className={`${color} text-[8px] font-black uppercase tracking-widest px-2 py-1 flex-1 text-center`}>
+                            {label}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Info */}
+                    <div className="p-4 flex flex-col flex-1">
+                      <Link href={`/vitrine/${tenant}/${carro.id}`}>
+                        <h2 className="font-black text-base uppercase italic tracking-tight text-gray-900 group-hover:text-red-600 transition-colors leading-tight">
+                          {carro.marca} {carro.modelo}
+                        </h2>
+                        <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">
+                          {carro.versao ?? ""}
+                        </p>
+                      </Link>
+
+                      {/* Specs */}
+                      <div className="mt-3 flex items-center gap-3 text-[11px] text-gray-500 font-semibold flex-wrap">
+                        {carro.ano_modelo && (
+                          <span className="flex items-center gap-1">
+                            <span className="w-1 h-1 rounded-full bg-gray-300" />
+                            {carro.ano_modelo}
+                          </span>
+                        )}
+                        {carro.quilometragem_estimada > 0 && (
+                          <span className="flex items-center gap-1">
+                            <span className="w-1 h-1 rounded-full bg-gray-300" />
+                            {fmtKm(carro.quilometragem_estimada)}
+                          </span>
+                        )}
+                        {carro.combustivel && (
+                          <span className="flex items-center gap-1">
+                            <span className="w-1 h-1 rounded-full bg-gray-300" />
+                            {carro.combustivel}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Botões */}
+                      <div className="mt-4 grid grid-cols-2 gap-2">
+                        <a
+                          href={`https://wa.me/${whatsapp}?text=${msgWhats}`}
+                          target="_blank" rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="flex items-center justify-center gap-1.5 bg-green-500 hover:bg-green-400 text-white py-2 rounded-xl font-black uppercase text-[9px] tracking-widest transition-colors"
+                        >
+                          <MessageCircle size={11} /> WhatsApp
+                        </a>
+                        <Link
+                          href={`/vitrine/${tenant}/${carro.id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="flex items-center justify-center gap-1.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-700 py-2 rounded-xl font-black uppercase text-[9px] tracking-widest transition-colors"
+                        >
+                          Detalhes <ArrowRight size={10} />
+                        </Link>
+                      </div>
+
+                      {/* Simular financiamento */}
+                      <button
+                        onClick={() => setModalCarro(carro)}
+                        className="mt-2 text-[9px] font-black uppercase tracking-widest text-gray-400 hover:text-red-500 transition-colors text-center w-full"
+                      >
+                        Simular financiamento
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="py-32 text-center border-2 border-dashed border-gray-200 rounded-2xl bg-white">
+              <Zap size={32} className="mx-auto text-gray-300 mb-4" />
+              <p className="text-xs font-black uppercase tracking-widest text-gray-400 mb-1">
+                {filtrosAtivos ? "Nenhum veículo com esses filtros" : "Pátio sendo reabastecido…"}
+              </p>
+              {filtrosAtivos && (
+                <button onClick={limparFiltros} className="mt-4 text-[10px] font-black uppercase tracking-widest text-red-500 hover:text-red-600">
+                  Limpar filtros
+                </button>
+              )}
+            </div>
+          )}
+        </main>
       </div>
 
-      {/* ── Footer ── */}
-      <footer className="border-t border-gray-100 py-8 text-center bg-white">
+      {/* ── Footer ─────────────────────────────────────────────────────────── */}
+      <footer className="border-t border-gray-100 py-8 text-center bg-white mt-8">
         <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">© 2026 {nomeEmpresa} • Pátio Digital</p>
       </footer>
 
-
-      {modalCarro && <ModalFinanciamento carro={modalCarro} whatsapp={whatsapp} nomeEmpresa={nomeEmpresa} onClose={() => setModalCarro(null)} />}
+      {modalCarro && (
+        <ModalFinanciamento carro={modalCarro} whatsapp={whatsapp} nomeEmpresa={nomeEmpresa} onClose={() => setModalCarro(null)} />
+      )}
     </div>
   );
 }
