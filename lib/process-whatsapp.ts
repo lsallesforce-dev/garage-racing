@@ -1395,12 +1395,16 @@ Responda apenas com o JSON, sem markdown.`;
   }
 
   // ── 13. Salvar resposta + atualizar lead ─────────────────────────────────────
+  // Salva com delivered=false — atualizado para true após sendText bem-sucedido (step 15)
+  let mensagemAgenteId: string | null = null;
   if (lead) {
-    await supabaseAdmin.from("mensagens").insert({
+    const { data: msgInserida } = await supabaseAdmin.from("mensagens").insert({
       lead_id: lead.id,
       content: aiResponse,
       remetente: "agente",
-    });
+      delivered: false,
+    }).select("id").single();
+    mensagemAgenteId = msgInserida?.id ?? null;
     await supabaseAdmin
       .from("leads")
       .update({
@@ -1527,5 +1531,8 @@ Responda apenas com o JSON, sem markdown.`;
 
   // ── 15. Enviar resposta ao cliente ────────────────────────────────────────────
   await sendText(phone, aiResponse);
+  if (mensagemAgenteId) {
+    await supabaseAdmin.from("mensagens").update({ delivered: true }).eq("id", mensagemAgenteId);
+  }
   console.log(`✅ Mensagem processada para ${phone} | temperatura: ${temperatura}`);
 }
