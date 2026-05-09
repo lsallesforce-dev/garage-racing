@@ -5,12 +5,11 @@
 import { createDecipheriv, hkdfSync } from "node:crypto";
 import { geminiFlashSales, geminiFlashFallback } from "@/lib/gemini";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { sendMetaMessage, sendMetaImage, sendMetaVideo, sendMetaPreview, sendMetaCtaButton, markMetaRead } from "@/lib/meta";
-import { sendAvisaMessage, sendAvisaImage, sendAvisaVideo, sendAvisaPreview } from "@/lib/avisa";
+import { sendMetaMessage, sendMetaImage, sendMetaVideo, sendMetaCtaButton, markMetaRead } from "@/lib/meta";
+import { sendAvisaMessage, sendAvisaImage, sendAvisaVideo } from "@/lib/avisa";
 import { buscarDadosTransbordo, gerarRelatorioPista } from "@/lib/leads";
 import { hybridVehicleSearch, findVehicleForMedia } from "@/lib/hybrid-search";
 import { getCachedHistory, cacheHistory, invalidateHistory, appendHistory, circuitIsOpen, circuitRecordFailure, circuitRecordSuccess } from "@/lib/redis";
-import { toVideoUrlAbsolute } from "@/lib/r2-url";
 import { Vehicle } from "@/types/vehicle";
 
 type Temperatura = "FRIO" | "MORNO" | "QUENTE";
@@ -42,8 +41,7 @@ async function ensureCompressedVideo(videoUrl: string | null, veiculoId: string)
     const { execFile } = await import("child_process");
     const { promisify } = await import("util");
     const fs = await import("fs/promises");
-    const path = await import("path");
-    const execFileAsync = promisify(execFile);
+const execFileAsync = promisify(execFile);
     const { S3Client, PutObjectCommand } = await import("@aws-sdk/client-s3");
 
     const ffmpegStaticMod = await import("ffmpeg-static");
@@ -577,11 +575,6 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
     useAvisa
       ? sendAvisaVideo(to, url, caption, avisaCreds)
       : sendMetaVideo(to, url, caption, metaCreds);
-
-  const sendPreview = (to: string, text: string, url: string, title: string, desc: string) =>
-    useAvisa
-      ? sendAvisaPreview(to, text, url, title, desc, undefined, avisaCreds)
-      : sendMetaPreview(to, text, url, title, desc, undefined, metaCreds);
 
   let userMessage = rawMessage;
   let audioData: { data: string; mimeType: string } | null = null;
@@ -1367,8 +1360,9 @@ Responda apenas com o JSON, sem markdown.`;
 
           if (gerentePhone) {
             const nomeLead = nomeCliente || phone;
-            const veiculoAlert = topVeiculos[0]
-              ? `${topVeiculos[0].marca} ${topVeiculos[0].modelo}`
+            const veiculoFoco = veiculoPrincipal ?? topVeiculos[0] ?? null;
+            const veiculoAlert = veiculoFoco
+              ? `${veiculoFoco.marca} ${veiculoFoco.modelo}`
               : "veículo em negociação";
             sendText(
               gerentePhone,
