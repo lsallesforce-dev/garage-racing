@@ -12,6 +12,31 @@ interface AvisaCreds {
   token: string;
 }
 
+// Tenta resolver um LID (@lid) para o número real via Avisa/Baileys.
+// Retorna o número real (ex: "5514997985754") ou null se não conseguir.
+export async function resolveAvisaLid(lid: string, creds: AvisaCreds): Promise<string | null> {
+  const jid = `${lid}@lid`;
+  try {
+    const res = await fetch(`${creds.baseUrl}/contacts/${encodeURIComponent(jid)}`, {
+      headers: { Authorization: `Bearer ${creds.token}` },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      // Campo pode ser phone, number, jid ou id dependendo da versão do Avisa
+      const raw: string = data?.phone ?? data?.number ?? data?.jid ?? data?.id ?? "";
+      const phone = raw.replace(/@s\.whatsapp\.net$/, "").replace(/\D/g, "");
+      if (phone && phone.length >= 10) {
+        console.log(`✅ [LID resolve] ${lid} → ${phone}`);
+        return phone;
+      }
+    }
+  } catch {
+    // silencia — LID sem resolução é aceitável
+  }
+  console.warn(`⚠️ [LID resolve] Não foi possível resolver ${lid} para número real`);
+  return null;
+}
+
 function resolveCreds(creds?: Partial<AvisaCreds>): AvisaCreds | null {
   const baseUrl = creds?.baseUrl ?? "";
   const token = creds?.token ?? "";

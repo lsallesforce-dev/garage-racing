@@ -16,6 +16,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { processWhatsAppMessage } from "@/lib/process-whatsapp";
 import { isDuplicateMessage } from "@/lib/redis";
 import { logWebhookError } from "@/lib/error-log";
+import { resolveAvisaLid } from "@/lib/avisa";
 
 // Vercel Pro: 300s | Hobby: 60s
 // O after() usa o mesmo budget de tempo — resposta vai em ~50ms, sobra tudo para a IA
@@ -28,6 +29,7 @@ export const maxDuration = 300;
 // ─── Extração de Campos do Payload ───────────────────────────────────────────
 function extractFields(payload: any): {
   phone: string;
+  isLid: boolean;
   userMessage: string;
   fromMe: boolean;
   audioUrl?: string;
@@ -49,6 +51,7 @@ function extractFields(payload: any): {
   if (!parsedData) return { phone: "", userMessage: "", fromMe: true };
 
   let phone = "";
+  let isLid = false;
   let userMessage = "";
   let fromMe = false;
   let audioUrl: string | undefined;
@@ -61,7 +64,9 @@ function extractFields(payload: any): {
     const msg = parsedData.event.Message;
     if (parsedData.type !== "Message") return { phone: "", userMessage: "", fromMe: true };
     fromMe = info.IsFromMe ?? false;
-    phone = (info.SenderAlt || info.Sender || "").replace(/@.*$/, "");
+    const rawSender = info.SenderAlt || info.Sender || "";
+    isLid = rawSender.endsWith("@lid");
+    phone = rawSender.replace(/@.*$/, "");
     userMessage = msg?.conversation || msg?.extendedTextMessage?.text || "";
     audioUrl = msg?.audioMessage?.URL ?? msg?.audioMessage?.url;
     audioMediaKey = msg?.audioMessage?.mediaKey ?? msg?.audioMessage?.MediaKey;
@@ -133,7 +138,7 @@ function extractFields(payload: any): {
     };
   }
 
-  return { phone, userMessage: userMessage?.trim() || "", fromMe, audioUrl, audioMediaKey, messageId };
+  return { phone, isLid, userMessage: userMessage?.trim() || "", fromMe, audioUrl, audioMediaKey, messageId };
 }
 
 // ─── Webhook Principal ────────────────────────────────────────────────────────
@@ -240,10 +245,19 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Validação Básica ──────────────────────────────────────────────────────
-    const { phone, userMessage: rawMessage, fromMe, audioUrl, audioMediaKey, messageId } =
+    let { phone, isLid, userMessage: rawMessage, fromMe, audioUrl, audioMediaKey, messageId } =
       extractFields(payload);
 
     if (fromMe) return NextResponse.json({ status: "ignored_from_me" });
+
+    // Tenta resolver LID para número real (mensagens vindas de anúncios CTWA)
+    if (isLid && garageConfig?.avisa_base_url && garageConfig?.avisa_token) {
+      const realPhone = await resolveAvisaLid(phone, {
+        baseUrl: garageConfig.avisa_base_url,
+        token: garageConfig.avisa_token,
+      });
+      if (realPhone) phone = realPhone;
+    }
 
     // ── Deduplicação Redis (SET NX EX — atômico, cross-instância) ──────────────
     if (messageId) {
