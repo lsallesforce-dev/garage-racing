@@ -390,68 +390,59 @@ export default function VitrineClient({ tenant, nomeEmpresa, whatsapp, estoque, 
                 );
 
                 return (
-                  <div key={carro.id} className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 group flex flex-col">
+                  <div key={carro.id} className="bg-white rounded-3xl shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group flex flex-col overflow-hidden">
 
-                    {/* Foto */}
-                    <Link href={`/vitrine/${tenant}/${carro.id}`} className="block relative overflow-hidden bg-gray-100 flex-shrink-0" style={{ aspectRatio: "16/9" }}>
+                    {/* Foto — carro "flutuando" no fundo neutro */}
+                    <Link href={`/vitrine/${tenant}/${carro.id}`} className="block relative bg-gray-50 flex-shrink-0" style={{ aspectRatio: "4/3" }}>
                       {img ? (
-                        <img src={img} alt={`${carro.marca} ${carro.modelo}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                        <img
+                          src={img}
+                          alt={`${carro.marca} ${carro.modelo}`}
+                          className="w-full h-full object-contain p-4 group-hover:scale-105 transition-transform duration-500"
+                        />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-gray-200"><Zap size={32} /></div>
                       )}
                       {carro.video_url && (
-                        <div className="absolute top-2.5 right-2.5 bg-red-600 text-white px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest flex items-center gap-1">
+                        <div className="absolute top-3 right-3 bg-red-600 text-white px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest flex items-center gap-1">
                           <Play size={7} className="fill-white" /> Vídeo
                         </div>
                       )}
-                      {/* Preço flutuante */}
-                      <div className="absolute bottom-2.5 left-2.5 bg-black/75 backdrop-blur-sm text-white px-3 py-1 rounded-full text-sm font-black tracking-tight">
-                        {fmt(carro.preco_sugerido ?? 0)}
-                      </div>
+                      {/* Selos sobrepostos no canto inferior */}
+                      {selos.length > 0 && (
+                        <div className="absolute bottom-3 left-3 flex flex-wrap gap-1">
+                          {selos.map(({ key, label, color }) => (
+                            <span key={key} className={`${color} text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full`}>
+                              {label}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </Link>
 
-                    {/* Selos */}
-                    {selos.length > 0 && (
-                      <div className="flex border-b border-gray-100">
-                        {selos.map(({ key, label, color }) => (
-                          <span key={key} className={`${color} text-[8px] font-black uppercase tracking-widest px-2 py-1 flex-1 text-center`}>
-                            {label}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
                     {/* Info */}
-                    <div className="p-4 flex flex-col flex-1">
-                      <Link href={`/vitrine/${tenant}/${carro.id}`}>
-                        <h2 className="font-black text-base uppercase italic tracking-tight text-gray-900 group-hover:text-red-600 transition-colors leading-tight">
-                          {carro.marca} {carro.modelo}
-                        </h2>
-                        <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">
-                          {carro.versao ?? ""}
-                        </p>
-                      </Link>
+                    <div className="px-5 pt-4 pb-5 flex flex-col flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <Link href={`/vitrine/${tenant}/${carro.id}`} className="flex-1 min-w-0">
+                          <h2 className="font-black text-[15px] text-gray-900 group-hover:text-red-600 transition-colors leading-tight truncate">
+                            {carro.marca} {carro.modelo}
+                          </h2>
+                          {carro.versao && (
+                            <p className="text-[10px] text-gray-400 font-semibold mt-0.5 truncate">{carro.versao}</p>
+                          )}
+                        </Link>
+                        <span className="text-base font-black text-gray-900 whitespace-nowrap">
+                          {fmt(carro.preco_sugerido ?? 0)}
+                        </span>
+                      </div>
 
                       {/* Specs */}
-                      <div className="mt-3 flex items-center gap-3 text-[11px] text-gray-500 font-semibold flex-wrap">
-                        {carro.ano_modelo && (
-                          <span className="flex items-center gap-1">
-                            <span className="w-1 h-1 rounded-full bg-gray-300" />
-                            {carro.ano_modelo}
-                          </span>
-                        )}
-                        {carro.quilometragem_estimada > 0 && (
-                          <span className="flex items-center gap-1">
-                            <span className="w-1 h-1 rounded-full bg-gray-300" />
-                            {fmtKm(carro.quilometragem_estimada)}
-                          </span>
-                        )}
-                        {carro.combustivel && (
-                          <span className="flex items-center gap-1">
-                            <span className="w-1 h-1 rounded-full bg-gray-300" />
-                            {carro.combustivel}
-                          </span>
-                        )}
+                      <div className="mt-2.5 flex items-center gap-2 text-[11px] text-gray-400 font-medium flex-wrap">
+                        {carro.ano_modelo && <span>{carro.ano_modelo}</span>}
+                        {carro.ano_modelo && carro.quilometragem_estimada > 0 && <span>·</span>}
+                        {carro.quilometragem_estimada > 0 && <span>{fmtKm(carro.quilometragem_estimada)}</span>}
+                        {carro.combustivel && <span>·</span>}
+                        {carro.combustivel && <span>{carro.combustivel}</span>}
                       </div>
 
                       {/* Botões */}
@@ -460,23 +451,22 @@ export default function VitrineClient({ tenant, nomeEmpresa, whatsapp, estoque, 
                           href={`https://wa.me/${whatsapp}?text=${msgWhats}`}
                           target="_blank" rel="noopener noreferrer"
                           onClick={(e) => e.stopPropagation()}
-                          className="flex items-center justify-center gap-1.5 bg-green-500 hover:bg-green-400 text-white py-2 rounded-xl font-black uppercase text-[9px] tracking-widest transition-colors"
+                          className="flex items-center justify-center gap-1.5 bg-green-500 hover:bg-green-400 text-white py-2.5 rounded-2xl font-black uppercase text-[9px] tracking-widest transition-colors"
                         >
                           <MessageCircle size={11} /> WhatsApp
                         </a>
                         <Link
                           href={`/vitrine/${tenant}/${carro.id}`}
                           onClick={(e) => e.stopPropagation()}
-                          className="flex items-center justify-center gap-1.5 bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-700 py-2 rounded-xl font-black uppercase text-[9px] tracking-widest transition-colors"
+                          className="flex items-center justify-center gap-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2.5 rounded-2xl font-black uppercase text-[9px] tracking-widest transition-colors"
                         >
-                          Detalhes <ArrowRight size={10} />
+                          Ver mais <ArrowRight size={10} />
                         </Link>
                       </div>
 
-                      {/* Simular financiamento */}
                       <button
                         onClick={() => setModalCarro(carro)}
-                        className="mt-2 text-[9px] font-black uppercase tracking-widest text-gray-400 hover:text-red-500 transition-colors text-center w-full"
+                        className="mt-2.5 text-[9px] font-black uppercase tracking-widest text-gray-400 hover:text-red-500 transition-colors text-center w-full"
                       >
                         Simular financiamento
                       </button>
