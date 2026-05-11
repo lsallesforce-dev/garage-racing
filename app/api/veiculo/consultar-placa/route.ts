@@ -101,14 +101,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Veículo não encontrado para esta placa" }, { status: 404 });
   }
 
+  const trunc = (s: string, n: number) => (s ?? "").slice(0, n);
+
   // Normaliza campos da API (nomes podem variar)
-  const marcaRaw: string = resultado.MARCA ?? resultado.marca ?? "";
-  const modeloRaw: string = resultado.MODELO ?? resultado.modelo ?? "";
-  const versaoRaw: string = resultado.VERSAO ?? resultado.versao ?? resultado.SUBMODELO ?? resultado.submodelo ?? "";
+  const marcaRaw: string = trunc(resultado.MARCA ?? resultado.marca ?? "", 100);
+  const modeloRaw: string = trunc(resultado.MODELO ?? resultado.modelo ?? "", 100);
+  const versaoRaw: string = trunc(resultado.VERSAO ?? resultado.versao ?? resultado.SUBMODELO ?? resultado.submodelo ?? "", 150);
   const anoFab: number | undefined = Number(resultado.ANO_FABRICACAO ?? resultado.anoFabricacao) || undefined;
   const anoMod: number | undefined = Number(resultado.ANO_MODELO ?? resultado.anoModelo) || undefined;
-  const corRaw: string = resultado.COR ?? resultado.cor ?? "";
-  const combustivelRaw: string = resultado.COMBUSTIVEL ?? resultado.combustivel ?? "";
+  const corRaw: string = trunc(resultado.COR ?? resultado.cor ?? "", 50);
+  const combustivelRaw: string = trunc(resultado.COMBUSTIVEL ?? resultado.combustivel ?? "", 50);
   const finalPlaca: string = placa.slice(-1);
 
   // Valor FIPE — API retorna string "R$ 175.000,00" ou número
@@ -133,7 +135,13 @@ export async function POST(req: NextRequest) {
       anoModelo: anoMod ?? anoFab,
       combustivel: combustivelRaw || undefined,
     });
-    geminiData = { ...geminiData, ...enriched };
+    geminiData = {
+      versao: trunc(enriched.versao ?? geminiData.versao, 150),
+      motor: trunc(enriched.motor ?? "", 100),
+      opcionais: (enriched.opcionais ?? []).map(o => trunc(o, 150)),
+      pontos_fortes_venda: (enriched.pontos_fortes_venda ?? []).map(p => trunc(p, 200)),
+      detalhes: enriched.detalhes ?? "",
+    };
     if (!geminiData.versao && versaoRaw) geminiData.versao = versaoRaw;
   } catch (err) {
     console.warn("[consultar-placa] Gemini enrich falhou:", err);
