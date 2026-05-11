@@ -782,6 +782,33 @@ export default function DetalheVeiculo() {
   const [isGeneratingRoteiro, setIsGeneratingRoteiro] = useState(false);
   const [isExtractingFicha, setIsExtractingFicha] = useState(false);
 
+  // Consulta de placa (enriquecimento)
+  const [placaConsulta, setPlacaConsulta] = useState("");
+  const [placaStep, setPlacaStep] = useState<"idle" | "consultando" | "ok" | "erro">("idle");
+  const [placaMsg, setPlacaMsg] = useState("");
+
+  const handleEnriquecerPlaca = async () => {
+    const p = placaConsulta.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (p.length < 7) { setPlacaMsg("Placa inválida"); setPlacaStep("erro"); return; }
+    setPlacaStep("consultando"); setPlacaMsg("");
+    try {
+      const res = await fetch("/api/veiculo/consultar-placa", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ placa: p, veiculoId: params.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Erro");
+      const campos = (data.updatedFields as string[]) ?? [];
+      setPlacaMsg(campos.length > 0 ? `${campos.length} campos preenchidos` : "Nenhum campo novo — tudo já preenchido");
+      setPlacaStep("ok");
+      // Recarrega a página para refletir os novos dados
+      if (campos.length > 0) setTimeout(() => window.location.reload(), 1200);
+    } catch (e: any) {
+      setPlacaMsg(e.message); setPlacaStep("erro");
+    }
+  };
+
   // Vendedores
   const [vendedores, setVendedores] = useState<any[]>([]);
   const [vendedorId, setVendedorId] = useState("");
@@ -1445,6 +1472,35 @@ export default function DetalheVeiculo() {
                     />
                   </div>
                 ))}
+
+                {/* Consulta de Placa */}
+                <div className="col-span-full pt-4 border-t border-gray-100">
+                  <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-2">Preencher via Placa</p>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={placaConsulta}
+                      onChange={e => { setPlacaConsulta(e.target.value.toUpperCase()); setPlacaStep("idle"); setPlacaMsg(""); }}
+                      onKeyDown={e => e.key === "Enter" && handleEnriquecerPlaca()}
+                      placeholder="ABC1D23"
+                      maxLength={8}
+                      disabled={placaStep === "consultando"}
+                      className="flex-1 text-[11px] font-bold text-gray-700 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-red-500/10 focus:border-red-300 transition-all uppercase tracking-widest disabled:opacity-50"
+                    />
+                    <button
+                      onClick={handleEnriquecerPlaca}
+                      disabled={placaStep === "consultando" || !placaConsulta.trim()}
+                      className="px-4 py-2 bg-gray-900 text-white text-[9px] font-black uppercase tracking-widest rounded-xl hover:bg-red-600 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {placaStep === "consultando" ? "..." : "Buscar"}
+                    </button>
+                  </div>
+                  {placaMsg && (
+                    <p className={`mt-1.5 text-[9px] font-bold uppercase tracking-widest ${placaStep === "ok" ? "text-green-600" : "text-red-500"}`}>
+                      {placaMsg}
+                    </p>
+                  )}
+                </div>
 
                 {/* Opcionais */}
                 <div className="col-span-full pt-4 border-t border-gray-100">

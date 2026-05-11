@@ -77,6 +77,7 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json();
   const placa: string = (body.placa ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const veiculoId: string | null = body.veiculoId ?? null;
 
   if (!placa || placa.length < 7) {
     return NextResponse.json({ error: "Placa inválida" }, { status: 400 });
@@ -138,7 +139,53 @@ export async function POST(req: NextRequest) {
     console.warn("[consultar-placa] Gemini enrich falhou:", err);
   }
 
-  // 3. Cria veículo no banco com campos pré-preenchidos
+  // 3a. Enriquecer veículo existente (só preenche campos vazios)
+  if (veiculoId) {
+    const { data: existing, error: fetchError } = await supabaseAdmin
+      .from("veiculos")
+      .select("*")
+      .eq("id", veiculoId)
+      .eq("user_id", userId)
+      .single();
+
+    if (fetchError || !existing) {
+      return NextResponse.json({ error: "Veículo não encontrado" }, { status: 404 });
+    }
+
+    const updates: Record<string, any> = {};
+    if (!existing.marca)              updates.marca = marcaRaw;
+    if (!existing.modelo)             updates.modelo = modeloRaw;
+    if (!existing.versao)             updates.versao = geminiData.versao || versaoRaw || "";
+    if (!existing.ano && anoFab)      updates.ano = anoFab;
+    if (!existing.ano_modelo && anoMod) updates.ano_modelo = anoMod;
+    if (!existing.cor && corRaw)      updates.cor = corRaw.toLowerCase();
+    if (!existing.combustivel && combustivelRaw) updates.combustivel = combustivelRaw;
+    if (!existing.motor && geminiData.motor)     updates.motor = geminiData.motor;
+    if (!existing.final_placa)        updates.final_placa = finalPlaca;
+    if ((!existing.opcionais || existing.opcionais.length === 0) && geminiData.opcionais?.length)
+      updates.opcionais = geminiData.opcionais;
+    if ((!existing.pontos_fortes_venda || existing.pontos_fortes_venda.length === 0) && geminiData.pontos_fortes_venda?.length)
+      updates.pontos_fortes_venda = geminiData.pontos_fortes_venda;
+    if (!existing.detalhes_inspecao && geminiData.detalhes)
+      updates.detalhes_inspecao = geminiData.detalhes;
+    if (!existing.valor_fipe && valorFipe)
+      updates.valor_fipe = valorFipe;
+
+    if (Object.keys(updates).length > 0) {
+      const { error: updateError } = await supabaseAdmin
+        .from("veiculos")
+        .update(updates)
+        .eq("id", veiculoId);
+      if (updateError) {
+        return NextResponse.json({ error: updateError.message }, { status: 500 });
+      }
+    }
+
+    console.log(`[consultar-placa] Enriqueceu veículo ${veiculoId} com ${Object.keys(updates).length} campos`);
+    return NextResponse.json({ id: veiculoId, marca: existing.marca || marcaRaw, modelo: existing.modelo || modeloRaw, versao: existing.versao || geminiData.versao, enriched: true, updatedFields: Object.keys(updates) });
+  }
+
+  // 3b. Criar veículo novo
   const insertPayload: Record<string, any> = {
     marca: marcaRaw,
     modelo: modeloRaw,
