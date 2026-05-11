@@ -7,6 +7,13 @@ function formatPhone(phone: string): string {
   return cleaned;
 }
 
+// Números brasileiros válidos: 12 dígitos (55 + DDD 2 + 8 fixo) ou 13 (55 + DDD 2 + 9 celular)
+// Qualquer coisa fora disso (LID do WhatsApp para anúncios CTWA) não é telefone real
+function isLidPhone(phone: string): boolean {
+  const digits = phone.replace(/\D/g, "");
+  return digits.length < 12 || digits.length > 13 || !digits.startsWith("55");
+}
+
 interface AvisaCreds {
   baseUrl: string;
   token: string;
@@ -89,9 +96,20 @@ function typingDelay(text: string): number {
   return Math.min(1500 + Math.floor(text.length / 50) * 500, 7000);
 }
 
+function buildTarget(phone: string): { number?: string; chat?: string } {
+  if (isLidPhone(phone)) {
+    // LID: Avisa precisa do JID completo com sufixo @lid para rotear corretamente
+    const lid = phone.replace(/\D/g, "");
+    console.log(`📋 [LID] Usando JID @lid para envio: ${lid}@lid`);
+    return { chat: `${lid}@lid` };
+  }
+  return { number: formatPhone(phone) };
+}
+
 async function sendAvisaTyping(baseUrl: string, token: string, phone: string, action: "start" | "stop") {
   try {
-    const chat = `${formatPhone(phone)}@s.whatsapp.net`;
+    const target = buildTarget(phone);
+    const chat = target.chat ?? `${target.number}@s.whatsapp.net`;
     await fetch(`${baseUrl}/chat/typing/${action}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -107,13 +125,14 @@ export async function sendAvisaMessage(phone: string, message: string, creds?: P
   if (!c) { console.warn("Avisa credentials missing"); return; }
 
   const delay = typingDelay(message);
-  console.log(`📤 Avisa sendMessage → ${formatPhone(phone)} (${message.length} chars, delay ${delay}ms)`);
+  const target = buildTarget(phone);
+  console.log(`📤 Avisa sendMessage → ${JSON.stringify(target)} (${message.length} chars, delay ${delay}ms)`);
 
   await sendAvisaTyping(c.baseUrl, c.token, phone, "start");
   await new Promise((r) => setTimeout(r, delay));
   await sendAvisaTyping(c.baseUrl, c.token, phone, "stop");
 
-  const payload = { number: formatPhone(phone), message };
+  const payload = { ...target, message };
   return sendWithRetry(`${c.baseUrl}/actions/sendMessage`, payload, c.token);
 }
 
@@ -124,7 +143,7 @@ export async function sendAvisaImage(phone: string, imageUrlOrBase64: string, me
   // URLs (Supabase Storage, R2) → sendMedia com fileUrl
   if (imageUrlOrBase64.startsWith("http")) {
     const payload: any = {
-      number: formatPhone(phone),
+      ...buildTarget(phone),
       fileUrl: imageUrlOrBase64,
       type: "image",
       fileName: "foto.jpg",
@@ -135,7 +154,7 @@ export async function sendAvisaImage(phone: string, imageUrlOrBase64: string, me
   }
 
   // Base64 → sendImage
-  const payload: any = { number: formatPhone(phone), image: imageUrlOrBase64 };
+  const payload: any = { ...buildTarget(phone), image: imageUrlOrBase64 };
   if (message) payload.message = message;
   return sendWithRetry(`${c.baseUrl}/actions/sendImage`, payload, c.token);
 }
@@ -164,7 +183,7 @@ export async function sendAvisaVideo(phone: string, videoUrl: string, caption?: 
   console.log(`📹 Avisa sendVideo → ${formatPhone(phone)}`);
 
   const payload: any = {
-    number: formatPhone(phone),
+    ...buildTarget(phone),
     fileUrl: videoUrl,
     type: "video",
     fileName: "video.mp4",
