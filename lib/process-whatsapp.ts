@@ -118,6 +118,7 @@ export interface GarageConfig {
   nome_agente?: string;
   endereco?: string;
   endereco_complemento?: string;
+  cidade?: string;
   whatsapp?: string;
   vitrine_slug?: string;
   webhook_token?: string;
@@ -192,6 +193,7 @@ interface BuildPromptParams {
   saudacaoHoraria: string;
   enderecoGaragem: string;
   enderecoComplemento: string;
+  cidadeGaragem: string;
   vitrineUrl: string | null;
   nomeCliente: string | null;
   context: string;
@@ -310,7 +312,8 @@ ${p.vitrineUrl ? `▶ VITRINE — QUANDO NÃO ENCONTRAR O QUE O CLIENTE PEDIU:
 ${instrucoesBlock}${ofertaBlock}
 [DADOS DE CONTEXTO]
 NOME DO CLIENTE: ${p.nomeCliente ?? "Não informado"}
-${p.enderecoGaragem ? `ENDEREÇO DA LOJA: ${p.enderecoGaragem}${p.enderecoComplemento ? ` (${p.enderecoComplemento})` : ""}\nCIDADE DA LOJA: o endereço acima contém a cidade — use-a quando o cliente perguntar onde fica a loja ou qual a cidade. Se a cidade não estiver clara no endereço, use precisa_instrucao para perguntar ao gerente.` : ""}
+${p.enderecoGaragem ? `ENDEREÇO DA LOJA: ${p.enderecoGaragem}${p.enderecoComplemento ? ` (${p.enderecoComplemento})` : ""}` : ""}
+${p.cidadeGaragem ? `CIDADE DA LOJA: ${p.cidadeGaragem}` : ""}
 ${p.horarioFuncionamento ? `HORÁRIO DE FUNCIONAMENTO: ${p.horarioFuncionamento}\n⚠️ REGRA DE AGENDAMENTO: NUNCA confirme visita em dia ou horário fora do HORÁRIO DE FUNCIONAMENTO acima. Se o cliente propuser um horário fora do expediente (ex: domingo quando a loja não abre, ou 20h quando fecha às 18h), informe gentilmente e sugira o horário disponível mais próximo.` : ""}
 ESTOQUE ESTRUTURADO:
 ${p.context}
@@ -335,6 +338,8 @@ REGRAS DO precisa_instrucao:
 - Use quando o cliente pedir um dado que NÃO está na ficha do veículo (ex: laudo de vistoria, cor dos bancos, número de donos, histórico de revisões, detalhes mecânicos específicos)
 - Use quando não conseguir atender o pedido do cliente (ex: foto ou vídeo não disponível, documento não cadastrado)
 - NUNCA use para preço, km, cor, motor, ano — esses dados estão na ficha
+- NUNCA use quando o cliente enviar fotos do próprio veículo para avaliação de troca — isso é rotina, responda pedindo visita presencial e ofereça agendamento
+- NUNCA use quando o cliente enviar áudio — transcreva e responda normalmente
 - NUNCA invente ou assuma a resposta — prefira sinalizar a dúvida
 - Quando usar: escreva uma frase objetiva descrevendo o que o cliente quer. Ex: "Cliente perguntou se o Gol 2022 tem laudo de vistoria cautelar"
 - Quando NÃO usar: null
@@ -796,6 +801,7 @@ Responda apenas com o JSON, sem markdown.`;
   const nomeAgente = garageConfig?.nome_agente || "Assistente";
   const enderecoGaragem = garageConfig?.endereco || "";
   const enderecoComplemento = garageConfig?.endereco_complemento || "";
+  const cidadeGaragem = garageConfig?.cidade || "";
   const vitrineUrl = garageConfig?.vitrine_slug
     ? `${process.env.NEXT_PUBLIC_APP_URL || "https://www.autozap.digital"}/vitrine/${garageConfig.vitrine_slug}`
     : null;
@@ -1245,6 +1251,7 @@ Responda apenas com o JSON, sem markdown.`;
       saudacaoHoraria,
       enderecoGaragem,
       enderecoComplemento,
+      cidadeGaragem,
       vitrineUrl,
       nomeCliente,
       context,

@@ -63,10 +63,24 @@ function extractFields(payload: any): {
     const info = parsedData.event.Info;
     const msg = parsedData.event.Message;
     if (parsedData.type !== "Message") return { phone: "", userMessage: "", fromMe: true };
+    // Ignorar mensagens de Status/Story do WhatsApp
+    if (info.Chat === "status@broadcast") return { phone: "", userMessage: "", fromMe: true };
     fromMe = info.IsFromMe ?? false;
-    const rawSender = info.SenderAlt || info.Sender || "";
-    isLid = rawSender.endsWith("@lid");
-    phone = rawSender.replace(/@.*$/, "");
+
+    // Sender tem o número real (ex: "5517981081878@s.whatsapp.net")
+    // SenderAlt pode ser o LID ("108405125607431@lid") — mas só usamos LID se Sender não tiver número real
+    const senderReal = (info.Sender || "").endsWith("@s.whatsapp.net") ? info.Sender : "";
+    const senderAlt  = info.SenderAlt || "";
+    if (senderReal) {
+      // Número real disponível — usa diretamente, ignora LID
+      phone = senderReal.replace(/@.*$/, "");
+      isLid = false;
+    } else {
+      // Sem número real — usa LID e tenta resolver depois
+      const rawSender = senderAlt || info.Sender || "";
+      isLid = rawSender.endsWith("@lid");
+      phone = rawSender.replace(/@.*$/, "");
+    }
     userMessage = msg?.conversation || msg?.extendedTextMessage?.text || "";
     audioUrl = msg?.audioMessage?.URL ?? msg?.audioMessage?.url;
     audioMediaKey = msg?.audioMessage?.mediaKey ?? msg?.audioMessage?.MediaKey;
@@ -181,7 +195,7 @@ export async function POST(req: NextRequest) {
       bearerToken ||
       null;
 
-    const FIELDS = "user_id, nome_empresa, nome_fantasia, nome_agente, endereco, endereco_complemento, whatsapp, vitrine_slug, webhook_token, avisa_base_url, avisa_token, tom_venda, instrucoes_adicionais, oferta_especial, plano_ativo, trial_ends_at, plano_vence_em";
+    const FIELDS = "user_id, nome_empresa, nome_fantasia, nome_agente, endereco, endereco_complemento, cidade, whatsapp, vitrine_slug, webhook_token, avisa_base_url, avisa_token, tom_venda, instrucoes_adicionais, oferta_especial, plano_ativo, trial_ends_at, plano_vence_em";
     let tenantUserId: string | null = null;
     let garageConfig: any = null;
 
