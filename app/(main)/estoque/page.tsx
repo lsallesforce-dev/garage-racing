@@ -135,11 +135,9 @@ export default function ListaEstoque() {
                             </div>
                         )}
                     </div>
-                    <div>
-                        <div className="flex items-center gap-2 mb-1">
-                            <h3 className="text-base md:text-xl font-black uppercase italic leading-none text-gray-900 group-hover:text-red-600 transition-colors">{carro.marca} {carro.modelo}</h3>
-                        </div>
-                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                    <div className="min-w-0">
+                        <h3 className="text-base md:text-xl font-black uppercase italic leading-none text-gray-900 group-hover:text-red-600 transition-colors truncate max-w-xs md:max-w-sm mb-1" title={`${carro.marca} ${carro.modelo}`}>{carro.marca} {carro.modelo}</h3>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest truncate">
                             {carro.versao || 'Configuração Esportiva'} • {carro.ano_modelo || '2024'}
                         </p>
                         <p className="text-[11px] font-black text-slate-900 mt-2 tracking-tighter">
