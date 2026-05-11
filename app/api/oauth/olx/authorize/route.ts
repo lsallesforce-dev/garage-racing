@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
     client_id:     clientId,
     redirect_uri:  redirectUri,
     response_type: "code",
-    scope:         "read_ads write_ads",
+    scope:         "autoupload autoservice",
     state:         userId,
   });
 

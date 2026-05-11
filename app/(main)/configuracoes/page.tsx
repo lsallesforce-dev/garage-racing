@@ -70,6 +70,7 @@ export default function ConfiguracoesPage() {
   const [isAdminSession, setIsAdminSession] = useState(false);
   const [webhookToken, setWebhookToken] = useState("");
   const [olxConectado, setOlxConectado] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState("");
   const searchParams = useSearchParams();
   const [copied, setCopied] = useState<string | null>(null);
   const [metaConnecting, setMetaConnecting] = useState(false);
@@ -286,6 +287,7 @@ export default function ConfiguracoesPage() {
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) return;
+      setCurrentUserId(user.id);
       supabase
         .from("config_garage")
         .select("*")
@@ -1313,14 +1315,32 @@ export default function ConfiguracoesPage() {
 
           <div className="mt-5">
             {olxConectado ? (
-              <div className="flex items-center justify-between bg-green-50 border border-green-100 rounded-2xl px-4 py-3">
-                <p className="text-[11px] text-green-700 font-bold">Conta OLX vinculada — leads e anúncios ativos.</p>
-                <a
-                  href="/api/oauth/olx/authorize"
-                  className="text-[10px] text-gray-400 hover:text-gray-600 underline underline-offset-2"
-                >
-                  Reconectar
-                </a>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between bg-green-50 border border-green-100 rounded-2xl px-4 py-3">
+                  <p className="text-[11px] text-green-700 font-bold">Conta OLX vinculada — leads e anúncios ativos.</p>
+                  <a
+                    href="/api/oauth/olx/authorize"
+                    className="text-[10px] text-gray-400 hover:text-gray-600 underline underline-offset-2"
+                  >
+                    Reconectar
+                  </a>
+                </div>
+                {currentUserId && (
+                  <div className="bg-gray-50 border border-gray-100 rounded-2xl px-4 py-3 space-y-1">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">URL do Webhook (cadastrar na OLX)</p>
+                    <div className="flex items-center gap-2">
+                      <code className="text-[10px] text-gray-700 break-all flex-1">
+                        {`${process.env.NEXT_PUBLIC_APP_URL ?? "https://autozap.digital"}/api/webhook/olx/${currentUserId}`}
+                      </code>
+                      <button
+                        onClick={() => navigator.clipboard.writeText(`${process.env.NEXT_PUBLIC_APP_URL ?? "https://autozap.digital"}/api/webhook/olx/${currentUserId}`)}
+                        className="text-[9px] font-black text-gray-400 hover:text-gray-700 shrink-0"
+                      >
+                        Copiar
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <a
