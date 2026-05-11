@@ -38,22 +38,28 @@ async function enriquecerComGemini(dadosPlaca: {
 }> {
   const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash", apiVersion: "v1beta" } as any);
 
-  const prompt = `Você é um especialista em veículos brasileiros. Com base nos dados abaixo de um veículo, retorne um JSON com informações típicas do modelo.
+  const prompt = `Você é um especialista em veículos brasileiros com conhecimento detalhado de fichas técnicas e equipamentos de série/opcionais de cada versão.
 
-Dados do veículo:
+Veículo consultado:
 - Marca: ${dadosPlaca.marca}
 - Modelo: ${dadosPlaca.modelo}
 ${dadosPlaca.versao ? `- Versão: ${dadosPlaca.versao}` : ""}
 ${dadosPlaca.anoModelo ? `- Ano modelo: ${dadosPlaca.anoModelo}` : ""}
 ${dadosPlaca.combustivel ? `- Combustível: ${dadosPlaca.combustivel}` : ""}
 
+Baseie-se na ficha técnica oficial desta versão/ano para listar os equipamentos. Se não souber a versão exata, use os equipamentos da versão intermediária/mais comum comercializada no Brasil nesse período.
+
 Retorne SOMENTE um JSON válido (sem markdown, sem \`\`\`) com os campos:
 {
   "versao": "versão/trim do veículo (ex: EX CVT, LTZ 2.0, S 1.4 Turbo) — deixe vazio se incerto",
-  "motor": "descrição do motor típico (ex: 1.0 Turbo 3-cilindros 130cv)",
-  "opcionais": ["lista de até 8 opcionais típicos deste modelo/ano (ex: Central multimídia, Câmera de ré, Ar-condicionado digital)"],
-  "pontos_fortes_venda": ["lista de 4 a 6 argumentos de venda para este veículo específico"],
-  "detalhes": "parágrafo curto (2-3 linhas) descrevendo os principais atrativos deste modelo para compradores brasileiros"
+  "motor": "descrição completa do motor (ex: 1.0 Turbo 3-cilindros 130cv flex)",
+  "opcionais": [
+    "liste de 10 a 15 itens de série/opcionais reais desta versão",
+    "inclua: tipo de direção, freios, airbags, multimidia, conectividade, câmeras, sensores, controles eletrônicos, ar-condicionado, bancos, vidros/travas elétricos, rodas, faróis",
+    "use nomes comerciais brasileiros (ex: 'Câmera de ré', 'Ar-condicionado automático digital', 'Chave presencial', 'Faróis de LED')"
+  ],
+  "pontos_fortes_venda": ["4 a 6 argumentos de venda específicos deste modelo/versão para o mercado brasileiro"],
+  "detalhes": "parágrafo de 2-3 linhas destacando os diferenciais desta versão específica para compradores brasileiros"
 }`;
 
   const result = await model.generateContent(prompt);
