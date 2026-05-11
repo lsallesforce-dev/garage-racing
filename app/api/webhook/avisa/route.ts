@@ -58,6 +58,36 @@ function extractFields(payload: any): {
   let audioMediaKey: string | undefined;
   let messageId: string | null = null;
 
+  // ── Detecção de ligação perdida (todos os formatos) ──────────────────────────
+  // Baileys: type="Call" com event.from ou event.Info.Sender
+  // Z-API: type="call" com phone/number
+  // Evolution: event="CALL" com data.from
+  {
+    const isBaileysCall = parsedData?.type === "Call" || parsedData?.type === "call";
+    const isZApiCall    = (parsedData?.number || parsedData?.phone) && parsedData?.type === "call";
+    const isEvolutionCall = parsedData?.event === "CALL" || parsedData?.data?.event === "CALL";
+
+    if (isBaileysCall || isZApiCall || isEvolutionCall) {
+      // Extrai o número do chamador dependendo do formato
+      let callPhone = "";
+      if (parsedData?.event?.from) {
+        callPhone = String(parsedData.event.from).replace(/@.*$/, "");
+      } else if (parsedData?.event?.Info?.Sender) {
+        callPhone = String(parsedData.event.Info.Sender).replace(/@.*$/, "");
+      } else if (parsedData?.number || parsedData?.phone) {
+        callPhone = String(parsedData.number || parsedData.phone).replace(/@.*$/, "");
+      } else if (parsedData?.data?.from) {
+        callPhone = String(parsedData.data.from).replace(/@.*$/, "");
+      }
+
+      if (callPhone && callPhone !== "status") {
+        console.log(`📞 [Ligação] Chamada recebida de ${callPhone} — disparando resposta automática`);
+        return { phone: callPhone, isLid: false, userMessage: "__MISSED_CALL__", fromMe: false };
+      }
+      return { phone: "", userMessage: "", fromMe: true };
+    }
+  }
+
   // Formato Baileys/Antigo
   if (parsedData?.event?.Info) {
     const info = parsedData.event.Info;

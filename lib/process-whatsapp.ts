@@ -584,6 +584,23 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   let userMessage = rawMessage;
   let audioData: { data: string; mimeType: string } | null = null;
 
+  // ── 0. Ligação perdida ──────────────────────────────────────────────────────
+  // Webhook detectou evento de chamada de voz — responde automaticamente sem chamar IA.
+  if (rawMessage === "__MISSED_CALL__") {
+    const msg = "Olá! Vi que você tentou nos ligar agora. Esse número não recebe chamadas, mas pode enviar áudio que te respondo! 😊";
+    try {
+      if (useAvisa) {
+        await sendAvisaMessage(phone, msg, avisaCreds);
+      } else if (metaCreds.phoneNumberId && metaCreds.accessToken) {
+        await sendMetaMessage(phone, msg, metaCreds);
+      }
+      console.log(`📞 [Ligação] Resposta automática enviada para ${phone}`);
+    } catch (err) {
+      console.error(`📞 [Ligação] Falha ao enviar resposta automática:`, err);
+    }
+    return;
+  }
+
   // ── 1. Transcrever Áudio ────────────────────────────────────────────────────
   const hasAudio = audioMediaId || audioUrl;
   if (hasAudio) {
