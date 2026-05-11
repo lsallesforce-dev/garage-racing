@@ -67,19 +67,20 @@ function extractFields(payload: any): {
     if (info.Chat === "status@broadcast") return { phone: "", userMessage: "", fromMe: true };
     fromMe = info.IsFromMe ?? false;
 
-    // Sender tem o número real (ex: "5517981081878@s.whatsapp.net")
-    // SenderAlt pode ser o LID ("108405125607431@lid") — mas só usamos LID se Sender não tiver número real
-    const senderReal = (info.Sender || "").endsWith("@s.whatsapp.net") ? info.Sender : "";
-    const senderAlt  = info.SenderAlt || "";
-    if (senderReal) {
-      // Número real disponível — usa diretamente, ignora LID
-      phone = senderReal.replace(/@.*$/, "");
+    // Sender e SenderAlt podem ter o número real ou LID em qualquer ordem
+    // Prioriza quem tiver @s.whatsapp.net (número real)
+    const candidates = [info.Sender || "", info.SenderAlt || ""];
+    const realJid = candidates.find(j => j.endsWith("@s.whatsapp.net"));
+    const lidJid  = candidates.find(j => j.endsWith("@lid"));
+    if (realJid) {
+      phone = realJid.replace(/@.*$/, "");
       isLid = false;
+    } else if (lidJid) {
+      phone = lidJid.replace(/@.*$/, "");
+      isLid = true;
     } else {
-      // Sem número real — usa LID e tenta resolver depois
-      const rawSender = senderAlt || info.Sender || "";
-      isLid = rawSender.endsWith("@lid");
-      phone = rawSender.replace(/@.*$/, "");
+      phone = (info.Sender || "").replace(/@.*$/, "");
+      isLid = false;
     }
     userMessage = msg?.conversation || msg?.extendedTextMessage?.text || "";
     audioUrl = msg?.audioMessage?.URL ?? msg?.audioMessage?.url;

@@ -645,40 +645,17 @@ export default function ConfiguracoesPage() {
               />
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="flex flex-col gap-1.5 flex-1">
-                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
-                  CNPJ <span className="text-gray-400 normal-case font-normal">(para contratos)</span>
-                </label>
-                <input
-                  type="text"
-                  value={config.cnpj}
-                  onChange={e => setConfig(c => ({ ...c, cnpj: e.target.value }))}
-                  placeholder="00.000.000/0001-00"
-                  className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
-                />
-              </div>
-              <div className="flex flex-col gap-1.5 sm:w-40">
-                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">Cidade</label>
-                <input
-                  type="text"
-                  value={config.cidade}
-                  onChange={e => setConfig(c => ({ ...c, cidade: e.target.value }))}
-                  placeholder="São José do RP"
-                  className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
-                />
-              </div>
-              <div className="flex flex-col gap-1.5 sm:w-20">
-                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">UF</label>
-                <input
-                  type="text"
-                  value={config.estado}
-                  onChange={e => setConfig(c => ({ ...c, estado: e.target.value.toUpperCase().slice(0, 2) }))}
-                  placeholder="SP"
-                  maxLength={2}
-                  className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
-                />
-              </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+                CNPJ <span className="text-gray-400 normal-case font-normal">(para contratos)</span>
+              </label>
+              <input
+                type="text"
+                value={config.cnpj}
+                onChange={e => setConfig(c => ({ ...c, cnpj: e.target.value }))}
+                placeholder="00.000.000/0001-00"
+                className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
+              />
             </div>
 
             <div className="flex flex-col gap-1.5">
@@ -718,6 +695,30 @@ export default function ConfiguracoesPage() {
                 placeholder="perto de onde"
                 className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
               />
+            </div>
+
+            <div className="flex gap-3">
+              <div className="flex flex-col gap-1.5 flex-1">
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">Cidade</label>
+                <input
+                  type="text"
+                  value={config.cidade}
+                  onChange={e => setConfig(c => ({ ...c, cidade: e.target.value }))}
+                  placeholder="São José do Rio Preto"
+                  className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5 w-20">
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">UF</label>
+                <input
+                  type="text"
+                  value={config.estado}
+                  onChange={e => setConfig(c => ({ ...c, estado: e.target.value.toUpperCase().slice(0, 2) }))}
+                  placeholder="SP"
+                  maxLength={2}
+                  className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
+                />
+              </div>
             </div>
 
             <div className="flex flex-col gap-1.5">
