@@ -12,7 +12,7 @@ async function consultarApiBrasil(placa: string) {
       "Content-Type": "application/json",
       Authorization: `Bearer ${process.env.APIBRASIL_TOKEN}`,
     },
-    body: JSON.stringify({ placa }),
+    body: JSON.stringify({ tipo: "fipe-chassi", placa, homolog: false }),
   });
 
   if (!res.ok) {
