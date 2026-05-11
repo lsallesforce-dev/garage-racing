@@ -6,7 +6,7 @@ import { Vehicle } from "@/types/vehicle";
 import { supabase } from "@/lib/supabase";
 import {
   Upload, Video, Info, CheckCircle, Download,
-  ArrowRight, Instagram, Loader2, Zap, PenLine,
+  ArrowRight, Instagram, Loader2, Zap, PenLine, Search,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -27,6 +27,11 @@ export default function UploadPage() {
   const [igUrl, setIgUrl] = useState("");
   const [igStep, setIgStep] = useState<"idle" | "baixando" | "analisando" | "erro">("idle");
   const [igErro, setIgErro] = useState("");
+
+  // Consulta de placa
+  const [placa, setPlaca] = useState("");
+  const [placaStep, setPlacaStep] = useState<"idle" | "consultando" | "erro">("idle");
+  const [placaErro, setPlacaErro] = useState("");
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -62,6 +67,31 @@ export default function UploadPage() {
       setResultadoAnalise(data.data[0] as Vehicle);
     } else {
       throw new Error(data.error || "Falha na análise");
+    }
+  };
+
+  // ── Consulta por Placa ────────────────────────────────────────────────────
+
+  const handleConsultarPlaca = async () => {
+    const placaLimpa = placa.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (placaLimpa.length < 7) {
+      setPlacaErro("Digite uma placa válida (ex: ABC1234 ou ABC1D23)");
+      return;
+    }
+    setPlacaStep("consultando");
+    setPlacaErro("");
+    try {
+      const res = await fetch("/api/veiculo/consultar-placa", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ placa: placaLimpa }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Erro ao consultar placa");
+      router.push(`/veiculo/${data.id}`);
+    } catch (e: any) {
+      setPlacaErro(e.message);
+      setPlacaStep("erro");
     }
   };
 
@@ -419,10 +449,54 @@ export default function UploadPage() {
                     <div className="flex-1 h-px bg-gray-100" />
                   </div>
 
+                  {/* Consulta de Placa */}
+                  <div className="mt-5 space-y-3">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 flex items-center gap-2">
+                      <Search size={11} /> Consultar pela Placa
+                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={placa}
+                        onChange={(e) => { setPlaca(e.target.value.toUpperCase()); setPlacaErro(""); setPlacaStep("idle"); }}
+                        onKeyDown={(e) => e.key === "Enter" && handleConsultarPlaca()}
+                        placeholder="ABC1D23"
+                        maxLength={8}
+                        disabled={placaStep === "consultando" || isLoading}
+                        className="flex-1 bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm font-black uppercase tracking-widest text-gray-900 placeholder:text-gray-300 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-400/10 transition-all disabled:opacity-50"
+                      />
+                      <button
+                        onClick={handleConsultarPlaca}
+                        disabled={placaStep === "consultando" || isLoading || !placa.trim()}
+                        className="px-5 py-3 bg-gray-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-600 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+                      >
+                        {placaStep === "consultando"
+                          ? <Loader2 size={13} className="animate-spin" />
+                          : <Search size={13} />
+                        }
+                        {placaStep === "consultando" ? "Consultando..." : "Buscar"}
+                      </button>
+                    </div>
+                    {placaStep === "erro" && placaErro && (
+                      <p className="text-[9px] font-bold text-red-600 uppercase tracking-widest">{placaErro}</p>
+                    )}
+                    {placaStep === "consultando" && (
+                      <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest animate-pulse">
+                        Consultando Detran + enriquecendo com IA...
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="mt-5 flex items-center gap-4">
+                    <div className="flex-1 h-px bg-gray-100" />
+                    <span className="text-[9px] font-black uppercase tracking-widest text-gray-300">ou</span>
+                    <div className="flex-1 h-px bg-gray-100" />
+                  </div>
+
                   <button
                     onClick={handleCadastroManual}
                     disabled={isLoading || criandoManual}
-                    className="mt-6 w-full flex items-center justify-center gap-3 py-4 border-2 border-dashed border-gray-200 rounded-2xl text-[10px] font-black uppercase tracking-widest text-gray-400 hover:border-gray-900 hover:text-gray-900 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="mt-4 w-full flex items-center justify-center gap-3 py-4 border-2 border-dashed border-gray-200 rounded-2xl text-[10px] font-black uppercase tracking-widest text-gray-400 hover:border-gray-900 hover:text-gray-900 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     {criandoManual
                       ? <Loader2 size={15} className="animate-spin" />
