@@ -940,7 +940,11 @@ Responda apenas com o JSON, sem markdown.`;
   }
 
   // ── 10. Interceptores silenciosos ────────────────────────────────────────────
-  const mensagemLower = userMessage.toLowerCase();
+  // Strip do prefixo injetado pelo webhook ([Contexto do link:...] / [Lead veio do anúncio:...])
+  // antes de checar gatilhos de foto/vídeo — evita que texto do anúncio ("Confira as fotos")
+  // acione envio de mídia acidentalmente na primeira mensagem de um lead CTWA.
+  const mensagemClientePura = userMessage.replace(/^\[(?:Contexto do link|Lead veio do anúncio)[^\n]*\n?/m, "").trim();
+  const mensagemLower = mensagemClientePura.toLowerCase();
   // Usa o WhatsApp do gerente configurado no painel; fallback para variável de ambiente
   const _gerenteRaw = garageConfig?.whatsapp || process.env.NEXT_PUBLIC_ZAPI_PHONE;
   const gerentePhone = _gerenteRaw
@@ -1026,7 +1030,10 @@ Responda apenas com o JSON, sem markdown.`;
 
   // Confirmação ("sim/pode/ok") é válida somente se a msg anterior do cliente pediu foto ou vídeo
   const msgConfirmacao = /^(sim|envia|manda|pode|quero|vai|claro|ok|isso|bora|manda sim|pode sim)$/i.test(userMessage.trim());
-  const ultimaMsgCliente = historico.filter((h: any) => h.role === "user").slice(-2, -1)[0]?.parts?.[0]?.text?.toLowerCase() ?? "";
+  // Strip prefixo de anúncio também da mensagem anterior (evita falso clientePediuFotoAntes
+  // quando a msg CTWA anterior tinha "fotos" no texto do link, ex: "Confira as fotos do HR-V")
+  const ultimaMsgClienteRaw = historico.filter((h: any) => h.role === "user").slice(-2, -1)[0]?.parts?.[0]?.text ?? "";
+  const ultimaMsgCliente = ultimaMsgClienteRaw.replace(/^\[(?:Contexto do link|Lead veio do anúncio)[^\n]*\n?/m, "").trim().toLowerCase();
   const clientePediuFotoAntes = gatilhosFoto.some((g) => ultimaMsgCliente.includes(g));
   const clientePediuVideoAntes = gatilhosVideo.some((g) => ultimaMsgCliente.includes(g));
 
@@ -1063,7 +1070,7 @@ Responda apenas com o JSON, sem markdown.`;
       veiculosParaFoto = topVeiculos.slice(0, 4);
     } else {
       // 1. Tenta achar o carro mencionado dentro dos veículos já em contexto
-      const msgNorm = userMessage
+      const msgNorm = mensagemClientePura
         .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
       const veiculosContexto = [
@@ -1101,6 +1108,7 @@ Responda apenas com o JSON, sem markdown.`;
       const veiculoNomeado = veiculoPorModelo ?? veiculoPorMarca;
 
       if (veiculoNomeado) {
+        console.log(`📸 [Foto] Selecionado por match de nome: ${veiculoNomeado.marca} ${veiculoNomeado.modelo} (id: ${veiculoNomeado.id})`);
         veiculosParaFoto = [veiculoNomeado];
       } else {
         // 2. Busca direta no DB — só quando a mensagem nomeia um carro específico
@@ -1108,6 +1116,13 @@ Responda apenas com o JSON, sem markdown.`;
         // para evitar que tokens do link preview identifiquem o carro errado em mensagens vagas
         const msgSemContexto = userMessage.replace(/^\[(?:Contexto do link|Lead veio do anúncio)[^\n]*\n?/m, "").trim();
         const veiculoMidia = msgSemContexto ? await findVehicleForMedia(msgSemContexto, tenantUserId) : null;
+        if (veiculoMidia) {
+          console.log(`📸 [Foto] Selecionado por findVehicleForMedia: ${veiculoMidia.marca} ${veiculoMidia.modelo} (id: ${veiculoMidia.id})`);
+        } else if (veiculoPrincipal) {
+          console.log(`📸 [Foto] Usando veiculoPrincipal: ${veiculoPrincipal.marca} ${veiculoPrincipal.modelo} (id: ${veiculoPrincipal.id})`);
+        } else {
+          console.warn(`📸 [Foto] Nenhum veículo identificado para envio de foto — veiculoPrincipal=null, topVeiculos=${JSON.stringify(topVeiculos.map(v => `${v.marca} ${v.modelo}`))}`);
+        }
         veiculosParaFoto = veiculoMidia
           ? [veiculoMidia]
           : veiculoPrincipal
