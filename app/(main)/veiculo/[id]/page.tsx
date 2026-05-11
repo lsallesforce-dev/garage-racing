@@ -1687,30 +1687,11 @@ export default function DetalheVeiculo() {
                     className="w-full bg-transparent text-4xl font-mono font-black border-b border-gray-100 focus:border-red-600 outline-none pb-2 pl-10 transition-all text-gray-900"
                   />
                 </div>
-              </div>
-
-              {/* FIPE */}
-              <div>
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-4">
-                  Tabela FIPE <span className="normal-case font-bold text-gray-300">(estimado pela IA)</span>
-                </label>
-                <div className="relative">
-                  <span className="absolute left-0 bottom-2 text-gray-300 font-mono font-bold text-xl">R$</span>
-                  <input
-                    type="text"
-                    value={
-                      !veiculo.valor_fipe
-                        ? ""
-                        : new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2 }).format(veiculo.valor_fipe)
-                    }
-                    onChange={(e) => {
-                      const raw = e.target.value.replace(/\D/g, "");
-                      setVeiculo({ ...veiculo, valor_fipe: raw === "" ? null : Number(raw) / 100 });
-                    }}
-                    placeholder="0,00"
-                    className="w-full bg-transparent text-4xl font-mono font-black border-b border-gray-100 focus:border-red-600 outline-none pb-2 pl-10 transition-all text-gray-900 placeholder:text-gray-200"
-                  />
-                </div>
+                {veiculo.valor_fipe ? (
+                  <p className="mt-2 text-[10px] font-bold text-gray-300 uppercase tracking-widest">
+                    FIPE&nbsp;&nbsp;<span className="text-gray-400">{new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(veiculo.valor_fipe)}</span>
+                  </p>
+                ) : null}
               </div>
 
               {/* Quilometragem */}
