@@ -988,6 +988,7 @@ export default function DetalheVeiculo() {
         vistoriado: veiculo.vistoriado,
         abaixo_fipe: veiculo.abaixo_fipe,
         de_repasse: veiculo.de_repasse,
+        valor_fipe: veiculo.valor_fipe || null,
       });
       alert("Dados atualizados! 🚀");
     } catch {}
@@ -1684,6 +1685,30 @@ export default function DetalheVeiculo() {
                       setVeiculo({ ...veiculo, preco_sugerido: raw === "" ? 0 : Number(raw) });
                     }}
                     className="w-full bg-transparent text-4xl font-mono font-black border-b border-gray-100 focus:border-red-600 outline-none pb-2 pl-10 transition-all text-gray-900"
+                  />
+                </div>
+              </div>
+
+              {/* FIPE */}
+              <div>
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-4">
+                  Tabela FIPE <span className="normal-case font-bold text-gray-300">(estimado pela IA)</span>
+                </label>
+                <div className="relative">
+                  <span className="absolute left-0 bottom-2 text-gray-300 font-mono font-bold text-xl">R$</span>
+                  <input
+                    type="text"
+                    value={
+                      !veiculo.valor_fipe
+                        ? ""
+                        : new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2 }).format(veiculo.valor_fipe)
+                    }
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/\D/g, "");
+                      setVeiculo({ ...veiculo, valor_fipe: raw === "" ? null : Number(raw) / 100 });
+                    }}
+                    placeholder="0,00"
+                    className="w-full bg-transparent text-4xl font-mono font-black border-b border-gray-100 focus:border-red-600 outline-none pb-2 pl-10 transition-all text-gray-900 placeholder:text-gray-200"
                   />
                 </div>
               </div>

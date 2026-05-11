@@ -35,6 +35,7 @@ async function enriquecerComGemini(dadosPlaca: {
   opcionais: string[];
   pontos_fortes_venda: string[];
   detalhes: string;
+  valor_fipe: number | null;
 }> {
   const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash", apiVersion: "v1beta" } as any);
 
@@ -59,8 +60,11 @@ Retorne SOMENTE um JSON válido (sem markdown, sem \`\`\`) com os campos:
     "use nomes comerciais brasileiros (ex: 'Câmera de ré', 'Ar-condicionado automático digital', 'Chave presencial', 'Faróis de LED')"
   ],
   "pontos_fortes_venda": ["4 a 6 argumentos de venda específicos deste modelo/versão para o mercado brasileiro"],
-  "detalhes": "parágrafo de 2-3 linhas destacando os diferenciais desta versão específica para compradores brasileiros"
-}`;
+  "detalhes": "parágrafo de 2-3 linhas destacando os diferenciais desta versão específica para compradores brasileiros",
+  "valor_fipe": 85000.00
+}
+
+O campo valor_fipe deve ser um número (em reais, sem R$ ou pontos) representando o preço médio FIPE deste veículo neste ano/versão. Se não souber com precisão, estime com base no mercado brasileiro. Nunca retorne null para este campo — sempre estime.`;
 
   const result = await model.generateContent(prompt);
   const text = result.response.text().trim();
@@ -117,7 +121,7 @@ export async function POST(req: NextRequest) {
   }
 
   // 2. Enriquece com Gemini
-  let geminiData = { versao: versaoRaw, motor: "", opcionais: [] as string[], pontos_fortes_venda: [] as string[], detalhes: "" };
+  let geminiData = { versao: versaoRaw, motor: "", opcionais: [] as string[], pontos_fortes_venda: [] as string[], detalhes: "", valor_fipe: null as number | null };
   try {
     const enriched = await enriquecerComGemini({
       marca: marcaRaw,
@@ -152,6 +156,7 @@ export async function POST(req: NextRequest) {
   if (geminiData.opcionais?.length) insertPayload.opcionais = geminiData.opcionais;
   if (geminiData.pontos_fortes_venda?.length) insertPayload.pontos_fortes_venda = geminiData.pontos_fortes_venda;
   if (geminiData.detalhes) insertPayload.detalhes_inspecao = geminiData.detalhes;
+  if (geminiData.valor_fipe) insertPayload.valor_fipe = geminiData.valor_fipe;
 
   const { data, error } = await supabaseAdmin
     .from("veiculos")

@@ -11,7 +11,7 @@ const ALLOWED_FIELDS = new Set([
   "detalhes_inspecao", "transcricao_vendedor", "roteiro_pitch", "tags_busca",
   "ia_verificada", "status_venda", "cambio", "vistoriado", "abaixo_fipe", "de_repasse",
   "vendedor_responsavel_id",
-  "preco_compra", "placa", "preco_venda_final", "data_venda", "vendedor_id",
+  "preco_compra", "valor_fipe", "placa", "preco_venda_final", "data_venda", "vendedor_id",
   "renavam", "chassi",
   "qtd_proprietarios", "procedencia", "restricoes_veiculo",
   "historico_sinistros", "historico_manutencao", "observacoes_vistoria",
