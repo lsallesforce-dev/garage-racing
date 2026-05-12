@@ -164,12 +164,12 @@ export async function POST(req: NextRequest) {
   const accessToken = cfg.olx_access_token;
   const zipcode = (cfg.nf_cep ?? "").replace(/\D/g, "");
   // Usa o número do agente para o anúncio; fallback para o gerente
-  // OLX espera DDD+número sem o código do país 55
+  // OLX espera DDD+número (11 dígitos sem DDI) ex: "17991604158"
   let phone = (cfg.whatsapp_agente || cfg.whatsapp || "").replace(/\D/g, "");
-  if (phone.startsWith("55") && phone.length >= 12) phone = phone.slice(2);
+  if (phone.startsWith("55") && phone.length > 11) phone = phone.slice(2);
 
   if (!zipcode) console.warn("⚠️ [OLX] nf_cep não configurado — OLX pode rejeitar o anúncio");
-  if (!phone)   console.warn("⚠️ [OLX] whatsapp não configurado — OLX pode rejeitar o anúncio");
+  console.log(`📞 [OLX] phone enviado: "${phone}" (${phone.length} dígitos) | zipcode: "${zipcode}"`);
 
   // ── Delete ───────────────────────────────────────────────────────────────────
   if (operation === "delete") {
