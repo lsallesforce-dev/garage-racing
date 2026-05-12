@@ -115,7 +115,9 @@ export async function POST(req: NextRequest) {
   if (auth.error) return auth.error;
   const userId = getEffectiveUserId(auth.user!);
 
-  const [{ data: v }, { data: cfg }] = await Promise.all([
+  console.log(`🔍 [OLX publicar] userId=${userId} veiculoId=${veiculoId}`);
+
+  const [{ data: v }, { data: cfg, error: cfgError }] = await Promise.all([
     supabaseAdmin
       .from("veiculos")
       .select("id, marca, modelo, versao, ano, ano_modelo, preco_sugerido, quilometragem_estimada, combustivel, cambio, cor, placa, renavam, fotos, detalhes_inspecao, relatorio_ia, pontos_fortes_venda, olx_ad_id")
@@ -127,6 +129,8 @@ export async function POST(req: NextRequest) {
       .eq("user_id", userId)
       .single(),
   ]);
+
+  console.log(`🔍 [OLX publicar] cfg=${cfg ? "encontrado" : "null"} cfgError=${cfgError?.message ?? "none"} token=${cfg?.olx_access_token ? "presente" : "null"}`);
 
   if (!v) return NextResponse.json({ error: "Veículo não encontrado" }, { status: 404 });
   if (!cfg?.olx_access_token)
