@@ -21,18 +21,18 @@ const FUEL_MAP: Record<string, string> = {
   DIESEL:   "4",
   HIBRIDO:  "5",
   ELETRICO: "6",
-  GNV:      "1", // OLX não tem GNV — fallback gasolina
+  GNV:      "1",
 };
 
 const GEARBOX_MAP: Record<string, string> = {
-  MANUAL:      "1",
-  AUTOMATICO:  "2",
-  AUTOMATICA:  "2",
-  CVT:         "2",
-  SEMI:        "3",
+  MANUAL:         "1",
+  AUTOMATICO:     "2",
+  AUTOMATICA:     "2",
+  CVT:            "2",
+  SEMI:           "3",
   SEMIAUTOMATICO: "3",
-  AUTOMATIZADO:"4",
-  DCT:         "4",
+  AUTOMATIZADO:   "4",
+  DCT:            "4",
 };
 
 const COLOR_MAP: Record<string, string> = {
@@ -54,31 +54,33 @@ function toId(map: Record<string, string>, value: string, fallback: string): str
   return map[key] ?? fallback;
 }
 
-// ─── Catálogo de marcas via car_info ─────────────────────────────────────────
-// Retorna objeto { "HONDA": 15, "TOYOTA": 20, ... } — chave=nome, valor=ID
+function norm(s: string): string {
+  return s.toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Z0-9]/g, "");
+}
 
-const brandCacheMap = new Map<string, { data: Record<string, number>; at: number }>();
+// ─── Cache por token (evita retornar dados de token antigo) ───────────────────
 
-async function fetchBrands(accessToken: string): Promise<Record<string, number>> {
-  const cached = brandCacheMap.get("brands");
+const brandCache = new Map<string, { data: Record<string, number>; at: number }>();
+const modelCache = new Map<string, { data: Record<string, number>; at: number }>();
+
+async function fetchCatalog(url: string, accessToken: string, cacheMap: Map<string, any>): Promise<Record<string, number>> {
+  const cacheKey = `${accessToken}:${url}`;
+  const cached = cacheMap.get(cacheKey);
   if (cached && Date.now() - cached.at < 3_600_000) return cached.data;
 
   try {
-    const res = await fetch(OLX_CAR_INFO_URL, {
+    const res = await fetch(url, {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({ access_token: accessToken }),
     });
     if (!res.ok) {
-      const errTxt = await res.text();
-      console.error(`❌ OLX car_info ${res.status}:`, errTxt.slice(0, 200));
+      console.error(`❌ OLX car_info ${res.status} [${url}]:`, (await res.text()).slice(0, 200));
       return {};
     }
     const json = await res.json();
-    // API retorna { data: { "HONDA": 15, "TOYOTA": 20 } }
     const data: Record<string, number> = json?.data ?? json ?? {};
-    console.log(`📋 OLX car_info brands: ${Object.keys(data).length} marcas — amostra:`, Object.keys(data).slice(0, 5));
-    brandCacheMap.set("brands", { data, at: Date.now() });
+    cacheMap.set(cacheKey, { data, at: Date.now() });
     return data;
   } catch {
     return {};
@@ -86,22 +88,39 @@ async function fetchBrands(accessToken: string): Promise<Record<string, number>>
 }
 
 async function findBrandId(marca: string, accessToken: string): Promise<string | null> {
-  const brands = await fetchBrands(accessToken);
+  const brands = await fetchCatalog(OLX_CAR_INFO_URL, accessToken, brandCache);
   if (!Object.keys(brands).length) return null;
 
-  const norm = (s: string) =>
-    s.toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Z0-9]/g, "");
   const marcaNorm = norm(marca);
+  console.log(`🔍 [Brand] Buscando "${marca}" (norm: ${marcaNorm}) entre ${Object.keys(brands).length} marcas`);
 
-  // Match exato
   for (const [name, id] of Object.entries(brands)) {
-    if (norm(name) === marcaNorm) return String(id);
+    if (norm(name) === marcaNorm) { console.log(`✅ [Brand] Match exato: ${name} → ${id}`); return String(id); }
   }
-  // Match parcial
   for (const [name, id] of Object.entries(brands)) {
     const n = norm(name);
-    if (n.includes(marcaNorm) || marcaNorm.includes(n)) return String(id);
+    if (n.includes(marcaNorm) || marcaNorm.includes(n)) { console.log(`✅ [Brand] Match parcial: ${name} → ${id}`); return String(id); }
   }
+  // Log as marcas disponíveis que começam com a mesma letra
+  const similar = Object.keys(brands).filter(k => norm(k)[0] === marcaNorm[0]);
+  console.warn(`⚠️ [Brand] Não encontrado. Marcas com "${marcaNorm[0]}":`, similar);
+  return null;
+}
+
+async function findModelId(brandId: string, modelo: string, accessToken: string): Promise<string | null> {
+  const url = `${OLX_CAR_INFO_URL}/${brandId}`;
+  const models = await fetchCatalog(url, accessToken, modelCache);
+  if (!Object.keys(models).length) return null;
+
+  const modeloNorm = norm(modelo);
+  for (const [name, id] of Object.entries(models)) {
+    if (norm(name) === modeloNorm) { console.log(`✅ [Model] Match exato: ${name} → ${id}`); return String(id); }
+  }
+  for (const [name, id] of Object.entries(models)) {
+    const n = norm(name);
+    if (n.includes(modeloNorm) || modeloNorm.includes(n)) { console.log(`✅ [Model] Match parcial: ${name} → ${id}`); return String(id); }
+  }
+  console.warn(`⚠️ [Model] Não encontrado: "${modelo}" (norm: ${modeloNorm})`);
   return null;
 }
 
@@ -130,7 +149,7 @@ export async function POST(req: NextRequest) {
       .single(),
     supabaseAdmin
       .from("config_garage")
-      .select("olx_access_token, cnpj, nf_cep")
+      .select("olx_access_token, cnpj, nf_cep, whatsapp")
       .eq("user_id", userId)
       .single(),
   ]);
@@ -143,6 +162,10 @@ export async function POST(req: NextRequest) {
 
   const accessToken = cfg.olx_access_token;
   const zipcode = (cfg.nf_cep ?? "").replace(/\D/g, "");
+  const phone   = (cfg.whatsapp ?? "").replace(/\D/g, "");
+
+  if (!zipcode) console.warn("⚠️ [OLX] nf_cep não configurado — OLX pode rejeitar o anúncio");
+  if (!phone)   console.warn("⚠️ [OLX] whatsapp não configurado — OLX pode rejeitar o anúncio");
 
   // ── Delete ───────────────────────────────────────────────────────────────────
   if (operation === "delete") {
@@ -178,19 +201,22 @@ export async function POST(req: NextRequest) {
 
   const fotos: string[] = (Array.isArray(v.fotos) ? v.fotos.filter(Boolean) : []).slice(0, 20);
 
+  // Lookup hierárquico: marca → modelo
   const brandId = await findBrandId(v.marca ?? "", accessToken);
+  const modelId = brandId ? await findModelId(brandId, v.modelo ?? "", accessToken) : null;
 
   const params: Record<string, any> = {
     regdate:  String(v.ano_modelo ?? v.ano ?? ""),
     mileage:  Number(v.quilometragem_estimada ?? 0),
-    fuel:     toId(FUEL_MAP, v.combustivel ?? "", "3"),    // fallback Flex
-    gearbox:  toId(GEARBOX_MAP, v.cambio ?? "", "1"),      // fallback Manual
-    carcolor: toId(COLOR_MAP, v.cor ?? "", "5"),            // fallback Cinza
-    doors:    "4",
+    fuel:     toId(FUEL_MAP,    v.combustivel ?? "", "3"),
+    gearbox:  toId(GEARBOX_MAP, v.cambio      ?? "", "1"),
+    carcolor: toId(COLOR_MAP,   v.cor          ?? "", "5"),
+    doors:    4,  // número, não string
   };
 
   if (brandId) params.vehicle_brand = brandId;
-  if (v.placa)  params.vehicle_tag  = v.placa.replace(/[^A-Z0-9]/gi, "").toUpperCase();
+  if (modelId) params.vehicle_model = modelId;
+  if (v.placa) params.vehicle_tag   = v.placa.replace(/[^A-Z0-9]/gi, "").toUpperCase();
 
   const cnpj = (cfg.cnpj ?? "").replace(/\D/g, "");
   if (v.placa && v.renavam && cnpj) {
@@ -207,6 +233,7 @@ export async function POST(req: NextRequest) {
     id:        adId,
     operation: (operation === "edit" && v.olx_ad_id) ? "edit" : "insert",
     category:  2020,
+    type:      "s",   // "s" = offer (selling) — obrigatório pela OLX
     subject:   titulo,
     body:      descricao,
     price:     Number(v.preco_sugerido ?? 0),
@@ -214,9 +241,10 @@ export async function POST(req: NextRequest) {
     params,
   };
   if (zipcode) anuncio.zipcode = zipcode;
+  if (phone)   anuncio.phone   = phone;
 
   const payload = { access_token: accessToken, ad_list: [anuncio] };
-  console.log(`📤 [OLX] ${anuncio.operation} veículo ${veiculoId} — brand_id: ${brandId ?? "não encontrado"}`);
+  console.log(`📤 [OLX] ${anuncio.operation} veículo ${veiculoId} — brand_id: ${brandId ?? "não encontrado"} model_id: ${modelId ?? "não encontrado"}`);
 
   const resp = await fetch(OLX_IMPORT_URL, {
     method:  "PUT",
@@ -225,7 +253,7 @@ export async function POST(req: NextRequest) {
   });
 
   const txt = await resp.text();
-  console.log(`📥 OLX import response ${resp.status}:`, txt.slice(0, 500));
+  console.log(`📥 OLX import response ${resp.status}:`, txt.slice(0, 600));
   if (!resp.ok) {
     console.error("❌ OLX publicar falhou:", resp.status, txt.slice(0, 500));
     return NextResponse.json({ error: `OLX retornou ${resp.status}: ${txt.slice(0, 200)}` }, { status: 502 });
@@ -237,11 +265,18 @@ export async function POST(req: NextRequest) {
     const respJson = JSON.parse(txt);
     const statusCode: number = respJson?.statusCode ?? 0;
     if (statusCode < 0) {
-      const msg = respJson?.statusMessage ?? `statusCode ${statusCode}`;
-      console.error(`❌ OLX recusou publicação (statusCode ${statusCode}): ${msg}`);
+      // Extrair mensagens detalhadas de erro por campo
+      const adErrors: any[] = respJson?.errors?.[0]?.messages ?? [];
+      const fieldErrors = adErrors.map((e: any) => {
+        const [field, msg] = Object.entries(e)[0] ?? [];
+        return `${field}: ${msg}`;
+      }).join(", ");
+      const detail = fieldErrors || respJson?.statusMessage || `statusCode ${statusCode}`;
+      console.error(`❌ OLX recusou publicação (statusCode ${statusCode}): ${detail}`);
+
       const friendlyMsg = statusCode === -6
         ? "Conta OLX não habilitada para Autoupload. O lojista precisa do plano OLX Pro e deve solicitar a ativação pelo e-mail suporteintegrador@olxbr.com."
-        : `OLX: ${msg}`;
+        : `OLX rejeitou o anúncio: ${detail}`;
       return NextResponse.json({ error: friendlyMsg }, { status: 403 });
     }
     const olxId = respJson?.data?.[0]?.id ?? respJson?.ad_list?.[0]?.id ?? respJson?.id;
@@ -253,7 +288,6 @@ export async function POST(req: NextRequest) {
     .update({ status_olx: "publicado", olx_ad_id: olxAdId })
     .eq("id", veiculoId);
 
-  // Salva snapshot do anúncio para o painel de anúncios ativos
   const now = new Date().toISOString();
   const anuncioData = {
     user_id:       userId,
@@ -265,7 +299,7 @@ export async function POST(req: NextRequest) {
     descricao,
     preco:         Number(v.preco_sugerido ?? 0),
     fotos,
-    snapshot:      { params, brandId, zipcode },
+    snapshot:      { params, brandId, modelId, zipcode },
     publicado_em:  now,
     atualizado_em: now,
   };
@@ -275,6 +309,6 @@ export async function POST(req: NextRequest) {
     { onConflict: "veiculo_id,portal", ignoreDuplicates: false }
   );
   if (upsertErr) console.error("❌ anuncios upsert falhou:", upsertErr.message);
-  console.log(`✅ OLX: veículo ${veiculoId} publicado — ad_id ${adId}`);
-  return NextResponse.json({ success: true, adId });
+  console.log(`✅ OLX: veículo ${veiculoId} publicado — ad_id ${olxAdId}`);
+  return NextResponse.json({ success: true, adId: olxAdId });
 }
