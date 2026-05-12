@@ -2,9 +2,10 @@
 
 import { useEffect, useState, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useUserRole } from "@/components/SidebarWrapper";
-import { Megaphone, CheckCircle2, Clock, XCircle, AlertCircle } from "lucide-react";
+import { Megaphone, CheckCircle2, Clock, XCircle, AlertCircle, LayoutList } from "lucide-react";
 import PublicarMetaButton from "@/components/PublicarMetaButton";
 import PublicarPortaisModal from "@/components/PublicarPortaisModal";
 
@@ -448,6 +449,13 @@ function MarketingPageInner() {
               Publique seus carros nos portais e redes sociais.
             </p>
           </div>
+
+          <Link
+            href="/marketing/anuncios"
+            className="flex items-center gap-2 px-4 py-2.5 bg-gray-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-wider hover:bg-indigo-600 transition-all self-start sm:self-auto"
+          >
+            <LayoutList size={14} /> Ver Anúncios Ativos
+          </Link>
 
           {/* Filtro */}
           <div className="flex items-center gap-1 bg-white rounded-2xl p-1 border border-gray-100 shadow-sm self-start sm:self-auto">

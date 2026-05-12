@@ -230,6 +230,21 @@ export async function POST(req: NextRequest) {
     .update({ status_olx: "publicado", olx_ad_id: adId })
     .eq("id", veiculoId);
 
+  // Salva snapshot do anúncio para o painel de anúncios ativos
+  await supabaseAdmin.from("anuncios").upsert({
+    user_id:      userId,
+    veiculo_id:   veiculoId,
+    portal:       "olx",
+    portal_ad_id: adId,
+    status:       "publicado",
+    titulo,
+    descricao,
+    preco:        Number(v.preco_sugerido ?? 0),
+    fotos,
+    snapshot:     { params, brandId, zipcode },
+    atualizado_em: new Date().toISOString(),
+  }, { onConflict: "veiculo_id,portal" });
+
   console.log(`✅ OLX: veículo ${veiculoId} publicado — ad_id ${adId}`);
   return NextResponse.json({ success: true, adId });
 }
