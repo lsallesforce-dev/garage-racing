@@ -65,21 +65,39 @@ export async function GET(req: NextRequest) {
     ? new Date(Date.now() + tokenData.expires_in * 1000).toISOString()
     : null;
 
-  const { error } = await supabaseAdmin
+  const tokenFields = {
+    olx_access_token:     tokenData.access_token,
+    olx_refresh_token:    tokenData.refresh_token ?? null,
+    olx_token_expires_at: expiresAt,
+    olx_scope:            tokenData.scope ?? null,
+  };
+
+  // Tenta UPDATE — se não encontrar a linha (0 rows), faz UPSERT
+  const { error, count } = await supabaseAdmin
     .from("config_garage")
-    .update({
-      olx_access_token:      tokenData.access_token,
-      olx_refresh_token:     tokenData.refresh_token ?? null,
-      olx_token_expires_at:  expiresAt,
-      olx_scope:             tokenData.scope ?? null,
-    })
-    .eq("user_id", state);
+    .update(tokenFields)
+    .eq("user_id", state)
+    .select("user_id", { count: "exact", head: true });
 
   if (error) {
-    console.error("❌ OLX: erro ao salvar token:", error.message);
+    console.error("❌ OLX: erro ao salvar token (update):", error.message);
     return NextResponse.redirect(`${APP_URL}/configuracoes?olx_error=erro_salvar_token`);
   }
 
-  console.log(`✅ OLX OAuth concluído para tenant ${state}`);
+  if ((count ?? 0) === 0) {
+    // Linha ainda não existe — cria com upsert
+    const { error: upsertError } = await supabaseAdmin
+      .from("config_garage")
+      .upsert({ user_id: state, ...tokenFields }, { onConflict: "user_id" });
+
+    if (upsertError) {
+      console.error("❌ OLX: erro ao salvar token (upsert):", upsertError.message);
+      return NextResponse.redirect(`${APP_URL}/configuracoes?olx_error=erro_salvar_token`);
+    }
+    console.log(`✅ OLX OAuth — token criado via upsert para tenant ${state}`);
+  } else {
+    console.log(`✅ OLX OAuth concluído para tenant ${state}`);
+  }
+
   return NextResponse.redirect(`${APP_URL}/marketing?olx_conectado=1`);
 }
