@@ -1,15 +1,12 @@
 "use client";
 
-import { useEffect, useState, createContext, useContext, Suspense } from "react";
+import { createContext, useContext, useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { Sidebar } from "./Sidebar";
 import { ZapWidget } from "./ZapWidget";
 import { Menu } from "lucide-react";
-import { supabase } from "@/lib/supabase";
 
 // ─── User Role Context ────────────────────────────────────────────────────────
-// Provides the effective userId (garage owner) and vendor flag to all pages.
-// Vendor users share the owner's userId for data queries.
 
 interface UserRoleContextValue {
   effectiveUserId: string;
@@ -25,99 +22,76 @@ export function useUserRole(): UserRoleContextValue {
 }
 
 // ─── AdminSessionDetector ─────────────────────────────────────────────────────
-// Isolates useSearchParams in its own component so the Suspense boundary
-// doesn't force the entire SidebarWrapper (and all child pages) into
-// client-only rendering on first mobile load.
 
 function AdminSessionDetector({ effectiveUserId }: { effectiveUserId: string }) {
   const searchParams = useSearchParams();
-
   useEffect(() => {
     if (!effectiveUserId) return;
     if (searchParams.get("admin_session") === "1") {
       sessionStorage.setItem("autozap_admin_uid", effectiveUserId);
     } else {
       const savedUid = sessionStorage.getItem("autozap_admin_uid");
-      if (savedUid && savedUid !== effectiveUserId) {
-        sessionStorage.removeItem("autozap_admin_uid");
-      }
+      if (savedUid && savedUid !== effectiveUserId) sessionStorage.removeItem("autozap_admin_uid");
     }
   }, [searchParams, effectiveUserId]);
-
   return null;
 }
 
 // ─── SidebarWrapper ───────────────────────────────────────────────────────────
 
+export interface GarageConfig {
+  nomeEmpresa:  string;
+  nomeUsuario:  string;
+  cargoUsuario: string;
+  vitrineSlug:  string | null;
+}
+
 interface SidebarWrapperProps {
   children: React.ReactNode;
   isVendedor?: boolean;
   effectiveUserId?: string;
+  garageConfig?: GarageConfig;
+  paginasPermitidas?: string[];
 }
 
-export function SidebarWrapper({ children, isVendedor = false, effectiveUserId = "" }: SidebarWrapperProps) {
+export function SidebarWrapper({
+  children,
+  isVendedor = false,
+  effectiveUserId = "",
+  garageConfig,
+  paginasPermitidas,
+}: SidebarWrapperProps) {
   const [open, setOpen] = useState(false);
-  const [nomeEmpresa, setNomeEmpresa] = useState("");
-  const [paginasPermitidas, setPaginasPermitidas] = useState<string[] | undefined>(undefined);
 
-  useEffect(() => {
-    if (isVendedor) {
-      supabase.auth.getUser().then(({ data: { user } }) => {
-        const paginas = user?.app_metadata?.paginas_permitidas ?? user?.user_metadata?.paginas_permitidas;
-        setPaginasPermitidas(Array.isArray(paginas) ? paginas : undefined);
-      });
-    }
-  }, [isVendedor]);
-
-  useEffect(() => {
-    const ownerId = effectiveUserId;
-    if (!ownerId) return;
-    supabase
-      .from("config_garage")
-      .select("nome_empresa, nome_fantasia")
-      .eq("user_id", ownerId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .then(({ data }) => {
-        const row = data?.[0];
-        if (row?.nome_empresa) setNomeEmpresa(row.nome_fantasia || row.nome_empresa);
-      });
-  }, [effectiveUserId]);
-
-  const meio = Math.ceil(nomeEmpresa.length / 2);
+  // Divide nome para colorir metade no header mobile
+  const nomeEmpresa = garageConfig?.nomeEmpresa ?? "";
+  const meio        = Math.ceil(nomeEmpresa.length / 2);
 
   return (
     <UserRoleContext.Provider value={{ effectiveUserId, isVendedor }}>
       <Suspense fallback={null}>
         <AdminSessionDetector effectiveUserId={effectiveUserId} />
       </Suspense>
+
       <div className="flex min-h-screen bg-[#efefed]">
-        {/* Overlay mobile */}
         {open && (
-          <div
-            className="fixed inset-0 bg-black/50 z-40 md:hidden"
-            onClick={() => setOpen(false)}
-          />
+          <div className="fixed inset-0 bg-black/50 z-40 md:hidden" onClick={() => setOpen(false)} />
         )}
 
-        {/* Sidebar */}
-        <div
-          className={`fixed inset-y-0 left-0 z-50 transition-transform duration-300 md:translate-x-0 ${
-            open ? "translate-x-0" : "-translate-x-full"
-          }`}
-        >
-          <Sidebar isVendedor={isVendedor} effectiveUserId={effectiveUserId} paginasPermitidas={paginasPermitidas} onClose={() => setOpen(false)} />
+        <div className={`fixed inset-y-0 left-0 z-50 transition-transform duration-300 md:translate-x-0 ${open ? "translate-x-0" : "-translate-x-full"}`}>
+          <Sidebar
+            isVendedor={isVendedor}
+            effectiveUserId={effectiveUserId}
+            garageConfig={garageConfig}
+            paginasPermitidas={paginasPermitidas}
+            onClose={() => setOpen(false)}
+          />
         </div>
 
-        {/* Conteúdo principal */}
         <div className="flex-1 flex flex-col md:pl-64 min-w-0">
           {/* Header mobile */}
           <div className="md:hidden flex items-center gap-3 bg-[#e2e2de] border-b border-gray-300 px-4 py-3 sticky top-0 z-30">
-            <button
-              onClick={() => setOpen(true)}
-              className="p-2 rounded-lg hover:bg-gray-200 transition-colors"
-              aria-label="Abrir menu"
-            >
+            <button onClick={() => setOpen(true)} className="p-2 rounded-lg hover:bg-gray-200 transition-colors" aria-label="Abrir menu">
               <Menu size={20} />
             </button>
             <span className="font-black text-base tracking-tighter italic">
@@ -127,10 +101,7 @@ export function SidebarWrapper({ children, isVendedor = false, effectiveUserId =
                   <span className="text-red-600">{nomeEmpresa.slice(meio)}</span>
                 </>
               ) : (
-                <>
-                  <span className="text-gray-900">AUTO</span>
-                  <span className="text-red-600">ZAP</span>
-                </>
+                <><span className="text-gray-900">AUTO</span><span className="text-red-600">ZAP</span></>
               )}
             </span>
           </div>
@@ -138,6 +109,7 @@ export function SidebarWrapper({ children, isVendedor = false, effectiveUserId =
           {children}
         </div>
       </div>
+
       <ZapWidget userId={effectiveUserId} />
     </UserRoleContext.Provider>
   );

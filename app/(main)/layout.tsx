@@ -8,57 +8,80 @@ export default async function MainLayout({ children }: { children: React.ReactNo
 
   if (!user) redirect("/login");
 
-  // app_metadata é somente gravável server-side; user_metadata é fallback para usuários antigos
-  const appMeta = user.app_metadata as { role?: string; owner_user_id?: string; aprovado?: boolean } | undefined;
-  const userMeta = user.user_metadata as { role?: string; owner_user_id?: string; aprovado?: boolean } | undefined;
-  const role       = appMeta?.role       ?? userMeta?.role;
-  const aprovado   = appMeta?.aprovado   ?? userMeta?.aprovado;
+  const appMeta  = user.app_metadata  as { role?: string; owner_user_id?: string; aprovado?: boolean; paginas_permitidas?: string[] } | undefined;
+  const userMeta = user.user_metadata as { role?: string; owner_user_id?: string; aprovado?: boolean; paginas_permitidas?: string[] } | undefined;
+  const role        = appMeta?.role        ?? userMeta?.role;
+  const aprovado    = appMeta?.aprovado    ?? userMeta?.aprovado;
   const ownerUserId = appMeta?.owner_user_id ?? userMeta?.owner_user_id;
 
   if (aprovado === false) redirect("/aguardando");
-  const isVendedor = role === "vendedor";
 
+  const isVendedor      = role === "vendedor";
   const effectiveUserId = isVendedor ? (ownerUserId ?? user.id) : user.id;
 
+  // ── Vendedor ───────────────────────────────────────────────────────────────
   if (isVendedor) {
-    // Rotas permitidas para vendedor — qualquer outra redireciona para /estoque (fail-secure)
     const { headers } = await import("next/headers");
     const headersList = await headers();
-    const pathname = headersList.get("x-pathname") ?? "";
+    const pathname    = headersList.get("x-pathname") ?? "";
 
     const rotasPermitidas = ["/estoque", "/chat", "/veiculo", "/upload", "/clientes", "/contratos", "/minha-conta"];
-    const permitido = rotasPermitidas.some(
-      (r) => pathname === r || pathname.startsWith(r + "/")
-    );
+    if (!rotasPermitidas.some(r => pathname === r || pathname.startsWith(r + "/"))) redirect("/estoque");
 
-    if (!permitido) redirect("/estoque");
+    // Busca dados do vendedor + config do dono em paralelo — server-side, zero roundtrip no cliente
+    const [{ data: vendedor }, { data: ownerConfigRows }] = await Promise.all([
+      supabase.from("vendedores").select("nome, especialidade").eq("auth_user_id", user.id).maybeSingle(),
+      supabase.from("config_garage").select("nome_empresa, nome_fantasia, vitrine_slug, webhook_token").eq("user_id", effectiveUserId).limit(1),
+    ]);
+
+    const ownerConfig = ownerConfigRows?.[0];
+    const paginasPermitidas = appMeta?.paginas_permitidas ?? userMeta?.paginas_permitidas;
 
     return (
-      <SidebarWrapper isVendedor={true} effectiveUserId={effectiveUserId}>
+      <SidebarWrapper
+        isVendedor={true}
+        effectiveUserId={effectiveUserId}
+        garageConfig={{
+          nomeEmpresa:  ownerConfig?.nome_fantasia || ownerConfig?.nome_empresa || "",
+          nomeUsuario:  vendedor?.nome || "",
+          cargoUsuario: vendedor?.especialidade || "Vendedor",
+          vitrineSlug:  ownerConfig?.vitrine_slug || ownerConfig?.webhook_token || null,
+        }}
+        paginasPermitidas={Array.isArray(paginasPermitidas) ? paginasPermitidas : undefined}
+      >
         {children}
       </SidebarWrapper>
     );
   }
 
+  // ── Admin ──────────────────────────────────────────────────────────────────
+  // Uma única query traz tudo que o sidebar + verificação de plano precisam
   const { data: config } = await supabase
     .from("config_garage")
-    .select("nome_empresa, plano_ativo, trial_ends_at, plano_vence_em")
+    .select("nome_empresa, nome_fantasia, nome_usuario, cargo_usuario, vitrine_slug, webhook_token, plano_ativo, trial_ends_at, plano_vence_em")
     .eq("user_id", user.id)
     .maybeSingle();
 
-  // Novo usuário sem config → onboarding
   if (!config?.nome_empresa) redirect("/onboarding");
 
-  // Verifica acesso — fail-open se colunas ainda não existem (null)
-  const agora = new Date();
+  const agora           = new Date();
   const trialConfigurado = config.trial_ends_at != null;
-  const trialValido = trialConfigurado && new Date(config.trial_ends_at) > agora;
-  const planoValido = config.plano_ativo === true && config.plano_vence_em && new Date(config.plano_vence_em) > agora;
+  const trialValido      = trialConfigurado && new Date(config.trial_ends_at) > agora;
+  const planoValido      = config.plano_ativo === true && config.plano_vence_em && new Date(config.plano_vence_em) > agora;
 
   if (trialConfigurado && !trialValido && !planoValido) redirect("/assinar");
 
   return (
-    <SidebarWrapper isVendedor={false} effectiveUserId={user.id}>
+    <SidebarWrapper
+      isVendedor={false}
+      effectiveUserId={user.id}
+      garageConfig={{
+        nomeEmpresa:  config.nome_fantasia || config.nome_empresa || "",
+        nomeUsuario:  config.nome_usuario || "",
+        cargoUsuario: config.cargo_usuario || "",
+        vitrineSlug:  config.vitrine_slug || config.webhook_token || null,
+      }}
+    >
       {children}
     </SidebarWrapper>
   );

@@ -2,16 +2,30 @@
 
 import { useEffect, useState, useCallback, useRef, forwardRef, useImperativeHandle } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import {
   X, Plus, Trash2, DollarSign, TrendingUp, TrendingDown,
   Package, ChevronDown, Check, Loader2, Users, ReceiptText,
   ArrowUpRight, ArrowDownRight, Car, Contact, FileSignature,
   BarChart3, Lock, LockOpen, Printer, ChevronLeft, ChevronRight,
 } from "lucide-react";
-import {
-  ResponsiveContainer, BarChart, Bar, Line,
-  XAxis, YAxis, CartesianGrid, Tooltip, ComposedChart, Cell,
-} from "recharts";
+
+// Recharts carregado sob demanda — não bloqueia o bundle inicial da página
+const VendasGraficos = dynamic(() => import("@/components/VendasGraficos"), {
+  ssr: false,
+  loading: () => (
+    <div className="space-y-4 animate-pulse">
+      <div className="bg-white rounded-[2rem] border border-gray-100 p-6 h-[308px]">
+        <div className="h-3 w-40 bg-gray-200 rounded-full mb-6" />
+        <div className="h-[220px] bg-gray-100 rounded-xl" />
+      </div>
+      <div className="bg-white rounded-[2rem] border border-gray-100 p-6 h-[328px]">
+        <div className="h-3 w-40 bg-gray-200 rounded-full mb-6" />
+        <div className="h-[240px] bg-gray-100 rounded-xl" />
+      </div>
+    </div>
+  ),
+});
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -1751,24 +1765,6 @@ function ModalGraficos({
   });
   const ranking = Array.from(rankMap.values()).sort((a, b) => b.faturamento - a.faturamento);
 
-  function CustomTooltip({ active, payload, label }: any) {
-    if (!active || !payload?.length) return null;
-    return (
-      <div className="bg-gray-900 text-white rounded-2xl px-4 py-3 shadow-xl text-xs">
-        <p className="font-black uppercase tracking-widest text-gray-400 mb-2">{label}</p>
-        {payload.map((p: any) => (
-          <div key={p.dataKey} className="flex items-center gap-2 mb-1">
-            <span className="w-2 h-2 rounded-full" style={{ background: p.fill || p.stroke }} />
-            <span className="text-gray-300">{p.name}:</span>
-            <span className="font-black">
-              {p.name?.includes("%") ? `${Number(p.value).toFixed(1)}%` : fmt(p.value)}
-            </span>
-          </div>
-        ))}
-      </div>
-    );
-  }
-
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-[#f4f4f2] rounded-[2.5rem] w-full max-w-5xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
@@ -1786,40 +1782,7 @@ function ModalGraficos({
         {/* Conteúdo */}
         <div className="overflow-y-auto flex-1 p-6 space-y-6">
 
-          {/* Gráfico 1: Lucro líquido */}
-          <div className="bg-white rounded-[2rem] border border-gray-100 p-6">
-            <p className="text-xs font-black uppercase italic tracking-tight text-gray-900 mb-1">Lucro Líquido por Mês</p>
-            <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-5">Barra vermelha = mês atual ao vivo</p>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={serie} barSize={28}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
-                <XAxis dataKey="label" tick={{ fontSize: 10, fontWeight: 700, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
-                <YAxis tickFormatter={fmt} tick={{ fontSize: 10, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={70} />
-                <Tooltip content={<CustomTooltip />} cursor={{ fill: "#f9fafb" }} />
-                <Bar dataKey="lucro_liquido" name="Lucro Líquido" radius={[6, 6, 0, 0]}>
-                  {serie.map((e, i) => <Cell key={i} fill={e.ao_vivo ? "#E0130F" : "#e2e8f0"} />)}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-
-          {/* Gráfico 2: Faturamento vs Custo + Margem */}
-          <div className="bg-white rounded-[2rem] border border-gray-100 p-6">
-            <p className="text-xs font-black uppercase italic tracking-tight text-gray-900 mb-1">Faturamento vs Custo</p>
-            <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mb-5">Linha = margem % (eixo direito)</p>
-            <ResponsiveContainer width="100%" height={240}>
-              <ComposedChart data={serie}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
-                <XAxis dataKey="label" tick={{ fontSize: 10, fontWeight: 700, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
-                <YAxis yAxisId="left" tickFormatter={fmt} tick={{ fontSize: 10, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={70} />
-                <YAxis yAxisId="right" orientation="right" tickFormatter={(v) => `${v.toFixed(0)}%`} tick={{ fontSize: 10, fill: "#9ca3af" }} axisLine={false} tickLine={false} width={40} />
-                <Tooltip content={<CustomTooltip />} cursor={{ fill: "#f9fafb" }} />
-                <Bar yAxisId="left" dataKey="faturamento" name="Faturamento" fill="#0f172a" radius={[4, 4, 0, 0]} barSize={18} />
-                <Bar yAxisId="left" dataKey="custo_total" name="Custo Total" fill="#fca5a5" radius={[4, 4, 0, 0]} barSize={18} />
-                <Line yAxisId="right" type="monotone" dataKey="margem" name="Margem %" stroke="#E0130F" strokeWidth={2} dot={{ r: 3, fill: "#E0130F" }} strokeDasharray="4 2" />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </div>
+          <VendasGraficos serie={serie} />
 
           {/* Ranking de vendedores */}
           {ranking.length > 0 && (

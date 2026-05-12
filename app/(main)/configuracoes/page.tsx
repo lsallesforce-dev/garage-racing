@@ -147,7 +147,10 @@ export default function ConfiguracoesPage() {
     });
   }, []);
 
-  useEffect(() => {
+  // SDK do Facebook — carregado só quando o usuário interage com a seção Meta
+  // (antes estava no mount, bloqueando ~500ms em toda visita às configurações)
+  const loadFacebookSDK = () => {
+    if (document.getElementById("facebook-sdk")) return; // já carregado
     window.fbAsyncInit = function () {
       window.FB.init({
         appId: process.env.NEXT_PUBLIC_META_APP_ID!,
@@ -156,17 +159,16 @@ export default function ConfiguracoesPage() {
         version: "v19.0",
       });
     };
+    const script = document.createElement("script");
+    script.id = "facebook-sdk";
+    script.src = "https://connect.facebook.net/pt_BR/sdk.js";
+    script.async = true;
+    script.defer = true;
+    document.body.appendChild(script);
+  };
 
-    if (!document.getElementById("facebook-sdk")) {
-      const script = document.createElement("script");
-      script.id = "facebook-sdk";
-      script.src = "https://connect.facebook.net/pt_BR/sdk.js";
-      script.async = true;
-      script.defer = true;
-      document.body.appendChild(script);
-    }
-
-    // Recebe phone_number_id e waba_id do popup do Embedded Signup
+  useEffect(() => {
+    // Recebe phone_number_id do popup do Embedded Signup
     const handleMessage = (event: MessageEvent) => {
       if (event.origin !== "https://www.facebook.com") return;
       try {
@@ -179,12 +181,21 @@ export default function ConfiguracoesPage() {
         }
       } catch {}
     };
-
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
   }, []);
 
   const handleMetaEmbeddedSignup = async () => {
+    loadFacebookSDK();
+    // Aguarda até 3s o SDK inicializar antes de prosseguir
+    if (!window.FB) {
+      await new Promise<void>(resolve => {
+        const t0 = Date.now();
+        const check = setInterval(() => {
+          if (window.FB || Date.now() - t0 > 3000) { clearInterval(check); resolve(); }
+        }, 100);
+      });
+    }
     if (!window.FB) { alert("SDK do Facebook ainda carregando, tente novamente."); return; }
     setMetaConnecting(true);
     const { data: { user } } = await supabase.auth.getUser();

@@ -192,17 +192,7 @@ function CentralChatInner() {
       )
       .subscribe();
 
-    const interval = setInterval(async () => {
-      const { data } = await supabase
-        .from("mensagens")
-        .select("*")
-        .eq("lead_id", selectedLead.id)
-        .order("created_at", { ascending: true });
-      if (!data) return;
-      setMensagens((prev) => (data.length === prev.length ? prev : (data as Mensagem[])));
-    }, 3000);
-
-    return () => { supabase.removeChannel(ch); clearInterval(interval); };
+    return () => { supabase.removeChannel(ch); };
   }, [selectedLead?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {

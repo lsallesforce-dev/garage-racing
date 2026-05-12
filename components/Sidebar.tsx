@@ -1,25 +1,24 @@
 "use client";
 
-import { LayoutDashboard, MessageSquare, DollarSign, Users, ShieldCheck, Car, Store, Settings, LogOut, X, UserCircle, Contact, FileSignature, BarChart3, GitBranch, AlertCircle, Megaphone } from "lucide-react";
+import { LayoutDashboard, MessageSquare, DollarSign, Users, ShieldCheck, Car, Store, Settings, LogOut, X, UserCircle, Contact, FileSignature, AlertCircle, Megaphone } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import type { GarageConfig } from "./SidebarWrapper";
 
 const adminMenuItems = [
-  { icon: LayoutDashboard, label: "Pátio Digital", href: "/dashboard" },
-  { icon: Car, label: "Estoque Inteligente", href: "/estoque" },
-  { icon: MessageSquare, label: "Central de Chat", href: "/chat" },
-  { icon: Megaphone, label: "Marketing", href: "/marketing" },
-  { icon: DollarSign,  label: "Vendas / Financeiro", href: "/vendas" },
-  { icon: Contact, label: "Clientes", href: "/clientes" },
-  { icon: FileSignature, label: "Contratos", href: "/contratos" },
-  { icon: Users, label: "Equipe de Vendas", href: "/vendedores" },
-  { icon: Settings, label: "Configurações", href: "/configuracoes" },
-  { icon: UserCircle, label: "Minha Conta", href: "/minha-conta" },
+  { icon: LayoutDashboard, label: "Pátio Digital",       href: "/dashboard" },
+  { icon: Car,             label: "Estoque Inteligente",  href: "/estoque" },
+  { icon: MessageSquare,   label: "Central de Chat",      href: "/chat" },
+  { icon: Megaphone,       label: "Marketing",            href: "/marketing" },
+  { icon: DollarSign,      label: "Vendas / Financeiro",  href: "/vendas" },
+  { icon: Contact,         label: "Clientes",             href: "/clientes" },
+  { icon: FileSignature,   label: "Contratos",            href: "/contratos" },
+  { icon: Users,           label: "Equipe de Vendas",     href: "/vendedores" },
+  { icon: Settings,        label: "Configurações",        href: "/configuracoes" },
+  { icon: UserCircle,      label: "Minha Conta",          href: "/minha-conta" },
 ];
 
-// Mapa completo de páginas disponíveis para vendedores
 const todasPaginas = [
   { id: "dashboard",     icon: LayoutDashboard, label: "Pátio Digital",      href: "/dashboard" },
   { id: "estoque",       icon: Car,             label: "Estoque Inteligente", href: "/estoque" },
@@ -37,78 +36,27 @@ interface SidebarProps {
   onClose?: () => void;
   isVendedor?: boolean;
   effectiveUserId?: string;
+  garageConfig?: GarageConfig;
   paginasPermitidas?: string[];
 }
 
-export const Sidebar = ({ onClose, isVendedor = false, effectiveUserId = "", paginasPermitidas }: SidebarProps) => {
+export const Sidebar = ({
+  onClose,
+  isVendedor = false,
+  garageConfig,
+  paginasPermitidas,
+}: SidebarProps) => {
   const pathname = usePathname();
-  const router = useRouter();
-  const [nomeUsuario, setNomeUsuario] = useState("");
-  const [cargoUsuario, setCargoUsuario] = useState("");
-  const [nomeEmpresa, setNomeEmpresa] = useState("");
-  const [vitrineSlug, setVitrineSlug] = useState<string | null>(null);
+  const router   = useRouter();
 
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) return;
-
-      if (isVendedor) {
-        // Vendor: pull name from vendedores table, company from owner's config_garage
-        const ownerId = effectiveUserId;
-        supabase
-          .from("vendedores")
-          .select("nome, especialidade")
-          .eq("auth_user_id", user.id)
-          .maybeSingle()
-          .then(({ data: v }) => {
-            if (v) {
-              setNomeUsuario(v.nome || "");
-              setCargoUsuario(v.especialidade || "Vendedor");
-            }
-          });
-
-        if (ownerId) {
-          supabase
-            .from("config_garage")
-            .select("nome_empresa, nome_fantasia, vitrine_slug, webhook_token")
-            .eq("user_id", ownerId)
-            .limit(1)
-            .then(({ data }) => {
-              const row = data?.[0];
-              if (row) {
-                setNomeEmpresa(row.nome_fantasia || row.nome_empresa || "");
-                setVitrineSlug(row.vitrine_slug || row.webhook_token || null);
-              }
-            });
-        }
-        return;
-      }
-
-      // Admin: pull from config_garage
-      supabase
-        .from("config_garage")
-        .select("nome_usuario, cargo_usuario, nome_empresa, nome_fantasia, vitrine_slug, webhook_token")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .then(({ data }) => {
-          const row = data?.[0];
-          if (row) {
-            setNomeUsuario(row.nome_usuario || "");
-            setCargoUsuario(row.cargo_usuario || "");
-            setNomeEmpresa(row.nome_fantasia || row.nome_empresa || "");
-            setVitrineSlug(row.vitrine_slug || row.webhook_token || null);
-          }
-        });
-    });
-  }, [isVendedor, effectiveUserId]);
+  const nomeUsuario  = garageConfig?.nomeUsuario  ?? "";
+  const cargoUsuario = garageConfig?.cargoUsuario ?? "";
+  const nomeEmpresa  = garageConfig?.nomeEmpresa  ?? "";
+  const vitrineSlug  = garageConfig?.vitrineSlug  ?? null;
 
   const iniciais = nomeUsuario
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p: string) => p[0].toUpperCase())
-    .join("") || "?";
+    .split(" ").filter(Boolean).slice(0, 2)
+    .map((p: string) => p[0].toUpperCase()).join("") || "?";
 
   async function handleLogout() {
     await supabase.auth.signOut();
@@ -116,16 +64,12 @@ export const Sidebar = ({ onClose, isVendedor = false, effectiveUserId = "", pag
     router.refresh();
   }
 
-  const vendedorMenuItems = isVendedor
+  const menuItems = isVendedor
     ? [
-        ...todasPaginas.filter(p =>
-          (paginasPermitidas ?? DEFAULT_VENDEDOR_PAGINAS).includes(p.id)
-        ),
+        ...todasPaginas.filter(p => (paginasPermitidas ?? DEFAULT_VENDEDOR_PAGINAS).includes(p.id)),
         { id: "minha-conta", icon: UserCircle, label: "Minha Conta", href: "/minha-conta" },
       ]
-    : [];
-
-  const menuItems = isVendedor ? vendedorMenuItems : adminMenuItems;
+    : adminMenuItems;
 
   return (
     <aside className="w-64 h-screen bg-[#e2e2de] border-r border-gray-300 px-5 py-5 flex flex-col">
@@ -171,7 +115,6 @@ export const Sidebar = ({ onClose, isVendedor = false, effectiveUserId = "", pag
             <span className="font-bold text-[11px] uppercase tracking-wider">{item.label}</span>
           </Link>
         ))}
-        {/* Vitrine Pública — somente para admin */}
         {!isVendedor && (
           <a
             href={vitrineSlug ? `/vitrine/${vitrineSlug}` : "/vitrine"}
@@ -186,7 +129,6 @@ export const Sidebar = ({ onClose, isVendedor = false, effectiveUserId = "", pag
         )}
       </nav>
 
-      {/* Log de Erros — visível só para admin */}
       {!isVendedor && (
         <Link
           href="/erros"
@@ -200,18 +142,15 @@ export const Sidebar = ({ onClose, isVendedor = false, effectiveUserId = "", pag
         </Link>
       )}
 
-      {/* Perfil do Usuário */}
       <div className="pt-3 border-t border-gray-300 flex items-center gap-3">
-        <div className="w-10 h-10 rounded-full bg-gray-900 flex items-center justify-center text-white font-black text-sm italic shadow-lg">{iniciais}</div>
+        <div className="w-10 h-10 rounded-full bg-gray-900 flex items-center justify-center text-white font-black text-sm italic shadow-lg">
+          {iniciais}
+        </div>
         <div className="flex flex-col flex-1 min-w-0">
           <span className="text-[11px] font-black uppercase tracking-tight text-gray-900 truncate">{nomeUsuario || "—"}</span>
           <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest italic truncate">{cargoUsuario || "—"}</span>
         </div>
-        <button
-          onClick={handleLogout}
-          title="Sair"
-          className="text-gray-400 hover:text-red-600 transition-colors"
-        >
+        <button onClick={handleLogout} title="Sair" className="text-gray-400 hover:text-red-600 transition-colors">
           <LogOut size={16} />
         </button>
       </div>
