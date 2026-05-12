@@ -244,7 +244,7 @@ export async function POST(req: NextRequest) {
     params,
   };
   if (zipcode) anuncio.zipcode = zipcode;
-  if (phone)   anuncio.phone   = phone;
+  if (phone)   anuncio.phone   = parseInt(phone, 10);
 
   const payload = { access_token: accessToken, ad_list: [anuncio] };
   console.log(`📤 [OLX] ${anuncio.operation} veículo ${veiculoId} — brand_id: ${brandId ?? "não encontrado"} model_id: ${modelId ?? "não encontrado"}`);
