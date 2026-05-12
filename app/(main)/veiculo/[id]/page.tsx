@@ -1195,10 +1195,10 @@ export default function DetalheVeiculo() {
         <header className="mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6">
           <div>
             <Link
-              href="/dashboard"
+              href="/estoque"
               className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2 mb-6 hover:text-red-600 transition-colors"
             >
-              <ArrowLeft size={12} /> Voltar ao Pátio
+              <ArrowLeft size={12} /> Voltar para Estoque
             </Link>
 
             {/* Título editável */}
