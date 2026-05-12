@@ -231,20 +231,23 @@ export async function POST(req: NextRequest) {
     .eq("id", veiculoId);
 
   // Salva snapshot do anúncio para o painel de anúncios ativos
-  await supabaseAdmin.from("anuncios").upsert({
-    user_id:      userId,
-    veiculo_id:   veiculoId,
-    portal:       "olx",
-    portal_ad_id: adId,
-    status:       "publicado",
+  const now = new Date().toISOString();
+  const { error: upsertErr } = await supabaseAdmin.from("anuncios").upsert({
+    user_id:       userId,
+    veiculo_id:    veiculoId,
+    portal:        "olx",
+    portal_ad_id:  adId,
+    status:        "publicado",
     titulo,
     descricao,
-    preco:        Number(v.preco_sugerido ?? 0),
+    preco:         Number(v.preco_sugerido ?? 0),
     fotos,
-    snapshot:     { params, brandId, zipcode },
-    atualizado_em: new Date().toISOString(),
+    snapshot:      { params, brandId, zipcode },
+    publicado_em:  now,
+    atualizado_em: now,
   }, { onConflict: "veiculo_id,portal" });
 
+  if (upsertErr) console.error("❌ anuncios upsert falhou:", upsertErr.message);
   console.log(`✅ OLX: veículo ${veiculoId} publicado — ad_id ${adId}`);
   return NextResponse.json({ success: true, adId });
 }
