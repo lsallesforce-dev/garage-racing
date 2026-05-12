@@ -33,9 +33,7 @@ export default function PublicarPortaisModal({
   onClose,
   onStatusChange,
 }: Props) {
-  const [olxStatus, setOlxStatus]   = useState<PortalStatus>(
-    veiculo.status_olx === "publicado" ? "ok" : "idle"
-  );
+  const [olxStatus, setOlxStatus]   = useState<PortalStatus>("idle");
   const [wmStatus, setWmStatus]     = useState<PortalStatus>(
     veiculo.status_webmotors === "publicado" ? "ok" : "idle"
   );
