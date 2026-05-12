@@ -674,17 +674,31 @@ export default function ConfiguracoesPage() {
               />
             </div>
 
-            <div className="flex flex-col gap-1.5">
-              <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
-                Nome do Agente IA
-              </label>
-              <input
-                type="text"
-                value={config.nome_agente}
-                onChange={e => setConfig(c => ({ ...c, nome_agente: e.target.value }))}
-                placeholder="Ex: Lucas"
-                className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
-              />
+            <div className="flex gap-3">
+              <div className="flex flex-col gap-1.5 flex-1">
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+                  Nome do Agente IA
+                </label>
+                <input
+                  type="text"
+                  value={config.nome_agente}
+                  onChange={e => setConfig(c => ({ ...c, nome_agente: e.target.value }))}
+                  placeholder="Ex: Lucas"
+                  className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5 flex-1">
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+                  Telefone do Agente (com DDI)
+                </label>
+                <input
+                  type="text"
+                  value={config.whatsapp_agente ?? ""}
+                  onChange={e => setConfig(c => ({ ...c, whatsapp_agente: e.target.value }))}
+                  placeholder="Ex: 5517991604158"
+                  className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
+                />
+              </div>
             </div>
 
             <div className="flex flex-col gap-1.5">
