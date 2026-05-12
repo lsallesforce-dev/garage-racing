@@ -53,13 +53,18 @@ export async function PATCH(req: NextRequest) {
       const res = await fetch(OLX_AD_STATUS_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ access_token: cfg.olx_access_token, ad_id: anuncio.portal_ad_id }),
+        body: JSON.stringify({
+          access_token: cfg.olx_access_token,
+          ad_list: [{ id: anuncio.portal_ad_id, category: 2020 }],
+        }),
       });
 
       if (res.ok) {
         const json = await res.json();
-        const status: string = json?.data?.status ?? json?.status ?? "unknown";
-        const reason: string | null = json?.data?.reason ?? json?.reason ?? null;
+        console.log(`📊 OLX ad_status raw:`, JSON.stringify(json).slice(0, 300));
+        const adEntry = Array.isArray(json?.data) ? json.data[0] : json?.data;
+        const status: string = adEntry?.status ?? json?.status ?? "unknown";
+        const reason: string | null = adEntry?.reason ?? json?.reason ?? null;
 
         const dbStatus =
           status === "active"   ? "ativo" :

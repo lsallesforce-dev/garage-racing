@@ -26,7 +26,10 @@ export async function GET(req: NextRequest) {
   const res = await fetch(OLX_AD_STATUS_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ access_token: cfg.olx_access_token, ad_id: v.olx_ad_id }),
+    body: JSON.stringify({
+      access_token: cfg.olx_access_token,
+      ad_list: [{ id: v.olx_ad_id, category: 2020 }],
+    }),
   });
 
   if (!res.ok) {
@@ -36,10 +39,12 @@ export async function GET(req: NextRequest) {
   }
 
   const json = await res.json();
+  console.log(`📊 OLX ad_status raw:`, JSON.stringify(json).slice(0, 300));
 
-  // A OLX pode retornar { data: { status, reason } } ou { status, reason } direto
-  const status: string = json?.data?.status ?? json?.status ?? "unknown";
-  const reason: string | null = json?.data?.reason ?? json?.reason ?? null;
+  // Com ad_list: { data: [{ id, status, reason }] } ou { data: { status, reason } } ou { status }
+  const adEntry = Array.isArray(json?.data) ? json.data[0] : json?.data;
+  const status: string = adEntry?.status ?? json?.status ?? "unknown";
+  const reason: string | null = adEntry?.reason ?? json?.reason ?? null;
 
   // Persiste no banco: mapeamos para os valores que já usamos internamente
   const dbStatus =
