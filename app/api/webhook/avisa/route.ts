@@ -30,6 +30,7 @@ export const maxDuration = 300;
 function extractFields(payload: any): {
   phone: string;
   isLid: boolean;
+  lidPhone?: string; // LID numeric ID present alongside a real phone (for lead migration)
   userMessage: string;
   fromMe: boolean;
   audioUrl?: string;
@@ -52,6 +53,7 @@ function extractFields(payload: any): {
 
   let phone = "";
   let isLid = false;
+  let lidPhone: string | undefined;
   let userMessage = "";
   let fromMe = false;
   let audioUrl: string | undefined;
@@ -105,6 +107,8 @@ function extractFields(payload: any): {
     if (realJid) {
       phone = realJid.replace(/@.*$/, "");
       isLid = false;
+      // Se também há um LID no mesmo payload, guardamos para migrar o lead
+      if (lidJid) lidPhone = lidJid.replace(/@.*$/, "");
     } else if (lidJid) {
       phone = lidJid.replace(/@.*$/, "");
       isLid = true;
@@ -183,7 +187,7 @@ function extractFields(payload: any): {
     };
   }
 
-  return { phone, isLid, userMessage: userMessage?.trim() || "", fromMe, audioUrl, audioMediaKey, messageId };
+  return { phone, isLid, lidPhone, userMessage: userMessage?.trim() || "", fromMe, audioUrl, audioMediaKey, messageId };
 }
 
 // ─── Webhook Principal ────────────────────────────────────────────────────────
@@ -290,8 +294,26 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Validação Básica ──────────────────────────────────────────────────────
-    let { phone, isLid, userMessage: rawMessage, fromMe, audioUrl, audioMediaKey, messageId } =
+    let { phone, isLid, lidPhone, userMessage: rawMessage, fromMe, audioUrl, audioMediaKey, messageId } =
       extractFields(payload);
+
+    // Migração de lead LID → número real (roda antes do fromMe para capturar receipts)
+    // Quando Baileys entrega SenderAlt com número real junto ao LID, migramos o wa_id
+    // do lead para que mensagens futuras pelo número real encontrem o mesmo lead.
+    if (lidPhone && !isLid && tenantUserId) {
+      supabaseAdmin
+        .from("leads")
+        .update({ wa_id: phone })
+        .eq("wa_id", lidPhone)
+        .eq("user_id", tenantUserId)
+        .then(({ error }) => {
+          if (error) {
+            console.warn(`⚠️ [LID migrate] Erro ao migrar lead ${lidPhone} → ${phone}:`, error.message);
+          } else {
+            console.log(`✅ [LID migrate] Lead migrado: ${lidPhone} → ${phone}`);
+          }
+        });
+    }
 
     if (fromMe) return NextResponse.json({ status: "ignored_from_me" });
 
