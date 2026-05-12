@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { CheckCircle2, Loader2, Send, X, AlertCircle } from "lucide-react";
 
 interface Veiculo {
@@ -33,6 +34,7 @@ export default function PublicarPortaisModal({
   onClose,
   onStatusChange,
 }: Props) {
+  const router = useRouter();
   const [olxStatus, setOlxStatus]   = useState<PortalStatus>("idle");
   const [wmStatus, setWmStatus]     = useState<PortalStatus>(
     veiculo.status_webmotors === "publicado" ? "ok" : "idle"
@@ -55,8 +57,9 @@ export default function PublicarPortaisModal({
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Erro desconhecido");
-      setOlxStatus("ok");
       onStatusChange?.("status_olx", "publicado");
+      onClose();
+      router.push("/marketing/anuncios");
     } catch (e: any) {
       setOlxErro(e.message);
       setOlxStatus("erro");
@@ -74,8 +77,9 @@ export default function PublicarPortaisModal({
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Erro desconhecido");
-      setWmStatus("ok");
       onStatusChange?.("status_webmotors", "publicado");
+      onClose();
+      router.push("/marketing/anuncios");
     } catch (e: any) {
       setWmErro(e.message);
       setWmStatus("erro");
