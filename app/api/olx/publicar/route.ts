@@ -231,10 +231,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `OLX retornou ${resp.status}: ${txt.slice(0, 200)}` }, { status: 502 });
   }
 
-  // OLX pode retornar um ID interno diferente do nosso — extraímos se disponível
+  // OLX retorna HTTP 200 mesmo em erros — checar statusCode
   let olxAdId = adId;
   try {
     const respJson = JSON.parse(txt);
+    const statusCode: number = respJson?.statusCode ?? 0;
+    if (statusCode < 0) {
+      const msg = respJson?.statusMessage ?? `statusCode ${statusCode}`;
+      console.error(`❌ OLX recusou publicação (statusCode ${statusCode}): ${msg}`);
+      const friendlyMsg = statusCode === -6
+        ? "Conta OLX não habilitada para Autoupload. O lojista precisa do plano OLX Pro e deve solicitar a ativação pelo e-mail suporteintegrador@olxbr.com."
+        : `OLX: ${msg}`;
+      return NextResponse.json({ error: friendlyMsg }, { status: 403 });
+    }
     const olxId = respJson?.data?.[0]?.id ?? respJson?.ad_list?.[0]?.id ?? respJson?.id;
     if (olxId) { olxAdId = String(olxId); console.log(`🆔 OLX internal ad_id: ${olxAdId}`); }
   } catch {}
@@ -261,16 +270,11 @@ export async function POST(req: NextRequest) {
     atualizado_em: now,
   };
 
-  // Tenta update primeiro; se não existir, insere
-  const { count } = await supabaseAdmin.from("anuncios")
-    .update({ ...anuncioData, publicado_em: undefined }) // não sobrescreve publicado_em no update
-    .eq("veiculo_id", veiculoId).eq("portal", "olx")
-    .select("id", { count: "exact", head: true });
-
-  if ((count ?? 0) === 0) {
-    const { error: insertErr } = await supabaseAdmin.from("anuncios").insert(anuncioData);
-    if (insertErr) console.error("❌ anuncios insert falhou:", insertErr.message);
-  }
+  const { error: upsertErr } = await supabaseAdmin.from("anuncios").upsert(
+    anuncioData,
+    { onConflict: "veiculo_id,portal", ignoreDuplicates: false }
+  );
+  if (upsertErr) console.error("❌ anuncios upsert falhou:", upsertErr.message);
   console.log(`✅ OLX: veículo ${veiculoId} publicado — ad_id ${adId}`);
   return NextResponse.json({ success: true, adId });
 }
