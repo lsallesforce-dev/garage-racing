@@ -17,7 +17,8 @@ export async function GET(req: NextRequest) {
   }
 
   const userId = getEffectiveUserId(user!);
-  const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL}/api/oauth/olx/callback`;
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/+$/, "");
+  const redirectUri = `${appUrl}/api/oauth/olx/callback`;
 
   const params = new URLSearchParams({
     client_id:     clientId,
