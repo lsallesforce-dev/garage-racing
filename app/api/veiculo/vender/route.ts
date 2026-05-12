@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     // 1. Buscar dados do carro para o histórico e notificações
     const { data: veiculo, error: fetchError } = await supabaseAdmin
       .from("veiculos")
-      .select("marca, modelo, vendedor_responsavel_id, preco_sugerido, user_id")
+      .select("marca, modelo, vendedor_responsavel_id, preco_sugerido, user_id, olx_ad_id")
       .eq("id", id)
       .single();
 
@@ -36,6 +36,30 @@ export async function POST(req: NextRequest) {
     if (updateError) {
       console.error("Update Error:", updateError);
       return NextResponse.json({ success: false, error: "Erro ao atualizar status do veículo." }, { status: 500 });
+    }
+
+    // 2b. Remove da OLX se estava publicado
+    if (veiculo.olx_ad_id) {
+      const { data: cfg2 } = await supabaseAdmin
+        .from("config_garage")
+        .select("olx_access_token")
+        .eq("user_id", veiculo.user_id)
+        .single();
+
+      if (cfg2?.olx_access_token) {
+        fetch("https://apps.olx.com.br/autoupload/import", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            access_token: cfg2.olx_access_token,
+            ad_list: [{ id: veiculo.olx_ad_id, operation: "delete", category: 2020 }],
+          }),
+        })
+          .then(() => supabaseAdmin.from("veiculos").update({ olx_ad_id: null, status_olx: null }).eq("id", id))
+          .then(() => supabaseAdmin.from("anuncios").update({ status: "deletado" }).eq("veiculo_id", id).eq("portal", "olx"))
+          .catch((e: any) => console.error("❌ OLX delete on venda falhou:", e?.message));
+        console.log(`🗑️ [OLX] Removendo anúncio ${veiculo.olx_ad_id} — veículo vendido`);
+      }
     }
 
     // 3. Registrar no histórico de vendas (vendas_concluidas) 
