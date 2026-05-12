@@ -17,7 +17,9 @@ export async function GET(req: NextRequest) {
   }
 
   const userId = getEffectiveUserId(user!);
-  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/+$/, "");
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "https://autozap.digital")
+    .replace(/\/+$/, "")
+    .replace("://www.", "://");
   const redirectUri = `${appUrl}/api/oauth/olx/callback`;
 
   const params = new URLSearchParams({

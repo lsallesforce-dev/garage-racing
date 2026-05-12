@@ -6,7 +6,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
-const APP_URL    = (process.env.NEXT_PUBLIC_APP_URL ?? "https://autozap.digital").replace(/\/+$/, "");
+const APP_URL    = (process.env.NEXT_PUBLIC_APP_URL ?? "https://autozap.digital")
+  .replace(/\/+$/, "")
+  .replace("://www.", "://");
 const TOKEN_URL  = "https://auth.olx.com.br/oauth/token";
 
 export async function GET(req: NextRequest) {
