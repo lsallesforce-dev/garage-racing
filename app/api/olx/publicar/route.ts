@@ -125,7 +125,7 @@ export async function POST(req: NextRequest) {
       .single(),
     supabaseAdmin
       .from("config_garage")
-      .select("olx_access_token, cnpj, nf_cep, cep")
+      .select("olx_access_token, cnpj, nf_cep")
       .eq("user_id", userId)
       .single(),
   ]);
@@ -137,7 +137,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Conta OLX não conectada. Acesse Configurações para conectar." }, { status: 400 });
 
   const accessToken = cfg.olx_access_token;
-  const zipcode = (cfg.nf_cep ?? cfg.cep ?? "").replace(/\D/g, "");
+  const zipcode = (cfg.nf_cep ?? "").replace(/\D/g, "");
 
   // ── Delete ───────────────────────────────────────────────────────────────────
   if (operation === "delete") {
