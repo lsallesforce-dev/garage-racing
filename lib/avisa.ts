@@ -19,13 +19,15 @@ interface AvisaCreds {
   token: string;
 }
 
-// Tenta resolver um LID (@lid) para o número real via Avisa/Baileys.
+// Resolve um LID (@lid) para o número real via POST /user/parselid da Avisa.
 // Retorna o número real (ex: "5514997985754") ou null se não conseguir.
 export async function resolveAvisaLid(lid: string, creds: AvisaCreds): Promise<string | null> {
-  const jid = `${lid}@lid`;
+  const lidJid = lid.includes("@") ? lid : `${lid}@lid`;
   try {
-    const res = await fetch(`${creds.baseUrl}/contacts/${encodeURIComponent(jid)}`, {
-      headers: { Authorization: `Bearer ${creds.token}` },
+    const res = await fetch(`${creds.baseUrl}/user/parselid`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${creds.token}` },
+      body: JSON.stringify({ lid: lidJid }),
     });
     if (res.ok) {
       const data = await res.json();
@@ -40,7 +42,7 @@ export async function resolveAvisaLid(lid: string, creds: AvisaCreds): Promise<s
   } catch {
     // silencia — LID sem resolução é aceitável
   }
-  console.warn(`⚠️ [LID resolve] Não foi possível resolver ${lid} para número real`);
+  console.warn(`⚠️ [LID resolve] Não foi possível resolver ${lid} via /user/parselid`);
   return null;
 }
 
@@ -96,20 +98,23 @@ function typingDelay(text: string): number {
   return Math.min(1500 + Math.floor(text.length / 50) * 500, 7000);
 }
 
-function buildTarget(phone: string): { number?: string; chat?: string } {
+function buildTarget(phone: string): { number: string } {
+  // Avisa API only accepts the `number` field — no JID/chat support.
+  // For LID contacts (Instagram CTWA), send the numeric part directly.
+  // Baileys internally has the LID↔JID mapping from receiving the original message.
   if (isLidPhone(phone)) {
-    // LID: Avisa precisa do JID completo com sufixo @lid para rotear corretamente
     const lid = phone.replace(/\D/g, "");
-    console.log(`📋 [LID] Usando JID @lid para envio: ${lid}@lid`);
-    return { chat: `${lid}@lid` };
+    console.log(`📋 [LID] Enviando via number (LID numérico): ${lid}`);
+    return { number: lid };
   }
   return { number: formatPhone(phone) };
 }
 
 async function sendAvisaTyping(baseUrl: string, token: string, phone: string, action: "start" | "stop") {
   try {
-    const target = buildTarget(phone);
-    const chat = target.chat ?? `${target.number}@s.whatsapp.net`;
+    const chat = isLidPhone(phone)
+      ? `${phone.replace(/\D/g, "")}@lid`
+      : `${formatPhone(phone)}@s.whatsapp.net`;
     await fetch(`${baseUrl}/chat/typing/${action}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -171,7 +176,7 @@ export async function sendAvisaPreview(
   const c = resolveCreds(creds);
   if (!c) { console.warn("Avisa credentials missing"); return; }
 
-  const payload: any = { number: formatPhone(phone), message, urlSite, title, description };
+  const payload: any = { ...buildTarget(phone), message, urlSite, title, description };
   if (imageBase64) payload.image = imageBase64;
   return sendWithRetry(`${c.baseUrl}/actions/sendPreview`, payload, c.token);
 }
