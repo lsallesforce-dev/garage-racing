@@ -52,6 +52,7 @@ interface GarageConfig {
   oferta_especial?: string;
   webmotors_usuario?: string;
   webmotors_senha?: string;
+  nf_cep?: string;
 }
 
 export default function ConfiguracoesPage() {
@@ -351,6 +352,7 @@ export default function ConfiguracoesPage() {
               oferta_especial: row.oferta_especial ?? "",
               webmotors_usuario: row.webmotors_usuario ?? "",
               webmotors_senha:   row.webmotors_senha   ?? "",
+              nf_cep:            row.nf_cep            ?? "",
             });
             if (row.logo_url) {
               setCurrentLogo(row.logo_url);
@@ -513,6 +515,7 @@ export default function ConfiguracoesPage() {
             oferta_especial:      config.oferta_especial      || null,
             webmotors_usuario:    config.webmotors_usuario    || null,
             webmotors_senha:      config.webmotors_senha      || null,
+            nf_cep:               config.nf_cep               || null,
           },
           { onConflict: "user_id" }
         )
@@ -729,6 +732,16 @@ export default function ConfiguracoesPage() {
                   onChange={e => setConfig(c => ({ ...c, estado: e.target.value.toUpperCase().slice(0, 2) }))}
                   placeholder="SP"
                   maxLength={2}
+                  className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5 w-32">
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">CEP</label>
+                <input
+                  type="text"
+                  value={config.nf_cep ?? ""}
+                  onChange={e => setConfig(c => ({ ...c, nf_cep: e.target.value }))}
+                  placeholder="15000-000"
                   className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
                 />
               </div>

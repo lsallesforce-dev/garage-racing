@@ -88,6 +88,7 @@ async function fetchCatalog(url: string, accessToken: string, cacheMap: Map<stri
 }
 
 async function findBrandId(marca: string, accessToken: string): Promise<string | null> {
+  if (!marca?.trim()) return null;
   const brands = await fetchCatalog(OLX_CAR_INFO_URL, accessToken, brandCache);
   if (!Object.keys(brands).length) return null;
 
@@ -149,7 +150,7 @@ export async function POST(req: NextRequest) {
       .single(),
     supabaseAdmin
       .from("config_garage")
-      .select("olx_access_token, cnpj, nf_cep, whatsapp")
+      .select("olx_access_token, cnpj, nf_cep, whatsapp, whatsapp_agente")
       .eq("user_id", userId)
       .single(),
   ]);
@@ -162,7 +163,10 @@ export async function POST(req: NextRequest) {
 
   const accessToken = cfg.olx_access_token;
   const zipcode = (cfg.nf_cep ?? "").replace(/\D/g, "");
-  const phone   = (cfg.whatsapp ?? "").replace(/\D/g, "");
+  // Usa o número do agente para o anúncio; fallback para o gerente
+  // OLX espera DDD+número sem o código do país 55
+  let phone = (cfg.whatsapp_agente || cfg.whatsapp || "").replace(/\D/g, "");
+  if (phone.startsWith("55") && phone.length >= 12) phone = phone.slice(2);
 
   if (!zipcode) console.warn("⚠️ [OLX] nf_cep não configurado — OLX pode rejeitar o anúncio");
   if (!phone)   console.warn("⚠️ [OLX] whatsapp não configurado — OLX pode rejeitar o anúncio");
@@ -211,7 +215,6 @@ export async function POST(req: NextRequest) {
     fuel:     toId(FUEL_MAP,    v.combustivel ?? "", "3"),
     gearbox:  toId(GEARBOX_MAP, v.cambio      ?? "", "1"),
     carcolor: toId(COLOR_MAP,   v.cor          ?? "", "5"),
-    doors:    4,  // número, não string
   };
 
   if (brandId) params.vehicle_brand = brandId;
