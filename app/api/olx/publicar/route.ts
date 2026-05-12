@@ -232,7 +232,7 @@ export async function POST(req: NextRequest) {
 
   // Salva snapshot do anúncio para o painel de anúncios ativos
   const now = new Date().toISOString();
-  const { error: upsertErr } = await supabaseAdmin.from("anuncios").upsert({
+  const anuncioData = {
     user_id:       userId,
     veiculo_id:    veiculoId,
     portal:        "olx",
@@ -245,9 +245,18 @@ export async function POST(req: NextRequest) {
     snapshot:      { params, brandId, zipcode },
     publicado_em:  now,
     atualizado_em: now,
-  }, { onConflict: "veiculo_id,portal" });
+  };
 
-  if (upsertErr) console.error("❌ anuncios upsert falhou:", upsertErr.message);
+  // Tenta update primeiro; se não existir, insere
+  const { count } = await supabaseAdmin.from("anuncios")
+    .update({ ...anuncioData, publicado_em: undefined }) // não sobrescreve publicado_em no update
+    .eq("veiculo_id", veiculoId).eq("portal", "olx")
+    .select("id", { count: "exact", head: true });
+
+  if ((count ?? 0) === 0) {
+    const { error: insertErr } = await supabaseAdmin.from("anuncios").insert(anuncioData);
+    if (insertErr) console.error("❌ anuncios insert falhou:", insertErr.message);
+  }
   console.log(`✅ OLX: veículo ${veiculoId} publicado — ad_id ${adId}`);
   return NextResponse.json({ success: true, adId });
 }
