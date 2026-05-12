@@ -55,7 +55,7 @@ export async function PATCH(req: NextRequest) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           access_token: cfg.olx_access_token,
-          ad_list: [{ id: anuncio.portal_ad_id, category: 2020 }],
+          ad_list: [{ id: anuncio.portal_ad_id }],
         }),
       });
 

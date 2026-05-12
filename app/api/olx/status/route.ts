@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       access_token: cfg.olx_access_token,
-      ad_list: [{ id: v.olx_ad_id, category: 2020 }],
+      ad_list: [{ id: v.olx_ad_id }],
     }),
   });
 

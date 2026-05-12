@@ -69,10 +69,15 @@ async function fetchBrands(accessToken: string): Promise<Record<string, number>>
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({ access_token: accessToken }),
     });
-    if (!res.ok) return {};
+    if (!res.ok) {
+      const errTxt = await res.text();
+      console.error(`❌ OLX car_info ${res.status}:`, errTxt.slice(0, 200));
+      return {};
+    }
     const json = await res.json();
     // API retorna { data: { "HONDA": 15, "TOYOTA": 20 } }
     const data: Record<string, number> = json?.data ?? json ?? {};
+    console.log(`📋 OLX car_info brands: ${Object.keys(data).length} marcas — amostra:`, Object.keys(data).slice(0, 5));
     brandCacheMap.set("brands", { data, at: Date.now() });
     return data;
   } catch {
@@ -220,14 +225,23 @@ export async function POST(req: NextRequest) {
   });
 
   const txt = await resp.text();
+  console.log(`📥 OLX import response ${resp.status}:`, txt.slice(0, 500));
   if (!resp.ok) {
     console.error("❌ OLX publicar falhou:", resp.status, txt.slice(0, 500));
     return NextResponse.json({ error: `OLX retornou ${resp.status}: ${txt.slice(0, 200)}` }, { status: 502 });
   }
 
+  // OLX pode retornar um ID interno diferente do nosso — extraímos se disponível
+  let olxAdId = adId;
+  try {
+    const respJson = JSON.parse(txt);
+    const olxId = respJson?.data?.[0]?.id ?? respJson?.ad_list?.[0]?.id ?? respJson?.id;
+    if (olxId) { olxAdId = String(olxId); console.log(`🆔 OLX internal ad_id: ${olxAdId}`); }
+  } catch {}
+
   await supabaseAdmin
     .from("veiculos")
-    .update({ status_olx: "publicado", olx_ad_id: adId })
+    .update({ status_olx: "publicado", olx_ad_id: olxAdId })
     .eq("id", veiculoId);
 
   // Salva snapshot do anúncio para o painel de anúncios ativos
@@ -236,7 +250,7 @@ export async function POST(req: NextRequest) {
     user_id:       userId,
     veiculo_id:    veiculoId,
     portal:        "olx",
-    portal_ad_id:  adId,
+    portal_ad_id:  olxAdId,
     status:        "publicado",
     titulo,
     descricao,
