@@ -204,6 +204,7 @@ export async function POST(req: NextRequest) {
   ).slice(0, 6000);
 
   const fotos: string[] = (Array.isArray(v.fotos) ? v.fotos.filter(Boolean) : []).slice(0, 20);
+  console.log(`🖼️ [OLX] ${fotos.length} fotos — primeira: ${fotos[0]?.slice(0, 80) ?? "nenhuma"}`);
 
   // Lookup hierárquico: marca → modelo
   const brandId = await findBrandId(v.marca ?? "", accessToken);
