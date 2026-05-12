@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useUserRole } from "@/components/SidebarWrapper";
-import { Megaphone, CheckCircle2, Clock, XCircle } from "lucide-react";
+import { Megaphone, CheckCircle2, Clock, XCircle, AlertCircle } from "lucide-react";
 import PublicarMetaButton from "@/components/PublicarMetaButton";
 import PublicarPortaisModal from "@/components/PublicarPortaisModal";
 
@@ -41,6 +41,71 @@ function IconWebmotors({ className }: { className?: string }) {
       <rect width="40" height="40" rx="8" fill="#E8261F" />
       <text x="50%" y="55%" dominantBaseline="middle" textAnchor="middle" fill="white" fontSize="7.5" fontWeight="900" fontFamily="Arial">WEB</text>
     </svg>
+  );
+}
+
+// ─── Badge de status OLX ─────────────────────────────────────────────────────
+
+function OlxStatusBadge({ veiculoId, olxAdId, statusInicial }: { veiculoId: string; olxAdId: string | null; statusInicial: string | null }) {
+  const [status, setStatus]   = useState<string | null>(statusInicial);
+  const [reason, setReason]   = useState<string | null>(null);
+  const [tooltip, setTooltip] = useState(false);
+
+  useEffect(() => {
+    if (!olxAdId) return;
+    fetch(`/api/olx/status?veiculoId=${veiculoId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data) return;
+        setStatus(data.status);
+        setReason(data.reason ?? null);
+      })
+      .catch(() => {});
+  }, [veiculoId, olxAdId]);
+
+  if (!olxAdId) return null;
+
+  if (status === "active" || status === "publicado") {
+    return (
+      <span className="flex items-center gap-0.5 px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-[9px] font-black uppercase tracking-wider">
+        <CheckCircle2 size={9} /> Ativo
+      </span>
+    );
+  }
+
+  if (status === "pending" || status === "pendente") {
+    return (
+      <span className="flex items-center gap-0.5 px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded-full text-[9px] font-black uppercase tracking-wider">
+        <Clock size={9} /> Pendente
+      </span>
+    );
+  }
+
+  if (status === "rejected" || status === "rejeitado") {
+    return (
+      <div className="relative">
+        {tooltip && <div className="fixed inset-0 z-40" onClick={() => setTooltip(false)} />}
+        <button
+          onClick={() => setTooltip(v => !v)}
+          className="flex items-center gap-0.5 px-2 py-0.5 bg-red-100 text-red-600 rounded-full text-[9px] font-black uppercase tracking-wider"
+        >
+          <AlertCircle size={9} /> Rejeitado
+        </button>
+        {tooltip && reason && (
+          <div className="absolute bottom-full mb-1.5 left-0 w-52 bg-gray-900 text-white rounded-xl p-2.5 shadow-xl z-50 text-[10px] leading-snug">
+            {reason}
+            <div className="absolute top-full left-3 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900" />
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Status desconhecido ou ainda carregando
+  return (
+    <span className="flex items-center gap-0.5 px-2 py-0.5 bg-gray-100 text-gray-400 rounded-full text-[9px] font-black uppercase tracking-wider">
+      <CheckCircle2 size={9} /> Publicado
+    </span>
   );
 }
 
@@ -130,7 +195,14 @@ function WmButton({ wmConfigurado, publicado, onPublicar }: { wmConfigurado: boo
 
 // ─── Botão OLX ────────────────────────────────────────────────────────────────
 
-function OlxButton({ olxConectado, publicado, onPublicar }: { olxConectado: boolean; publicado?: boolean; onPublicar?: () => void }) {
+function OlxButton({ olxConectado, publicado, veiculoId, olxAdId, statusOlx, onPublicar }: {
+  olxConectado: boolean;
+  publicado?: boolean;
+  veiculoId: string;
+  olxAdId: string | null;
+  statusOlx: string | null;
+  onPublicar?: () => void;
+}) {
   const [hint, setHint] = useState(false);
 
   if (olxConectado) {
@@ -143,9 +215,12 @@ function OlxButton({ olxConectado, publicado, onPublicar }: { olxConectado: bool
           <IconOLX className="w-4 h-4" />
           <span className="text-[9px] font-black uppercase tracking-wider text-purple-700">OLX</span>
         </button>
-        <span className="flex items-center gap-0.5 px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-[9px] font-black uppercase tracking-wider">
-          <CheckCircle2 size={9} /> {publicado ? "Publicado" : "Conectado"}
-        </span>
+        {publicado
+          ? <OlxStatusBadge veiculoId={veiculoId} olxAdId={olxAdId} statusInicial={statusOlx} />
+          : <span className="flex items-center gap-0.5 px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-[9px] font-black uppercase tracking-wider">
+              <CheckCircle2 size={9} /> Conectado
+            </span>
+        }
       </div>
     );
   }
@@ -250,7 +325,10 @@ function VeiculoMarketingCard({ carro, wmConfigurado, olxConectado }: { carro: a
           {/* OLX */}
           <OlxButton
             olxConectado={olxConectado}
-            publicado={carroLocal.status_olx === "publicado"}
+            publicado={carroLocal.status_olx === "publicado" || carroLocal.status_olx === "rejeitado" || carroLocal.status_olx === "pendente"}
+            veiculoId={carro.id}
+            olxAdId={carroLocal.olx_ad_id ?? null}
+            statusOlx={carroLocal.status_olx ?? null}
             onPublicar={!vendido ? () => setPortaisOpen(true) : undefined}
           />
 
@@ -320,7 +398,7 @@ function MarketingPageInner() {
     Promise.all([
       supabase
         .from("veiculos")
-        .select("id, marca, modelo, versao, ano, ano_modelo, preco_sugerido, capa_marketing_url, fotos, status_venda, status_olx, status_webmotors")
+        .select("id, marca, modelo, versao, ano, ano_modelo, preco_sugerido, capa_marketing_url, fotos, status_venda, status_olx, status_webmotors, olx_ad_id")
         .eq("user_id", effectiveUserId)
         .order("status_venda", { ascending: true })
         .order("created_at", { ascending: false }),
