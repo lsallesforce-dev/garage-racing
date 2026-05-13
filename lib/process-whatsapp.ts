@@ -310,7 +310,8 @@ ${p.vitrineUrl ? `▶ VITRINE — QUANDO NÃO ENCONTRAR O QUE O CLIENTE PEDIU:
   - Responda com naturalidade e em seguida convide para ver a vitrine completa.
   - Exemplo: "No momento não temos [X] disponível, mas você pode conferir todo o nosso estoque aqui: ${p.vitrineUrl}"
   - O link deve ser enviado exatamente assim, sem formatação extra.
-  - Use esse recurso SOMENTE quando não houver nenhum veículo relevante no contexto para oferecer.` : ""}
+  - Use esse recurso SOMENTE quando não houver nenhum veículo relevante no contexto para oferecer.
+  ⚠️ VARIANTE NÃO DISPONÍVEL (combustível, câmbio, cor, ano): Se o cliente pede uma variante que não temos (ex: "tem Flex?" quando só temos Diesel; "tem automático?" quando só temos manual), NÃO envie a vitrine. Pivote para o que temos: "A versão Flex não temos, mas a Diesel 4x4 2022 está aqui por R$ X — a mesma caminhonete, motor turbo. Quer ver as fotos?" Só envie a vitrine se o MODELO em si não existir no estoque.` : ""}
 
 ▶ CROSS-SELL RESTRITO:
   - O campo "ALTERNATIVAS DISPONÍVEIS" existe APENAS para referência interna.
