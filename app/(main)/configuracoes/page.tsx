@@ -44,6 +44,7 @@ interface GarageConfig {
   vitrine_slug?: string;
   meta_phone_id?: string;
   meta_access_token?: string;
+  meta_ads_token?: string;
   nome_usuario?: string;
   cargo_usuario?: string;
   tom_venda?: string;
@@ -107,6 +108,7 @@ export default function ConfiguracoesPage() {
     logo_url: null,
     meta_phone_id: "",
     meta_access_token: "",
+    meta_ads_token: "",
     nome_usuario: "",
     cargo_usuario: "",
     tom_venda: "",
@@ -360,7 +362,7 @@ export default function ConfiguracoesPage() {
             }
 
             // Carrega página Facebook já salva
-            if (row.meta_access_token) {
+            if (row.meta_ads_token || row.meta_access_token) {
               supabase
                 .from("meta_paginas")
                 .select("page_name, ad_account_id")
@@ -371,6 +373,10 @@ export default function ConfiguracoesPage() {
                     setMetaPaginaSalva({ name: pags[0].page_name, adAccountId: pags[0].ad_account_id });
                   }
                 });
+            }
+            // Sinaliza se token de Ads está conectado
+            if (row.meta_ads_token) {
+              setConfig(c => ({ ...c, meta_ads_token: row.meta_ads_token }));
             }
           }
         });
@@ -1487,6 +1493,16 @@ export default function ConfiguracoesPage() {
         {activeTab === "whatsapp" && <>
 
         {/* ── Facebook / Instagram Ads ──────────────────────────────────────── */}
+        {searchParams.get("meta_ads_ok") === "1" && (
+          <div className="bg-green-50 border border-green-200 rounded-2xl px-4 py-3 text-[11px] text-green-700 font-bold">
+            ✅ Conta Facebook conectada para Anúncios! Agora selecione sua página abaixo.
+          </div>
+        )}
+        {searchParams.get("meta_ads_error") && (
+          <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-3 text-[11px] text-red-700">
+            ❌ Erro ao conectar: {searchParams.get("meta_ads_error")}
+          </div>
+        )}
         <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm">
           <div className="flex items-center gap-3 mb-1">
             <div className="w-8 h-8 rounded-xl bg-blue-50 flex items-center justify-center">
@@ -1500,13 +1516,38 @@ export default function ConfiguracoesPage() {
             </div>
           </div>
 
-          {!config.meta_access_token ? (
-            <div className="mt-4 bg-blue-50 rounded-2xl p-4 border border-blue-100">
-              <p className="text-[11px] text-gray-600">
-                Primeiro conecte o WhatsApp Business com o botão <span className="font-bold">Conectar com Meta / Facebook</span> acima. O mesmo token é usado para criar anúncios.
+          {!config.meta_ads_token && !config.meta_access_token ? (
+            <div className="mt-4 space-y-3">
+              <p className="text-[11px] text-gray-500">
+                Conecte sua conta Facebook para publicar Lead Ads direto do estoque.
               </p>
+              <a
+                href="/api/meta/connect"
+                className="flex items-center justify-center gap-2 w-full py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold transition-colors"
+              >
+                <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-white">
+                  <path d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.41c0-3.025 1.792-4.697 4.533-4.697 1.312 0 2.686.236 2.686.236v2.97h-1.513c-1.491 0-1.956.93-1.956 1.885v2.27h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z"/>
+                </svg>
+                Conectar Facebook para Anúncios
+              </a>
             </div>
-          ) : (
+          ) : !config.meta_ads_token ? (
+            <div className="mt-4 space-y-3">
+              <div className="bg-yellow-50 border border-yellow-100 rounded-2xl p-3">
+                <p className="text-[11px] text-yellow-700">
+                  Usando token do WhatsApp para Ads. Para melhor compatibilidade, conecte uma conta dedicada de Ads.
+                </p>
+              </div>
+              <a
+                href="/api/meta/connect"
+                className="flex items-center justify-center gap-2 w-full py-2.5 rounded-2xl border border-blue-300 text-blue-600 hover:bg-blue-50 text-[11px] font-bold transition-colors"
+              >
+                Reconectar com permissões de Ads
+              </a>
+            </div>
+          ) : null}
+
+          {(config.meta_ads_token || config.meta_access_token) ? (
             <div className="mt-4 space-y-4">
               {metaPaginaSalva && (
                 <div className="flex items-center gap-2 bg-green-50 border border-green-100 rounded-2xl px-4 py-3">

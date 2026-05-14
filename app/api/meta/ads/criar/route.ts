@@ -2,7 +2,7 @@
 // Cria uma campanha Lead Ad no Meta para um veículo específico
 
 import { NextRequest, NextResponse } from "next/server";
-import { requireVehicleOwner } from "@/lib/api-auth";
+import { requireVehicleOwner, getEffectiveUserId } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { criarCampanhaLeadAd } from "@/lib/meta-ads";
 
@@ -12,8 +12,9 @@ export async function POST(req: NextRequest) {
 
   if (!veiculoId) return NextResponse.json({ error: "veiculoId obrigatório" }, { status: 400 });
 
-  const auth = await requireVehicleOwner(req, veiculoId);
-  if (auth instanceof NextResponse) return auth;
+  const auth = await requireVehicleOwner(veiculoId);
+  if (auth.error) return auth.error;
+  const userId = getEffectiveUserId(auth.user!);
 
   // Busca dados do veículo
   const { data: veiculo } = await supabaseAdmin
@@ -31,7 +32,7 @@ export async function POST(req: NextRequest) {
   const paginaQuery = supabaseAdmin
     .from("meta_paginas")
     .select("*")
-    .eq("user_id", auth.userId);
+    .eq("user_id", userId);
   if (paginaId) paginaQuery.eq("id", paginaId);
   const { data: paginas } = await paginaQuery.limit(1);
   const pagina = paginas?.[0];
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest) {
   const { data: garage } = await supabaseAdmin
     .from("config_garage")
     .select("nome_fantasia, nome_empresa, whatsapp, latitude, longitude, endereco")
-    .eq("user_id", auth.userId)
+    .eq("user_id", userId)
     .single();
 
   const latitude  = (garage as any)?.latitude  ?? -23.5505; // fallback SP
@@ -84,7 +85,7 @@ export async function POST(req: NextRequest) {
     // Salva campanha no banco
     const encerraEm = new Date(Date.now() + (duracaoDias ?? 7) * 24 * 60 * 60 * 1000);
     await supabaseAdmin.from("meta_campanhas").insert({
-      user_id:         auth.userId,
+      user_id:         userId,
       veiculo_id:      veiculoId,
       pagina_id:       pagina.id,
       campaign_id:     result.campaignId,

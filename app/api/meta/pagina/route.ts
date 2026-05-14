@@ -27,11 +27,12 @@ export async function GET(req: NextRequest) {
   // ?listar=1 — busca páginas e ad accounts brutas do token (tela de configuração)
   const { data: garage } = await supabaseAdmin
     .from("config_garage")
-    .select("meta_access_token")
+    .select("meta_ads_token, meta_access_token")
     .eq("user_id", auth.userId)
     .single();
 
-  const token = garage?.meta_access_token;
+  // Prefere o token dedicado para Ads; fallback para o token de WhatsApp (pode não ter escopos de Ads)
+  const token = garage?.meta_ads_token || garage?.meta_access_token;
   if (!token) {
     return NextResponse.json({ salvas: salvas ?? [], error: "Meta não conectado" });
   }

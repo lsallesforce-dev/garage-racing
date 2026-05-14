@@ -1,7 +1,7 @@
 // lib/meta-ads.ts
 // Meta Marketing API — Lead Ads para veículos
 
-const GRAPH = "https://graph.facebook.com/v19.0";
+const GRAPH = "https://graph.facebook.com/v21.0";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -163,7 +163,7 @@ export async function criarCampanhaLeadAd(p: CriarCampanhaParams): Promise<Campa
   // 3. Campaign
   const campaign = await graphPost(`${adAccountId}/campaigns`, pageAccessToken, {
     name: `AutoZap — ${veiculoNome}`,
-    objective: "LEAD_GENERATION",
+    objective: "OUTCOME_LEADS",
     status: "ACTIVE",
     special_ad_categories: [],
   });
@@ -211,6 +211,7 @@ export async function criarCampanhaLeadAd(p: CriarCampanhaParams): Promise<Campa
     start_time:        agora.toISOString(),
     end_time:          encerraEm.toISOString(),
     targeting,
+    promoted_object:   { page_id: pageId },
     status:            "ACTIVE",
   });
   const adsetId = adset.id as string;
