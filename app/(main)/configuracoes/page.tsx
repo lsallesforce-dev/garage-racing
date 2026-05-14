@@ -1547,7 +1547,7 @@ export default function ConfiguracoesPage() {
             </div>
           ) : null}
 
-          {(config.meta_ads_token || config.meta_access_token) ? (
+          {(config.meta_ads_token || config.meta_access_token) && (
             <div className="mt-4 space-y-4">
               {metaPaginaSalva && (
                 <div className="flex items-center gap-2 bg-green-50 border border-green-100 rounded-2xl px-4 py-3">
@@ -1659,7 +1659,7 @@ export default function ConfiguracoesPage() {
             </div>
           )}
         </div>
-        </> /* fim aba whatsapp */}
+        </> /* fim aba whatsapp */ }
 
       </div>
     </main>
