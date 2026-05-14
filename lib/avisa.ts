@@ -99,13 +99,12 @@ function typingDelay(text: string): number {
 }
 
 function buildTarget(phone: string): { number: string } {
-  // Avisa API only accepts the `number` field — no JID/chat support.
-  // For LID contacts (Instagram CTWA), send the numeric part directly.
-  // Baileys internally has the LID↔JID mapping from receiving the original message.
+  // For LID contacts (Instagram CTWA), pass the full @lid JID so Baileys can route correctly.
+  // Sending just the numeric part causes HTTP 500 because Baileys needs the JID suffix.
   if (isLidPhone(phone)) {
     const lid = phone.replace(/\D/g, "");
-    console.log(`📋 [LID] Enviando via number (LID numérico): ${lid}`);
-    return { number: lid };
+    console.log(`📋 [LID] Enviando via JID completo: ${lid}@lid`);
+    return { number: `${lid}@lid` };
   }
   return { number: formatPhone(phone) };
 }
