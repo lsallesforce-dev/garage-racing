@@ -142,6 +142,12 @@ export const Sidebar = ({
         </Link>
       )}
 
+      <div className="flex items-center gap-3 px-1 mb-3">
+        <Link href="/privacidade" target="_blank" className="text-[9px] font-bold text-gray-400 hover:text-gray-600 uppercase tracking-widest transition-colors">Privacidade</Link>
+        <span className="text-gray-300 text-[9px]">·</span>
+        <Link href="/termos" target="_blank" className="text-[9px] font-bold text-gray-400 hover:text-gray-600 uppercase tracking-widest transition-colors">Termos</Link>
+      </div>
+
       <div className="pt-3 border-t border-gray-300 flex items-center gap-3">
         <div className="w-10 h-10 rounded-full bg-gray-900 flex items-center justify-center text-white font-black text-sm italic shadow-lg">
           {iniciais}
