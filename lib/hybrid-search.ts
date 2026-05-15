@@ -40,6 +40,15 @@ const STOP_WORDS = new Set([
   "todo", "toda", "todos", "todas",
   // Palavras de contexto de compra que nunca são modelos
   "carro", "automovel", "veiculo", "modelo", "marca",
+  // Palavras de preço/valor — NUNCA são nomes de veículo
+  // Sem isso, "Qual valor" retorna carros aleatórios por match espúrio
+  "valor", "preco", "preço", "precos", "custo", "grana", "dinheiro",
+  "reais", "pagar", "parcela", "parcelas", "entrada", "financiar",
+  "financiamento", "pago", "cobrar", "cobra", "custa", "custando",
+  "desconto", "descontar", "barato", "caro", "investimento",
+  // Palavras de negociação/visita — nunca são modelos
+  "agendar", "agendamento", "visita", "visitar", "horario", "horário",
+  "informacoes", "informação", "detalhes", "detalhe", "favor",
 ]);
 
 // ─── Sinônimos de Categoria ───────────────────────────────────────────────────
@@ -459,6 +468,12 @@ const CONVERSATIONAL_ONLY = new Set([
   "interessante", "legal", "bacana", "otimo", "perfeito", "excelente",
   "quero", "queria", "gostaria", "preciso", "posso", "pode",
   "intereci", "interess", "interesse", "interessa", "interessado",
+  // Palavras de preço/valor — mensagens como "Qual valor", "Quanto custa" são puramente conversacionais
+  "valor", "preco", "preço", "custo", "grana", "dinheiro", "reais",
+  "pagar", "parcela", "parcelas", "entrada", "custa", "custando",
+  "desconto", "barato", "caro", "investimento",
+  // Palavras informacionais — "quero mais informações" não é nome de carro
+  "informacoes", "informacao", "detalhes", "detalhe", "favor",
 ]);
 
 export async function hybridVehicleSearch(
@@ -475,6 +490,17 @@ export async function hybridVehicleSearch(
   if (rawTokens.length > 0 && nonConversational.length === 0) {
     return {
       topVeiculos: veiculoPrincipal ? [veiculoPrincipal] : [],
+      hitsTextuais: [],
+      clientePediuCarroDiferente: false,
+    };
+  }
+
+  // Guard: lead novo sem veículo vinculado + poucos tokens significativos (< 2)
+  // Impede que mensagens vagas como "Qual valor" ou "Quanto custa" retornem
+  // carros aleatórios e vinculem ao lead indevidamente.
+  if (!veiculoPrincipal && nonConversational.length < 2 && rawTokens.length > 0) {
+    return {
+      topVeiculos: [],
       hitsTextuais: [],
       clientePediuCarroDiferente: false,
     };

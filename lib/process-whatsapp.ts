@@ -797,10 +797,19 @@ Responda apenas com o JSON, sem markdown.`;
   }
 
   // ── 3. Lead + salvar mensagem do usuário ────────────────────────────────────
+  // Quando há adReferral, persiste o headline no campo origem_mensagem para que
+  // o contexto do anúncio sobreviva entre mensagens (ex: Msg 1 com ad context via LID,
+  // Msg 2 sem ad context com número real — a origem_mensagem permite recovery).
+  const upsertData: Record<string, any> = { wa_id: phone, user_id: tenantUserId };
+  if (adReferral?.headline && adReferral.headline.length > 3) {
+    upsertData.origem_mensagem = `Lead do anúncio: ${adReferral.headline}`;
+    upsertData.origem = "meta_ads";
+    if (adReferral.ad_id) upsertData.origem_anuncio_id = adReferral.ad_id;
+  }
   const { data: lead } = await supabaseAdmin
     .from("leads")
     .upsert(
-      { wa_id: phone, user_id: tenantUserId },
+      upsertData,
       { onConflict: "user_id, wa_id" }
     )
     .select()
@@ -866,6 +875,26 @@ Responda apenas com o JSON, sem markdown.`;
         await supabaseAdmin.from("leads").update({ veiculo_id: adVehicle.id }).eq("id", lead.id);
         (lead as any).veiculo_id = adVehicle.id;
         console.log(`📢 [Contexto link] veículo vinculado: ${adVehicle.marca} ${adVehicle.modelo} (${adVehicle.id})`);
+      }
+    }
+  }
+
+  // ── 6c. Recovery via origem_mensagem do lead (contexto do anúncio persistido) ───
+  // Quando a Msg 1 (com ad context) e a Msg 2 (sem ad context) chegam como eventos
+  // separados (comum em CTWA com LID), o headline do anúncio foi salvo em origem_mensagem.
+  // Usa esse texto para resolver o veículo quando o lead não tem veiculo_id.
+  if (!veiculoPrincipal && lead && !adVeiculoId && (lead as any).origem_mensagem) {
+    const origemMsg: string = (lead as any).origem_mensagem;
+    // Extrai o texto após "Lead do anúncio: " para buscar o veículo
+    const origemMatch = origemMsg.match(/Lead do anúncio:\s*(.+)/i);
+    if (origemMatch) {
+      const adText = origemMatch[1].trim();
+      const adVehicle = await findVehicleForMedia(adText, tenantUserId);
+      if (adVehicle) {
+        veiculoPrincipal = adVehicle;
+        await supabaseAdmin.from("leads").update({ veiculo_id: adVehicle.id }).eq("id", lead.id);
+        (lead as any).veiculo_id = adVehicle.id;
+        console.log(`📢 [Recovery origem_mensagem] veículo vinculado: ${adVehicle.marca} ${adVehicle.modelo} (${adVehicle.id})`);
       }
     }
   }
