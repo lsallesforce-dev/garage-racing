@@ -30,12 +30,13 @@ export const maxDuration = 300;
 function extractFields(payload: any): {
   phone: string;
   isLid: boolean;
-  lidPhone?: string; // LID numeric ID present alongside a real phone (for lead migration)
+  lidPhone?: string;
   userMessage: string;
   fromMe: boolean;
   audioUrl?: string;
   audioMediaKey?: string;
   messageId?: string | null;
+  adReferral?: { headline: string | null; body: string | null; source_type: string | null; ad_id: string | null } | null;
 } {
   console.log("📨 AVISA WEBHOOK PAYLOAD:", JSON.stringify(payload, null, 2));
 
@@ -59,6 +60,7 @@ function extractFields(payload: any): {
   let audioUrl: string | undefined;
   let audioMediaKey: string | undefined;
   let messageId: string | null = null;
+  let adReferral: { headline: string | null; body: string | null; source_type: string | null; ad_id: string | null } | null = null;
 
   // ── Detecção de ligação perdida (todos os formatos) ──────────────────────────
   // Baileys: type="Call" com event.from ou event.Info.Sender
@@ -135,6 +137,16 @@ function extractFields(payload: any): {
       userMessage = `[Contexto do link: "${linkContext}"]\n${userMessage}`;
       console.log(`🔗 [Link preview Baileys] Contexto extraído: ${linkContext}`);
     }
+    // Extrai adReferral para que process-whatsapp possa resolver veiculo_id via meta_campanhas
+    if (adReply?.sourceType === "ad" && (adReply.sourceID || adReply.title)) {
+      adReferral = {
+        headline:    adReply.title    ?? null,
+        body:        adReply.body     ?? null,
+        source_type: adReply.sourceType ?? null,
+        ad_id:       adReply.sourceID ?? null,
+      };
+      console.log(`📢 [Ad referral Baileys] ad_id=${adReferral.ad_id} headline="${adReferral.headline?.slice(0, 60)}"`);
+    }
   }
   // Formato Avisa/Z-API simplificado
   else if (parsedData?.number || parsedData?.phone) {
@@ -187,7 +199,7 @@ function extractFields(payload: any): {
     };
   }
 
-  return { phone, isLid, lidPhone, userMessage: userMessage?.trim() || "", fromMe, audioUrl, audioMediaKey, messageId };
+  return { phone, isLid, lidPhone, userMessage: userMessage?.trim() || "", fromMe, audioUrl, audioMediaKey, messageId, adReferral };
 }
 
 // ─── Webhook Principal ────────────────────────────────────────────────────────
@@ -244,11 +256,14 @@ export async function POST(req: NextRequest) {
         .maybeSingle();
 
       if (!data) {
-        ({ data } = await supabaseAdmin
+        // Usa limit(1) em vez de maybeSingle() para não quebrar se houver tokens duplicados
+        const { data: rows } = await supabaseAdmin
           .from("config_garage")
           .select(FIELDS)
           .eq("avisa_token", token)
-          .maybeSingle());
+          .not("nome_empresa", "is", null)
+          .limit(1);
+        data = rows?.[0] ?? null;
       }
 
       if (data) {
@@ -294,7 +309,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Validação Básica ──────────────────────────────────────────────────────
-    let { phone, isLid, lidPhone, userMessage: rawMessage, fromMe, audioUrl, audioMediaKey, messageId } =
+    let { phone, isLid, lidPhone, userMessage: rawMessage, fromMe, audioUrl, audioMediaKey, messageId, adReferral } =
       extractFields(payload);
 
     // Migração de lead LID → número real (roda antes do fromMe para capturar receipts)
@@ -350,6 +365,7 @@ export async function POST(req: NextRequest) {
         messageId,
         tenantUserId: tenantUserId!,
         garageConfig,
+        ...(adReferral ? { adReferral } : {}),
       };
 
       try {

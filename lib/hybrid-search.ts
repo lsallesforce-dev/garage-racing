@@ -452,6 +452,15 @@ export interface HybridSearchResult {
 //   2. Semântico (pgvector)            → contexto/variantes, mesma categoria
 //   3. Fallback geral                  → carros mais recentes
 //
+// Palavras puramente conversacionais que nunca são nomes de carro
+const CONVERSATIONAL_ONLY = new Set([
+  "muito", "obrigado", "obrigada", "agradeco", "grato", "grata",
+  "entendi", "certo", "ok", "ate", "tchau", "adeus", "flw", "vlw",
+  "interessante", "legal", "bacana", "otimo", "perfeito", "excelente",
+  "quero", "queria", "gostaria", "preciso", "posso", "pode",
+  "intereci", "interess", "interesse", "interessa", "interessado",
+]);
+
 export async function hybridVehicleSearch(
   userMessage: string,
   tenantUserId: string,
@@ -459,6 +468,18 @@ export async function hybridVehicleSearch(
   msgCurta: boolean
 ): Promise<HybridSearchResult> {
   const rawTokens = extractVehicleTokens(userMessage);
+
+  // Se todos os tokens são puramente conversacionais (sem nenhum nome de carro),
+  // não busca — evita falsos positivos por fuzzy match em palavras genéricas.
+  const nonConversational = rawTokens.filter(t => !CONVERSATIONAL_ONLY.has(t) && t.length >= 3);
+  if (rawTokens.length > 0 && nonConversational.length === 0) {
+    return {
+      topVeiculos: veiculoPrincipal ? [veiculoPrincipal] : [],
+      hitsTextuais: [],
+      clientePediuCarroDiferente: false,
+    };
+  }
+
   const tokens = expandWithSynonyms(rawTokens);
 
   // Detecta se a mensagem contém um termo de categoria (pickup, suv, hatch…)

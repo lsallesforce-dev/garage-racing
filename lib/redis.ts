@@ -60,7 +60,9 @@ export async function isDuplicateMessage(
     const key = `dedup:${tenantUserId}:${messageId}`;
     // "OK" = chave era nova = não é duplicado (retorna false)
     // null  = chave já existia = é duplicado (retorna true)
-    const result = await getClient().set(key, 1, { nx: true, ex: 3600 });
+    // TTL de 30s: cobre retries imediatos do webhook (< 5s) mas não bloqueia
+    // re-entregas legítimas minutos depois (ex: Avisa retry com SenderAlt preenchido).
+    const result = await getClient().set(key, 1, { nx: true, ex: 30 });
     return result === null;
   } catch (e) {
     // Fail-open: prefere processar do que bloquear silenciosamente

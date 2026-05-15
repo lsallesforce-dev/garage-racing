@@ -852,6 +852,24 @@ Responda apenas com o JSON, sem markdown.`;
     if (vp) veiculoPrincipal = vp as Vehicle;
   }
 
+  // ── 6b. Resolução via contexto do link (CTWA sem ad_id em meta_campanhas) ────
+  // Quando o lead não tem veículo vinculado mas a mensagem tem [Contexto do link: "..."],
+  // extrai o nome do carro do contexto e busca diretamente no estoque.
+  // Cobre o caso: anúncio CTWA → ad_id não cadastrado em meta_campanhas → usa texto do anúncio.
+  if (!veiculoPrincipal && !adVeiculoId) {
+    const linkMatch = userMessage.match(/\[(?:Contexto do link|Lead veio do anúncio):\s*"([^"]+)"\]/);
+    if (linkMatch) {
+      const adText = linkMatch[1];
+      const adVehicle = await findVehicleForMedia(adText, tenantUserId);
+      if (adVehicle && lead) {
+        veiculoPrincipal = adVehicle;
+        await supabaseAdmin.from("leads").update({ veiculo_id: adVehicle.id }).eq("id", lead.id);
+        (lead as any).veiculo_id = adVehicle.id;
+        console.log(`📢 [Contexto link] veículo vinculado: ${adVehicle.marca} ${adVehicle.modelo} (${adVehicle.id})`);
+      }
+    }
+  }
+
   // ── 7. Busca Híbrida ────────────────────────────────────────────────────────
   // Mensagens de mídia ("Foto", "Video") são intencionalmente curtas — não tratar como msgCurta
   const isMidiaRequest = /^(foto|fotos|video|vídeo|imagem)s?$/i.test(userMessage.trim());
@@ -976,6 +994,24 @@ Responda apenas com o JSON, sem markdown.`;
   const gerentePhone = _gerenteRaw
     ? _gerenteRaw.replace(/\D/g, "").replace(/^(?!55)/, "55")
     : undefined;
+
+  // ── 9b. Recovery de contexto do anúncio via histórico ──────────────────────
+  // Quando o lead veio de CTWA (LID) e a 1ª mensagem foi processada sem veiculo_id
+  // (ex: LID não resolveu na época), tenta recuperar o nome do carro da 1ª msg do histórico.
+  if (!veiculoPrincipal && lead && historico.length > 0) {
+    const primeiraMsgUser = historico.find((h: any) => h.role === "user");
+    const textoInicial: string = primeiraMsgUser?.parts?.[0]?.text ?? "";
+    const linkMatchHist = textoInicial.match(/\[(?:Contexto do link|Lead veio do anúncio):\s*"([^"]+)"\]/);
+    if (linkMatchHist) {
+      const adVehicle = await findVehicleForMedia(linkMatchHist[1], tenantUserId);
+      if (adVehicle) {
+        veiculoPrincipal = adVehicle;
+        await supabaseAdmin.from("leads").update({ veiculo_id: adVehicle.id }).eq("id", lead.id);
+        (lead as any).veiculo_id = adVehicle.id;
+        console.log(`📢 [Histórico recovery] veículo vinculado: ${adVehicle.marca} ${adVehicle.modelo} (${adVehicle.id})`);
+      }
+    }
+  }
 
   // ── 10a. Alerta ao gerente — carro não identificado após 2 trocas ────────────
   // Se o lead ainda não tem carro vinculado E não houve hit textual nesta mensagem
