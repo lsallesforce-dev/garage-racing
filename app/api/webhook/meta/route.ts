@@ -18,6 +18,7 @@ import { isDuplicateMessage, rateLimit, debounceClientImages } from "@/lib/redis
 import { logWebhookError } from "@/lib/error-log";
 import { buscarDadosLead } from "@/lib/meta-ads";
 import { sendMetaMessage, sendMetaCtaButton } from "@/lib/meta";
+import { sendAvisaMessage } from "@/lib/avisa";
 
 export const maxDuration = 300;
 
@@ -89,7 +90,7 @@ async function processLeadgenEvent(entry: any, pageAccessToken: string) {
   // Busca config da garagem para alertar o gerente
   const { data: garage } = await supabaseAdmin
     .from("config_garage")
-    .select("nome_fantasia, nome_empresa, whatsapp, meta_phone_id, meta_access_token")
+    .select("nome_fantasia, nome_empresa, whatsapp, meta_phone_id, meta_access_token, avisa_base_url, avisa_token")
     .eq("user_id", tenantUserId)
     .single();
 
@@ -138,7 +139,7 @@ async function processLeadgenEvent(entry: any, pageAccessToken: string) {
     ? garage.whatsapp.replace(/\D/g, "").replace(/^(?!55)/, "55")
     : null;
 
-  if (gerentePhone && metaCreds.phoneNumberId && metaCreds.accessToken) {
+  if (gerentePhone) {
     const nomeEmpresa = garage?.nome_fantasia || garage?.nome_empresa || "AutoZap";
     const waLink = `https://wa.me/${telefone}`;
     const alertBody =
@@ -148,10 +149,21 @@ async function processLeadgenEvent(entry: any, pageAccessToken: string) {
       (email ? `📧 *E-mail:* ${email}\n` : "") +
       `🚗 *Anúncio:* ${veiculoLabel}\n` +
       `📣 *Origem:* Facebook/Instagram Lead Ad\n\n` +
-      `_Lead respondido automaticamente pelo WhatsApp em instantes_`;
+      `_Lead respondido automaticamente pelo WhatsApp em instantes_\n\n${waLink}`;
 
-    sendMetaCtaButton(gerentePhone, alertBody, "Abrir WhatsApp", waLink, metaCreds)
-      .catch(() => sendMetaMessage(gerentePhone, `${alertBody}\n\n${waLink}`, metaCreds).catch(() => {}));
+    if (metaCreds.phoneNumberId && metaCreds.accessToken) {
+      // Garagem com WhatsApp Cloud API
+      sendMetaCtaButton(gerentePhone, alertBody, "Abrir WhatsApp", waLink, metaCreds)
+        .catch(() => sendMetaMessage(gerentePhone, alertBody, metaCreds).catch(() => {}));
+    } else if (garage?.avisa_base_url && garage?.avisa_token) {
+      // Garagem com Baileys (Avisa) — fallback para alertar o gerente
+      sendAvisaMessage(gerentePhone, alertBody, {
+        baseUrl: garage.avisa_base_url,
+        token:   garage.avisa_token,
+      }).catch((e) => console.warn("⚠️ [Lead Ads] Alerta Avisa falhou:", e));
+    } else {
+      console.warn(`⚠️ [Lead Ads] Garagem ${tenantUserId} sem canal de alerta configurado (nem Cloud API nem Avisa)`);
+    }
   }
 }
 
