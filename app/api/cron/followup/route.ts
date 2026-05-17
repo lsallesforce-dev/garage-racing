@@ -1,12 +1,11 @@
 // app/api/cron/followup/route.ts
 //
 // Cron job de follow-up inteligente de leads.
-// Roda diariamente via Vercel Cron (vercel.json) às 13h BRT.
-//
-// Evolução: lê as últimas mensagens REAIS da conversa para gerar
-// follow-ups contextualizados — baseados no que foi discutido,
-// no carro que foi visto, e em quem falou por último.
-//
+// Roda várias vezes ao dia via Vercel Cron (vercel.json): 11,13,15,17,19,21h UTC.
+// Gate de horário comercial (8h–18h BRT) bloqueia execuções fora do expediente.
+// Guard de idempotência garante que só executa UMA VEZ por dia.
+// Combinação: se a 1ª invocação (11h UTC = 8h BRT) estiver dentro do horário,
+// executa e trava; senão, tenta na próxima (13h UTC = 10h BRT), etc.
 // Regras de elegibilidade:
 //   - Lead MORNO ou QUENTE → sempre elegível
 //   - Lead FRIO → elegível SE tem veiculo_id (demonstrou interesse em carro específico)
@@ -133,6 +132,21 @@ export async function GET(req: NextRequest) {
   }
 
   const agora = new Date();
+
+  // ── Gate de horário comercial (8h–18h BRT) ────────────────────────────────
+  // Cron pode disparar em qualquer horário UTC. Se cair fora do horário
+  // comercial de Brasília, retorna ANTES do guard de idempotência — assim
+  // a próxima execução (dentro do horário) não é bloqueada.
+  // Isso garante que follow-ups nunca sejam enviados de madrugada,
+  // mesmo que o lead tenha interagido às 2h da manhã.
+  const horaBRT = parseInt(
+    agora.toLocaleString("pt-BR", { hour: "numeric", hour12: false, timeZone: "America/Sao_Paulo" }),
+    10
+  );
+  if (horaBRT < 8 || horaBRT >= 18) {
+    console.log(`⏰ Cron followup: fora do horário comercial (${horaBRT}h BRT) — adiando`);
+    return NextResponse.json({ ok: true, skipped: true, motivo: "fora_horario_comercial", hora_brt: horaBRT });
+  }
 
   // Guard de idempotência: impede duplo disparo no mesmo dia
   const hoje = agora.toISOString().slice(0, 10);

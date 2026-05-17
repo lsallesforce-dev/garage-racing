@@ -14,7 +14,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createHmac, timingSafeEqual } from "crypto";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { processWhatsAppMessage } from "@/lib/process-whatsapp";
-import { isDuplicateMessage, rateLimit } from "@/lib/redis";
+import { isDuplicateMessage, rateLimit, debounceClientImages } from "@/lib/redis";
 import { logWebhookError } from "@/lib/error-log";
 import { buscarDadosLead } from "@/lib/meta-ads";
 import { sendMetaMessage, sendMetaCtaButton } from "@/lib/meta";
@@ -164,6 +164,7 @@ function extractFields(payload: any): {
   phoneNumberId: string;
   audioMediaId: string | null;
   adReferral?: { headline: string | null; body: string | null; source_type: string | null; ad_id: string | null } | null;
+  isClientImage?: boolean;
 } {
   try {
     const entry   = payload?.entry?.[0];
@@ -171,14 +172,14 @@ function extractFields(payload: any): {
     const value   = change?.value;
 
     if (change?.field !== "messages") {
-      return { phone: "", userMessage: "", fromMe: true, messageId: null, phoneNumberId: "", audioMediaId: null };
+      return { phone: "", userMessage: "", fromMe: true, messageId: null, phoneNumberId: "", audioMediaId: null, isClientImage: false };
     }
 
     const phoneNumberId: string = value?.metadata?.phone_number_id ?? "";
     const msg  = value?.messages?.[0];
 
     if (!msg) {
-      return { phone: "", userMessage: "", fromMe: true, messageId: null, phoneNumberId, audioMediaId: null };
+      return { phone: "", userMessage: "", fromMe: true, messageId: null, phoneNumberId, audioMediaId: null, isClientImage: false };
     }
 
     const phone      = msg.from ?? "";
@@ -188,8 +189,11 @@ function extractFields(payload: any): {
     // Áudio (voice note ou arquivo de áudio)
     const audioMediaId: string | null = msg.type === "audio" ? (msg.audio?.id ?? null) : null;
 
-    // Imagem enviada pelo cliente — injeta contexto para o agente responder sobre avaliação
-    if ((msg.type === "image" || msg.type === "sticker") && !userMessage) {
+    // Imagem enviada pelo cliente — marcada com flag para debounce no POST handler.
+    // O texto "[Cliente enviou foto(s)]" é injetado após debounce para evitar que
+    // cada foto gere um processamento individual (spam de fotos + links).
+    const isClientImage = (msg.type === "image" || msg.type === "sticker") && !userMessage;
+    if (isClientImage) {
       userMessage = "[Cliente enviou foto(s) do veículo]";
     }
 
@@ -218,13 +222,13 @@ function extractFields(payload: any): {
       const s = value.statuses[0];
       if (s?.errors?.length) console.error(`❌ Meta status error [${s.status}]:`, JSON.stringify(s.errors));
       else console.log(`ℹ️ Meta status: ${s?.status} id=${s?.id}`);
-      return { phone: "", userMessage: "", fromMe: true, messageId: null, phoneNumberId, audioMediaId: null };
+      return { phone: "", userMessage: "", fromMe: true, messageId: null, phoneNumberId, audioMediaId: null, isClientImage: false };
     }
 
-    return { phone, userMessage: userMessage.trim(), fromMe: false, messageId, phoneNumberId, audioMediaId, adReferral };
+    return { phone, userMessage: userMessage.trim(), fromMe: false, messageId, phoneNumberId, audioMediaId, adReferral, isClientImage };
   } catch (e) {
     console.error("❌ Erro ao extrair campos do payload Meta:", e);
-    return { phone: "", userMessage: "", fromMe: true, messageId: null, phoneNumberId: "", audioMediaId: null };
+    return { phone: "", userMessage: "", fromMe: true, messageId: null, phoneNumberId: "", audioMediaId: null, isClientImage: false };
   }
 }
 
@@ -262,7 +266,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ status: "leadgen_queued" });
     }
 
-    const { phone, userMessage, fromMe, messageId, phoneNumberId, audioMediaId, adReferral } = extractFields(payload);
+    const { phone, userMessage, fromMe, messageId, phoneNumberId, audioMediaId, adReferral, isClientImage } = extractFields(payload);
 
     // Responde 200 imediatamente (Meta requer resposta em < 20s ou vai reenviar)
     if (fromMe || !phone) {
@@ -301,6 +305,19 @@ export async function POST(req: NextRequest) {
 
     if (!userMessage && !audioMediaId) {
       return NextResponse.json({ status: "empty_content" });
+    }
+
+    // Debounce de imagens: quando o cliente envia múltiplas fotos em sequência
+    // (ex: 4 fotos do carro dele para avaliação), o Meta dispara 4 webhooks.
+    // Sem debounce: 4 processamentos → 4 blocos de fotos do estoque + 4 links.
+    // Com debounce: só a PRIMEIRA foto é processada; as demais são contadas
+    // mas ignoradas. O texto "[Cliente enviou foto(s)]" já cobre o contexto.
+    if (isClientImage) {
+      const isFirst = await debounceClientImages(tenantUserId, phone);
+      if (!isFirst) {
+        console.log(`📸 [Debounce] Foto adicional de ${phone} — já processando a primeira`);
+        return NextResponse.json({ status: "image_debounced" });
+      }
     }
 
     // Rate limit diário por tenant (janela deslizante de 24h via Redis INCR)

@@ -175,6 +175,34 @@ export async function appendHistory(
   }
 }
 
+// ─── Debounce de Imagens do Cliente ──────────────────────────────────────────
+//
+// Quando um cliente envia múltiplas fotos de uma vez (ex: 4 fotos do carro),
+// o WhatsApp envia 4 webhooks separados. Sem debounce, cada webhook dispara
+// o pipeline completo: busca de veículo + envio de fotos do estoque + link.
+//
+// Esta função usa SET NX EX (atômico) com TTL de 3 segundos:
+//   - Primeira foto da rajada → retorna true (processa normalmente)
+//   - Fotos subsequentes dentro de 3s → retorna false (ignora)
+//
+// A janela de 3s é curta o suficiente para não bloquear uma foto
+// enviada intencionalmente minutos depois, mas longa o suficiente
+// para agrupar a rajada típica do WhatsApp (100-500ms entre fotos).
+//
+export async function debounceClientImages(
+  tenantUserId: string,
+  phone: string
+): Promise<boolean> {
+  try {
+    const key = `imgdebounce:${tenantUserId}:${phone}`;
+    const result = await getClient().set(key, 1, { nx: true, ex: 3 });
+    return result !== null; // "OK" = primeira foto (processa), null = foto duplicada (ignora)
+  } catch (e) {
+    console.warn("⚠️ [Redis] debounceClientImages falhou — imagem será processada (fail-open):", e);
+    return true;
+  }
+}
+
 // ─── Ping (para Health Check) ─────────────────────────────────────────────────
 export async function redisPing(): Promise<string> {
   return getClient().ping();

@@ -1022,7 +1022,12 @@ Responda apenas com o JSON, sem markdown.`;
   // Strip do prefixo injetado pelo webhook ([Contexto do link:...] / [Lead veio do anúncio:...])
   // antes de checar gatilhos de foto/vídeo — evita que texto do anúncio ("Confira as fotos")
   // acione envio de mídia acidentalmente na primeira mensagem de um lead CTWA.
-  const mensagemClientePura = userMessage.replace(/^\[(?:Contexto do link|Lead veio do anúncio)[^\n]*\n?/m, "").trim();
+  // Também strip "[Cliente enviou foto(s) do veículo]" — é contexto interno para a IA,
+  // não um pedido de foto do estoque. Sem isso, cada foto do cliente dispara envio de fotos do estoque.
+  const mensagemClientePura = userMessage
+    .replace(/^\[(?:Contexto do link|Lead veio do anúncio)[^\n]*\n?/m, "")
+    .replace(/\[Cliente enviou foto\(s\) do veículo\]/g, "")
+    .trim();
   const mensagemLower = mensagemClientePura.toLowerCase();
   // Usa o WhatsApp do gerente configurado no painel; fallback para variável de ambiente
   const _gerenteRaw = garageConfig?.whatsapp || process.env.NEXT_PUBLIC_ZAPI_PHONE;
