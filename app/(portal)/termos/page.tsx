@@ -1,103 +1,100 @@
 export const metadata = {
-  title: "Termos de Serviço — AutoZap",
-  description: "Termos e condições de uso da plataforma AutoZap.",
+  title: "Terms of Service — AutoZap",
+  description: "Terms and conditions for using the AutoZap platform.",
 };
 
 export default function TermosPage() {
   return (
-    <main className="max-w-3xl mx-auto px-6 py-20 text-gray-300">
-      <h1 className="text-4xl font-bold text-white mb-2">Termos de Serviço</h1>
-      <p className="text-sm text-gray-500 mb-10">Última atualização: 24 de abril de 2026</p>
+    <main className="max-w-3xl mx-auto px-6 py-20 text-gray-700">
+      <h1 className="text-4xl font-bold text-gray-900 mb-2">Terms of Service</h1>
+      <p className="text-sm text-gray-500 mb-10">Last updated: April 24, 2026</p>
 
-      <Section title="1. Aceitação">
+      <Section title="1. Acceptance">
         <p>
-          Ao criar uma conta na <strong className="text-white">AutoZap</strong> (LS Tecnologias),
-          você concorda com estes Termos de Serviço e com nossa{" "}
-          <a href="/privacidade" className="text-blue-400 underline">
-            Política de Privacidade
+          By creating an account on <strong className="text-gray-900">AutoZap</strong> (LS Tecnologias),
+          you agree to these Terms of Service and our{" "}
+          <a href="/privacidade" className="text-blue-600 underline">
+            Privacy Policy
           </a>
           .
         </p>
       </Section>
 
-      <Section title="2. Descrição do serviço">
+      <Section title="2. Description of service">
         <p>
-          AutoZap é uma plataforma SaaS de gestão para revendas de veículos, com funcionalidades
-          de atendimento via WhatsApp, geração de vídeos de marketing, vitrine digital e
-          relatórios financeiros.
+          AutoZap is a SaaS management platform for vehicle resellers, offering WhatsApp-based
+          lead engagement, AI-generated marketing videos, a digital showroom, and financial reports.
         </p>
       </Section>
 
-      <Section title="3. Cadastro e responsabilidades">
+      <Section title="3. Registration and responsibilities">
         <ul className="list-disc pl-5 space-y-1">
-          <li>Você é responsável pela veracidade das informações cadastradas.</li>
-          <li>Mantenha sua senha em sigilo; qualquer acesso com suas credenciais é de sua responsabilidade.</li>
-          <li>É proibido usar a plataforma para enviar spam ou conteúdo ilegal.</li>
+          <li>You are responsible for the accuracy of the information you provide.</li>
+          <li>Keep your password confidential; any access using your credentials is your responsibility.</li>
+          <li>Using the platform to send spam or illegal content is strictly prohibited.</li>
         </ul>
       </Section>
 
-      <Section title="4. Uso aceitável">
-        <p>Você concorda em não:</p>
+      <Section title="4. Acceptable use">
+        <p>You agree not to:</p>
         <ul className="list-disc pl-5 space-y-1">
-          <li>Violar as Políticas de Uso do WhatsApp Business ou da Meta Platforms.</li>
-          <li>Enviar mensagens não solicitadas em massa (spam).</li>
-          <li>Tentar acessar dados de outros tenants.</li>
-          <li>Fazer engenharia reversa ou copiar a plataforma.</li>
+          <li>Violate WhatsApp Business or Meta Platforms usage policies.</li>
+          <li>Send unsolicited bulk messages (spam).</li>
+          <li>Attempt to access data belonging to other tenants.</li>
+          <li>Reverse-engineer or copy the platform.</li>
         </ul>
       </Section>
 
-      <Section title="5. Planos e pagamento">
+      <Section title="5. Plans and payment">
         <p>
-          Os planos e preços estão descritos em{" "}
-          <a href="/planos" className="text-blue-400 underline">/planos</a>. O
-          pagamento é mensal e antecipado. A falta de pagamento suspende o acesso após 7 dias de
-          atraso. Não há reembolso de períodos já pagos, salvo garantia legal de 7 dias para
-          novas assinaturas.
+          Plans and pricing are described at{" "}
+          <a href="/planos" className="text-blue-600 underline">/planos</a>. Payment is monthly and
+          due in advance. Non-payment will result in suspended access after 7 days. No refunds are
+          issued for periods already paid, except for the 7-day statutory right for new subscriptions.
         </p>
       </Section>
 
-      <Section title="6. Disponibilidade">
+      <Section title="6. Availability">
         <p>
-          Buscamos 99,5% de uptime, mas não garantimos disponibilidade ininterrupta. Manutenções
-          programadas serão comunicadas com antecedência.
+          We target 99.5% uptime but do not guarantee uninterrupted availability. Scheduled
+          maintenance will be communicated in advance.
         </p>
       </Section>
 
-      <Section title="7. Propriedade intelectual">
+      <Section title="7. Intellectual property">
         <p>
-          O código, design e marca AutoZap são propriedade da LS Tecnologias. Os dados inseridos
-          pelo usuário (veículos, leads, etc.) permanecem de sua propriedade.
+          The AutoZap code, design, and brand are the property of LS Tecnologias. Data entered by
+          users (vehicles, leads, etc.) remains their property.
         </p>
       </Section>
 
-      <Section title="8. Rescisão">
+      <Section title="8. Termination">
         <p>
-          Você pode cancelar a qualquer momento pelo painel. Reservamo-nos o direito de suspender
-          contas que violem estes Termos.
+          You may cancel at any time from the dashboard. We reserve the right to suspend accounts
+          that violate these Terms.
         </p>
       </Section>
 
-      <Section title="9. Limitação de responsabilidade">
+      <Section title="9. Limitation of liability">
         <p>
-          A AutoZap não se responsabiliza por danos indiretos, lucros cessantes ou perda de dados
-          decorrentes do uso ou impossibilidade de uso da plataforma, na extensão máxima
-          permitida pela legislação brasileira.
+          AutoZap is not liable for indirect damages, lost profits, or data loss arising from the
+          use or inability to use the platform, to the maximum extent permitted by applicable law.
         </p>
       </Section>
 
-      <Section title="10. Lei aplicável">
+      <Section title="10. Governing law">
         <p>
-          Estes Termos são regidos pela legislação brasileira. Fica eleito o foro da comarca de
-          São Paulo/SP para dirimir eventuais controvérsias.
+          These Terms are governed by the laws of Brazil. The courts of São Paulo/SP shall have
+          exclusive jurisdiction over any disputes.
         </p>
       </Section>
 
-      <Section title="11. Contato">
+      <Section title="11. Contact">
         <p>
           LS Tecnologias — AutoZap
           <br />
-          E-mail:{" "}
-          <a href="mailto:lsallesforce@gmail.com" className="text-blue-400 underline">
+          Email:{" "}
+          <a href="mailto:lsallesforce@gmail.com" className="text-blue-600 underline">
             lsallesforce@gmail.com
           </a>
         </p>
@@ -109,8 +106,8 @@ export default function TermosPage() {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="mb-8">
-      <h2 className="text-xl font-semibold text-white mb-3">{title}</h2>
-      <div className="text-gray-400 leading-relaxed space-y-2">{children}</div>
+      <h2 className="text-xl font-semibold text-gray-900 mb-3">{title}</h2>
+      <div className="text-gray-600 leading-relaxed space-y-2">{children}</div>
     </section>
   );
 }
