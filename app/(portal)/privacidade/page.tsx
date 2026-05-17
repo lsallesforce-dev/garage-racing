@@ -59,8 +59,8 @@ export default function PrivacidadePage() {
         </ul>
         <p className="mt-2">
           To exercise these rights, contact us at:{" "}
-          <a href="mailto:contato@autozap.digital" className="text-blue-600 underline">
-            contato@autozap.digital
+          <a href="mailto:autozap@autozap.digital" className="text-blue-600 underline">
+            autozap@autozap.digital
           </a>
         </p>
       </Section>
@@ -83,14 +83,14 @@ export default function PrivacidadePage() {
         <ul className="list-disc pl-5 space-y-1 mt-1">
           <li>
             Request deletion via email:{" "}
-            <a href="mailto:contato@autozap.digital" className="text-blue-600 underline">
-              contato@autozap.digital
+            <a href="mailto:autozap@autozap.digital" className="text-blue-600 underline">
+              autozap@autozap.digital
             </a>
           </li>
           <li>
             Or use Meta&apos;s data deletion callback:{" "}
             <a href="https://app.autozap.digital/api/auth/meta/delete" className="text-blue-600 underline">
-              app.autozap.digital/api/auth/meta/delete
+              https://app.autozap.digital/api/auth/meta/delete
             </a>
           </li>
         </ul>
@@ -144,8 +144,8 @@ function CompanyFooter() {
       <p>Rua Julio Lopes Gil, 135 — Jardim Tangará — São José do Rio Preto/SP — CEP 15086-090</p>
       <p>
         Email:{" "}
-        <a href="mailto:contato@autozap.digital" className="text-blue-600 underline">
-          contato@autozap.digital
+        <a href="mailto:autozap@autozap.digital" className="text-blue-600 underline">
+          autozap@autozap.digital
         </a>
       </p>
       <p>

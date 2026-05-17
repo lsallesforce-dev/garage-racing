@@ -113,8 +113,8 @@ function CompanyFooter() {
       <p>Rua Julio Lopes Gil, 135 — Jardim Tangará — São José do Rio Preto/SP — CEP 15086-090</p>
       <p>
         Email:{" "}
-        <a href="mailto:contato@autozap.digital" className="text-blue-600 underline">
-          contato@autozap.digital
+        <a href="mailto:autozap@autozap.digital" className="text-blue-600 underline">
+          autozap@autozap.digital
         </a>
       </p>
       <p>
