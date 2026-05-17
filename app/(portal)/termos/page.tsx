@@ -90,14 +90,7 @@ export default function TermosPage() {
       </Section>
 
       <Section title="11. Contact">
-        <p>
-          LS Tecnologias — AutoZap
-          <br />
-          Email:{" "}
-          <a href="mailto:lsallesforce@gmail.com" className="text-blue-600 underline">
-            lsallesforce@gmail.com
-          </a>
-        </p>
+        <CompanyFooter />
       </Section>
     </main>
   );
@@ -109,5 +102,27 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       <h2 className="text-xl font-semibold text-gray-900 mb-3">{title}</h2>
       <div className="text-gray-600 leading-relaxed space-y-2">{children}</div>
     </section>
+  );
+}
+
+function CompanyFooter() {
+  return (
+    <address className="not-italic text-gray-600 leading-relaxed space-y-1">
+      <p className="font-semibold text-gray-900">LS Tecnologias LTDA</p>
+      <p>CNPJ: 17.505.636/0001-98</p>
+      <p>Rua Julio Lopes Gil, 135 — Jardim Tangará — São José do Rio Preto/SP — CEP 15086-090</p>
+      <p>
+        Email:{" "}
+        <a href="mailto:contato@autozap.digital" className="text-blue-600 underline">
+          contato@autozap.digital
+        </a>
+      </p>
+      <p>
+        Website:{" "}
+        <a href="https://autozap.digital" className="text-blue-600 underline">
+          autozap.digital
+        </a>
+      </p>
+    </address>
   );
 }

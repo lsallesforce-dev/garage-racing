@@ -31,7 +31,7 @@ export default function PrivacidadePage() {
 
       <Section title="3. How we use your data">
         <ul className="list-disc pl-5 space-y-1">
-          <li>To provide and improve the platform's services.</li>
+          <li>To provide and improve the platform&apos;s services.</li>
           <li>To send operational notifications (no unsolicited marketing).</li>
           <li>To comply with legal and regulatory obligations.</li>
         </ul>
@@ -59,23 +59,43 @@ export default function PrivacidadePage() {
         </ul>
         <p className="mt-2">
           To exercise these rights, contact us at:{" "}
-          <a href="mailto:lsallesforce@gmail.com" className="text-blue-600 underline">
-            lsallesforce@gmail.com
+          <a href="mailto:contato@autozap.digital" className="text-blue-600 underline">
+            contato@autozap.digital
           </a>
         </p>
       </Section>
 
       <Section title="7. Meta (Facebook / WhatsApp) integration">
         <p>
-          When a user connects their WhatsApp Business account via Meta Lead Ads, we receive and
+          When a user connects their WhatsApp Business account or uses Meta Lead Ads, we receive and
           store lead data (name, phone number, email, and ad context) provided by Meta through the
-          Leads Retrieval API. This data is used exclusively to notify the tenant and enable
-          follow-up with the prospective customer. Users can revoke access at any time in{" "}
+          Leads Retrieval API and WhatsApp Business API. This data is used exclusively to notify the
+          tenant and enable follow-up with the prospective customer.
+        </p>
+        <p className="mt-2">
+          Users can revoke access at any time in{" "}
           <strong className="text-gray-900">Settings → Meta Integration</strong>.
         </p>
         <p className="mt-2">
-          We comply with Meta's data deletion requests as required by the platform
-          (endpoint <code>/api/auth/meta/delete</code>).
+          <strong className="text-gray-900">Data Deletion:</strong> If you want to delete all data
+          we received from Meta, you can:
+        </p>
+        <ul className="list-disc pl-5 space-y-1 mt-1">
+          <li>
+            Request deletion via email:{" "}
+            <a href="mailto:contato@autozap.digital" className="text-blue-600 underline">
+              contato@autozap.digital
+            </a>
+          </li>
+          <li>
+            Or use Meta&apos;s data deletion callback:{" "}
+            <a href="https://app.autozap.digital/api/auth/meta/delete" className="text-blue-600 underline">
+              app.autozap.digital/api/auth/meta/delete
+            </a>
+          </li>
+        </ul>
+        <p className="mt-2">
+          We comply with Meta&apos;s data deletion requests as required by the platform within 30 days.
         </p>
       </Section>
 
@@ -101,16 +121,7 @@ export default function PrivacidadePage() {
       </Section>
 
       <Section title="11. Contact">
-        <p>
-          LS Tecnologias — AutoZap
-          <br />
-          Email:{" "}
-          <a href="mailto:lsallesforce@gmail.com" className="text-blue-600 underline">
-            lsallesforce@gmail.com
-          </a>
-          <br />
-          Website: <a href="https://autozap.digital" className="text-blue-600 underline">autozap.digital</a>
-        </p>
+        <CompanyFooter />
       </Section>
     </main>
   );
@@ -122,5 +133,27 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       <h2 className="text-xl font-semibold text-gray-900 mb-3">{title}</h2>
       <div className="text-gray-600 leading-relaxed space-y-2">{children}</div>
     </section>
+  );
+}
+
+function CompanyFooter() {
+  return (
+    <address className="not-italic text-gray-600 leading-relaxed space-y-1">
+      <p className="font-semibold text-gray-900">LS Tecnologias LTDA</p>
+      <p>CNPJ: 17.505.636/0001-98</p>
+      <p>Rua Julio Lopes Gil, 135 — Jardim Tangará — São José do Rio Preto/SP — CEP 15086-090</p>
+      <p>
+        Email:{" "}
+        <a href="mailto:contato@autozap.digital" className="text-blue-600 underline">
+          contato@autozap.digital
+        </a>
+      </p>
+      <p>
+        Website:{" "}
+        <a href="https://autozap.digital" className="text-blue-600 underline">
+          autozap.digital
+        </a>
+      </p>
+    </address>
   );
 }
