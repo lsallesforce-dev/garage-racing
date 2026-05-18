@@ -621,7 +621,7 @@ export default function ConfiguracoesPage() {
                 : "text-gray-400 hover:text-gray-700"
             }`}
           >
-            {{ loja: "Minha Loja", portais: "Portais", whatsapp: "WhatsApp", fiscal: "Fiscal" }[tab]}
+            {{ loja: "Minha Loja", portais: "Portais", whatsapp: "WhatsApp & Ads", fiscal: "Fiscal" }[tab]}
           </button>
         ))}
       </div>
