@@ -152,14 +152,15 @@ function CentralChatInner() {
   useEffect(() => { carregarLeads(); }, [carregarLeads]);
 
   useEffect(() => {
+    if (!effectiveUserId) return;
     const ch = supabase
-      .channel("leads-updates")
-      .on("postgres_changes", { event: "*", schema: "public", table: "leads" }, () => {
+      .channel(`leads-updates-${effectiveUserId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "leads", filter: `user_id=eq.${effectiveUserId}` }, () => {
         carregarLeads();
       })
       .subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [carregarLeads]);
+  }, [carregarLeads, effectiveUserId]);
 
   // Auto-seleciona conversa via ?wa_id= (deep link do alerta do gerente)
   useEffect(() => {
@@ -188,7 +189,16 @@ function CentralChatInner() {
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "mensagens", filter: `lead_id=eq.${selectedLead.id}` },
-        (payload) => setMensagens((prev) => [...prev, payload.new as Mensagem])
+        (payload) => {
+          const newMsg = payload.new as Mensagem;
+          setMensagens((prev) => [...prev, newMsg]);
+          // Atualiza preview da barra lateral imediatamente, sem esperar carregarLeads()
+          setLeads((prev) => prev.map((l) =>
+            l.id === selectedLead.id
+              ? { ...l, ultimaMensagem: { content: newMsg.content, created_at: newMsg.created_at, remetente: newMsg.remetente } }
+              : l
+          ));
+        }
       )
       .subscribe();
 
