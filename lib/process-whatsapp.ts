@@ -200,6 +200,7 @@ interface BuildPromptParams {
   instrucaoPendente?: string | null;
   clientePediuFoto?: boolean;
   clientePediuVideo?: boolean;
+  midiaSendada?: string | null;
   // Layer 2 & 4
   tomVenda?: string | null;
   instrucoesAdicionais?: string | null;
@@ -345,6 +346,7 @@ ${p.instrucaoPendente ? `✅ INSTRUÇÃO DO GERENTE (use esta informação para 
 
 ${p.clientePediuFoto ? "❌ FOTO: Não há foto disponível para esse veículo. Responda ao cliente: 'Esse ainda não tem foto disponível, mas posso te passar mais detalhes.' E use precisa_instrucao com: 'Cliente pediu foto do veículo mas não há foto cadastrada no sistema.'" : ""}
 ${p.clientePediuVideo ? "❌ VÍDEO: Não há vídeo disponível para esse veículo. Responda ao cliente: 'Esse não tem vídeo disponível no momento.' E use precisa_instrucao com: 'Cliente pediu vídeo do veículo mas não há vídeo cadastrado no sistema.'" : ""}
+${p.midiaSendada ? `⚠️ MÍDIA ENVIADA AUTOMATICAMENTE: ${p.midiaSendada} foram enviadas neste turno antes desta resposta de texto. Escreva APENAS uma frase curta e natural de acompanhamento (máximo 1 linha). PROIBIDO dizer "vou enviar" ou "já te mando" — a mídia já chegou. Ex: "Aqui estão as fotos do Gol!" ou "Confere aí e me diz o que achou!"` : ""}
 
 [AÇÃO REQUERIDA]
 Você DEVE retornar a resposta estritamente no formato JSON, usando a seguinte estrutura exata:
@@ -1119,8 +1121,15 @@ Responda apenas com o JSON, sem markdown.`;
   }
 
   // ── 11. Enviar Foto ─────────────────────────────────────────────────────────
+  // Exige intenção explícita ("manda", "tem", "envia"...) antes de "foto/imagem"
+  // para evitar falsos positivos em comentários como "Gostei dessa foto" ou "Essa foto parece arranhada"
+  const temIntencaoFoto =
+    /\b(manda|envia|me manda|me envia|me passa|tem|posso ver|quero ver|pode mandar|pode enviar|ver as)\b/
+      .test(mensagemLower) &&
+    /\b(foto|fotos|imagem|imagens)\b/.test(mensagemLower);
+  const mensagemSoFoto = /^(foto|fotos|imagem|imagens)[.!?]?$/.test(mensagemLower.trim());
   const gatilhosFoto = [
-    "foto", "fotos", "imagem", "manda foto", "tem foto", "tem imagem",
+    "manda foto", "tem foto", "tem imagem",
     "manda a foto", "manda as foto", "me manda a foto", "me envia a foto", "envia a foto",
     "envia as foto", "me passa a foto", "me passa as foto",
   ];
@@ -1129,6 +1138,8 @@ Responda apenas com o JSON, sem markdown.`;
     "documento", "crlv", "nota fiscal", "laudo", "manual", "revisão",
     "historico", "histórico", "comprovante", "licenciamento",
     "pessoalmente", "na loja", "em pessoa", "ir lá", "vou lá", "visitar",
+    // comentários sobre foto já vista — não é pedido de envio
+    "gostei", "essa foto", "nessa foto", "aquela foto", "essa imagem", "pelo foto",
   ];
 
   // ── 11b. Enviar Vídeo ───────────────────────────────────────────────────────
@@ -1159,7 +1170,7 @@ Responda apenas com o JSON, sem markdown.`;
   const pedindoFotosMultiplos = /\b(deles|delas|dos dois|das duas|de ambos|de todos|de cada|de cada um)\b/i.test(mensagemLower);
 
   const clientePediuFoto =
-    (gatilhosFoto.some((g) => mensagemLower.includes(g)) || (msgConfirmacao && clientePediuFotoAntes) || continuacaoFoto) &&
+    (temIntencaoFoto || mensagemSoFoto || gatilhosFoto.some((g) => mensagemLower.includes(g)) || (msgConfirmacao && clientePediuFotoAntes) || continuacaoFoto) &&
     !exclusoesFoto.some((e) => mensagemLower.includes(e));
 
   let fotoEnviada = false;
@@ -1260,19 +1271,16 @@ Responda apenas com o JSON, sem markdown.`;
       const fotosParaEnviar = todasFotosRaw.slice(0, MAX_FOTOS_POR_VEICULO);
       const temMaisFotos = todasFotosRaw.length > MAX_FOTOS_POR_VEICULO;
 
-      for (const fotoUrl of fotosParaEnviar) {
+      const carUrl = temMaisFotos && vitrineUrl ? `${vitrineUrl}/${v.id}` : null;
+      for (let i = 0; i < fotosParaEnviar.length; i++) {
+        const isUltima = i === fotosParaEnviar.length - 1;
+        const caption = (isUltima && carUrl) ? `Ver mais fotos: ${carUrl}` : undefined;
         try {
-          await sendImage(phone, fotoUrl, undefined);
+          await sendImage(phone, fotosParaEnviar[i], caption);
           fotoEnviada = true;
         } catch (e) {
           console.warn(`⚠️ Falha ao enviar foto de ${v.marca} ${v.modelo}:`, e);
         }
-      }
-
-      // Se tem mais fotos do que o limite, envia link da vitrine para ver o restante
-      if (temMaisFotos && fotoEnviada && vitrineUrl) {
-        const carUrl = `${vitrineUrl}/${v.id}`;
-        await sendText(phone, `Tem mais fotos desse veículo! Veja todas aqui: ${carUrl}`).catch(() => {});
       }
     }
 
@@ -1335,25 +1343,16 @@ Responda apenas com o JSON, sem markdown.`;
     }
   }
 
-  // Se enviou mídia (foto ou vídeo), salva placeholder no histórico e retorna
-  // O placeholder evita que o Gemini "complete" o pedido de mídia na próxima mensagem
+  // Se enviou mídia, passa o label para o Gemini gerar texto de acompanhamento
+  // (sem return — Gemini continua e gera uma frase curta junto com a mídia)
+  let midiaSendadaLabel: string | null = null;
   if (fotoEnviada || videoEnviado) {
-    console.log(`✅ Mídia enviada para ${phone} — sem resposta de texto.`);
-    if (lead) {
-      const tipo = fotoEnviada && videoEnviado ? "foto e vídeo" : fotoEnviada ? "foto" : "vídeo";
-      const veiculoLabel = veiculoPrincipal
-        ? `${veiculoPrincipal.marca} ${veiculoPrincipal.modelo}`
-        : null;
-      await supabaseAdmin.from("mensagens").insert({
-        lead_id: lead.id,
-        content: veiculoLabel
-          ? `[${tipo} enviada: ${veiculoLabel}]`
-          : `[${tipo} enviado automaticamente]`,
-        remetente: "agente",
-      });
-      await invalidateHistory(tenantUserId, lead.id);
-    }
-    return;
+    const tipo = fotoEnviada && videoEnviado ? "Fotos e vídeo" : fotoEnviada ? "Fotos" : "Vídeo";
+    const veiculoLabel = veiculoPrincipal
+      ? `${veiculoPrincipal.marca} ${veiculoPrincipal.modelo}`
+      : null;
+    midiaSendadaLabel = veiculoLabel ? `${tipo} do ${veiculoLabel}` : tipo;
+    console.log(`✅ Mídia enviada para ${phone} — Gemini vai gerar texto de acompanhamento.`);
   }
 
   // ── 12. Gemini — Geração de Resposta ────────────────────────────────────────
@@ -1381,8 +1380,9 @@ Responda apenas com o JSON, sem markdown.`;
       nomeCliente,
       context,
       instrucaoPendente: (lead as any)?.instrucao_pendente,
-      clientePediuFoto,
-      clientePediuVideo,
+      clientePediuFoto: clientePediuFoto && !fotoEnviada,
+      clientePediuVideo: clientePediuVideo && !videoEnviado,
+      midiaSendada: midiaSendadaLabel,
       tomVenda: garageConfig?.tom_venda,
       instrucoesAdicionais: garageConfig?.instrucoes_adicionais,
       ofertaEspecial: garageConfig?.oferta_especial,
