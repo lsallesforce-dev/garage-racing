@@ -1,6 +1,8 @@
 // app/api/meta/connect/route.ts
-// Inicia o OAuth do Facebook para Ads (ads_management + leads_retrieval)
+// Inicia o OAuth do Facebook para Ads (ads_management + pages_manage_ads)
 // Separado do OAuth de WhatsApp — tokens e escopos diferentes
+// Nota: leads_retrieval foi removido — é Advanced Access (requer App Review)
+// e é desnecessário pois pages_manage_ads já permite acesso à Lead Retrieval API
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
@@ -17,7 +19,7 @@ export async function GET(req: NextRequest) {
   const params = new URLSearchParams({
     client_id:     appId,
     redirect_uri:  redirectUri,
-    scope:         "ads_management,pages_manage_ads,leads_retrieval,business_management,pages_show_list,pages_read_engagement",
+    scope:         "ads_management,pages_manage_ads,business_management,pages_show_list,pages_read_engagement",
     response_type: "code",
     state:         userId,
   });
