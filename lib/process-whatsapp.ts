@@ -596,6 +596,12 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
       ? sendAvisaMessage(to, text, avisaCreds)
       : sendMetaMessage(to, text, metaCreds);
 
+  // sendAlert: para notificações ao gerente — sem typing delay, para não ser cortado pelo runtime
+  const sendAlert = (to: string, text: string) =>
+    useAvisa
+      ? sendAvisaMessage(to, text, avisaCreds, { typing: false })
+      : sendMetaMessage(to, text, metaCreds);
+
   const sendImage = (to: string, url: string, caption?: string) =>
     useAvisa
       ? sendAvisaImage(to, url, caption, avisaCreds)
@@ -1078,7 +1084,7 @@ Responda apenas com o JSON, sem markdown.`;
     const instrucao = "Cliente não conseguiu identificar o veículo de interesse após 2 trocas de mensagem. Por favor, assuma o atendimento.";
     await supabaseAdmin.from("leads").update({ instrucao_pendente: instrucao }).eq("id", lead.id);
     const nomeLead = lead.nome || phone;
-    sendText(
+    await sendAlert(
       gerentePhone,
       `❓ *AGENTE PRECISA DE INSTRUÇÃO*\n\n` +
       `👤 Cliente: ${nomeLead}\n` +
@@ -1112,10 +1118,10 @@ Responda apenas com o JSON, sem markdown.`;
       const posvBody = `🔴 *ALERTA PÓS-VENDA!*\n\n👤 ${lead.nome || phone}\n💬 "${userMessage.slice(0, 100)}"\n⚠️ Agente em stand-by automaticamente.`;
       const posvLink = `https://wa.me/${clientePhone}`;
       if (!useAvisa && metaCreds.phoneNumberId && metaCreds.accessToken) {
-        sendMetaCtaButton(gerentePhone, posvBody, "Abrir Conversa", posvLink, metaCreds)
-          .catch(() => {});
+        await sendMetaCtaButton(gerentePhone, posvBody, "Abrir Conversa", posvLink, metaCreds)
+          .catch(() => sendAlert(gerentePhone, `${posvBody}\n\n${posvLink}`).catch(() => {}));
       } else {
-        sendText(gerentePhone, `${posvBody}\n\n${posvLink}`).catch(() => {});
+        await sendAlert(gerentePhone, `${posvBody}\n\n${posvLink}`).catch(() => {});
       }
     }
   }
@@ -1496,7 +1502,7 @@ Responda apenas com o JSON, sem markdown.`;
             const veiculoAlert = veiculoFoco
               ? `${veiculoFoco.marca} ${veiculoFoco.modelo}`
               : "veículo em negociação";
-            sendText(
+            await sendAlert(
               gerentePhone,
               `❓ *AGENTE PRECISA DE INSTRUÇÃO*\n\n` +
               `👤 Cliente: ${nomeLead}\n` +
@@ -1645,16 +1651,16 @@ Responda apenas com o JSON, sem markdown.`;
       );
       console.log(`🔥 Lead ${temperatura} — enviando alerta para ${destinoWa}`);
       if (!useAvisa && metaCreds.phoneNumberId && metaCreds.accessToken) {
-        sendMetaCtaButton(destinoWa, briefing.texto, "Abrir Conversa", briefing.waLink, metaCreds)
+        await sendMetaCtaButton(destinoWa, briefing.texto, "Abrir Conversa", briefing.waLink, metaCreds)
           .then(() => console.log(`✅ CTA button enviado ao vendedor (${destinoWa})`))
           .catch(async (err: any) => {
             console.warn(`⚠️ CTA button falhou para ${destinoWa}:`, err?.message?.slice(0, 200));
-            await sendText(destinoWa, `${briefing.texto}\n\n${briefing.waLink}`)
-              .then(() => console.log(`✅ Fallback texto+link enviado ao vendedor (${destinoWa})`))
+            await sendAlert(destinoWa, `${briefing.texto}\n\n${briefing.waLink}`)
+              .then(() => console.log(`✅ Fallback alerta enviado ao vendedor (${destinoWa})`))
               .catch((e: any) => console.error(`❌ Fallback também falhou para ${destinoWa}:`, e?.message?.slice(0, 200)));
           });
       } else {
-        sendText(destinoWa, `${briefing.texto}\n\n${briefing.waLink}`)
+        await sendAlert(destinoWa, `${briefing.texto}\n\n${briefing.waLink}`)
           .then(() => console.log(`✅ Alerta enviado ao vendedor via Avisa (${destinoWa})`))
           .catch((e: any) => console.error(`❌ Alerta ao vendedor falhou (${destinoWa}):`, e?.message?.slice(0, 200)));
       }

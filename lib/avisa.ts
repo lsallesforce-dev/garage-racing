@@ -124,17 +124,22 @@ async function sendAvisaTyping(baseUrl: string, token: string, phone: string, ac
   }
 }
 
-export async function sendAvisaMessage(phone: string, message: string, creds?: Partial<AvisaCreds>) {
+export async function sendAvisaMessage(phone: string, message: string, creds?: Partial<AvisaCreds>, opts?: { typing?: boolean }) {
   const c = resolveCreds(creds);
   if (!c) { console.warn("Avisa credentials missing"); return; }
 
-  const delay = typingDelay(message);
   const target = buildTarget(phone);
-  console.log(`📤 Avisa sendMessage → ${JSON.stringify(target)} (${message.length} chars, delay ${delay}ms)`);
 
-  await sendAvisaTyping(c.baseUrl, c.token, phone, "start");
-  await new Promise((r) => setTimeout(r, delay));
-  await sendAvisaTyping(c.baseUrl, c.token, phone, "stop");
+  // typing: false skipa o delay humanizado — usado para alertas de sistema ao gerente
+  if (opts?.typing !== false) {
+    const delay = typingDelay(message);
+    console.log(`📤 Avisa sendMessage → ${JSON.stringify(target)} (${message.length} chars, delay ${delay}ms)`);
+    await sendAvisaTyping(c.baseUrl, c.token, phone, "start");
+    await new Promise((r) => setTimeout(r, delay));
+    await sendAvisaTyping(c.baseUrl, c.token, phone, "stop");
+  } else {
+    console.log(`📤 Avisa sendAlert → ${JSON.stringify(target)} (${message.length} chars, sem typing)`);
+  }
 
   const payload = { ...target, message };
   return sendWithRetry(`${c.baseUrl}/actions/sendMessage`, payload, c.token);
