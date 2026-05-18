@@ -14,7 +14,7 @@ import { after } from "next/server";
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { processWhatsAppMessage } from "@/lib/process-whatsapp";
-import { isDuplicateMessage } from "@/lib/redis";
+import { isDuplicateMessage, debounceClientImages } from "@/lib/redis";
 import { logWebhookError } from "@/lib/error-log";
 import { resolveAvisaLid } from "@/lib/avisa";
 
@@ -346,6 +346,18 @@ export async function POST(req: NextRequest) {
       if (await isDuplicateMessage(tenantUserId!, messageId)) {
         console.log(`🔁 [Dedup] messageId ${messageId} já processado — ignorando.`);
         return NextResponse.json({ status: "duplicate" });
+      }
+    }
+
+    // Debounce de imagens: quando o cliente envia múltiplas fotos de uma vez
+    // (ex: 3 fotos do carro para avaliação), Avisa dispara 3 webhooks separados.
+    // Só a PRIMEIRA é processada; as demais são ignoradas dentro da janela de 3s.
+    const isClientImage = rawMessage === "[Cliente enviou foto(s) do veículo]";
+    if (isClientImage) {
+      const isFirst = await debounceClientImages(tenantUserId!, phone);
+      if (!isFirst) {
+        console.log(`📸 [Debounce] Foto adicional de ${phone} — já processando a primeira`);
+        return NextResponse.json({ status: "image_debounced" });
       }
     }
 
