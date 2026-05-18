@@ -383,6 +383,16 @@ export default function ConfiguracoesPage() {
     });
   }, []);
 
+  // Auto-carrega páginas do Facebook após OAuth bem-sucedido (?meta_ads_ok=1)
+  const autoLoadedRef = useRef(false);
+  useEffect(() => {
+    if (searchParams.get("meta_ads_ok") !== "1") return;
+    if (autoLoadedRef.current) return;
+    if (!config.meta_ads_token && !config.meta_access_token) return;
+    autoLoadedRef.current = true;
+    carregarMetaAds();
+  }, [config.meta_ads_token, config.meta_access_token]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const copyToClipboard = (text: string, key: string) => {
     navigator.clipboard.writeText(text);
     setCopied(key);
