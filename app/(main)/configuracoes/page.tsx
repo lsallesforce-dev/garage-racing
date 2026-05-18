@@ -257,12 +257,16 @@ export default function ConfiguracoesPage() {
         setMetaAdsError(e.error ?? "Erro ao carregar páginas");
         return;
       }
-      const { paginas, adAccounts, error: apiErr } = await res.json();
+      const { salvas, paginas, adAccounts, error: apiErr } = await res.json();
       if (apiErr) { setMetaAdsError(apiErr); return; }
       setMetaPaginas(paginas ?? []);
       setMetaAdAccounts(adAccounts ?? []);
       if (paginas?.length) setSelectedPageId(paginas[0].id);
       if (adAccounts?.length) setSelectedAdAccountId(adAccounts[0].id);
+      // Restaura página salva no banco caso metaPaginaSalva ainda não esteja preenchido
+      if (salvas?.length) {
+        setMetaPaginaSalva({ name: salvas[0].page_name, adAccountId: salvas[0].ad_account_id });
+      }
       setMetaCarregado(true);
     } catch {
       setMetaAdsError("Erro de conexão");
