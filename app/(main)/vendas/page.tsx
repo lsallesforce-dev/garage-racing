@@ -169,12 +169,13 @@ const ListaItens = forwardRef<ListaItensHandle, {
 
   async function remover(id: string, e: React.MouseEvent) {
     e.preventDefault(); e.stopPropagation();
-    await fetch("/api/financeiro/veiculo", {
+    if (!id) return;
+    const res = await fetch("/api/financeiro/veiculo", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ tabela, id }),
     });
-    onAlterado(itens.filter((i) => i.id !== id));
+    if (res.ok) onAlterado(itens.filter((i) => i.id !== id));
   }
 
   return (
@@ -520,9 +521,13 @@ function SlideOver({
           {(aba === "despesas" || aba === "receitas") && (
             <button
               type="button"
+              disabled={saving}
               onClick={async () => {
+                if (saving) return;
+                setSaving(true);
                 await despesasRef.current?.flush();
                 await receitasRef.current?.flush();
+                setSaving(false);
                 onReload(); setSaved(true); setTimeout(() => setSaved(false), 2000);
               }}
               className={`mt-6 w-full py-4 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${
