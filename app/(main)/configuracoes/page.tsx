@@ -347,6 +347,7 @@ export default function ConfiguracoesPage() {
               logo_url: row.logo_url ?? null,
               meta_phone_id: row.meta_phone_id ?? "",
               meta_access_token: row.meta_access_token ?? "",
+              meta_ads_token: row.meta_ads_token ?? "",
               nome_usuario: row.nome_usuario ?? "",
               cargo_usuario: row.cargo_usuario ?? "",
               tom_venda: row.tom_venda ?? "",
