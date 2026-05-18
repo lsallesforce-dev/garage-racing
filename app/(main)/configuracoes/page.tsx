@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { Upload, CheckCircle2, Loader2, ImageIcon, Trash2, Sparkles, FileImage, Save, Copy, Eye, EyeOff, FileText, ShieldCheck } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
@@ -74,6 +74,7 @@ export default function ConfiguracoesPage() {
   const [olxConectado, setOlxConectado] = useState(false);
   const [currentUserId, setCurrentUserId] = useState("");
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [copied, setCopied] = useState<string | null>(null);
   const [metaConnecting, setMetaConnecting] = useState(false);
   const [metaConnected, setMetaConnected] = useState(false);
@@ -138,7 +139,7 @@ export default function ConfiguracoesPage() {
   const [savedNF, setSavedNF] = useState(false);
   const [showNFSenha, setShowNFSenha] = useState(false);
 
-  type Tab = "loja" | "portais" | "whatsapp" | "fiscal";
+  type Tab = "loja" | "portais" | "fiscal";
   const [activeTab, setActiveTab] = useState<Tab>("loja");
 
   // Carrega o Facebook SDK para Embedded Signup
@@ -383,7 +384,7 @@ export default function ConfiguracoesPage() {
     });
   }, []);
 
-  // Auto-carrega páginas do Facebook após OAuth bem-sucedido (?meta_ads_ok=1)
+  // Auto-carrega páginas + limpa URL após OAuth bem-sucedido (?meta_ads_ok=1)
   const autoLoadedRef = useRef(false);
   useEffect(() => {
     if (searchParams.get("meta_ads_ok") !== "1") return;
@@ -391,6 +392,8 @@ export default function ConfiguracoesPage() {
     if (!config.meta_ads_token && !config.meta_access_token) return;
     autoLoadedRef.current = true;
     carregarMetaAds();
+    // Remove o param da URL para não persistir o banner no F5
+    router.replace("/configuracoes");
   }, [config.meta_ads_token, config.meta_access_token]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const copyToClipboard = (text: string, key: string) => {
@@ -621,7 +624,7 @@ export default function ConfiguracoesPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 bg-white rounded-2xl p-1 border border-gray-100 shadow-sm mb-8 max-w-2xl overflow-x-auto">
-        {(["loja","portais","whatsapp","fiscal"] as const).map((tab) => (
+        {(["loja","portais","fiscal"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -631,7 +634,7 @@ export default function ConfiguracoesPage() {
                 : "text-gray-400 hover:text-gray-700"
             }`}
           >
-            {{ loja: "Minha Loja", portais: "Portais", whatsapp: "WhatsApp & Ads", fiscal: "Fiscal" }[tab]}
+            {{ loja: "Minha Loja", portais: "Portais de Anúncio", fiscal: "Fiscal" }[tab]}
           </button>
         ))}
       </div>
@@ -789,130 +792,6 @@ export default function ConfiguracoesPage() {
                 className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
               />
             </div>
-
-            {/* bloco Meta — renderizado apenas na aba WhatsApp via portal lógico */}
-            {activeTab === "whatsapp" && <div className="flex flex-col gap-1.5 mt-2 bg-blue-50/50 p-4 border border-blue-100 rounded-2xl">
-              <p className="text-[10px] font-black uppercase tracking-widest text-blue-800 mb-1">
-                WhatsApp Business (Meta Cloud API)
-              </p>
-              <p className="text-[10px] text-blue-600 mb-3">
-                Configure no <strong>Meta for Developers</strong> → seu app → WhatsApp → Configuração.
-                URL do webhook:{" "}
-                <button
-                  type="button"
-                  onClick={() => navigator.clipboard.writeText("https://autozap.digital/api/webhook/meta")}
-                  className="font-mono text-blue-700 hover:underline cursor-pointer"
-                >
-                  <strong>https://autozap.digital/api/webhook/meta</strong>
-                </button>
-                {" "}· Token de verificação: <strong className="font-mono">autozap_webhook_2026</strong>
-              </p>
-
-              {/* Aviso de campo bloqueado — oculto para sessão admin */}
-              {!isAdminSession && (
-                <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2.5 mb-1">
-                  <ShieldCheck size={13} className="text-blue-400 shrink-0 mt-0.5" />
-                  <p className="text-[10px] text-blue-600 leading-relaxed">
-                    Estes campos são configurados pelo <strong>suporte AutoZap</strong>. Para alterar, entre em contato conosco.
-                  </p>
-                </div>
-              )}
-
-              <label className="text-[10px] font-black uppercase tracking-widest text-blue-800 block">
-                Phone Number ID
-              </label>
-              <input
-                type="text"
-                value={config.meta_phone_id || ""}
-                readOnly={!isAdminSession}
-                onChange={isAdminSession ? e => setConfig(c => ({ ...c, meta_phone_id: e.target.value.trim() })) : undefined}
-                placeholder="Ex: 390538797515329"
-                className={`border rounded-xl px-4 py-2.5 font-mono text-sm w-full transition ${isAdminSession ? "bg-white border-blue-300 text-gray-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" : "bg-blue-50 border-blue-100 text-gray-500 cursor-not-allowed"}`}
-              />
-
-              <label className="text-[10px] font-black uppercase tracking-widest text-blue-800 mt-3 block">
-                Número do WhatsApp Business (com DDI)
-              </label>
-              <input
-                type="text"
-                value={config.whatsapp_agente || ""}
-                readOnly={!isAdminSession}
-                onChange={isAdminSession ? e => setConfig(c => ({ ...c, whatsapp_agente: e.target.value.trim() })) : undefined}
-                placeholder="Ex: 5517991127787"
-                className={`border rounded-xl px-4 py-2.5 font-mono text-sm w-full transition ${isAdminSession ? "bg-white border-blue-300 text-gray-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" : "bg-blue-50 border-blue-100 text-gray-500 cursor-not-allowed"}`}
-              />
-
-              <label className="text-[10px] font-black uppercase tracking-widest text-blue-800 mt-3 block">
-                Access Token
-              </label>
-              <div className="relative">
-                <input
-                  type={showToken ? "text" : "password"}
-                  value={config.meta_access_token || ""}
-                  readOnly={!isAdminSession}
-                  onChange={isAdminSession ? e => setConfig(c => ({ ...c, meta_access_token: e.target.value.trim() })) : undefined}
-                  placeholder="EAAxxxxxxxxxxxxxxxx..."
-                  className={`w-full border rounded-xl px-4 py-2.5 pr-20 font-mono text-sm transition ${isAdminSession ? "bg-white border-blue-300 text-gray-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" : "bg-blue-50 border-blue-100 text-gray-500 cursor-not-allowed"}`}
-                />
-                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
-                  <button type="button" onClick={() => setShowToken(v => !v)}
-                    className="p-1.5 text-blue-400 hover:text-blue-700 transition-colors">
-                    {showToken ? <EyeOff size={14} /> : <Eye size={14} />}
-                  </button>
-                  {config.meta_access_token && (
-                    <button type="button" onClick={() => copyToClipboard(config.meta_access_token!, "token")}
-                      className="p-1.5 text-blue-400 hover:text-blue-700 transition-colors">
-                      {copied === "token" ? <CheckCircle2 size={14} className="text-green-500" /> : <Copy size={14} />}
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div className="mt-4 pt-4 border-t border-blue-100">
-                <p className="text-[10px] font-black uppercase tracking-widest text-blue-800 mb-2">
-                  Conectar via Embedded Signup
-                </p>
-                <button
-                  type="button"
-                  onClick={handleMetaEmbeddedSignup}
-                  disabled={metaConnecting || metaConnected}
-                  className="w-full py-2.5 rounded-xl font-black uppercase text-[10px] tracking-widest bg-[#1877F2] text-white hover:bg-[#1465d8] disabled:opacity-60 transition-colors flex items-center justify-center gap-2"
-                >
-                  {metaConnecting ? (
-                    <><Loader2 size={14} className="animate-spin" /> Conectando...</>
-                  ) : metaConnected ? (
-                    <><CheckCircle2 size={14} /> Conectado!</>
-                  ) : (
-                    <>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
-                      Conectar com Meta / Facebook
-                    </>
-                  )}
-                </button>
-                <p className="text-[10px] text-blue-500 mt-1">
-                  Guia o cliente a criar ou conectar uma WABA e preenche Phone ID + Access Token automaticamente.
-                </p>
-              </div>
-
-              <label className="text-[10px] font-black uppercase tracking-widest text-blue-800 mt-3 block">
-                Slug da Vitrine (URL curta)
-              </label>
-              <input
-                type="text"
-                value={config.vitrine_slug || ""}
-                onChange={e => setConfig(c => ({ ...c, vitrine_slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "") }))}
-                placeholder="Ex: aprove"
-                className="bg-white border border-blue-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
-              />
-              <p className="text-[10px] text-blue-600 mt-1">
-                Vitrine pública:{" "}
-                <strong>
-                  {config.vitrine_slug
-                    ? `${config.vitrine_slug}.autozap.digital`
-                    : "SEU_SLUG.autozap.digital"}
-                </strong>
-              </p>
-            </div>} {/* fim bloco Meta condicional */}
 
             <div className="flex flex-col gap-1.5">
               <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
@@ -1497,11 +1376,6 @@ export default function ConfiguracoesPage() {
           </div>
         </div>
 
-        </> /* fim aba portais */}
-
-        {/* ══ ABA: WHATSAPP ════════════════════════════════════════════════════ */}
-        {activeTab === "whatsapp" && <>
-
         {/* ── Facebook / Instagram Ads ──────────────────────────────────────── */}
         {searchParams.get("meta_ads_ok") === "1" && (
           <div className="bg-green-50 border border-green-200 rounded-2xl px-4 py-3 text-[11px] text-green-700 font-bold">
@@ -1680,7 +1554,7 @@ export default function ConfiguracoesPage() {
             </div>
           )}
         </div>
-        </> /* fim aba whatsapp */ }
+        </> /* fim aba portais + meta */ }
 
       </div>
     </main>
