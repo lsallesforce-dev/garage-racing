@@ -91,6 +91,7 @@ export default function ConfiguracoesPage() {
   const [metaAdsError, setMetaAdsError] = useState<string | null>(null);
   const [metaPaginas, setMetaPaginas] = useState<any[]>([]);
   const [metaAdAccounts, setMetaAdAccounts] = useState<any[]>([]);
+  const [metaCarregado, setMetaCarregado] = useState(false);
   const [metaPaginaSalva, setMetaPaginaSalva] = useState<any | null>(null);
   const [selectedPageId, setSelectedPageId] = useState("");
   const [selectedAdAccountId, setSelectedAdAccountId] = useState("");
@@ -262,6 +263,7 @@ export default function ConfiguracoesPage() {
       setMetaAdAccounts(adAccounts ?? []);
       if (paginas?.length) setSelectedPageId(paginas[0].id);
       if (adAccounts?.length) setSelectedAdAccountId(adAccounts[0].id);
+      setMetaCarregado(true);
     } catch {
       setMetaAdsError("Erro de conexão");
     } finally {
@@ -1463,17 +1465,36 @@ export default function ConfiguracoesPage() {
                 </div>
               )}
 
-              {metaPaginas.length === 0 && !metaAdsLoading && (
-                <button
-                  type="button"
-                  onClick={carregarMetaAds}
-                  className="w-full py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold transition-colors flex items-center justify-center gap-2"
-                >
-                  <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-white">
-                    <path d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.41c0-3.025 1.792-4.697 4.533-4.697 1.312 0 2.686.236 2.686.236v2.97h-1.513c-1.491 0-1.956.93-1.956 1.885v2.27h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z"/>
-                  </svg>
-                  Carregar minhas páginas do Facebook
-                </button>
+              {metaPaginas.length === 0 && !metaAdsLoading && !metaAdsError && (
+                <>
+                  {metaCarregado ? (
+                    <div className="bg-yellow-50 border border-yellow-100 rounded-2xl px-4 py-3 space-y-2">
+                      <p className="text-[11px] text-yellow-700 font-bold">Nenhuma Página do Facebook encontrada.</p>
+                      <p className="text-[10px] text-yellow-600">
+                        Certifique-se de ter uma Página do Facebook (não perfil pessoal) e que ela esteja vinculada à sua conta. Você pode criar uma em{" "}
+                        <a href="https://www.facebook.com/pages/create" target="_blank" rel="noreferrer" className="underline font-bold">facebook.com/pages/create</a>.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={carregarMetaAds}
+                        className="w-full py-2 rounded-xl border border-yellow-300 text-yellow-700 hover:bg-yellow-100 text-[11px] font-bold transition-colors"
+                      >
+                        Tentar novamente
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={carregarMetaAds}
+                      className="w-full py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold transition-colors flex items-center justify-center gap-2"
+                    >
+                      <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-white">
+                        <path d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.41c0-3.025 1.792-4.697 4.533-4.697 1.312 0 2.686.236 2.686.236v2.97h-1.513c-1.491 0-1.956.93-1.956 1.885v2.27h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z"/>
+                      </svg>
+                      Carregar minhas páginas do Facebook
+                    </button>
+                  )}
+                </>
               )}
 
               {metaAdsLoading && (

@@ -46,6 +46,7 @@ export async function GET(req: NextRequest) {
       listarPaginas(token),
       listarAdAccounts(token),
     ]);
+    console.log(`[meta/pagina] userId=${userId} paginas=${paginas.length} adAccounts=${adAccounts.length}`);
     return NextResponse.json({ salvas: salvas ?? [], paginas, adAccounts });
   } catch (err: any) {
     console.error("Erro ao listar páginas Meta:", err.message);
