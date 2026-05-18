@@ -320,7 +320,10 @@ function VeiculoMarketingCard({ carro, wmConfigurado, olxConectado }: { carro: a
               <IconInstagram className="w-3.5 h-3.5 text-pink-500" />
               <span className="text-[9px] font-black uppercase tracking-wider text-blue-700">Meta Ads</span>
             </button>
-            <MetaBadge veiculoId={carro.id} />
+            {!fotoUrl && !vendido
+              ? <span className="text-[8px] text-gray-300 font-bold uppercase tracking-wider">Sem foto</span>
+              : <MetaBadge veiculoId={carro.id} />
+            }
           </div>
 
           {/* OLX */}
