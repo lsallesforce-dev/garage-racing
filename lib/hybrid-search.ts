@@ -495,16 +495,9 @@ export async function hybridVehicleSearch(
     };
   }
 
-  // Guard: lead novo sem veículo vinculado + poucos tokens significativos (< 2)
-  // Impede que mensagens vagas como "Qual valor" ou "Quanto custa" retornem
-  // carros aleatórios e vinculem ao lead indevidamente.
-  if (!veiculoPrincipal && nonConversational.length < 2 && rawTokens.length > 0) {
-    return {
-      topVeiculos: [],
-      hitsTextuais: [],
-      clientePediuCarroDiferente: false,
-    };
-  }
+  // Nota: guard de "< 2 tokens" foi removido — bloqueava buscas legítimas de
+  // modelo único como "Tem Gol?", "Tem Celta?". As stop words e CONVERSATIONAL_ONLY
+  // já filtram frases vagas como "Qual valor?" antes de chegar aqui.
 
   const tokens = expandWithSynonyms(rawTokens);
 
