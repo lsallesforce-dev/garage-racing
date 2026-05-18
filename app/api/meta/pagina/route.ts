@@ -2,23 +2,25 @@
 // Lista páginas Facebook e ad accounts do tenant + salva página selecionada
 
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/api-auth";
+import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { listarPaginas, listarAdAccounts } from "@/lib/meta-ads";
 
 // GET — retorna páginas já salvas no banco; com ?listar=1 também busca do token Meta
 export async function GET(req: NextRequest) {
-  const auth = await requireAuth(req);
-  if (auth instanceof NextResponse) return auth;
+  const { user, error } = await requireAuth();
+  if (error) return error;
 
-  const listarBrutas = req.nextUrl.searchParams.get("listar") === "1";
+  const userId = getEffectiveUserId(user!);
 
   // Sempre retorna páginas já salvas (usadas pelo PublicarMetaButton)
   const { data: salvas } = await supabaseAdmin
     .from("meta_paginas")
     .select("id, page_id, page_name, ad_account_id, instagram_actor_id")
-    .eq("user_id", auth.userId)
+    .eq("user_id", userId)
     .order("created_at", { ascending: false });
+
+  const listarBrutas = req.nextUrl.searchParams.get("listar") === "1";
 
   if (!listarBrutas) {
     return NextResponse.json({ salvas: salvas ?? [] });
@@ -28,7 +30,7 @@ export async function GET(req: NextRequest) {
   const { data: garageRows } = await supabaseAdmin
     .from("config_garage")
     .select("meta_ads_token, meta_access_token")
-    .eq("user_id", auth.userId)
+    .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(1);
   const garage = garageRows?.[0] ?? null;
@@ -53,19 +55,21 @@ export async function GET(req: NextRequest) {
 
 // POST — salva página selecionada pelo tenant
 export async function POST(req: NextRequest) {
-  const auth = await requireAuth(req);
-  if (auth instanceof NextResponse) return auth;
+  const { user, error } = await requireAuth();
+  if (error) return error;
+
+  const userId = getEffectiveUserId(user!);
 
   const { pageId, pageName, pageAccessToken, adAccountId, instagramActorId } = await req.json();
   if (!pageId || !pageAccessToken) {
     return NextResponse.json({ error: "pageId e pageAccessToken obrigatórios" }, { status: 400 });
   }
 
-  const { error } = await supabaseAdmin
+  const { error: dbErr } = await supabaseAdmin
     .from("meta_paginas")
     .upsert(
       {
-        user_id:            auth.userId,
+        user_id:            userId,
         page_id:            pageId,
         page_name:          pageName,
         page_access_token:  pageAccessToken,
@@ -75,6 +79,6 @@ export async function POST(req: NextRequest) {
       { onConflict: "user_id, page_id" }
     );
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (dbErr) return NextResponse.json({ error: dbErr.message }, { status: 500 });
   return NextResponse.json({ ok: true });
 }
