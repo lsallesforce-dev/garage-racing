@@ -37,12 +37,30 @@ O intermediário **deve ser `mpeg4`**, não `libx264` — o binário 2018 não c
 Paths de tmp são por job: `/tmp/ffmpeg_{veiculoId}`, `/tmp/ffmpeg_caps_{veiculoId}`, `Montserrat-Black-{veiculoId}.ttf` — limpos no `finally`.
 
 ## Multi-tenancy e segurança de API
-- `requireAuth()` — só verifica sessão válida
+
+### `requireAuth` — assinatura atual (lib/api-auth.ts)
+```typescript
+// PADRÃO CORRETO — retorna { user, error }
+const { user, error } = await requireAuth();
+if (error) return error;
+const userId = getEffectiveUserId(user!);
+```
+**NUNCA usar o padrão antigo** `requireAuth(req)` → `auth instanceof NextResponse` → `auth.userId`. Esse padrão foi removido; qualquer rota que ainda use vai ter `userId = undefined` silenciosamente.
+
+- `requireAuth()` — sem parâmetros, retorna `{ user, error }`
+- `getEffectiveUserId(user)` — retorna `owner_user_id` para vendedores, `user.id` para demais
 - `requireVehicleOwner(veiculoId)` — verifica que o veículo pertence ao user autenticado
 - `requireLeadOwner(leadId)` — idem para leads
-- **Vendedores** têm `user_metadata.role === "vendedor"` e `user_metadata.owner_user_id` no Supabase Auth. O `effectiveUserId` para vendedor é o `owner_user_id`, não o `user.id` próprio. Isso já está implementado nos helpers acima.
-- Rotas que aceitam `veiculoId` devem usar `requireVehicleOwner`, nunca apenas `requireAuth`.
+- **Vendedores** têm `user_metadata.role === "vendedor"` e `user_metadata.owner_user_id` no Supabase Auth.
 - `supabaseAdmin` ignora RLS — toda validação de posse deve ser feita manualmente nas API routes.
+
+### Queries Supabase — evitar `.single()` em tabelas com múltiplas linhas por tenant
+`config_garage` pode ter múltiplas linhas por `user_id`. Usar sempre:
+```typescript
+.order("created_at", { ascending: false }).limit(1)
+const row = data?.[0] ?? null;
+```
+`.single()` retorna `null` silenciosamente quando há mais de uma linha — causa bugs de "não conectado" difíceis de rastrear.
 
 ## Regras de segurança — padrões obrigatórios
 
@@ -72,6 +90,8 @@ Paths de tmp são por job: `/tmp/ffmpeg_{veiculoId}`, `/tmp/ffmpeg_caps_{veiculo
 - `NEXT_PUBLIC_R2_PUBLIC_URL` — **NÃO usar para resolver URLs de mídia** — aponta para o domínio da app, não para o R2
 - `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` — credenciais R2
 - `QSTASH_TOKEN`, `QSTASH_CURRENT_SIGNING_KEY`, `QSTASH_NEXT_SIGNING_KEY` — Upstash
+- `META_APP_ID`, `META_APP_SECRET` — app Meta (WhatsApp + Ads)
+- `NEXT_PUBLIC_META_APP_ID` — exposto ao cliente para Facebook SDK (Embedded Signup)
 
 ## Worker de vídeo (`app/api/marketing/worker/route.ts`)
 - `maxDuration = 300` (5 min — limite do plano Hobby da Vercel)
@@ -81,6 +101,74 @@ Paths de tmp são por job: `/tmp/ffmpeg_{veiculoId}`, `/tmp/ffmpeg_caps_{veiculo
 ## Proxy R2 (`app/api/r2/[...path]/route.ts`)
 Proxy Node.js (sem `edge` runtime) com suporte a Range requests para seek de vídeo.
 `toVideoUrl()` em `lib/r2-url.ts` reescreve URLs `pub-xxx.r2.dev` → `/api/r2/<key>`.
+
+## Integração Meta Ads (Facebook/Instagram Lead Ads)
+
+### Fluxo OAuth (`app/api/meta/connect` → `app/api/meta/ads-callback`)
+1. `/api/meta/connect` — inicia OAuth com escopos `ads_management,pages_manage_ads,business_management,pages_show_list,pages_read_engagement`. Passa `userId` como `state`.
+2. `/api/meta/ads-callback` — recebe `code` + `state`, troca por long-lived token (60 dias), salva em `config_garage.meta_ads_token` via `.update().eq("user_id", state)`.
+3. Redireciona para `/configuracoes?meta_ads_ok=1`.
+
+### Tokens Meta — dois campos distintos
+| Campo | Origem | Uso |
+|-------|--------|-----|
+| `meta_access_token` | WhatsApp Embedded Signup | Envio de mensagens WhatsApp |
+| `meta_ads_token` | OAuth `/api/meta/connect` | Marketing API — campanhas, adimages, páginas |
+
+A lógica de fallback em `/api/meta/pagina` usa `meta_ads_token || meta_access_token` — o token de WhatsApp pode não ter escopos de Ads.
+
+### `config_garage` — campo `meta_ads_token` deve ser lido explicitamente
+Ao fazer `setConfig` a partir do row do banco, incluir sempre:
+```typescript
+meta_ads_token: row.meta_ads_token ?? "",
+```
+Se omitido, `config.meta_ads_token` fica `""` e toda a seção de Ads fica em modo "não conectado" mesmo com token salvo.
+
+### `/api/meta/pagina` — estrutura da resposta
+```typescript
+GET ?listar=1  →  { salvas: MetaPaginaSalva[], paginas: MetaPage[], adAccounts: MetaAdAccount[] }
+GET            →  { salvas: MetaPaginaSalva[] }   // sem token Meta, sem chamada à API
+POST           →  upsert em meta_paginas (onConflict: "user_id, page_id")
+```
+- `salvas` = páginas já configuradas pelo tenant (tabela `meta_paginas`)
+- `paginas` = páginas ao vivo da API Meta (`me/accounts`)
+- O frontend deve usar `salvas[0]` para restaurar `metaPaginaSalva` quando a Meta API retorna vazio
+
+### Meta App — requisito de acesso para Marketing API
+O erro `(#3) Application does not have the capability` ao chamar `/adimages` significa que o app precisa de **Standard Access** na Marketing API.
+- Verificar em developers.facebook.com → App → "Criar e gerenciar anúncios com a API de Marketing"
+- `ads_management` e `pages_manage_ads` precisam estar em Standard Access (não Basic)
+- Em Development Mode / Basic Access, chamadas a `/adimages`, `/campaigns`, `/adsets` são bloqueadas com erro #3
+
+### Webhook de fotos de clientes — deduplicação
+`app/api/webhook/avisa/route.ts` usa `debounceClientImages(tenantUserId, phone)` (Redis SET NX EX 3) para evitar que múltiplas fotos enviadas em burst gerem múltiplas respostas do agente. Só a primeira foto dentro de 3s passa para processamento.
+
+## Página de Configurações (`app/(main)/configuracoes/page.tsx`)
+
+### Abas atuais
+```typescript
+type Tab = "loja" | "portais" | "fiscal";
+// Labels: { loja: "Minha Loja", portais: "Portais de Anúncio", fiscal: "Fiscal" }
+```
+A aba "whatsapp" foi removida. Configuração de Facebook/Instagram Ads está na aba **Portais de Anúncio**.
+
+### `metaPaginaSalva` — como é populado
+1. No load inicial: query a `meta_paginas` dentro do callback de `config_garage` (se token presente)
+2. Após `carregarMetaAds()`: usa `salvas[0]` da resposta da API se `metaPaginaSalva` não estiver preenchido
+3. Nunca é resetado por `carregarMetaAds` — só atualizado após salvar nova página
+
+### Auto-carregamento após OAuth
+```typescript
+// Dispara carregarMetaAds() + limpa ?meta_ads_ok=1 da URL quando token existe
+useEffect(() => {
+  if (searchParams.get("meta_ads_ok") !== "1") return;
+  if (autoLoadedRef.current) return;
+  if (!config.meta_ads_token && !config.meta_access_token) return;
+  autoLoadedRef.current = true;
+  carregarMetaAds();
+  router.replace("/configuracoes");
+}, [config.meta_ads_token, config.meta_access_token]);
+```
 
 ## Agente de Chat WhatsApp (`lib/process-whatsapp.ts`)
 
@@ -142,4 +230,3 @@ Log quando ativa: `🔧 [Loop detector] Injetando correção de histórico. Dado
 ```
 - `systemInstruction` é passado diretamente no `generateContent` (não no `startChat`) — exigência da API Gemini.
 - Histórico nunca começa com `role: "model"` — mensagens iniciais do assistente são filtradas.
-
