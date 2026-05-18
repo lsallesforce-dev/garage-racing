@@ -921,6 +921,65 @@ Responda apenas com o JSON, sem markdown.`;
     }
   }
 
+  // ── 6d. Fallback agressivo — busca relaxada para leads de anúncio ───────────
+  // Todos os steps anteriores (6a–6c) usam `status_venda = DISPONIVEL`.
+  // Se o veículo está RESERVADO, VENDIDO ou tem o nome cadastrado de forma
+  // diferente do headline do anúncio, NENHUM step consegue resolver.
+  // Este fallback:
+  //   1. Ignora status_venda (carro pode estar reservado mas ainda anunciado)
+  //   2. Busca por ILIKE em marca, modelo e versao com cada palavra do headline
+  //   3. Só ativa para leads de anúncio (adReferral presente)
+  const isLeadDeAnuncio = !!(adReferral?.headline) || userMessage.includes("[Lead veio do anúncio:");
+  if (!veiculoPrincipal && lead && isLeadDeAnuncio) {
+    const adTextRaw = adReferral?.headline
+      ?? userMessage.match(/\[(?:Contexto do link|Lead veio do anúncio):\s*"([^"]+)"\]/)?.[1]
+      ?? (lead as any).origem_mensagem?.replace(/^Lead do anúncio:\s*/i, "")
+      ?? "";
+    const adTextNorm = adTextRaw.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    const adWords = adTextNorm
+      .replace(/[.,!?()\[\]{}"'`\-\/]/g, " ")
+      .split(/\s+/)
+      .filter(w => w.length >= 3)
+      .filter(w => !["novo", "nova", "semi", "usado", "usada", "carro", "veiculo",
+        "confira", "fotos", "foto", "video", "oferta", "preco", "desconto",
+        "oportunidade", "imperdivel", "aproveite", "disponivel"].includes(w));
+
+    if (adWords.length > 0) {
+      const orClauses = adWords.map(w =>
+        `marca.ilike.%${w}%,modelo.ilike.%${w}%,versao.ilike.%${w}%`
+      ).join(",");
+
+      const { data: veiculosRelaxados } = await supabaseAdmin
+        .from("veiculos")
+        .select("*")
+        .eq("user_id", tenantUserId)
+        .or(orClauses)
+        .limit(10);
+
+      if (veiculosRelaxados && veiculosRelaxados.length > 0) {
+        const scored = veiculosRelaxados.map(v => {
+          const vNorm = `${v.marca ?? ""} ${v.modelo ?? ""} ${v.versao ?? ""}`
+            .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+          const hits = adWords.filter(w => vNorm.includes(w)).length;
+          const statusBoost = (v as any).status_venda === "DISPONIVEL" ? 100 : 0;
+          return { vehicle: v as Vehicle, score: hits + statusBoost };
+        }).sort((a, b) => b.score - a.score);
+
+        const melhorMatch = scored[0];
+        if (melhorMatch.score > 0) {
+          veiculoPrincipal = melhorMatch.vehicle;
+          await supabaseAdmin.from("leads").update({ veiculo_id: melhorMatch.vehicle.id }).eq("id", lead.id);
+          (lead as any).veiculo_id = melhorMatch.vehicle.id;
+          console.log(`📢 [Ad fallback relaxado] veículo vinculado: ${melhorMatch.vehicle.marca} ${melhorMatch.vehicle.modelo} (score=${melhorMatch.score}, status=${(melhorMatch.vehicle as any).status_venda})`);
+        }
+      }
+
+      if (!veiculoPrincipal) {
+        console.warn(`⚠️ [Ad fallback] Nenhum veículo encontrado para headline: "${adTextRaw}" — palavras: [${adWords.join(", ")}]`);
+      }
+    }
+  }
+
   // ── 7. Busca Híbrida ────────────────────────────────────────────────────────
   // Mensagens de mídia ("Foto", "Video") são intencionalmente curtas — não tratar como msgCurta
   const isMidiaRequest = /^(foto|fotos|video|vídeo|imagem)s?$/i.test(userMessage.trim());

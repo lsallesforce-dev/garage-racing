@@ -14,7 +14,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createHmac, timingSafeEqual } from "crypto";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { processWhatsAppMessage } from "@/lib/process-whatsapp";
-import { isDuplicateMessage, rateLimit, debounceClientImages } from "@/lib/redis";
+import { isDuplicateMessage, rateLimit, debounceClientImages, debounceFirstContact } from "@/lib/redis";
 import { logWebhookError } from "@/lib/error-log";
 import { buscarDadosLead } from "@/lib/meta-ads";
 import { sendMetaMessage, sendMetaCtaButton } from "@/lib/meta";
@@ -309,10 +309,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ status: "subscription_expired" });
     }
 
-    // Deduplicação
+    // Deduplicação por messageId
     if (messageId && await isDuplicateMessage(tenantUserId, messageId)) {
       console.log(`🔁 [Dedup] messageId ${messageId} já processado`);
       return NextResponse.json({ status: "duplicate" });
+    }
+
+    // Debounce anti-saudação-dupla CTWA:
+    // Em Click-to-WhatsApp com LID, a Meta entrega o mesmo lead 2x com messageIds
+    // diferentes. O dedup acima não filtra. Este guard usa o par (tenant, phone)
+    // para garantir que só a primeira entrega nos primeiros 60s é processada.
+    // Só ativa quando tem adReferral (CTWA) — mensagens normais não são afetadas.
+    if (adReferral && phone) {
+      const isFirst = await debounceFirstContact(tenantUserId, phone);
+      if (!isFirst) {
+        console.log(`🔁 [CTWA Debounce] ${phone} já processado nos últimos 60s — ignorando re-entrega`);
+        return NextResponse.json({ status: "ctwa_debounced" });
+      }
     }
 
     if (!userMessage && !audioMediaId) {

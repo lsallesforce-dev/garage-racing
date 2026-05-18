@@ -60,9 +60,9 @@ export async function isDuplicateMessage(
     const key = `dedup:${tenantUserId}:${messageId}`;
     // "OK" = chave era nova = não é duplicado (retorna false)
     // null  = chave já existia = é duplicado (retorna true)
-    // TTL de 30s: cobre retries imediatos do webhook (< 5s) mas não bloqueia
-    // re-entregas legítimas minutos depois (ex: Avisa retry com SenderAlt preenchido).
-    const result = await getClient().set(key, 1, { nx: true, ex: 30 });
+    // TTL de 300s (5min): cobre retries da Meta (até 5min) e re-entregas CTWA
+    // com LID que podem chegar com messageIds diferentes.
+    const result = await getClient().set(key, 1, { nx: true, ex: 300 });
     return result === null;
   } catch (e) {
     // Fail-open: prefere processar do que bloquear silenciosamente
@@ -202,6 +202,37 @@ export async function debounceClientImages(
     return true;
   }
 }
+
+// ─── Debounce de Primeiro Contato (Anti-Saudação Dupla CTWA) ─────────────────
+//
+// Em Click-to-WhatsApp (CTWA) com LID, a Meta pode entregar o mesmo lead
+// duas vezes com messageIds DIFERENTES:
+//   1ª entrega: messageId temporário (LID) com adReferral completo
+//   2ª entrega: messageId real (número do cliente) sem adReferral
+//
+// O dedup por messageId NÃO filtra porque são IDs distintos.
+// Este guard usa SET NX EX no par (tenant + phone) com TTL de 60s:
+//   - Primeira mensagem do phone → retorna true (processa)
+//   - Segunda mensagem do mesmo phone em <60s → retorna false (ignora)
+//
+// Janela de 60s: longa o suficiente para cobrir re-entregas CTWA
+// (geralmente <10s), curta o suficiente para não bloquear mensagens
+// legítimas subsequentes do mesmo cliente.
+//
+export async function debounceFirstContact(
+  tenantUserId: string,
+  phone: string
+): Promise<boolean> {
+  try {
+    const key = `firstcontact:${tenantUserId}:${phone}`;
+    const result = await getClient().set(key, 1, { nx: true, ex: 60 });
+    return result !== null; // "OK" = primeiro contato (processa), null = re-entrega (ignora)
+  } catch (e) {
+    console.warn("⚠️ [Redis] debounceFirstContact falhou — mensagem será processada (fail-open):", e);
+    return true;
+  }
+}
+
 
 // ─── Ping (para Health Check) ─────────────────────────────────────────────────
 export async function redisPing(): Promise<string> {
