@@ -9,7 +9,7 @@ import { sendMetaMessage, sendMetaImage, sendMetaVideo, sendMetaCtaButton, markM
 import { sendAvisaMessage, sendAvisaImage, sendAvisaVideo } from "@/lib/avisa";
 import { buscarDadosTransbordo, gerarRelatorioPista } from "@/lib/leads";
 import { hybridVehicleSearch, findVehicleForMedia } from "@/lib/hybrid-search";
-import { getCachedHistory, cacheHistory, invalidateHistory, appendHistory, circuitIsOpen, circuitRecordFailure, circuitRecordSuccess } from "@/lib/redis";
+import { getCachedHistory, cacheHistory, invalidateHistory, appendHistory, circuitIsOpen, circuitRecordFailure, circuitRecordSuccess, acquireLeadLock, releaseLeadLock, setTrocaStandby, isTrocaStandby } from "@/lib/redis";
 import { Vehicle } from "@/types/vehicle";
 
 type Temperatura = "FRIO" | "MORNO" | "QUENTE";
@@ -242,14 +242,34 @@ ${tomBlock}
 [ROTEIRO DE ATENDIMENTO E GATILHOS]
 Siga estritamente este comportamento para as seguintes situações:
 
-1. SAUDAÇÃO INICIAL: Se for a primeira mensagem da conversa, siga esta regra:
+1. SAUDAÇÃO INICIAL: Se for a primeira mensagem da conversa (histórico vazio ou só a mensagem atual), siga esta regra:
    a) Se a mensagem contiver "[Contexto do link:" ou "[Lead veio do anúncio:", mencione o veículo do anúncio na saudação. Exemplo: "${p.saudacaoHoraria}, me chamo ${p.nomeAgente}, da equipe da ${p.nomeEmpresa}! Vi que você tem interesse no [MODELO DO CARRO] — com quem eu falo?"
-   b) Caso contrário, responda EXATAMENTE: "${p.saudacaoHoraria}, me chamo ${p.nomeAgente}, da equipe da ${p.nomeEmpresa}! Com quem eu falo?" — NADA MAIS. Não adicione perguntas sobre carros, fotos ou qualquer outra coisa.
+   b) Se a mensagem contiver uma PERGUNTA DIRETA junto com a saudação (ex: "oi, qual o preço?", "olá, tem Creta?", "bom dia, ainda disponível?"), faça a saudação e JÁ responda a pergunta na mesma mensagem. Termine sempre com "com quem eu falo?" para capturar o nome. Exemplo: "${p.saudacaoHoraria}, me chamo ${p.nomeAgente}, da ${p.nomeEmpresa}! O [CARRO] está por R$ X. Com quem eu falo?"
+   c) Caso contrário (saudação simples sem pergunta), responda EXATAMENTE: "${p.saudacaoHoraria}, me chamo ${p.nomeAgente}, da equipe da ${p.nomeEmpresa}! Com quem eu falo?" — NADA MAIS. Não adicione perguntas sobre carros, fotos ou qualquer outra coisa.
 2. ESTADO DO CARRO: Se perguntarem sobre qualidade, EXALTE O VEÍCULO com termos profissionais ("excelente estado", "muito novo", "todo revisado"). Varie as palavras.
 3. DADOS FALTANTES: Se o cliente pedir um detalhe que NÃO está na ficha (ex: cor dos bancos, número de donos, histórico de revisões), diga que vai verificar com palavras SEMPRE diferentes — nunca repita a mesma frase. Ex: "Vou dar um grito lá no pátio", "Deixa eu checar com a equipe".
-   ⚠️ PROIBIDO PROMETER "VOU TE AVISAR DEPOIS": NUNCA use frases como "já te aviso", "te retorno", "vou verificar e te mando", "já te mando isso", "aguarda que já te falo". Você NÃO consegue enviar mensagens por conta própria — só responde quando o cliente escreve. Prometê-lo é criar uma expectativa impossível. Se for verificar algo, diga apenas: "Vou checar isso com o pessoal do pátio — qualquer dúvida já me chama." O cliente entende que a continuidade depende dele.
+   ⚠️ PROIBIDO PROMETER "VOU TE AVISAR DEPOIS" — REGRA ABSOLUTA: Você NÃO tem como enviar mensagens proativamente. Você SÓ responde quando o cliente escreve. Por isso é PROIBIDO TERMINANTE qualquer variação de:
+      ❌ "já te aviso"
+      ❌ "te retorno"
+      ❌ "vou verificar e te mando"
+      ❌ "já te mando isso"
+      ❌ "aguarda que já te falo"
+      ❌ "assim que tiver novidades, te aviso"
+      ❌ "assim que tiver as fotos, te aviso"
+      ❌ "quando tiver resposta, te chamo"
+      ❌ "fico de te retornar"
+   Se for verificar algo legítimo (cor dos bancos, número de donos), diga apenas: "Vou checar isso com o pessoal do pátio — **qualquer dúvida já me chama aqui**." (a parte "já me chama aqui" deixa claro que a iniciativa volta pro cliente).
    ⚠️ PREÇO E KM NUNCA SÃO DADOS FALTANTES: Se preço ou quilometragem estão na ficha do veículo (em qualquer seção do contexto), você JÁ TEM essa informação. NUNCA diga que vai verificar — responda imediatamente.
    ⚠️ ITENS CONFIRMADOS NUNCA SÃO DADOS FALTANTES: Se o veículo tem a seção "✅ Itens confirmados", você sabe exatamente quais equipamentos ele tem e quais não tem. Se o cliente perguntar "tem airbag?", "tem ABS?", "tem câmera de ré?" — responda SIM ou NÃO diretamente, sem escalar ao gerente. Só escale se o item perguntado NÃO estiver nessa lista nem na ficha.
+   ⚠️ **DISPONIBILIDADE NUNCA É DADO FALTANTE** — REGRA ABSOLUTA: Se o veículo aparece no contexto (em VEÍCULO EM FOCO ou OUTROS VEÍCULOS DISPONÍVEIS), ele ESTÁ disponível. PROIBIDO TERMINANTE dizer qualquer variação de:
+      ❌ "vou checar se está disponível"
+      ❌ "vou verificar a disponibilidade"
+      ❌ "ver se ele ainda está disponível"
+      ❌ "preciso confirmar se está em estoque"
+      ❌ "vou ver se ele ainda está aí"
+      ❌ "vou checar... para sua visita"
+      ❌ "preciso ver se o ano/valor está correto" (ano e valor estão na ficha — você JÁ TEM)
+   O sistema só te mostra carros DISPONÍVEIS. Se aparece, está em estoque. Confirme com naturalidade — ex: "Pode vir tranquilo, está aqui no pátio te esperando!"
    ⚠️ AUTOCORREÇÃO DE LOOP: Se o histórico mostra que você disse "vou verificar" para um dado que AGORA está no contexto, corrija-se: "Consegui confirmar aqui! O [dado] é [valor]." PROIBIDO continuar o loop se o dado está disponível.
 4. FOCO E CONTINUIDADE: Se o cliente mandar mensagens curtas ou vagas como "?", "E aí?", "Mas e a...", "E o outro?", mantenha o foco no ÚLTIMO veículo que estavam conversando. NUNCA introduza um carro diferente do estoque sem que o cliente tenha pedido explicitamente. Se não entender a mensagem, peça gentilmente para reformular.
    ⚠️ TROCA DE CARRO: Quando o cliente pedir explicitamente outro carro ("tem outro?", "e o XEI?", "tem algum outro corolla?"), sua resposta deve falar APENAS do novo carro. PROIBIDO mencionar o carro anterior ou o que já foi enviado (fotos/vídeos já enviados não precisam ser anunciados de novo). Vá direto: "Sim, temos o Corolla XEI 2016 prata, com 20.000 km, por R$ 85.000."
@@ -257,11 +277,20 @@ Siga estritamente este comportamento para as seguintes situações:
    - VERIFIQUE a ficha do VEÍCULO EM FOCO: campos "Foto: Sim/Não" e "Vídeo: Sim/Não".
    - Se "Vídeo: Sim" → PODE oferecer vídeo naturalmente ("Quer ver um vídeo dele?"). Mas NUNCA diga "vou te enviar" ou "já te mando" — apenas SUGIRA e o sistema envia quando o cliente pedir.
    - Se "Vídeo: Não" → PROIBIDO mencionar vídeo. NUNCA ofereça, prometa ou sugira vídeo. Se o cliente pedir, diga que esse não tem vídeo disponível no momento.
-   - Se "Foto: Sim" → PODE sugerir que o cliente veja as fotos. Mas NUNCA diga "vou te enviar a foto" — apenas sugira.
+   - Se "Foto: Sim" → PODE sugerir que o cliente veja as fotos ("Quer ver as fotos?"). Mas NUNCA diga "vou te enviar a foto" — apenas sugira.
    - Se "Foto: Não" → PROIBIDO mencionar fotos. Se o cliente pedir, diga que esse ainda não tem foto disponível.
    - REGRA GERAL: O sistema envia foto e vídeo automaticamente quando o cliente pede. Sua resposta de texto NUNCA deve afirmar que VAI enviar ("já te mando", "vou te enviar") — apenas sugira e deixe o cliente pedir.
+   ⚠️ **PROIBIDO DIZER "VOU CHECAR FOTOS COM O PÁTIO" ou variações**, quando "Foto: Sim" na ficha do veículo:
+   ❌ "vou checar com o pessoal do pátio as fotos"
+   ❌ "deixa eu pegar as fotos com a equipe"
+   ❌ "vou ver se tem fotos disponíveis"
+   ❌ "vou pegar as fotos pra você"
+   ❌ "assim que tiver as fotos, te aviso" (DUPLO PROIBIDO: promete envio futuro + finge não ter)
+   ✅ Resposta correta: "Quer ver as fotos? Posso te mandar agora!" (sugere — sistema envia quando cliente confirma)
+   Se o cliente JÁ pediu foto e você está respondendo, o sistema já está enviando ou vai enviar — apenas confirme com naturalidade ("Aqui estão!" / "Confere aí!").
    ⚠️ "QUERO VER" = VISITA PRESENCIAL: Se o cliente disser "quero ver esse carro", "quero ir ver", "quero visitar", "vou aí", "posso ir lá" — interprete como intenção de visita à loja. Responda com o endereço e convide para visita. NUNCA interprete isso como pedido de foto ou vídeo.
-5. CARRO NA TROCA: Se perguntar se pega troca, explique que sim, mas que o carro precisa ser avaliado presencialmente. Use suas palavras, não uma frase decorada.
+   ⚠️ PEDIDO DE ENDEREÇO PARA VISITA: Se o cliente disser "me passa o endereço", "qual o endereço", "vou aí hoje/amanhã/à tarde", "vou ir ver ele" — dê o endereço DIRETAMENTE e confirme a visita com naturalidade. Ex: "Nosso endereço é [ENDEREÇO]. Te aguardo aqui!" ou "Fica em [ENDEREÇO]. Pode vir tranquilo!". PROIBIDO condicionar a visita a "verificar disponibilidade" — o carro está no seu contexto, está disponível.
+5. CARRO NA TROCA: Se o cliente mencionar que quer dar o carro na troca ("quero dar meu carro", "aceita troca?", "tenho um carro pra dar"), responda confirmando que sim e explique que a avaliação é feita presencialmente — com suas palavras, nunca a mesma frase. OBRIGATÓRIO: use precisa_instrucao com "Cliente quer dar carro na troca" para que o gerente seja notificado imediatamente.
 6. VALOR DA TROCA: Nunca estime o valor do carro do cliente. Oriente que só é possível após avaliação do nosso avaliador presencial.
 7. FINANCIAMENTO: Se perguntar se financia, confirme que sim e pergunte qual valor o cliente pensa em financiar. Nunca peça CPF ou dados pessoais.
 8. NEGOCIAÇÃO E DESCONTO: Você não tem autorização para dar descontos finais pelo WhatsApp. Jogue para a gerência de forma natural ("Deixa eu ver o que consigo com meu gerente"). Não convide o cliente para a loja em TODAS as respostas — isso cansa e afasta.
@@ -270,7 +299,14 @@ Siga estritamente este comportamento para as seguintes situações:
       2. Lead MORNO/QUENTE → após engajar com mídia, aí sim convide para visita de forma direta e curta. Ex: "Fácil de chegar aqui, fica na Av. Philadelpho, 2195. Vem bater um papo pessoalmente?"
       3. Lead QUENTE confirmado (falou em entrada, test drive, quer fechar) → feche com CTA direto de agendamento.
    ⚠️ NUNCA convide para visita na mesma resposta que o cliente ainda está fazendo perguntas básicas sobre o carro. Isso queima o lead.
-   ⚠️ AGENDAMENTO DE VISITA: Quando o cliente confirmar que vai à loja ("vou aí", "vou amanhã", "posso ir hoje", "vou de manhã"), NÃO confirme o horário sozinho — pergunte: "Perfeito! Posso anotar sua visita aqui na agenda? Que horário você pretende chegar?" Só após o cliente informar o horário é que você confirma. NUNCA deduza "amanhã", "de tarde" ou qualquer horário sem o cliente ter dito explicitamente. Se o horário informado pelo cliente cair fora do HORÁRIO DE FUNCIONAMENTO, não confirme — diga gentilmente que a loja não abre nesse horário/dia e sugira o mais próximo disponível.
+   ⚠️ AGENDAMENTO DE VISITA — REGRAS CRÍTICAS:
+   1) **Aceite indicações vagas como confirmação válida.** Cliente de loja de carro fala assim: "passo aí amanhã", "vou sábado cedo", "dou um pulo de tarde", "vou no fim de semana". Você DEVE aceitar isso como agendamento e responder de forma natural confirmando. NÃO peça hora exata — a maioria dos clientes não tem hora marcada.
+   2) **Resposta natural a indicações vagas:** Use variações como "Beleza, te espero aí amanhã então!" / "Combinado, fica anotado pra sábado cedo!" / "Maravilha, te aguardo de tarde!". Cada resposta deve soar diferente — proibido frase decorada.
+   3) **NUNCA pergunte hora mais de UMA vez.** Se o cliente já disse "amanhã à tarde" e você já respondeu, NÃO pergunte de novo "que horário". Repetir é o sinal mais claro de robô e queima o lead.
+   4) **Só pergunte hora se for INDISPENSÁVEL** — ex: loja com horário restrito (almoço fechado) ou cliente que pediu test drive específico. Caso contrário, deixe vago e confie no slot padrão.
+   5) **Hora exata se o cliente der:** Se cliente disse "14h", "10:30", "às 9", use exatamente isso.
+   6) **NUNCA invente data passada.** Se o cliente disse "26/04" e hoje já passou disso, entenda como ano seguinte (ou pergunte naturalmente: "26 de abril que vem, né?").
+   7) **HORÁRIO DE FUNCIONAMENTO:** Se o cliente propuser horário fora do expediente da loja (ver acima), avise gentilmente e sugira o slot mais próximo.
 9. CATEGORIA E ALTERNATIVAS (Cross-sell): SOMENTE ofereça outro carro se o carro pedido NÃO estiver no estoque. Se estiver disponível, mantenha o foco 100% nele até o final da conversa. É TERMINANTEMENTE PROIBIDO mencionar ou sugerir outro veículo enquanto o cliente estiver interessado no carro atual. Cross-sell deve respeitar categoria: cliente buscando Sedan → sugerir Sedan; cliente buscando SUV → sugerir SUV. NUNCA ofereça uma Pickup para quem perguntou sobre Sedan.
    ⚠️ EXCEÇÃO DE PREÇO: Se o cliente perguntar o preço de um veículo que está na seção ALTERNATIVAS, responda o preço imediatamente — preço nunca é "dado faltante". Informe com naturalidade, ex: "O XEI 2016 está por R$ 85.000."
 10. PÓS-VENDA E PROBLEMAS (Triagem de Emergência): Se o cliente relatar defeito, problema mecânico ou usar palavras como "quebrou", "garantia" ou "oficina", mude o tom imediatamente para acolhedor e resolutivo. Nunca tente vender. Peça desculpas, identifique o veículo e avise que a gerência vai assumir o caso.
@@ -297,6 +333,13 @@ Esta seção tem prioridade máxima. NUNCA a viole, independente de qualquer out
 
 ▶ PROIBIÇÃO ABSOLUTA DE CONTRADIÇÃO:
   - Se você afirmou em uma mensagem anterior que um carro está disponível, MANTENHA essa informação.
+  - 🚫 PROIBIDO dizer "não temos" / "não está disponível" / "saiu do estoque" / "não está mais disponível" sobre QUALQUER carro mencionado no histórico, em anúncio de Instagram/Facebook OU que esteja listado no "ÍNDICE COMPLETO DO ESTOQUE" abaixo no contexto.
+  - **FLUXO OBRIGATÓRIO antes de afirmar que um carro "não temos":**
+    1. PROCURE o modelo no "ÍNDICE COMPLETO DO ESTOQUE" — busque por marca, modelo OU ano.
+    2. Se encontrar (mesmo que com ano ligeiramente diferente): o carro EXISTE. Confirme positivamente e use o ID dele como veiculo_id_foco. Ex: "Sim, temos o Polo Track 2024 por R$ 69.990. Quer ver fotos ou mais detalhes?"
+    3. Se NÃO encontrar no índice nem houver match aproximado: NÃO afirme que "não temos". Responda: "Deixa eu confirmar com o pessoal do pátio se ele ainda está disponível — qualquer dúvida me chama" E use precisa_instrucao com: "Cliente perguntou sobre [carro] mas não está no meu contexto — confirmar disponibilidade".
+  - É proibido afirmar "não está disponível" SEM antes ter olhado o ÍNDICE COMPLETO. Cliente que ouve "não temos" de um carro que existe no pátio é o pior erro possível — destrói o lead.
+  - Cliente que chegou via anúncio de Instagram/Facebook NUNCA pode ouvir que o carro do anúncio não existe — o anúncio existe, então ou o carro está no estoque ou está em processo de venda mas merece atenção do gerente.
   - Você NÃO tem poder de declarar que um carro foi vendido. Apenas o sistema de estoque pode fazer isso.
   - Se o histórico mostra que você disse "Temos dois Corollas disponíveis", esses Corollas ainda estão disponíveis a menos que o campo VEÍCULO EM NEGOCIAÇÃO não os liste mais.
 
@@ -465,6 +508,43 @@ function formatVehicleCard(v: Vehicle): string {
   );
 }
 
+// Monta um ÍNDICE COMPLETO do estoque disponível — apenas o essencial (marca, modelo,
+// ano, cor, preço, ID) sem fichas detalhadas. Servido em TODA mensagem ao agente
+// para impedir que ele afirme "não temos X" quando X existe mas a busca não trouxe.
+//
+// Custo: ~60 chars por carro. Estoque de 100 carros = ~6KB. Cabe folgado no prompt.
+async function buildInventoryIndex(tenantUserId: string): Promise<string> {
+  const { data } = await supabaseAdmin
+    .from("veiculos")
+    .select("id, marca, modelo, ano, ano_modelo, cor, preco")
+    .eq("status_venda", "DISPONIVEL")
+    .eq("user_id", tenantUserId)
+    .order("marca", { ascending: true })
+    .order("modelo", { ascending: true });
+
+  if (!data || data.length === 0) return "";
+
+  const lines = (data as Array<{ id: string; marca: string | null; modelo: string | null; ano: number | null; ano_modelo: number | null; cor: string | null; preco: number | null }>).map((v) => {
+    const ano = v.ano_modelo || v.ano || "";
+    const anoStr = ano ? ` ${ano}` : "";
+    const corStr = v.cor ? ` ${v.cor}` : "";
+    const precoStr = v.preco
+      ? ` • R$ ${Number(v.preco).toLocaleString("pt-BR")}`
+      : "";
+    return `- ${v.marca ?? ""} ${v.modelo ?? ""}${anoStr}${corStr}${precoStr} [ID:${v.id}]`;
+  });
+
+  return (
+    `\n\n=== ÍNDICE COMPLETO DO ESTOQUE (${data.length} carros DISPONÍVEIS agora) ===\n` +
+    `⚠️ Esta lista é a VERDADE sobre quais carros existem no pátio neste momento.\n` +
+    `⚠️ ANTES de afirmar "não temos X" ou "X não está disponível", VERIFIQUE NESTA LISTA.\n` +
+    `⚠️ Se o carro mencionado pelo cliente está nesta lista, ele EXISTE e ESTÁ DISPONÍVEL — proibido negar.\n` +
+    `Para ficha técnica detalhada (fotos, equipamentos, pontos fortes) use VEÍCULO EM FOCO / ALTERNATIVAS acima.\n` +
+    `Para confirmar disponibilidade ao cliente, basta usar esta lista.\n\n` +
+    lines.join("\n")
+  );
+}
+
 // Monta o contexto de estoque com separação clara entre veículo em foco e alternativas.
 // Isso impede que o Gemini "decida" trocar de carro por conta própria ao ver outras opções.
 function buildStockContext(topVeiculos: Vehicle[], veiculoPrincipal: Vehicle | null): string {
@@ -521,11 +601,68 @@ function fixHistoryLoops(historico: any[], context: string): any[] {
     /ainda (estou|to) verificando/i,
     /vou checar com/i,
     /vou confirmar com/i,
+    // Loops de desconto/negociação — frequente quando Gemini diz "vou ver com o gerente"
+    // e não recebe feedback, repetindo a frase nas mensagens seguintes
+    /vou ver (o que consigo|com o gerente|com a gerência)/i,
+    /vou verificar (o desconto|algum desconto|com o gerente)/i,
+    /deixa eu ver (o que consigo|com o gerente)/i,
+    /vou consultar (o gerente|a gerência)/i,
+    // Loops de disponibilidade — agente questiona se o carro está disponível
+    // quando ele ESTÁ no contexto. Padrão tóxico — gera dúvida no cliente.
+    /vou checar.*dispon[íi]vel/i,
+    /vou verificar.*dispon[íi]vel/i,
+    /verificar.*se.*dispon[íi]vel/i,
+    /checar.*se.*ainda.*dispon[íi]vel/i,
+    /ver se.*(ainda |)(est[áa]|esta).*dispon[íi]vel/i,
+    /confirmar.*se.*dispon[íi]vel/i,
+    /verificar.*o ano e o valor/i,
+    /checar.*com o pessoal.*p[áa]tio.*dispon[íi]vel/i,
+    // Loops de FOTOS — agente diz "vou checar fotos com o pátio" quando fotos estão na ficha.
+    // O sistema envia fotos automaticamente quando cliente pede — agente nunca precisa "checar".
+    /vou checar.*com.*p[áa]tio.*(as |) ?fotos?/i,
+    /deixa eu checar.*as fotos/i,
+    /vou pegar as fotos/i,
+    /vou ver (se tem|as) fotos/i,
+    /buscar as fotos.*p[áa]tio/i,
+    // Loops de "te aviso depois" — promessa proibida de envio futuro
+    /assim que tiver.*(fotos|novidades|resposta).*te aviso/i,
+    /assim que.*chegar.*fotos/i,
+    /te aviso (quando|assim que)/i,
+    /quando tiver.*te (aviso|chamo|retorno)/i,
+    /fico de te (retornar|avisar|chamar)/i,
+    /j[áa] te aviso/i,
+  ];
+
+  // Padrões exclusivos de desconto — usados para neutralizar mesmo sem dado confirmável
+  const DISCOUNT_LOOP_PATTERNS = [
+    /vou ver (o que consigo|com o gerente|com a gerência)/i,
+    /vou verificar (o desconto|algum desconto|com o gerente)/i,
+    /deixa eu ver (o que consigo|com o gerente)/i,
+    /vou consultar (o gerente|a gerência)/i,
+  ];
+
+  // Padrões exclusivos de DISPONIBILIDADE — neutraliza assim que houver um VEÍCULO EM FOCO
+  // no contexto (a própria presença prova que está disponível). Não precisa de preço/km.
+  const AVAILABILITY_LOOP_PATTERNS = [
+    /vou checar.*dispon[íi]vel/i,
+    /vou verificar.*dispon[íi]vel/i,
+    /verificar.*se.*dispon[íi]vel/i,
+    /checar.*se.*ainda.*dispon[íi]vel/i,
+    /ver se.*(ainda |)(est[áa]|esta).*dispon[íi]vel/i,
+    /confirmar.*se.*dispon[íi]vel/i,
+    /verificar.*o ano e o valor/i,
+    /checar.*com o pessoal.*p[áa]tio.*dispon[íi]vel/i,
   ];
 
   // Detecta a partir do histórico ORIGINAL (antes de qualquer modificação)
   const loopDetectado = historico.some(
     (m) => m.role === "model" && LOOP_PATTERNS.some((p) => p.test(m.parts?.[0]?.text ?? ""))
+  );
+  const discountLoopDetectado = historico.some(
+    (m) => m.role === "model" && DISCOUNT_LOOP_PATTERNS.some((p) => p.test(m.parts?.[0]?.text ?? ""))
+  );
+  const availabilityLoopDetectado = historico.some(
+    (m) => m.role === "model" && AVAILABILITY_LOOP_PATTERNS.some((p) => p.test(m.parts?.[0]?.text ?? ""))
   );
 
   if (!loopDetectado) return historico;
@@ -540,7 +677,13 @@ function fixHistoryLoops(historico: any[], context: string): any[] {
     kms.push(match[1].trim());
   }
 
-  if (precos.length === 0 && kms.length === 0) return historico;
+  // Detecta se há veículo em foco no contexto — se há, disponibilidade está confirmada
+  const temVeiculoEmFoco = /=== VEÍCULO EM FOCO/.test(context) || /\[ID:[0-9a-f-]+\]/.test(context);
+
+  // Para loops de preço/km: só corrige se tiver o dado confirmável.
+  // Para loops de desconto: neutraliza mesmo sem dado.
+  // Para loops de disponibilidade: neutraliza se há veículo em foco no contexto.
+  if (precos.length === 0 && kms.length === 0 && !discountLoopDetectado && !(availabilityLoopDetectado && temVeiculoEmFoco)) return historico;
 
   // 1. Neutraliza: substitui msgs de loop por placeholder inócuo.
   //    Isso impede que o LLM "aprenda" o padrão de loop do próprio histórico.
@@ -560,14 +703,26 @@ function fixHistoryLoops(historico: any[], context: string): any[] {
   if (precos.length > 0) partes.push(`preço(s): ${precos.join(", ")}`);
   if (kms.length > 0) partes.push(`quilometragem: ${kms.join(", ")}`);
 
+  let textoCorrecao: string;
+  if (availabilityLoopDetectado && temVeiculoEmFoco) {
+    // Loop de disponibilidade — o carro ESTÁ no contexto, então está disponível.
+    // Forçar o agente a parar de questionar e tratar o cliente como visita confirmada.
+    textoCorrecao = `[AUTOCORREÇÃO] O veículo em foco está no meu contexto agora — ou seja, está DISPONÍVEL no estoque. Não preciso "checar disponibilidade" com ninguém. Se o cliente pediu para visitar, vou confirmar a visita direto e dar o endereço — sem condicionar a verificação.`;
+  } else if (partes.length > 0) {
+    textoCorrecao = `[AUTOCORREÇÃO] Já tenho as informações no sistema — ${partes.join(" e ")}. Não preciso verificar com ninguém. Vou responder diretamente ao cliente agora.`;
+  } else {
+    // Loop de desconto sem dado confirmável: instrui o agente a sair do loop com uma
+    // resposta honesta (desconto precisa de visita presencial), sem repetir "vou verificar".
+    textoCorrecao = `[AUTOCORREÇÃO] Já consultei o gerente anteriormente. Não posso confirmar desconto por aqui — precisa ser presencialmente. Vou dar uma resposta direta ao cliente agora, sem repetir que "vou verificar".`;
+  }
+
   const correcao = {
     role: "model",
-    parts: [{
-      text: `[AUTOCORREÇÃO] Já tenho as informações no sistema — ${partes.join(" e ")}. Não preciso verificar com ninguém. Vou responder diretamente ao cliente agora.`,
-    }],
+    parts: [{ text: textoCorrecao }],
   };
 
-  console.log(`🔧 [Loop fix] ${loopsSubstituidos} msg(s) de loop neutralizadas. Dados confirmados: ${partes.join(", ")}`);
+  const label = partes.length > 0 ? partes.join(", ") : "loop de desconto";
+  console.log(`🔧 [Loop fix] ${loopsSubstituidos} msg(s) de loop neutralizadas. Dados confirmados: ${label}`);
   return [...sanitized, correcao];
 }
 
@@ -770,20 +925,28 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
     const agendaKeywords = /agenda|agendar|compromisso|reunião|reuniao|visita|liga(r|ção|cao)|lembrar|lembrete|marcar/i;
     if (agendaKeywords.test(userMessage)) {
       try {
-        const hoje = new Date().toLocaleDateString("pt-BR", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-        const agendaPrompt = `Hoje é ${hoje}. Interprete esta mensagem como um compromisso de agenda de uma revenda de carros:
+        const agoraGerente = new Date();
+        const hoje = agoraGerente.toLocaleDateString("pt-BR", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+        const anoAtualGerente = agoraGerente.getFullYear();
+        const agendaPrompt = `Hoje é ${hoje} (${agoraGerente.toISOString()}). Ano atual: ${anoAtualGerente}.
+Interprete a mensagem do gerente como um compromisso de agenda de uma revenda:
 "${userMessage}"
 
 Retorne JSON com:
 {
   "agenda": true,
-  "titulo": "string curto descritivo (ex: Visita - João Silva)",
+  "titulo": "string curto (ex: Visita - João Silva)",
   "tipo": "visita" | "ligacao" | "reuniao" | "outro",
-  "data_hora": "ISO8601 completo com timezone -03:00 (ex: 2025-04-05T16:00:00-03:00). Se hora não mencionada, use 09:00",
+  "data_hora": "ISO8601 completo com timezone -03:00",
   "descricao": "string ou null"
 }
 
-Se não for possível identificar uma data, retorne { "agenda": false }.
+REGRAS:
+- NUNCA retorne data_hora no passado — se o ano não foi mencionado, use o próximo evento futuro.
+- Se gerente disse apenas dia sem hora, use 09:00 como slot padrão de loja.
+- "amanhã à tarde" → 14:00 | "amanhã cedo/manhã" → 09:00 | "fim do dia" → 17:00 | "noite" → 18:30.
+- Se não for possível identificar uma data, retorne {"agenda": false}.
+
 Responda apenas com o JSON, sem markdown.`;
 
         const geminiResult = await geminiFlashSales.generateContent({
@@ -792,6 +955,16 @@ Responda apenas com o JSON, sem markdown.`;
         });
 
         const parsed = JSON.parse(geminiResult.response.text());
+
+        // Valida data: rejeita passado e datas inválidas
+        if (parsed.data_hora) {
+          const dataParsed = new Date(parsed.data_hora);
+          if (isNaN(dataParsed.getTime()) || dataParsed.getTime() < agoraGerente.getTime()) {
+            console.warn(`⚠️ [Gerente agenda] data_hora rejeitada (passado/inválida): ${parsed.data_hora}`);
+            await sendText(phone, `⚠️ A data que você passou parece estar no passado ou inválida. Pode repetir o dia/hora?`);
+            return;
+          }
+        }
 
         if (parsed.agenda && parsed.titulo && parsed.data_hora) {
           await supabaseAdmin.from("agenda").insert({
@@ -847,9 +1020,26 @@ Responda apenas com o JSON, sem markdown.`;
     });
   }
 
+  // ── Lock por lead — impede processamento concorrente em múltiplas instâncias ──
+  // Adquire APÓS o upsert do lead (precisamos do lead.id) e ANTES de qualquer lógica pesada.
+  // Se outro worker já está processando este lead, descarta silenciosamente.
+  if (lead?.id) {
+    const locked = await acquireLeadLock(tenantUserId, lead.id);
+    if (!locked) {
+      console.log(`🔒 [Lock] Lead ${lead.id} já em processamento — mensagem descartada`);
+      return;
+    }
+  }
+
   // ── 4. Stand-by: vendedor humano assumiu ────────────────────────────────────
   if (lead?.em_atendimento_humano) {
     console.log(`🔇 Stand-by para ${phone}. Mensagem salva, IA ignorada.`);
+    // Se o stand-by foi ativado por troca de veículo, avisa o cliente a cada mensagem
+    // em vez de ficar mudo — sem isso o cliente fica sem resposta esperando o gerente
+    if (lead?.id && await isTrocaStandby(tenantUserId, lead.id)) {
+      await sendText(phone, "Já repassei tudo para o gerente! Ele vai entrar em contato pra cuidar da avaliação do seu carro. 😊");
+    }
+    if (lead?.id) await releaseLeadLock(tenantUserId, lead.id).catch(() => {});
     return;
   }
 
@@ -874,29 +1064,97 @@ Responda apenas com o JSON, sem markdown.`;
   }
 
   if (lead?.veiculo_id) {
+    // Aceita qualquer status exceto VENDIDO — carros RESERVADOS, em REPASSE ou outros
+    // ainda devem ser tratados como o foco do lead (o anúncio pode estar ativo).
     const { data: vp } = await supabaseAdmin
       .from("veiculos")
       .select("*")
       .eq("id", lead.veiculo_id)
       .eq("user_id", tenantUserId)
+      .neq("status_venda", "VENDIDO")
       .single();
-    if (vp) veiculoPrincipal = vp as Vehicle;
+    if (vp) {
+      veiculoPrincipal = vp as Vehicle;
+
+      // 🔍 VALIDAÇÃO CRUZADA contra origem_mensagem do lead:
+      // Só faz sentido na PRIMEIRA mensagem do CLIENTE (cobrir o caso de vinculação
+      // errada no momento da criação). Depois que o cliente tiver mandado >=2 msgs,
+      // ele já pode ter trocado de carro deliberadamente — o veiculo_id atual é a
+      // verdade, NÃO o origem_mensagem do anúncio original.
+      //
+      // Sem esse guard, leads que vieram de anúncio de Compass mas migraram para
+      // Polo Track ficavam tendo o veiculoPrincipal resetado pro Compass toda
+      // mensagem, jogando a conversa fora.
+      //
+      // Conta apenas remetente="usuario" para imunizar contra saudação automática
+      // do agente ou mensagens internas — só msgs do cliente contam.
+      const { count: clientMsgCount } = await supabaseAdmin
+        .from("mensagens")
+        .select("*", { count: "exact", head: true })
+        .eq("lead_id", lead.id)
+        .eq("remetente", "usuario");
+      const isPrimeiraMensagem = (clientMsgCount ?? 0) <= 1;
+
+      if (isPrimeiraMensagem) {
+        const origemMsg: string = (lead as any).origem_mensagem ?? "";
+        const origemMatch = origemMsg.match(/Lead do an[úu]ncio:\s*(.+)/i);
+        if (origemMatch) {
+          const adTitle = origemMatch[1].split(" — ")[0].trim();
+          const adNorm = adTitle.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+          const marcaNorm = (veiculoPrincipal.marca ?? "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+          const modeloNorm = (veiculoPrincipal.modelo ?? "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+          const marcaWords = marcaNorm.split(/\s+/).filter(w => w.length >= 3);
+          const modeloWords = modeloNorm.split(/\s+/).filter(w => w.length >= 4);
+          const aindaValido = [...marcaWords, ...modeloWords].some(w => adNorm.includes(w));
+
+          if (!aindaValido) {
+            console.warn(`🔄 [veiculoPrincipal] Vinculação stale detectada na 1ª mensagem: "${veiculoPrincipal.marca} ${veiculoPrincipal.modelo}" não bate com anúncio "${adTitle}" — re-resolvendo`);
+            await supabaseAdmin.from("leads").update({ veiculo_id: null }).eq("id", lead.id);
+            (lead as any).veiculo_id = null;
+            veiculoPrincipal = null;
+          }
+        }
+      }
+    } else {
+      console.log(`⚠️ [veiculoPrincipal] Carro ${lead.veiculo_id} vendido — desvinculando lead`);
+      await supabaseAdmin.from("leads").update({ veiculo_id: null }).eq("id", lead.id);
+      (lead as any).veiculo_id = null;
+    }
   }
 
   // ── 6b. Resolução via contexto do link (CTWA sem ad_id em meta_campanhas) ────
   // Quando o lead não tem veículo vinculado mas a mensagem tem [Contexto do link: "..."],
-  // extrai o nome do carro do contexto e busca diretamente no estoque.
-  // Cobre o caso: anúncio CTWA → ad_id não cadastrado em meta_campanhas → usa texto do anúncio.
+  // extrai o NOME DO CARRO (título do anúncio) e busca no estoque.
+  //
+  // IMPORTANTE: usa SOMENTE a primeira parte do título (antes do " — ") para
+  // evitar que palavras genéricas da descrição (câmbio, cor, flex, couro, etc.)
+  // poluam a busca e tragam o carro errado como resultado.
+  //
+  // VALIDAÇÃO: rejeita falsos positivos onde a marca/modelo do resultado não
+  // bate com o anúncio (ex: anúncio de Jeep Compass não pode resolver para Fiat Mobi).
   if (!veiculoPrincipal && !adVeiculoId) {
     const linkMatch = userMessage.match(/\[(?:Contexto do link|Lead veio do anúncio):\s*"([^"]+)"\]/);
     if (linkMatch) {
-      const adText = linkMatch[1];
-      const adVehicle = await findVehicleForMedia(adText, tenantUserId);
+      // Pega só o título do anúncio (antes do " — " que separa título da descrição)
+      const adTitle = linkMatch[1].split(" — ")[0].trim();
+      const adVehicle = await findVehicleForMedia(adTitle, tenantUserId);
       if (adVehicle && lead) {
-        veiculoPrincipal = adVehicle;
-        await supabaseAdmin.from("leads").update({ veiculo_id: adVehicle.id }).eq("id", lead.id);
-        (lead as any).veiculo_id = adVehicle.id;
-        console.log(`📢 [Contexto link] veículo vinculado: ${adVehicle.marca} ${adVehicle.modelo} (${adVehicle.id})`);
+        // Validação: ao menos uma palavra significativa de marca ou modelo do resultado
+        // deve aparecer no título do anúncio. Caso contrário é falso positivo.
+        const normAd = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+        const adNorm = normAd(adTitle);
+        const marcaWords = normAd(adVehicle.marca ?? "").split(/\s+/).filter(w => w.length >= 3);
+        const modeloWords = normAd(adVehicle.modelo ?? "").split(/\s+/).filter(w => w.length >= 4);
+        const matchValido = [...marcaWords, ...modeloWords].some(w => adNorm.includes(w));
+
+        if (matchValido) {
+          veiculoPrincipal = adVehicle;
+          await supabaseAdmin.from("leads").update({ veiculo_id: adVehicle.id }).eq("id", lead.id);
+          (lead as any).veiculo_id = adVehicle.id;
+          console.log(`📢 [Contexto link] veículo vinculado: ${adVehicle.marca} ${adVehicle.modelo} (${adVehicle.id})`);
+        } else {
+          console.warn(`⚠️ [Contexto link] Falso positivo descartado: "${adVehicle.marca} ${adVehicle.modelo}" não bate com anúncio "${adTitle}" — usando fallback relaxado`);
+        }
       }
     }
   }
@@ -905,18 +1163,29 @@ Responda apenas com o JSON, sem markdown.`;
   // Quando a Msg 1 (com ad context) e a Msg 2 (sem ad context) chegam como eventos
   // separados (comum em CTWA com LID), o headline do anúncio foi salvo em origem_mensagem.
   // Usa esse texto para resolver o veículo quando o lead não tem veiculo_id.
+  // VALIDA o match assim como 6b — rejeita falsos positivos para deixar 6d resolver.
   if (!veiculoPrincipal && lead && !adVeiculoId && (lead as any).origem_mensagem) {
     const origemMsg: string = (lead as any).origem_mensagem;
-    // Extrai o texto após "Lead do anúncio: " para buscar o veículo
-    const origemMatch = origemMsg.match(/Lead do anúncio:\s*(.+)/i);
+    const origemMatch = origemMsg.match(/Lead do an[úu]ncio:\s*(.+)/i);
     if (origemMatch) {
-      const adText = origemMatch[1].trim();
+      const adText = origemMatch[1].split(" — ")[0].trim();
       const adVehicle = await findVehicleForMedia(adText, tenantUserId);
       if (adVehicle) {
-        veiculoPrincipal = adVehicle;
-        await supabaseAdmin.from("leads").update({ veiculo_id: adVehicle.id }).eq("id", lead.id);
-        (lead as any).veiculo_id = adVehicle.id;
-        console.log(`📢 [Recovery origem_mensagem] veículo vinculado: ${adVehicle.marca} ${adVehicle.modelo} (${adVehicle.id})`);
+        const adNorm = adText.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+        const marcaNorm = (adVehicle.marca ?? "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+        const modeloNorm = (adVehicle.modelo ?? "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+        const marcaWords = marcaNorm.split(/\s+/).filter(w => w.length >= 3);
+        const modeloWords = modeloNorm.split(/\s+/).filter(w => w.length >= 4);
+        const matchValido = [...marcaWords, ...modeloWords].some(w => adNorm.includes(w));
+
+        if (matchValido) {
+          veiculoPrincipal = adVehicle;
+          await supabaseAdmin.from("leads").update({ veiculo_id: adVehicle.id }).eq("id", lead.id);
+          (lead as any).veiculo_id = adVehicle.id;
+          console.log(`📢 [Recovery origem_mensagem] veículo vinculado: ${adVehicle.marca} ${adVehicle.modelo} (${adVehicle.id})`);
+        } else {
+          console.warn(`⚠️ [Recovery origem_mensagem] Falso positivo descartado: "${adVehicle.marca} ${adVehicle.modelo}" não bate com "${adText}" — usando fallback relaxado`);
+        }
       }
     }
   }
@@ -936,16 +1205,52 @@ Responda apenas com o JSON, sem markdown.`;
       ?? (lead as any).origem_mensagem?.replace(/^Lead do anúncio:\s*/i, "")
       ?? "";
     const adTextNorm = adTextRaw.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-    const adWords = adTextNorm
+    // Lista expandida de palavras gen\u00e9ricas que NUNCA s\u00e3o nomes de carro
+    // (c\u00e2mbio, cor, combust\u00edvel, features) \u2014 sem isso, "flex" ou "branco" do an\u00fancio
+    // matcham qualquer carro com Flex no modelo, escolhendo o ve\u00edculo errado.
+    const GENERIC_AD_WORDS = new Set([
+      "novo", "nova", "semi", "usado", "usada", "carro", "veiculo",
+      "confira", "fotos", "foto", "video", "oferta", "preco", "desconto",
+      "oportunidade", "imperdivel", "aproveite", "disponivel",
+      // C\u00e2mbio
+      "automatico", "automatica", "manual", "cambio", "automatizado", "cvt", "tiptronic",
+      // Cor (lista comum)
+      "branco", "branca", "preto", "preta", "prata", "prateado", "vermelho", "vermelha",
+      "azul", "cinza", "amarelo", "verde", "marrom", "dourado", "bege",
+      // Combust\u00edvel
+      "flex", "gasolina", "etanol", "diesel", "gnv", "eletrico", "hibrido",
+      // Features comuns em descri\u00e7\u00e3o
+      "couro", "midia", "bancos", "computador", "bordo", "camera", "rodas",
+      "liga", "leve", "farol", "drl", "unico", "dono", "tirado", "revisado",
+      "concessionaria", "completo", "vistoriado", "garantia",
+      // Unidades / pre\u00e7o
+      "km", "quilometros", "vista", "reais", "parcelas", "entrada",
+      // Conectivos
+      "com", "sem", "para", "por", "uma", "dois", "duas", "tres",
+    ]);
+
+    // Marcas conhecidas (mercado brasileiro) \u2014 usado como BRAND BOOST
+    const KNOWN_BRANDS = new Set([
+      "fiat", "jeep", "vw", "volkswagen", "chevrolet", "gm", "hyundai", "kia",
+      "toyota", "honda", "renault", "peugeot", "ford", "nissan", "mitsubishi",
+      "citroen", "suzuki", "jac", "byd", "audi", "bmw", "mercedes", "volvo",
+      "land", "rover", "jaguar", "mini", "dodge", "ram", "chery", "geely",
+      "lifan", "omoda", "jaecoo", "gwm", "haval", "porsche", "subaru", "tesla",
+      "caoa", "troller", "iveco",
+    ]);
+
+    const adWords: string[] = adTextNorm
       .replace(/[.,!?()\[\]{}"'`\-\/]/g, " ")
       .split(/\s+/)
-      .filter(w => w.length >= 3)
-      .filter(w => !["novo", "nova", "semi", "usado", "usada", "carro", "veiculo",
-        "confira", "fotos", "foto", "video", "oferta", "preco", "desconto",
-        "oportunidade", "imperdivel", "aproveite", "disponivel"].includes(w));
+      .filter((w: string) => w.length >= 3)
+      .filter((w: string) => !GENERIC_AD_WORDS.has(w))
+      .filter((w: string) => !/^\d+$/.test(w) || (w.length === 4 && parseInt(w) >= 1990 && parseInt(w) <= 2035)); // s\u00f3 anos v\u00e1lidos
+
+    // Identifica a marca mencionada no an\u00fancio (se houver) \u2014 sinal mais forte
+    const adBrand = adWords.find((w: string) => KNOWN_BRANDS.has(w));
 
     if (adWords.length > 0) {
-      const orClauses = adWords.map(w =>
+      const orClauses = adWords.map((w: string) =>
         `marca.ilike.%${w}%,modelo.ilike.%${w}%,versao.ilike.%${w}%`
       ).join(",");
 
@@ -960,9 +1265,14 @@ Responda apenas com o JSON, sem markdown.`;
         const scored = veiculosRelaxados.map(v => {
           const vNorm = `${v.marca ?? ""} ${v.modelo ?? ""} ${v.versao ?? ""}`
             .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-          const hits = adWords.filter(w => vNorm.includes(w)).length;
-          const statusBoost = (v as any).status_venda === "DISPONIVEL" ? 100 : 0;
-          return { vehicle: v as Vehicle, score: hits + statusBoost };
+          const marcaNorm = (v.marca ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+          const hits = adWords.filter((w: string) => vNorm.includes(w)).length;
+          // Boost de marca: +500 se a marca do an\u00fancio aparece na marca do ve\u00edculo
+          // Isso supera qualquer outro sinal \u2014 evita Jeep do an\u00fancio resolver para Fiat
+          const brandBoost = adBrand && marcaNorm.includes(adBrand) ? 500 : 0;
+          // Boost de status: apenas +10 para desempatar \u2014 n\u00e3o pode dominar a marca
+          const statusBoost = (v as any).status_venda === "DISPONIVEL" ? 10 : 0;
+          return { vehicle: v as Vehicle, score: hits + brandBoost + statusBoost };
         }).sort((a, b) => b.score - a.score);
 
         const melhorMatch = scored[0];
@@ -981,11 +1291,18 @@ Responda apenas com o JSON, sem markdown.`;
   }
 
   // ── 7. Busca Híbrida ────────────────────────────────────────────────────────
+  // IMPORTANTE: remove o prefixo "[Contexto do link: ...]" ou "[Lead veio do anúncio: ...]"
+  // antes da busca — o anúncio é resolvido nos steps 6a–6d. Manter o texto aqui
+  // poluiria a busca com palavras genéricas (câmbio, cor, flex, couro) que matcham
+  // qualquer carro do estoque e trazem resultados incorretos como top.
+  const userMessageForSearch = userMessage
+    .replace(/^\[(?:Contexto do link|Lead veio do anúncio):[^\]]*\]\s*\n?/m, "")
+    .trim() || userMessage; // fallback: se sobrar vazio, usa o original
   // Mensagens de mídia ("Foto", "Video") são intencionalmente curtas — não tratar como msgCurta
-  const isMidiaRequest = /^(foto|fotos|video|vídeo|imagem)s?$/i.test(userMessage.trim());
-  const msgCurta = !isMidiaRequest && userMessage.trim().length < 8;
+  const isMidiaRequest = /^(foto|fotos|video|vídeo|imagem)s?$/i.test(userMessageForSearch.trim());
+  const msgCurta = !isMidiaRequest && userMessageForSearch.trim().length < 8;
   const { topVeiculos, clientePediuCarroDiferente, hitsTextuais } = await hybridVehicleSearch(
-    userMessage,
+    userMessageForSearch,
     tenantUserId,
     veiculoPrincipal,
     msgCurta
@@ -1004,9 +1321,9 @@ Responda apenas com o JSON, sem markdown.`;
     // Evita que "tem foto do Honda?" troque Honda City por Honda HR-V só porque HR-V
     // apareceu primeiro na busca textual por marca.
     const novoVeiculo = topVeiculos[0];
-    const msgNormSwitch = userMessage.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+    const msgNormSwitch = userMessage.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
     const modeloWordsNovo = (novoVeiculo.modelo ?? "")
-      .normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()
+      .normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase()
       .split(/\s+/).filter(w => w.length >= 3);
     const novoModeloMencionado = modeloWordsNovo.some(w => msgNormSwitch.includes(w));
     const marcaDiferente = !veiculoPrincipal || novoVeiculo.marca?.toLowerCase() !== veiculoPrincipal.marca?.toLowerCase();
@@ -1036,7 +1353,15 @@ Responda apenas com o JSON, sem markdown.`;
   const veiculosParaContexto = (!veiculoPrincipal && hitsTextuais.length === 0)
     ? []
     : topVeiculos;
-  const context = buildStockContext(veiculosParaContexto, veiculoPrincipal);
+  // Índice completo do estoque: serve como "fonte da verdade" quando o cliente
+  // menciona um carro que a busca híbrida não trouxe (ex: cliente respondeu "Ok"
+  // sobre um Polo Track que estava nas mensagens anteriores — sem o índice, o
+  // agente assumiria que o Polo Track "não existe" e mentiria pro cliente).
+  const [contextBase, inventoryIndex] = await Promise.all([
+    Promise.resolve(buildStockContext(veiculosParaContexto, veiculoPrincipal)),
+    buildInventoryIndex(tenantUserId),
+  ]);
+  const context = contextBase + inventoryIndex;
   console.log("🚗 CONTEXTO ENVIADO AO AGENTE:\n", context);
 
   // ── 9. Histórico da Conversa ──────────────────────────────────────────────────
@@ -1268,33 +1593,63 @@ Responda apenas com o JSON, sem markdown.`;
       const toNorm = (s: string) =>
         s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
-      const matchModelo = (v: Vehicle) => {
-        const modeloWords = toNorm(v.modelo ?? "").split(/\s+/).filter(w => w.length >= 3);
-        return modeloWords.some(w => msgNorm.includes(w));
-      };
-      const matchMarca = (v: Vehicle) => {
-        const marcaWords = toNorm(v.marca ?? "").split(/\s+/).filter(w => w.length >= 3);
-        return marcaWords.some(w => msgNorm.includes(w));
-      };
+      // Detecta ano mencionado na mensagem (1990-2035)
+      // Crucial para "tem fotos desse 2023?" quando o agente ofereceu Polo 2023/2024 e Polo 2025/2026
+      const yearMatch = msgNorm.match(/\b((?:19|20)\d{2})\b/);
+      const yearToken = yearMatch ? yearMatch[1] : null;
 
-      // Match por modelo tem prioridade absoluta
-      const veiculoPorModelo = veiculosContexto.find(matchModelo);
+      // Scoring ponderado, imune a inconsistência de cadastro entre marca/modelo:
+      //
+      //   - Concatena marca + modelo + versao em uma string única e usa palavras
+      //     DEDUPLICADAS para evitar viés de quem cadastrou "Polo" 2x no banco vs
+      //     quem cadastrou só 1x. Ex: lojista A salva marca=POLO TRACK, modelo=Track
+      //     1.0; lojista B salva marca=VW, modelo=Polo Track 1.0 — antes B ganhava
+      //     mais pontos só por capricho de cadastro.
+      //
+      //   - Ano: tenta campo numérico (ano/ano_modelo) primeiro; se não bater, faz
+      //     fallback no texto do nome completo — cobre casos em que o lojista
+      //     digitou o ano só no modelo/versão e deixou o campo numérico vazio.
+      //
+      //   - Boost leve do veiculoPrincipal (+5) só serve como tiebreaker para
+      //     referências vagas ("desse"). Não rouba match de modelo (+50).
+      const scoreVeiculo = (v: Vehicle): number => {
+        let score = 0;
+        const nomeCompleto = toNorm(
+          `${v.marca ?? ""} ${v.modelo ?? ""} ${(v as any).versao ?? ""}`,
+        );
 
-      // Match por marca: se veiculoPrincipal já é da mesma marca, usa ele em vez do primeiro da lista
-      // Evita que "desse Honda" troque Honda City pelo Honda HR-V que aparece primeiro no estoque
-      let veiculoPorMarca: Vehicle | undefined;
-      if (!veiculoPorModelo) {
-        if (veiculoPrincipal && matchMarca(veiculoPrincipal)) {
-          veiculoPorMarca = veiculoPrincipal;
-        } else {
-          veiculoPorMarca = veiculosContexto.find(matchMarca);
+        // Ano: campo numérico → fallback no texto
+        if (yearToken) {
+          const anoModelo = String((v as any).ano_modelo ?? v.ano ?? "");
+          const ano = String(v.ano ?? "");
+          if (anoModelo === yearToken || ano === yearToken) {
+            score += 100;
+          } else if (nomeCompleto.includes(yearToken)) {
+            score += 100;
+          }
         }
-      }
 
-      const veiculoNomeado = veiculoPorModelo ?? veiculoPorMarca;
+        // Palavras únicas do nome completo, peso unificado
+        const palavrasNome = new Set(
+          nomeCompleto.split(/\s+/).filter((w) => w.length >= 3),
+        );
+        for (const w of palavrasNome) {
+          if (msgNorm.includes(w)) score += 50;
+        }
+
+        if (veiculoPrincipal && v.id === veiculoPrincipal.id) score += 5;
+        return score;
+      };
+
+      const scoredContexto = veiculosContexto
+        .map(v => ({ v, score: scoreVeiculo(v) }))
+        .filter(({ score }) => score > 0)
+        .sort((a, b) => b.score - a.score);
+
+      const veiculoNomeado = scoredContexto[0]?.v;
 
       if (veiculoNomeado) {
-        console.log(`📸 [Foto] Selecionado por match de nome: ${veiculoNomeado.marca} ${veiculoNomeado.modelo} (id: ${veiculoNomeado.id})`);
+        console.log(`📸 [Foto] Selecionado por match de nome (score=${scoredContexto[0].score}): ${veiculoNomeado.marca} ${veiculoNomeado.modelo} (id: ${veiculoNomeado.id})`);
         veiculosParaFoto = [veiculoNomeado];
       } else {
         // 2. Busca direta no DB — só quando a mensagem nomeia um carro específico
@@ -1343,6 +1698,16 @@ Responda apenas com o JSON, sem markdown.`;
         try {
           await sendImage(phone, fotosParaEnviar[i], caption);
           fotoEnviada = true;
+          // Registra a foto no histórico do chat para exibição no painel
+          if (lead) {
+            supabaseAdmin.from("mensagens").insert({
+              lead_id: lead.id,
+              content: caption ?? `📷 ${v.marca} ${v.modelo}`,
+              remetente: "agente",
+              media_url: fotosParaEnviar[i],
+              media_tipo: "foto",
+            }).then(null, (e) => console.warn("⚠️ Falha ao registrar foto no chat:", e?.message));
+          }
         } catch (e) {
           console.warn(`⚠️ Falha ao enviar foto de ${v.marca} ${v.modelo}:`, e);
         }
@@ -1387,6 +1752,16 @@ Responda apenas com o JSON, sem markdown.`;
         try {
           await sendVideo(phone, videoUrl, undefined);
           videoEnviado = true;
+          // Registra o vídeo no histórico do chat para exibição no painel
+          if (lead) {
+            supabaseAdmin.from("mensagens").insert({
+              lead_id: lead.id,
+              content: `🎥 ${veiculoParaVideo.marca} ${veiculoParaVideo.modelo}`,
+              remetente: "agente",
+              media_url: videoUrl,
+              media_tipo: "video",
+            }).then(null, (e) => console.warn("⚠️ Falha ao registrar vídeo no chat:", e?.message));
+          }
 
           // Mensagem de texto junto ao vídeo para não deixar mídia órfã
           const carUrl = vitrineUrl ? `${vitrineUrl}/${veiculoParaVideo.id}` : null;
@@ -1526,7 +1901,7 @@ Responda apenas com o JSON, sem markdown.`;
             .select("id")
             .eq("id", veiculoIdFoco)
             .eq("user_id", tenantUserId)
-            .eq("status_venda", "DISPONIVEL")
+            .neq("status_venda", "VENDIDO")
             .maybeSingle();
           if (veiculoFocoValidado) {
             console.log(`🎯 Gemini identificou foco validado: ${veiculoIdFoco} (anterior: ${veiculoIdAnterior})`);
@@ -1544,6 +1919,26 @@ Responda apenas com o JSON, sem markdown.`;
         const nomeRaw = parsed.nome_cliente_extraido;
         if (nomeRaw && nomeRaw.toLowerCase() !== "null" && lead && !nomeCliente) {
           await supabaseAdmin.from("leads").update({ nome: nomeRaw }).eq("id", lead.id);
+          // Atualiza agenda existente — substitui "Lead 1010" ou "(17) 99114-1010" pelo nome real
+          // sem precisar do gerente editar manualmente.
+          const { data: agendasExistentes } = await supabaseAdmin
+            .from("agenda")
+            .select("id, titulo, descricao")
+            .eq("lead_id", lead.id)
+            .eq("created_by", "ia")
+            .gte("data_hora", new Date().toISOString());
+          if (agendasExistentes && agendasExistentes.length > 0) {
+            for (const ag of agendasExistentes) {
+              const novoTituloAg = (ag.titulo || "").replace(
+                /Visita - (Lead \d{4}|\(\d{2}\) \d{4,5}-\d{4})/,
+                `Visita - ${nomeRaw}`
+              );
+              if (novoTituloAg !== ag.titulo) {
+                await supabaseAdmin.from("agenda").update({ titulo: novoTituloAg }).eq("id", ag.id);
+                console.log(`📅 Agenda ${ag.id} renomeada — cliente revelou nome: ${nomeRaw}`);
+              }
+            }
+          }
         }
 
         // Instrução pendente: agente sinalizou dúvida → alerta o gerente
@@ -1591,6 +1986,86 @@ Responda apenas com o JSON, sem markdown.`;
       "Olá! Tivemos uma pequena instabilidade aqui, mas já estou de volta. Posso te ajudar com algum carro do nosso pátio? 🚗";
   }
 
+  // ── 12b. GUARDA ANTI-MENTIRA DE ESTOQUE ─────────────────────────────────────
+  // Última linha de defesa: se o agente afirmar "não temos X" mas X existir no
+  // estoque disponível do tenant, substitui a resposta por uma neutra. Evita
+  // perder leads que perguntam por carro real que a busca híbrida não trouxe.
+  //
+  // Detecta apenas quando a negação está NA MESMA SENTENÇA do modelo — evita
+  // falso positivo quando o agente menciona um carro como alternativa de outro
+  // que de fato não temos (ex: "Não temos Onix, mas temos um Polo Track novo").
+  const denialPatternSentence = /n[ãa]o\s+(?:est[áa]|temos|tenho|tem|h[áa])(?:\s+(?:mais|dispon[íi]vel|em\s+estoque|no\s+p[áa]tio|atualmente|no\s+momento))?/i;
+  if (denialPatternSentence.test(aiResponse)) {
+    try {
+      const { data: estoqueDisp } = await supabaseAdmin
+        .from("veiculos")
+        .select("marca, modelo")
+        .eq("status_venda", "DISPONIVEL")
+        .eq("user_id", tenantUserId);
+
+      if (estoqueDisp && estoqueDisp.length > 0) {
+        const stripAccents = (s: string) =>
+          s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+        // Quebra a resposta em sentenças. Apenas sentenças com negação são suspeitas.
+        const sentencas = aiResponse.split(/(?<=[.!?\n])\s+/);
+        let falsoNegativo: { marca: string; modelo: string; sentenca: string } | null = null;
+
+        for (const sent of sentencas) {
+          if (!denialPatternSentence.test(sent)) continue;
+          const sentNorm = stripAccents(sent);
+
+          for (const v of estoqueDisp as Array<{ marca: string | null; modelo: string | null }>) {
+            const marca = stripAccents(v.marca ?? "");
+            const modelo = stripAccents(v.modelo ?? "");
+            const modeloPrimeira = modelo.split(/\s+/).find((w) => w.length >= 3) ?? "";
+            // Marca OU primeira palavra significativa do modelo precisa estar na MESMA sentença
+            const matchMarca = marca.length >= 3 && sentNorm.includes(marca);
+            const matchModelo = modeloPrimeira.length >= 3 && sentNorm.includes(modeloPrimeira);
+            if (matchMarca || matchModelo) {
+              falsoNegativo = { marca: v.marca ?? "", modelo: v.modelo ?? "", sentenca: sent };
+              break;
+            }
+          }
+          if (falsoNegativo) break;
+        }
+
+        if (falsoNegativo) {
+          const carroLabel = `${falsoNegativo.marca} ${falsoNegativo.modelo}`.trim();
+          console.warn(
+            `🚨 [Guarda anti-mentira] Agente afirmou "não temos" mas ${carroLabel} ESTÁ disponível. Resposta substituída.`,
+          );
+          console.warn(`   Sentença interceptada: ${falsoNegativo.sentenca.slice(0, 200)}`);
+          aiResponse = `Deixa eu confirmar com o pessoal do pátio sobre o ${carroLabel} — qualquer dúvida já me chama aqui.`;
+
+          if (lead?.id) {
+            await supabaseAdmin
+              .from("leads")
+              .update({
+                instrucao_pendente: `🚨 GUARDA: Agente quase negou disponibilidade do ${carroLabel} (que ESTÁ no estoque). Resposta substituída por neutra. Confirmar status do carro para o cliente.`,
+              })
+              .eq("id", lead.id);
+
+            if (gerentePhone) {
+              const nomeLead = nomeCliente || phone;
+              await sendAlert(
+                gerentePhone,
+                `🚨 *AGENTE QUASE MENTIU SOBRE ESTOQUE*\n\n` +
+                `👤 Cliente: ${nomeLead}\n` +
+                `🚗 Veículo: ${carroLabel} (DISPONÍVEL no estoque)\n\n` +
+                `O agente tentou dizer "não temos" mas o sistema interceptou.\n` +
+                `👉 Confirme com o cliente a disponibilidade e dê o próximo passo.`,
+              ).catch((err: any) => console.error("❌ Alerta de guarda anti-mentira não entregue:", err?.message?.slice(0, 300)));
+            }
+          }
+        }
+      }
+    } catch (guardErr) {
+      console.error("⚠️ Guarda anti-mentira falhou:", guardErr);
+      // Não bloqueia o fluxo — mantém aiResponse original
+    }
+  }
+
   // ── 13. Salvar resposta + atualizar lead ─────────────────────────────────────
   // Salva com delivered=false — atualizado para true após sendText bem-sucedido (step 15)
   let mensagemAgenteId: string | null = null;
@@ -1623,55 +2098,126 @@ Responda apenas com o JSON, sem markdown.`;
     if (temperatura === "QUENTE") {
       const temVisita = /visita|agendad|confirm|vai vir|vem (ver|amanhã|hoje|sábado|domingo|segunda|terça|quarta|quinta|sexta)/i.test(resumo + " " + aiResponse);
       if (temVisita) {
-        const { data: jaExiste } = await supabaseAdmin
+        // Busca agenda existente — usa limit(1) (não maybeSingle) pra evitar bug quando
+        // existem múltiplas linhas (que retornaria null e criaria duplicata)
+        const { data: agendasExistentes } = await supabaseAdmin
           .from("agenda")
-          .select("id")
+          .select("id, titulo, descricao, data_hora")
           .eq("lead_id", lead.id)
           .eq("created_by", "ia")
           .gte("data_hora", new Date().toISOString())
-          .maybeSingle();
+          .order("created_at", { ascending: false })
+          .limit(1);
+        const jaExiste = agendasExistentes?.[0] ?? null;
 
-        if (!jaExiste) {
-          const nomeLead = lead.nome || `Lead ${phone.slice(-4)}`;
+        {
+          // Formata o telefone como "(17) 99114-1010" quando o cliente não disse o nome
+          // — mais legível que "Lead 1010" e permite o gerente ligar direto
+          const formatPhone = (p: string) => {
+            const digits = p.replace(/\D/g, "");
+            const semDDI = digits.startsWith("55") && digits.length >= 12 ? digits.slice(2) : digits;
+            if (semDDI.length === 11) return `(${semDDI.slice(0, 2)}) ${semDDI.slice(2, 7)}-${semDDI.slice(7)}`;
+            if (semDDI.length === 10) return `(${semDDI.slice(0, 2)}) ${semDDI.slice(2, 6)}-${semDDI.slice(6)}`;
+            return `Lead ${p.slice(-4)}`;
+          };
+          const nomeLead = lead.nome || formatPhone(phone);
           // Usa o veículo confirmado do lead (veiculo_id), não o resultado de busca semântica
           const veiculoFoco = veiculoPrincipal ?? topVeiculos[0] ?? null;
           const veiculoLabel = veiculoFoco ? ` — ${veiculoFoco.marca} ${veiculoFoco.modelo}` : "";
 
-          // Extrai a data/hora explícita da conversa — se o cliente não informou hora, não cria
+          // Extrai a data/hora de visita — aceita expressões vagas comuns ("amanhã à tarde",
+          // "sábado cedo", "passo aí depois do almoço"). Esses horários são convertidos em
+          // slots padrão da loja, refletindo como cliente de revenda realmente fala.
           let dataHoraAgenda: string | null = null;
+          let horaAproximada = false; // true quando o slot foi inferido de expressão vaga
           try {
-            const hoje = new Date().toLocaleDateString("pt-BR", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+            const agora = new Date();
+            const hoje = agora.toLocaleDateString("pt-BR", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+            const anoAtual = agora.getFullYear();
             const parseResult = await geminiFlashSales.generateContent({
               contents: [{ role: "user", parts: [{ text:
-                `Hoje é ${hoje}. Extraia a data e hora de visita com base nas mensagens abaixo:\n\nMensagem do cliente: "${userMessage}"\nResumo: "${resumo}"\nResposta do agente: "${aiResponse}"\n\nRetorne apenas JSON: {"data_hora": "ISO8601 completo com timezone -03:00"} ou {"data_hora": null} se não houver horário EXPLICITAMENTE informado pelo cliente (não deduza nem chute).`
+`Hoje é ${hoje} (${agora.toISOString()}). Ano atual: ${anoAtual}.
+
+Extraia o COMPROMISSO DE VISITA com base na mensagem do cliente:
+Cliente disse: "${userMessage}"
+Resumo da conversa: "${resumo}"
+Resposta do agente: "${aiResponse}"
+
+REGRAS DE INTERPRETAÇÃO:
+1. Se o cliente disser apenas o DIA sem hora, use os SLOTS PADRÃO de loja de carro:
+   - "cedo" / "manhã" / "de manhã" → 09:00
+   - "depois do almoço" / "tarde" / "à tarde" → 14:00
+   - "fim da tarde" / "final do dia" → 17:00
+   - "noite" → 18:30
+   - apenas "amanhã" / "sábado" / dia sem período → 10:00 (slot padrão)
+2. Se o cliente disser apenas o MÊS/DIA, use o próximo evento futuro (não o passado).
+3. NUNCA retorne data_hora no PASSADO. Se a data inferida já passou, NÃO retorne.
+4. Se o cliente NÃO mencionou nenhuma indicação de quando (nem "amanhã", nem "sábado", nem nada), retorne {"data_hora": null, "hora_aproximada": false}.
+5. Se o cliente disse hora EXATA ("14h", "às 10:30"), use ela e marque hora_aproximada=false.
+6. Se você inferiu o horário a partir de expressão vaga ("tarde", "cedo"), marque hora_aproximada=true.
+
+Retorne JSON estrito:
+{"data_hora": "ISO8601 com timezone -03:00" ou null, "hora_aproximada": true/false}`
               }] }],
               generationConfig: { responseMimeType: "application/json" },
             });
             const parsed = JSON.parse(parseResult.response.text());
-            if (parsed.data_hora) dataHoraAgenda = parsed.data_hora;
+            if (parsed.data_hora) {
+              const candidateDate = new Date(parsed.data_hora);
+              // GUARDA: rejeita data inválida ou no passado
+              if (!isNaN(candidateDate.getTime()) && candidateDate.getTime() > agora.getTime()) {
+                dataHoraAgenda = parsed.data_hora;
+                horaAproximada = !!parsed.hora_aproximada;
+              } else {
+                console.warn(`⚠️ [Auto-agenda] data_hora rejeitada (inválida ou no passado): ${parsed.data_hora}`);
+              }
+            }
           } catch {
-            // sem data — não cria agenda agora, vai criar quando o cliente confirmar o horário
+            // sem data — não cria agenda agora, vai criar quando o cliente confirmar
           }
 
           if (dataHoraAgenda) {
-            const descricaoAgenda = [
+            const aproxLabel = horaAproximada ? " (horário aproximado)" : "";
+            const novoTitulo = `Visita - ${nomeLead}${veiculoLabel}${aproxLabel}`;
+            const novaDescricao = [
               resumo || null,
               veiculoLabel ? `Interesse: ${veiculoLabel.trim()}` : null,
               `Telefone: ${phone}`,
+              horaAproximada ? "⚠️ Horário aproximado — confirmar com cliente" : null,
             ].filter(Boolean).join("\n");
 
-            await supabaseAdmin.from("agenda").insert({
-              user_id: tenantUserId,
-              titulo: `Visita - ${nomeLead}${veiculoLabel}`,
-              descricao: descricaoAgenda || null,
-              data_hora: dataHoraAgenda,
-              tipo: "visita",
-              lead_id: lead.id,
-              created_by: "ia",
-            });
-            console.log(`📅 Auto-agenda criada para lead ${lead.id} — ${dataHoraAgenda}`);
+            if (jaExiste) {
+              // Já existe agenda — atualiza SE algo mudou (carro, descrição, ou data).
+              // Cobre o caso: lead trocou de vínculo (Compass virou Mobi virou Compass) e
+              // a agenda antiga ficou com o nome errado.
+              const mudouTitulo = jaExiste.titulo !== novoTitulo;
+              const mudouDescricao = jaExiste.descricao !== novaDescricao;
+              const mudouData = jaExiste.data_hora !== dataHoraAgenda;
+              if (mudouTitulo || mudouDescricao || mudouData) {
+                await supabaseAdmin
+                  .from("agenda")
+                  .update({
+                    titulo: novoTitulo,
+                    descricao: novaDescricao,
+                    data_hora: dataHoraAgenda,
+                  })
+                  .eq("id", jaExiste.id);
+                console.log(`📅 Auto-agenda ATUALIZADA para lead ${lead.id} — ${dataHoraAgenda} (${mudouTitulo ? "carro " : ""}${mudouData ? "data " : ""}mudou)`);
+              }
+            } else {
+              await supabaseAdmin.from("agenda").insert({
+                user_id: tenantUserId,
+                titulo: novoTitulo,
+                descricao: novaDescricao,
+                data_hora: dataHoraAgenda,
+                tipo: "visita",
+                lead_id: lead.id,
+                created_by: "ia",
+              });
+              console.log(`📅 Auto-agenda criada para lead ${lead.id} — ${dataHoraAgenda}${horaAproximada ? " (aproximada)" : ""}`);
+            }
           } else {
-            console.log(`📅 Auto-agenda aguardando horário explícito do cliente (lead ${lead.id})`);
+            console.log(`📅 Auto-agenda aguardando indicação de quando (lead ${lead.id})`);
           }
         }
       }
@@ -1732,4 +2278,27 @@ Responda apenas com o JSON, sem markdown.`;
     await supabaseAdmin.from("mensagens").update({ delivered: true }).eq("id", mensagemAgenteId);
   }
   console.log(`✅ Mensagem processada para ${phone} | temperatura: ${temperatura}`);
+
+  // ── 15b. Troca de veículo — ativa stand-by e notifica gerente imediatamente ──
+  // Detecta se a mensagem do cliente menciona troca. Se sim: marca o lead com
+  // em_atendimento_humano=true (stand-by) e envia briefing ao gerente.
+  // Na próxima mensagem do cliente, o step 4 responde "Já passei para o gerente"
+  // em vez de ficar mudo — assim o cliente não fica sem resposta.
+  const TROCA_KEYWORDS = /\b(na troca|na\s+troca|dar.*troca|troca.*carro|carro.*troca|parte de pagamento|quero trocar|quero dar|dar o meu carro|avaliar meu carro|meu carro na)\b/i;
+  if (lead?.id && TROCA_KEYWORDS.test(mensagemClientePura)) {
+    await setTrocaStandby(tenantUserId, lead.id);
+    await supabaseAdmin.from("leads").update({ em_atendimento_humano: true }).eq("id", lead.id);
+    const gerenteWa = garageConfig?.whatsapp ?? null;
+    if (gerenteWa) {
+      const normWa = (n: string) => { const d = n.replace(/\D/g, ""); return d.startsWith("55") ? d : `55${d}`; };
+      const nomeLead = (lead as any).nome || `Lead ${phone.slice(-4)}`;
+      const veiculoLabel = veiculoPrincipal ? `\n🚗 Interesse: ${veiculoPrincipal.marca} ${veiculoPrincipal.modelo}` : "";
+      await sendAlert(normWa(gerenteWa),
+        `🔄 *Troca de Veículo*\n\n👤 Cliente: ${nomeLead}\n📱 ${phone}${veiculoLabel}\n\n💬 "${rawMessage.slice(0, 200)}"\n\n👉 Assuma a conversa para negociar a troca.`
+      ).catch(() => {});
+    }
+    console.log(`🔄 [Troca] Stand-by ativado para lead ${lead.id} — gerente notificado`);
+  }
+
+  if (lead?.id) await releaseLeadLock(tenantUserId, lead.id).catch(() => {});
 }

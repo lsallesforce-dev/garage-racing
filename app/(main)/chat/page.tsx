@@ -33,6 +33,8 @@ type Mensagem = {
   content: string;
   remetente: "usuario" | "agente";
   created_at: string;
+  media_url?: string | null;
+  media_tipo?: "foto" | "video" | null;
 };
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; dot: string }> = {
@@ -138,15 +140,24 @@ function CentralChatInner() {
     setCarregandoMais(false);
   };
 
-  const carregarMensagens = useCallback(async (leadId: string) => {
-    setLoadingMsgs(true);
+  const carregarMensagens = useCallback(async (leadId: string, opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoadingMsgs(true);
     const { data } = await supabase
       .from("mensagens")
       .select("*")
       .eq("lead_id", leadId)
       .order("created_at", { ascending: true });
-    if (data) setMensagens(data as Mensagem[]);
-    setLoadingMsgs(false);
+    if (data) {
+      // Evita rerender desnecessário se nada mudou (poll comparando IDs)
+      setMensagens((prev) => {
+        const nova = data as Mensagem[];
+        if (prev.length === nova.length && prev.every((m, i) => m.id === nova[i].id)) {
+          return prev;
+        }
+        return nova;
+      });
+    }
+    if (!opts?.silent) setLoadingMsgs(false);
   }, []);
 
   useEffect(() => { carregarLeads(); }, [carregarLeads]);
@@ -158,8 +169,23 @@ function CentralChatInner() {
       .on("postgres_changes", { event: "*", schema: "public", table: "leads", filter: `user_id=eq.${effectiveUserId}` }, () => {
         carregarLeads();
       })
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") console.log("✅ Realtime leads conectado");
+        else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.warn("⚠️ Realtime leads falhou — fallback polling ativo");
+        }
+      });
+
+    // Polling de segurança a cada 10s — cobre quedas do Realtime sem
+    // sobrecarregar o banco (refetch leve da lista de leads)
+    const poll = setInterval(() => {
+      if (document.visibilityState === "visible") carregarLeads();
+    }, 10000);
+
+    return () => {
+      supabase.removeChannel(ch);
+      clearInterval(poll);
+    };
   }, [carregarLeads, effectiveUserId]);
 
   // Auto-seleciona conversa via ?wa_id= (deep link do alerta do gerente)
@@ -184,26 +210,44 @@ function CentralChatInner() {
 
   useEffect(() => {
     if (!selectedLead) return;
+    const leadId = selectedLead.id;
     const ch = supabase
-      .channel(`msgs-${selectedLead.id}`)
+      .channel(`msgs-${leadId}`)
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "mensagens", filter: `lead_id=eq.${selectedLead.id}` },
+        { event: "INSERT", schema: "public", table: "mensagens", filter: `lead_id=eq.${leadId}` },
         (payload) => {
           const newMsg = payload.new as Mensagem;
-          setMensagens((prev) => [...prev, newMsg]);
-          // Atualiza preview da barra lateral imediatamente, sem esperar carregarLeads()
+          // Evita duplicar mensagem que já está na lista (vinda do polling)
+          setMensagens((prev) => {
+            if (prev.some((m) => m.id === newMsg.id)) return prev;
+            return [...prev, newMsg];
+          });
           setLeads((prev) => prev.map((l) =>
-            l.id === selectedLead.id
+            l.id === leadId
               ? { ...l, ultimaMensagem: { content: newMsg.content, created_at: newMsg.created_at, remetente: newMsg.remetente } }
               : l
           ));
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") console.log(`✅ Realtime msgs do lead ${leadId} conectado`);
+        else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.warn(`⚠️ Realtime msgs falhou para lead ${leadId} — fallback polling ativo`);
+        }
+      });
 
-    return () => { supabase.removeChannel(ch); };
-  }, [selectedLead?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    // Polling de segurança da conversa aberta a cada 5s
+    // (só roda quando a aba está visível, pra não desperdiçar)
+    const poll = setInterval(() => {
+      if (document.visibilityState === "visible") carregarMensagens(leadId, { silent: true });
+    }, 5000);
+
+    return () => {
+      supabase.removeChannel(ch);
+      clearInterval(poll);
+    };
+  }, [selectedLead?.id, carregarMensagens]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -556,13 +600,35 @@ function CentralChatInner() {
               return (
                 <div key={msg.id} className={`flex ${isAgente ? "justify-end" : "justify-start"}`}>
                   <div className={`max-w-[85%] sm:max-w-[70%] flex flex-col gap-1 ${isAgente ? "items-end" : "items-start"}`}>
-                    <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
-                      isAgente
-                        ? "bg-slate-900 text-white rounded-br-sm"
-                        : "bg-white text-gray-900 border border-gray-100 rounded-bl-sm shadow-sm"
-                    }`}>
-                      {msg.content}
-                    </div>
+                    {msg.media_url && msg.media_tipo === "foto" ? (
+                      <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="block rounded-2xl overflow-hidden shadow-md hover:opacity-90 transition-opacity">
+                        <img
+                          src={msg.media_url}
+                          alt={msg.content || "Foto enviada pelo agente"}
+                          className="max-w-[260px] max-h-[300px] object-cover rounded-2xl"
+                          loading="lazy"
+                        />
+                      </a>
+                    ) : msg.media_url && msg.media_tipo === "video" ? (
+                      <video
+                        src={msg.media_url}
+                        controls
+                        className="max-w-[260px] rounded-2xl shadow-md"
+                        preload="metadata"
+                      />
+                    ) : (
+                      <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
+                        isAgente
+                          ? "bg-slate-900 text-white rounded-br-sm"
+                          : "bg-white text-gray-900 border border-gray-100 rounded-bl-sm shadow-sm"
+                      }`}>
+                        {msg.content}
+                      </div>
+                    )}
+                    {/* caption da foto (se houver) */}
+                    {msg.media_url && msg.content && (
+                      <div className="text-[11px] text-gray-500 px-1 max-w-[260px] truncate">{msg.content}</div>
+                    )}
                     <div className="flex items-center gap-1.5 px-1">
                       <span className="text-[8px] text-gray-400 font-bold uppercase tracking-wider">
                         {isAgente ? "IA" : (selectedLead.nome || "Cliente")}
