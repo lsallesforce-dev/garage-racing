@@ -195,7 +195,7 @@ export async function debounceClientImages(
 ): Promise<boolean> {
   try {
     const key = `imgdebounce:${tenantUserId}:${phone}`;
-    const result = await getClient().set(key, 1, { nx: true, ex: 3 });
+    const result = await getClient().set(key, 1, { nx: true, ex: 10 });
     return result !== null; // "OK" = primeira foto (processa), null = foto duplicada (ignora)
   } catch (e) {
     console.warn("⚠️ [Redis] debounceClientImages falhou — imagem será processada (fail-open):", e);
@@ -234,6 +234,73 @@ export async function debounceFirstContact(
 }
 
 
+// ─── Stand-by de Troca de Veículo ────────────────────────────────────────────
+//
+// Marcador persistente (TTL 48h) que indica que o atendimento de um lead
+// foi transferido ao gerente por conta de uma negociação de troca.
+// Quando ativo, o agente responde com mensagem de redirecionamento ao invés de silêncio.
+//
+// Chave: troca_standby:{tenantUserId}:{leadId}
+//
+export async function setTrocaStandby(
+  tenantUserId: string,
+  leadId: string
+): Promise<void> {
+  try {
+    await getClient().set(`troca_standby:${tenantUserId}:${leadId}`, 1, { ex: 172800 }); // 48h
+  } catch (e) {
+    console.warn("⚠️ [Redis] setTrocaStandby falhou (non-fatal):", e);
+  }
+}
+
+export async function isTrocaStandby(
+  tenantUserId: string,
+  leadId: string
+): Promise<boolean> {
+  try {
+    const val = await getClient().get(`troca_standby:${tenantUserId}:${leadId}`);
+    return val !== null;
+  } catch (e) {
+    console.warn("⚠️ [Redis] isTrocaStandby falhou (fail-open):", e);
+    return false;
+  }
+}
+
+// ─── Lock por Lead (Anti-Processamento Concorrente) ───────────────────────────
+//
+// Garante que apenas uma instância da Vercel processa cada lead por vez.
+// SET NX EX 30: adquire se não existe (retorna "OK"), falha se já existe (retorna null).
+// TTL de 30s: auto-expira se o processo travar antes do releaseLeadLock — sem deadlock.
+// Fail-open: se o Redis estiver offline, libera o processamento normalmente.
+//
+// Chave: processing:{tenantUserId}:{leadId}
+//
+export async function acquireLeadLock(
+  tenantUserId: string,
+  leadId: string
+): Promise<boolean> {
+  try {
+    const key = `processing:${tenantUserId}:${leadId}`;
+    const result = await getClient().set(key, 1, { nx: true, ex: 30 });
+    return result !== null; // "OK" = lock adquirido, null = já processando
+  } catch (e) {
+    console.warn("⚠️ [Redis] acquireLeadLock falhou — processando sem lock (fail-open):", e);
+    return true;
+  }
+}
+
+export async function releaseLeadLock(
+  tenantUserId: string,
+  leadId: string
+): Promise<void> {
+  try {
+    const key = `processing:${tenantUserId}:${leadId}`;
+    await getClient().del(key);
+  } catch (e) {
+    console.warn("⚠️ [Redis] releaseLeadLock falhou (non-fatal):", e);
+  }
+}
+
 // ─── Ping (para Health Check) ─────────────────────────────────────────────────
 export async function redisPing(): Promise<string> {
   return getClient().ping();
@@ -252,15 +319,25 @@ export async function redisPing(): Promise<string> {
 export async function rateLimit(
   key: string,
   limit: number,
-  windowSeconds: number
+  windowSeconds: number,
+  options: { increment?: boolean } = {}
 ): Promise<{ allowed: boolean; remaining: number }> {
+  // increment: false → só CONSULTA o contador atual sem incrementar
+  // (útil para checar se um IP está bloqueado antes de fazer trabalho que pode falhar)
+  const { increment = true } = options;
   try {
     const client = getClient();
     const redisKey = `rl:${key}`;
-    const count = await client.incr(redisKey);
-    if (count === 1) {
-      // Primeira requisição da janela — define o TTL
-      await client.expire(redisKey, windowSeconds);
+    let count: number;
+    if (increment) {
+      count = await client.incr(redisKey);
+      if (count === 1) {
+        // Primeira requisição da janela — define o TTL
+        await client.expire(redisKey, windowSeconds);
+      }
+    } else {
+      const current = await client.get<string | number>(redisKey);
+      count = current ? Number(current) : 0;
     }
     const remaining = Math.max(0, limit - count);
     return { allowed: count <= limit, remaining };

@@ -147,10 +147,28 @@ O erro `(#3) Application does not have the capability` ao chamar `/adimages` sig
 
 ### Abas atuais
 ```typescript
-type Tab = "loja" | "portais" | "fiscal";
-// Labels: { loja: "Minha Loja", portais: "Portais de Anúncio", fiscal: "Fiscal" }
+type Tab = "loja" | "whatsapp" | "portais" | "fiscal";
+// Labels: { loja: "Minha Loja", whatsapp: "WhatsApp", portais: "Portais de Anúncio", fiscal: "Fiscal" }
 ```
-A aba "whatsapp" foi removida. Configuração de Facebook/Instagram Ads está na aba **Portais de Anúncio**.
+
+### Aba WhatsApp — 3 cards
+1. **Avisa API** — `avisa_base_url` (URL raiz da instância) + `avisa_token` (Bearer token)
+2. **Meta Cloud API** — `meta_phone_id` + `meta_access_token` + botão "Conectar via Facebook" (Embedded Signup)
+3. **Webhook Token** — exibe `webhook_token` somente leitura + URL do webhook `/api/webhook/avisa/{token}` com botões de copiar
+
+Salvamento via `handleSaveWhatsapp` faz upsert direto em `config_garage` com onConflict `user_id`.
+
+### Lógica de canal por tenant (Avisa × Meta)
+A regra é **ou/ou**, decidida em runtime:
+```typescript
+useAvisa = !!avisa_base_url && !!avisa_token
+```
+- `useAvisa = true` → entrada e saída pelo `/api/webhook/avisa` + `sendAvisaMessage()`
+- `useAvisa = false` → Meta Cloud API (`/api/webhook/meta` + `sendMetaMessage()`)
+
+**Misto quebra**: se preencher Avisa mas o webhook configurado for o do Meta, as mensagens entram via Meta e o bot tenta responder via Avisa — falha. Sempre alinhar entrada e saída.
+
+`meta_ads_token` é independente do canal de WhatsApp — usado só pra criar campanhas Lead Ad na aba Portais (mesmo em tenant 100% Avisa).
 
 ### `metaPaginaSalva` — como é populado
 1. No load inicial: query a `meta_paginas` dentro do callback de `config_garage` (se token presente)
@@ -175,28 +193,100 @@ useEffect(() => {
 ### Arquitetura geral do processamento (em ordem)
 1. Transcrição de áudio (Whisper via Gemini)
 2. Comandos especiais (`!status`, `!reset`, agenda do gerente)
-3. Upsert do lead + salva mensagem do usuário
-4. Stand-by: se `em_atendimento_humano = true`, IA ignora
+3. Upsert do lead + salva mensagem do usuário (per-lead lock no Redis)
+4. Stand-by: se `em_atendimento_humano = true` ou troca em curso, IA ignora
 5. Config da garagem (nome, endereço, vitrine, tom)
-6. Carrega `veiculoPrincipal` do banco via `lead.veiculo_id`
+6. Carrega `veiculoPrincipal` do banco via `lead.veiculo_id` + valida stale **só na 1ª mensagem** (ver abaixo)
+6b/c/d. Recovery via `[Contexto do link:]`, `origem_mensagem`, fallback relaxado por anúncio
 7. `hybridVehicleSearch` — busca textual + semântica, detecta troca de carro
-8. Atualiza `veiculo_id` do lead via **heurística** (modelo explícito na mensagem)
-9. `buildStockContext` — monta contexto separando "VEÍCULO EM FOCO" de "ALTERNATIVAS"
-10. Carrega histórico **inteligente**: 2 primeiras msgs (saudação + nome) + 13 mais recentes, sem duplicatas (Redis → Supabase fallback)
-11. Interceptores: pós-venda → stand-by automático
-12. Envio de foto (se pedido) — early return sem chamar Gemini
-13. Envio de vídeo (se pedido) — early return sem chamar Gemini
-14. **`injectHistoryCorrection`** — injeta correção sintética antes do Gemini (ver abaixo)
-15. Gemini gera JSON: `{ resposta, veiculo_id_foco, temperatura, resumo, nome_cliente_extraido, precisa_instrucao }`
-16. Aplica `veiculo_id_foco` com validação no banco (ver abaixo)
-17. Salva resposta + invalida cache + auto-agenda + transbordo QUENTE
-18. Envia resposta ao cliente
+8. `buildStockContext` (FOCO + ALTERNATIVAS) **+** `buildInventoryIndex` (lista completa de carros DISPONÍVEIS) — concatenados no contexto
+9. Carrega histórico **inteligente**: 2 primeiras msgs (saudação + nome) + 13 mais recentes, sem duplicatas (Redis → Supabase fallback)
+10. Interceptores: pós-venda → stand-by automático
+11. Envio de foto (se pedido) — scoring ponderado por ano/modelo/marca, early return sem chamar Gemini
+11b. Envio de vídeo (se pedido) — mesma lógica
+12. **`fixHistoryLoops`** — injeta correção sintética antes do Gemini
+13. Gemini gera JSON: `{ resposta, veiculo_id_foco, temperatura, resumo, nome_cliente_extraido, precisa_instrucao }`
+13b. **Guarda anti-mentira de estoque** — intercepta negações falsas pós-Gemini (ver abaixo)
+14. Aplica `veiculo_id_foco` com validação no banco
+15. Salva resposta + invalida cache + auto-agenda + transbordo QUENTE
+16. Envia resposta ao cliente
+
+### Verdade do estoque — proteções em camadas
+
+O agente já mentiu sobre disponibilidade ("não temos o Polo Track" quando havia 2 em estoque). Três camadas independentes evitam isso:
+
+#### 1. ÍNDICE COMPLETO DO ESTOQUE no contexto (`buildInventoryIndex`)
+A cada mensagem, o agente recebe a lista **resumida** de TODOS os carros `status_venda = DISPONIVEL` do tenant — só `marca, modelo, ano, cor, preço, ID`, sem fichas. Custo: ~60 chars por carro. 100 carros = ~6KB.
+
+```
+=== ÍNDICE COMPLETO DO ESTOQUE (84 carros DISPONÍVEIS agora) ===
+- VW Polo Track 2024 BRANCO • R$ 69.990 [ID:...]
+- VW Polo Track 2026 PRATA • R$ 84.990 [ID:...]
+- Toyota Corolla Cross XRE 2023 BRANCO • R$ 138.990 [ID:...]
+...
+```
+
+Vai concatenado depois de "VEÍCULO EM FOCO" e "ALTERNATIVAS". Serve como fonte da verdade quando a busca híbrida traz só o `veiculoPrincipal` (ex: cliente respondeu "Ok" e perdeu o referente).
+
+#### 2. Regra anti-negação no prompt
+Antes de qualquer afirmação tipo "não temos X", o agente DEVE:
+1. Procurar X no ÍNDICE COMPLETO
+2. Se achar → resposta positiva + usar o ID como `veiculo_id_foco`
+3. Se NÃO achar → resposta neutra ("vou confirmar com o pessoal do pátio") + `precisa_instrucao`
+
+#### 3. Guarda anti-mentira pós-Gemini (`process-whatsapp.ts` step 13b)
+Última linha de defesa. Aplicada DEPOIS do Gemini gerar a resposta:
+
+```typescript
+const denialPatternSentence = /n[ãa]o\s+(?:est[áa]|temos|tenho|tem|h[áa])(?:\s+(?:mais|dispon[íi]vel|...))?/i;
+```
+
+Para cada **sentença** da resposta que casa esse padrão, busca no estoque `DISPONIVEL` algum carro cuja marca OU primeira palavra do modelo (≥3 chars) apareça na MESMA sentença. Se encontrar:
+
+- Substitui `aiResponse` por: `"Deixa eu confirmar com o pessoal do pátio sobre o {marca} {modelo} — qualquer dúvida já me chama aqui."`
+- Atualiza `leads.instrucao_pendente`
+- Manda `sendAlert` pro gerente: `🚨 AGENTE QUASE MENTIU SOBRE ESTOQUE`
+
+**Crítico**: a detecção é **por sentença**, não por resposta inteira. Isso evita falso positivo no caso "Não temos Onix, mas temos um Polo Track novo" — só dispararia se "Polo Track" estivesse na MESMA sentença do "não temos".
+
+### Validação stale do `veiculo_id` — só na 1ª mensagem
+Step 6 valida o `lead.veiculo_id` atual contra `origem_mensagem` (texto do anúncio CTWA). Se a marca/modelo não bate, considera "stale" e re-resolve.
+
+**Bug clássico**: lead veio de anúncio do Compass, cliente trocou para Polo Track na msg 1 (sistema vinculou Polo Track). Na msg 2 a validação stale via "Polo Track" ≠ "Compass" → resetava pro Compass → conversa perdia foco.
+
+**Fix**: contar `mensagens` do lead — só roda a validação se `count ≤ 1`. Após o cliente ter conversado, o `veiculo_id` salvo é a verdade absoluta.
+
+```typescript
+const { count: msgCount } = await supabaseAdmin
+  .from("mensagens")
+  .select("*", { count: "exact", head: true })
+  .eq("lead_id", lead.id);
+const isPrimeiraMensagem = (msgCount ?? 0) <= 1;
+if (isPrimeiraMensagem) { /* validação stale */ }
+```
+
+### Seleção de veículo para foto/vídeo — scoring ponderado
+Quando o cliente pede mídia ("tem fotos desse 2023?"), o seletor pontua cada veículo do contexto:
+
+| Match | Score |
+|---|---|
+| Ano (`ano` ou `ano_modelo` bate com yearToken da msg) | **+100** |
+| Cada palavra do modelo (≥3 chars) presente na msg | **+50** |
+| Cada palavra da marca (≥3 chars) presente na msg | **+30** |
+| `veiculoPrincipal` (tiebreaker pra referências vagas tipo "desse") | **+5** |
+
+Filtra `score > 0`, ordena desc, pega o top. Sem score → cai pra `findVehicleForMedia` (busca direta no DB), depois `veiculoPrincipal`.
+
+Resolve **"desse 2023"** no contexto `[Polo Track 2023/2024, Polo Track 2025/2026, Corolla Cross 2023]`:
+- Polo Track 2023/2024: ano=2023 +100 + boost +5 = **105** ✅ (foco + ano bate)
+- Polo Track 2025/2026: 0
+- Corolla Cross 2023: ano_modelo=2023 +100 = 100
 
 ### Rastreamento do carro em foco — duas camadas
 
-**Camada 1 — Heurística (passo 8):** `hybridVehicleSearch` detecta `clientePediuCarroDiferente` quando o modelo aparece explicitamente na mensagem. Rápida e confiável para trocas explícitas.
+**Camada 1 — Heurística (passo 7):** `hybridVehicleSearch` detecta `clientePediuCarroDiferente` quando o modelo aparece explicitamente na mensagem. Rápida e confiável para trocas explícitas.
 
-**Camada 2 — Gemini (passo 16):** O JSON de resposta inclui `veiculo_id_foco` com o ID do carro em negociação. Cobre linguagem indireta ("mas vi um prata", "e aquele?") que a heurística não pega.
+**Camada 2 — Gemini (passo 14):** O JSON de resposta inclui `veiculo_id_foco` com o ID do carro em negociação. Cobre linguagem indireta ("mas vi um prata", "e aquele?") que a heurística não pega.
 
 Validação obrigatória antes de aplicar o `veiculo_id_foco`:
 ```typescript

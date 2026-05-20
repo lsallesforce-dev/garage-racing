@@ -7,16 +7,19 @@ import { rateLimit } from "@/lib/redis";
 
 /**
  * Valida o ADMIN_SECRET de forma segura.
- * - Retorna 429 se o IP excedeu 5 tentativas/minuto (anti brute-force)
  * - Retorna 401 se o secret não estiver configurado (evita fail-open com string vazia)
  * - Retorna 401 se o header não bater (comparação timing-safe)
+ * - Conta apenas FALHAS para rate limit por IP — 10 falhas/min bloqueiam o IP por 1 min.
+ *   Mantém defesa anti brute-force sem prejudicar o uso legítimo (que faz dezenas de
+ *   chamadas seguidas ao trocar plano, estender trial, atualizar stats etc).
  */
 export async function requireAdminSecret(req: NextRequest): Promise<NextResponse | null> {
-  // Rate limit por IP — 5 req/min para admin (mais restritivo que rotas normais)
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
-  const rl = await rateLimit(`admin:${ip}`, 5, 60);
-  if (!rl.allowed) {
-    return NextResponse.json({ error: "Muitas tentativas" }, { status: 429 });
+
+  // Bloqueia ANTES de validar — se o IP já estourou (10 falhas/min), barra de cara
+  const blockCheck = await rateLimit(`admin:fail:${ip}`, 10, 60, { increment: false });
+  if (!blockCheck.allowed) {
+    return NextResponse.json({ error: "Muitas tentativas inválidas — aguarde 1 min" }, { status: 429 });
   }
 
   const configured = process.env.ADMIN_SECRET;
@@ -25,6 +28,7 @@ export async function requireAdminSecret(req: NextRequest): Promise<NextResponse
   }
   const provided = req.headers.get("x-admin-secret");
   if (!provided) {
+    await rateLimit(`admin:fail:${ip}`, 10, 60);
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
 
@@ -36,13 +40,13 @@ export async function requireAdminSecret(req: NextRequest): Promise<NextResponse
     timingSafeEqual(configuredBuf, providedBuf);
 
   if (!match) {
+    await rateLimit(`admin:fail:${ip}`, 10, 60);
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
-  return null; // autorizado
+  return null; // autorizado — não consome budget do rate limit
 }
 
 import { createSupabaseServerClient } from "@/lib/supabase-server";
-import { NextResponse } from "next/server";
 import type { User } from "@supabase/supabase-js";
 
 /**

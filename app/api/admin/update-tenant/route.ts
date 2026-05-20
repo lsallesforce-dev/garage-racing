@@ -46,17 +46,31 @@ export async function POST(req: NextRequest) {
 
     case "estender_trial":
       // valor = número de dias extras
+      // Estende o vencimento ATIVO: se o cliente está em trial, estende trial_ends_at.
+      // Se já está em plano pago (plano_ativo = true), estende plano_vence_em.
+      // Resolve o bug em que clicar +30d num cliente Premium não fazia nada visível.
       const dias = parseInt(valor) || 7;
       const { data: atual } = await supabaseAdmin
         .from("config_garage")
-        .select("trial_ends_at")
+        .select("trial_ends_at, plano_ativo, plano_vence_em")
         .eq("user_id", user_id)
         .maybeSingle();
-      const base = atual?.trial_ends_at && new Date(atual.trial_ends_at) > new Date()
-        ? new Date(atual.trial_ends_at)
-        : new Date();
-      base.setDate(base.getDate() + dias);
-      update = { trial_ends_at: base.toISOString() };
+
+      // Cliente em plano pago ativo → estende plano_vence_em
+      if (atual?.plano_ativo) {
+        const baseP = atual?.plano_vence_em && new Date(atual.plano_vence_em) > new Date()
+          ? new Date(atual.plano_vence_em)
+          : new Date();
+        baseP.setDate(baseP.getDate() + dias);
+        update = { plano_vence_em: baseP.toISOString(), plano_ativo: true };
+      } else {
+        // Cliente em trial (ou expirado sem plano) → estende trial_ends_at
+        const baseT = atual?.trial_ends_at && new Date(atual.trial_ends_at) > new Date()
+          ? new Date(atual.trial_ends_at)
+          : new Date();
+        baseT.setDate(baseT.getDate() + dias);
+        update = { trial_ends_at: baseT.toISOString() };
+      }
       break;
 
     case "set_vencimento":

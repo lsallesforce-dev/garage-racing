@@ -124,7 +124,7 @@ async function categorySearch(aliases: string[], tenantUserId: string): Promise<
     .eq("status_venda", "DISPONIVEL")
     .eq("user_id", tenantUserId)
     .or(orClauses)
-    .limit(15);
+    .limit(100); // ← aumentado de 15 pra cobrir lojas com muitos carros da mesma categoria
 
   return (data as Vehicle[]) || [];
 }
@@ -194,7 +194,9 @@ async function textSearch(tokens: string[], tenantUserId: string, modeloContexto
       .eq("status_venda", "DISPONIVEL")
       .eq("user_id", tenantUserId)
       .or(orClauses)
-      .limit(15);
+      .limit(100); // ← 15→100: com tokens genéricos do anúncio (flex, branco, automatico),
+                   // o limit 15 SEM order by retornava 15 carros aleatórios e podia
+                   // excluir o carro que realmente importa (Compass). Scoring abaixo escolhe o melhor.
 
     if (data) {
       for (const v of data as Vehicle[]) {
@@ -216,7 +218,7 @@ async function textSearch(tokens: string[], tenantUserId: string, modeloContexto
       .eq("status_venda", "DISPONIVEL")
       .eq("user_id", tenantUserId)
       .or(`ano_modelo.eq.${yearNum},ano.eq.${yearNum}`)
-      .limit(10);
+      .limit(50); // ← 10→50: mesma razão
 
     if (data) {
       for (const v of data as Vehicle[]) {
@@ -420,7 +422,7 @@ export async function findVehicleForMedia(
     .select("id, marca, modelo, versao, cor, ano, status_venda, user_id")
     .eq("status_venda", "DISPONIVEL")
     .eq("user_id", tenantUserId)
-    .limit(100);
+    .limit(500); // ← cobre lojas grandes; sem isso o Compass pode estar fora dos 100 retornados
 
   if (!todos || todos.length === 0) return null;
 
@@ -546,12 +548,40 @@ export async function hybridVehicleSearch(
   const variantesOutros = veiculoPrincipal
     ? hitsTextuais.filter((h) => h.id !== veiculoPrincipal.id)
     : [];
-  const pedindoVariante = pedindoOutro && variantesOutros.length > 0;
+
+  // GUARDA contra falso positivo do "outro": só vale como pedido de variante se
+  // a mensagem mencionar EXPLICITAMENTE alguma palavra que pertença a um modelo/marca
+  // diferente do veiculoPrincipal. Resolve casos como:
+  //   "O outro é mais barato, me passa fotos desse 2023"  ← Polo 2023 já é o principal
+  //   "O outro Polo é melhor"  ← comentário, ainda é o mesmo modelo
+  // Sem isso, qualquer "outro" empurrava o principal pra fora do top e podia trocar
+  // pro Corolla Cross só porque o ano 2023 batia.
+  const msgNormUser = normalizeStr(userMessage);
+  let mencionouCarroDiferente = false;
+  if (veiculoPrincipal && variantesOutros.length > 0) {
+    const principalTokens = new Set(
+      normalizeStr(`${veiculoPrincipal.marca ?? ""} ${veiculoPrincipal.modelo ?? ""}`)
+        .split(/\s+/)
+        .filter((w) => w.length >= 3),
+    );
+    mencionouCarroDiferente = variantesOutros.some((h) => {
+      const hTokens = normalizeStr(`${h.marca ?? ""} ${h.modelo ?? ""}`)
+        .split(/\s+/)
+        .filter((w) => w.length >= 3);
+      // Palavra EXCLUSIVA do hit (não compartilhada com o principal) presente na msg
+      return hTokens.some((w) => !principalTokens.has(w) && msgNormUser.includes(w));
+    });
+  } else if (!veiculoPrincipal) {
+    // Sem principal, qualquer hit textual é candidato legítimo
+    mencionouCarroDiferente = true;
+  }
+
+  const pedindoVariante = pedindoOutro && variantesOutros.length > 0 && mencionouCarroDiferente;
 
   const clientePediuCarroDiferente =
     temHitsTextuais &&
     (!veiculoPrincipal ||
-      !hitsTextuais.some((h) => h.id === veiculoPrincipal.id) ||
+      (!hitsTextuais.some((h) => h.id === veiculoPrincipal.id) && mencionouCarroDiferente) ||
       pedindoVariante);
 
   if (clientePediuCarroDiferente) {
@@ -603,8 +633,10 @@ export async function hybridVehicleSearch(
     if (temHitsTextuais) {
       const variantes = hitsTextuais.filter((v) => v.id !== veiculoPrincipal.id);
 
-      // Cliente pediu "outro/outra X" e há alternativas → é troca de veículo
-      if (pedindoOutro && variantes.length > 0) {
+      // Cliente pediu "outro/outra X" E mencionou explicitamente outro modelo/marca
+      // → é troca de veículo. Sem `mencionouCarroDiferente` aqui, frases como
+      // "O outro é mais barato, me passa fotos desse 2023" trocavam pro carro errado.
+      if (pedindoOutro && variantes.length > 0 && mencionouCarroDiferente) {
         return {
           topVeiculos: [...variantes, veiculoPrincipal].slice(0, 5),
           hitsTextuais,
@@ -621,6 +653,8 @@ export async function hybridVehicleSearch(
 
     // Cliente pediu "outro" sem mencionar modelo específico
     // → busca variantes do mesmo modelo; se não achar, tenta mesma marca
+    // Mantém pedindoOutro puro aqui porque é o caso "tem outro?" sem qualificador
+    // — único contexto em que "outro" sozinho é pedido legítimo de variante
     if (pedindoOutro) {
       const { data: variantes } = await supabaseAdmin
         .from("veiculos")

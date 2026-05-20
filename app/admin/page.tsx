@@ -696,7 +696,7 @@ export default function AdminPage() {
                           </div>
                         </div>
                         <button onClick={() => acao(t.user_id, "ativar")}
-                          className="px-2 py-1 bg-amber-600 text-white text-[9px] font-black uppercase tracking-widest rounded-lg hover:bg-amber-700 transition">
+                          className="px-3.5 py-1.5 bg-amber-600 text-white text-xs font-black uppercase tracking-wider rounded-lg hover:bg-amber-700 transition">
                           Renovar
                         </button>
                       </div>
@@ -736,59 +736,59 @@ export default function AdminPage() {
             <div className="flex flex-wrap items-center gap-3">
               <input type="text" placeholder="Buscar por nome ou token..." value={search}
                 onChange={e => setSearch(e.target.value)}
-                className="bg-white border border-gray-200 rounded-xl px-3 py-2 text-[12px] focus:outline-none focus:border-red-500 w-64"
+                className="bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-red-500 w-72"
               />
-              <div className="flex gap-1">
+              <div className="flex gap-1.5">
                 {(["todos", "ativo", "trial", "expirado", "bloqueado"] as const).map(f => (
                   <button key={f} onClick={() => setFiltroPlano(f)}
-                    className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition ${
-                      filtroPlano === f ? "bg-gray-900 text-white" : "bg-white border border-gray-200 text-gray-500 hover:bg-gray-50"
+                    className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition ${
+                      filtroPlano === f ? "bg-gray-900 text-white shadow" : "bg-white border border-gray-200 text-gray-500 hover:bg-gray-50"
                     }`}>
                     {f}
                   </button>
                 ))}
               </div>
-              <span className="text-[10px] text-gray-400 font-bold ml-auto">{tenantsFiltrados.length} resultado(s)</span>
+              <span className="text-xs text-gray-500 font-bold ml-auto">{tenantsFiltrados.length} resultado(s)</span>
             </div>
 
             {/* Tabela */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
               <table className="w-full text-left">
                 <thead>
-                  <tr className="border-b border-gray-100">
+                  <tr className="border-b border-gray-100 bg-gray-50/50">
                     {["Empresa", "Plano", "Veíc.", "Leads", "Atividade", "Ações"].map(h => (
-                      <th key={h} className="px-4 py-3 text-[9px] font-black uppercase tracking-widest text-gray-400">{h}</th>
+                      <th key={h} className="px-4 py-4 text-[10px] font-black uppercase tracking-widest text-gray-500">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {tenantsFiltrados.length === 0 ? (
-                    <tr><td colSpan={6} className="text-center py-12 text-[11px] text-gray-300 font-black uppercase tracking-widest">Nenhum resultado</td></tr>
+                    <tr><td colSpan={6} className="text-center py-16 text-sm text-gray-300 font-black uppercase tracking-widest">Nenhum resultado</td></tr>
                   ) : tenantsFiltrados.map(t => (
                     <>
                       <tr key={t.user_id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
                         {/* Empresa */}
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-4">
                           <div className="flex items-center gap-3">
                             <TenantAvatar t={t} />
                             <div>
-                              <p className="text-[12px] font-black text-gray-900 uppercase tracking-tight">{t.nome_empresa}</p>
-                              <p className="text-[9px] text-gray-400">
+                              <p className="text-sm font-black text-gray-900 uppercase tracking-tight">{t.nome_empresa}</p>
+                              <p className="text-[11px] text-gray-400 mt-0.5">
                                 Desde {fmtDate(t.created_at)}
-                                {t.bloqueado && <span className="ml-1 text-red-500 font-bold">· BLOQUEADO</span>}
+                                {t.bloqueado && <span className="ml-1.5 text-red-500 font-bold">· BLOQUEADO</span>}
                               </p>
                             </div>
                           </div>
                         </td>
                         {/* Plano */}
-                        <td className="px-4 py-3"><PlanoBadge t={t} /></td>
+                        <td className="px-4 py-4"><PlanoBadge t={t} /></td>
                         {/* Veículos */}
-                        <td className="px-4 py-3"><span className="text-[13px] font-black text-gray-900">{t.veiculos}</span></td>
+                        <td className="px-4 py-4"><span className="text-base font-black text-gray-900">{t.veiculos}</span></td>
                         {/* Leads */}
-                        <td className="px-4 py-3"><span className="text-[13px] font-black text-gray-900">{t.leads}</span></td>
+                        <td className="px-4 py-4"><span className="text-base font-black text-gray-900">{t.leads}</span></td>
                         {/* Atividade */}
-                        <td className="px-4 py-3">
-                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest border ${
+                        <td className="px-4 py-4">
+                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${
                             t.ativo_7d
                               ? "bg-green-50 text-green-700 border-green-100"
                               : "bg-gray-100 text-gray-400 border-gray-200"
@@ -796,37 +796,38 @@ export default function AdminPage() {
                             {t.ativo_7d ? "● Ativo" : "○ Inativo"}
                           </span>
                           {t.ultima_msg_at && (
-                            <p className="text-[9px] text-gray-400 mt-0.5">{fmtDate(t.ultima_msg_at)}</p>
+                            <p className="text-[11px] text-gray-400 mt-1">{fmtDate(t.ultima_msg_at)}</p>
                           )}
                         </td>
                         {/* Ações */}
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-1.5">
+                        <td className="px-4 py-4">
+                          <div className="flex items-center gap-2">
                             {/* Ver painel */}
                             <button onClick={() => impersonate(t.user_id, t.nome_empresa)}
                               disabled={acaoLoading === `${t.user_id}-imp`}
                               title="Acessar painel do cliente"
-                              className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition disabled:opacity-50">
-                              {acaoLoading === `${t.user_id}-imp` ? <Loader2 size={13} className="animate-spin" /> : <Eye size={13} />}
+                              className="p-2.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition disabled:opacity-50">
+                              {acaoLoading === `${t.user_id}-imp` ? <Loader2 size={16} className="animate-spin" /> : <Eye size={16} />}
                             </button>
                             {/* Vitrine */}
                             {t.vitrine_slug && (
                               <a href={`/vitrine/${t.vitrine_slug}`} target="_blank"
-                                className="p-1.5 rounded-lg text-gray-400 hover:text-gray-900 hover:bg-gray-100 transition">
-                                <ExternalLink size={13} />
+                                title="Ver vitrine"
+                                className="p-2.5 rounded-lg text-gray-400 hover:text-gray-900 hover:bg-gray-100 transition">
+                                <ExternalLink size={16} />
                               </a>
                             )}
                             {/* Ativar/Desativar */}
                             {planoStatus(t) !== "ativo" ? (
                               <button onClick={() => acao(t.user_id, "ativar")}
                                 disabled={acaoLoading === `${t.user_id}-ativar`}
-                                className="px-2 py-1 bg-green-600 hover:bg-green-700 text-white text-[9px] font-black uppercase tracking-widest rounded-lg transition disabled:opacity-50">
+                                className="px-3.5 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-black uppercase tracking-wider rounded-lg transition disabled:opacity-50">
                                 Ativar
                               </button>
                             ) : (
                               <button onClick={() => acao(t.user_id, "desativar")}
                                 disabled={acaoLoading === `${t.user_id}-desativar`}
-                                className="px-2 py-1 bg-gray-200 hover:bg-gray-300 text-gray-600 text-[9px] font-black uppercase tracking-widest rounded-lg transition disabled:opacity-50">
+                                className="px-3.5 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 text-xs font-black uppercase tracking-wider rounded-lg transition disabled:opacity-50">
                                 Pausar
                               </button>
                             )}
@@ -834,76 +835,93 @@ export default function AdminPage() {
                             {t.bloqueado ? (
                               <button onClick={() => acao(t.user_id, "desbloquear")}
                                 title="Desbloquear acesso"
-                                className="p-1.5 rounded-lg text-gray-400 hover:text-green-600 hover:bg-green-50 transition">
-                                <Unlock size={13} />
+                                className="p-2.5 rounded-lg text-gray-400 hover:text-green-600 hover:bg-green-50 transition">
+                                <Unlock size={16} />
                               </button>
                             ) : (
                               <button onClick={() => { if (confirm(`Bloquear ${t.nome_empresa}?`)) acao(t.user_id, "bloquear"); }}
                                 title="Bloquear acesso"
-                                className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition">
-                                <Lock size={13} />
+                                className="p-2.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition">
+                                <Lock size={16} />
                               </button>
                             )}
                             {/* Expandir */}
                             <button onClick={() => setExpandido(expandido === t.user_id ? null : t.user_id)}
-                              className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition">
-                              {expandido === t.user_id ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                              title={expandido === t.user_id ? "Recolher" : "Mais ações"}
+                              className="p-2.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition">
+                              {expandido === t.user_id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                             </button>
                           </div>
                         </td>
                       </tr>
                       {/* Linha expandida */}
                       {expandido === t.user_id && (
-                        <tr key={`${t.user_id}-exp`} className="bg-gray-50">
-                          <td colSpan={6} className="px-6 py-4">
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-[11px]">
-                              <div>
-                                <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">WhatsApp</p>
-                                <p className="font-bold text-gray-700">{t.whatsapp ?? "—"}</p>
-                              </div>
-                              <div>
-                                <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Vitrine Slug</p>
-                                <p className="font-bold text-gray-700">{t.vitrine_slug ?? "—"}</p>
-                              </div>
-                              <div>
-                                <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Webhook Token</p>
-                                <button onClick={() => copy(t.webhook_token ?? "")}
-                                  className="flex items-center gap-1 font-mono text-gray-700 hover:text-gray-900 transition">
-                                  <Copy size={9} /> {t.webhook_token ?? "—"}
-                                </button>
-                              </div>
-                              <div>
-                                <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">Estender Trial</p>
-                                <div className="flex gap-2">
-                                  {[7, 15, 30].map(d => (
-                                    <button key={d} onClick={() => acao(t.user_id, "estender_trial", String(d))}
-                                      className="px-2 py-1 bg-purple-100 text-purple-700 text-[9px] font-black uppercase tracking-widest rounded-lg hover:bg-purple-200 transition">
-                                      +{d}d
-                                    </button>
-                                  ))}
+                        <tr key={`${t.user_id}-exp`} className="bg-gray-50/70">
+                          <td colSpan={6} className="px-6 py-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                              {/* Coluna 1 — Identificação */}
+                              <div className="flex flex-col gap-4">
+                                <div>
+                                  <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">WhatsApp</p>
+                                  <p className="text-sm font-bold text-gray-700">{t.whatsapp ?? "—"}</p>
+                                </div>
+                                <div>
+                                  <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Vitrine Slug</p>
+                                  <p className="text-sm font-bold text-gray-700">{t.vitrine_slug ?? "—"}</p>
+                                </div>
+                                <div>
+                                  <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Webhook Token</p>
+                                  <button onClick={() => copy(t.webhook_token ?? "")}
+                                    className="flex items-center gap-1.5 font-mono text-xs text-gray-700 hover:text-gray-900 transition bg-white border border-gray-200 rounded-lg px-3 py-2">
+                                    <Copy size={12} /> {t.webhook_token ?? "—"}
+                                  </button>
+                                </div>
+                                <div>
+                                  <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">User ID</p>
+                                  <button onClick={() => copy(t.user_id)}
+                                    className="flex items-center gap-1.5 font-mono text-xs text-gray-500 hover:text-gray-800 transition bg-white border border-gray-200 rounded-lg px-3 py-2">
+                                    <Copy size={12} /> {t.user_id}
+                                  </button>
                                 </div>
                               </div>
-                              <div>
-                                <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">Mudar Plano</p>
-                                <div className="flex gap-2">
-                                  {["starter", "pro", "premium"].map(p => (
-                                    <button key={p} onClick={() => acao(t.user_id, "mudar_plano", p)}
-                                      className={`px-2 py-1 text-[9px] font-black uppercase tracking-widest rounded-lg transition ${
-                                        (t.plano ?? "pro") === p
-                                          ? "bg-gray-900 text-white"
-                                          : "bg-gray-200 text-gray-600 hover:bg-gray-300"
-                                      }`}>
-                                      {p}
-                                    </button>
-                                  ))}
+
+                              {/* Coluna 2 — Ações */}
+                              <div className="flex flex-col gap-4">
+                                <div>
+                                  <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">
+                                    {t.plano_ativo ? "Estender Plano" : "Estender Trial"}
+                                  </p>
+                                  <p className="text-[10px] text-gray-400 mb-2.5">
+                                    {t.plano_ativo
+                                      ? `Vence em ${dias(t.plano_vence_em)}d — soma ao vencimento atual`
+                                      : `Trial expira em ${dias(t.trial_ends_at)}d — soma ao trial`}
+                                  </p>
+                                  <div className="flex gap-2">
+                                    {[7, 15, 30].map(d => (
+                                      <button key={d} onClick={() => acao(t.user_id, "estender_trial", String(d))}
+                                        disabled={acaoLoading === `${t.user_id}-estender_trial`}
+                                        className="flex-1 px-4 py-2.5 bg-purple-100 text-purple-700 text-xs font-black uppercase tracking-wider rounded-xl hover:bg-purple-200 transition disabled:opacity-50">
+                                        +{d} dias
+                                      </button>
+                                    ))}
+                                  </div>
                                 </div>
-                              </div>
-                              <div>
-                                <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">User ID</p>
-                                <button onClick={() => copy(t.user_id)}
-                                  className="flex items-center gap-1 font-mono text-[10px] text-gray-500 hover:text-gray-800 transition">
-                                  <Copy size={9} /> {t.user_id.substring(0, 16)}…
-                                </button>
+                                <div>
+                                  <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2.5">Mudar Plano</p>
+                                  <div className="flex gap-2">
+                                    {["starter", "pro", "premium"].map(p => (
+                                      <button key={p} onClick={() => acao(t.user_id, "mudar_plano", p)}
+                                        disabled={acaoLoading === `${t.user_id}-mudar_plano`}
+                                        className={`flex-1 px-4 py-2.5 text-xs font-black uppercase tracking-wider rounded-xl transition disabled:opacity-50 ${
+                                          (t.plano ?? "pro") === p
+                                            ? "bg-gray-900 text-white shadow"
+                                            : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-100"
+                                        }`}>
+                                        {p}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
                               </div>
                             </div>
                           </td>
