@@ -1700,13 +1700,17 @@ Responda apenas com o JSON, sem markdown.`;
           fotoEnviada = true;
           // Registra a foto no histórico do chat para exibição no painel
           if (lead) {
-            supabaseAdmin.from("mensagens").insert({
-              lead_id: lead.id,
-              content: caption ?? `📷 ${v.marca} ${v.modelo}`,
-              remetente: "agente",
-              media_url: fotosParaEnviar[i],
-              media_tipo: "foto",
-            }).then(null, (e) => console.warn("⚠️ Falha ao registrar foto no chat:", e?.message));
+            try {
+              await supabaseAdmin.from("mensagens").insert({
+                lead_id: lead.id,
+                content: caption ?? `📷 ${v.marca} ${v.modelo}`,
+                remetente: "agente",
+                media_url: fotosParaEnviar[i],
+                media_tipo: "foto",
+              });
+            } catch (e: any) {
+              console.warn("⚠️ Falha ao registrar foto no chat:", e?.message);
+            }
           }
         } catch (e) {
           console.warn(`⚠️ Falha ao enviar foto de ${v.marca} ${v.modelo}:`, e);
@@ -1754,13 +1758,17 @@ Responda apenas com o JSON, sem markdown.`;
           videoEnviado = true;
           // Registra o vídeo no histórico do chat para exibição no painel
           if (lead) {
-            supabaseAdmin.from("mensagens").insert({
-              lead_id: lead.id,
-              content: `🎥 ${veiculoParaVideo.marca} ${veiculoParaVideo.modelo}`,
-              remetente: "agente",
-              media_url: videoUrl,
-              media_tipo: "video",
-            }).then(null, (e) => console.warn("⚠️ Falha ao registrar vídeo no chat:", e?.message));
+            try {
+              await supabaseAdmin.from("mensagens").insert({
+                lead_id: lead.id,
+                content: `🎥 ${veiculoParaVideo.marca} ${veiculoParaVideo.modelo}`,
+                remetente: "agente",
+                media_url: videoUrl,
+                media_tipo: "video",
+              });
+            } catch (e: any) {
+              console.warn("⚠️ Falha ao registrar vídeo no chat:", e?.message);
+            }
           }
 
           // Mensagem de texto junto ao vídeo para não deixar mídia órfã
