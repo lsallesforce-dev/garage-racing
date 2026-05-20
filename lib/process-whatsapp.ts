@@ -1514,7 +1514,7 @@ Responda apenas com o JSON, sem markdown.`;
   // Exige intenção explícita ("manda", "tem", "envia"...) antes de "foto/imagem"
   // para evitar falsos positivos em comentários como "Gostei dessa foto" ou "Essa foto parece arranhada"
   const temIntencaoFoto =
-    /\b(manda|envia|me manda|me envia|me passa|tem|posso ver|quero ver|pode mandar|pode enviar|ver as)\b/
+    /\b(manda|envia|me manda|me envia|me passa|tem|posso ver|quero ver|pode mandar|pode enviar|ver as|cad[eê]|onde est[aá]|me mostra)\b/
       .test(mensagemLower) &&
     /\b(foto|fotos|imagem|imagens)\b/.test(mensagemLower);
   const mensagemSoFoto = /^(foto|fotos|imagem|imagens)[.!?]?$/.test(mensagemLower.trim());
@@ -1539,7 +1539,7 @@ Responda apenas com o JSON, sem markdown.`;
     "manda o vídeo", "envia o vídeo", "envia o video", "me manda o video", "me manda o vídeo",
   ];
 
-  // Confirmação ("sim/pode/ok") é válida somente se a msg anterior do cliente pediu foto ou vídeo
+  // Confirmação ("sim/pode/ok") é válida somente se a msg anterior do cliente OU do agente mencionou foto/vídeo
   const msgConfirmacao = /^(sim|envia|manda|pode|quero|vai|claro|ok|isso|bora|manda sim|pode sim)$/i.test(userMessage.trim());
   // Strip prefixo de anúncio também da mensagem anterior (evita falso clientePediuFotoAntes
   // quando a msg CTWA anterior tinha "fotos" no texto do link, ex: "Confira as fotos do HR-V")
@@ -1547,6 +1547,12 @@ Responda apenas com o JSON, sem markdown.`;
   const ultimaMsgCliente = ultimaMsgClienteRaw.replace(/^\[(?:Contexto do link|Lead veio do anúncio)[^\n]*\n?/m, "").trim().toLowerCase();
   const clientePediuFotoAntes = gatilhosFoto.some((g) => ultimaMsgCliente.includes(g));
   const clientePediuVideoAntes = gatilhosVideo.some((g) => ultimaMsgCliente.includes(g));
+
+  // Agente ofereceu foto/vídeo na última mensagem? ("Quer ver as fotos?", "Posso mandar o vídeo?")
+  // Cobre o caso: agente oferece → cliente responde "Sim" → clientePediuFotoAntes seria false
+  const ultimaMsgAgenteRaw = historico.filter((h: any) => h.role === "model").slice(-1)[0]?.parts?.[0]?.text ?? "";
+  const agenteMencionouFoto  = /\b(foto|fotos|imagem|imagens)\b/i.test(ultimaMsgAgenteRaw);
+  const agenteMencionouVideo = /\bv[íi]deo\b/i.test(ultimaMsgAgenteRaw);
 
   // Continuação implícita: "e da ranger?", "e o gol?", "e a strada?" após pedido de foto anterior
   // O cliente não repete a palavra "foto" mas está claramente continuando o pedido anterior
@@ -1560,7 +1566,8 @@ Responda apenas com o JSON, sem markdown.`;
   const pedindoFotosMultiplos = /\b(deles|delas|dos dois|das duas|de ambos|de todos|de cada|de cada um)\b/i.test(mensagemLower);
 
   const clientePediuFoto =
-    (temIntencaoFoto || mensagemSoFoto || gatilhosFoto.some((g) => mensagemLower.includes(g)) || (msgConfirmacao && clientePediuFotoAntes) || continuacaoFoto) &&
+    (temIntencaoFoto || mensagemSoFoto || gatilhosFoto.some((g) => mensagemLower.includes(g)) ||
+      (msgConfirmacao && (clientePediuFotoAntes || agenteMencionouFoto)) || continuacaoFoto) &&
     !exclusoesFoto.some((e) => mensagemLower.includes(e));
 
   let fotoEnviada = false;
@@ -1727,7 +1734,7 @@ Responda apenas com o JSON, sem markdown.`;
   // ── 11b. Enviar Vídeo ───────────────────────────────────────────────────────
   const clientePediuVideo =
     gatilhosVideo.some((g) => mensagemLower.includes(g)) ||
-    (msgConfirmacao && clientePediuVideoAntes && !clientePediuFotoAntes);
+    (msgConfirmacao && (clientePediuVideoAntes || agenteMencionouVideo) && !clientePediuFoto);
 
   let videoEnviado = false;
 
