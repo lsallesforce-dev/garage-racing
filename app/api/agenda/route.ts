@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { requireAuth } from "@/lib/api-auth";
+import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
 
 export async function GET(req: NextRequest) {
   const { user, error } = await requireAuth();
   if (error) return error;
+  const userId = getEffectiveUserId(user!);
 
   const { searchParams } = req.nextUrl;
   const inicio = searchParams.get("inicio");
@@ -13,7 +14,7 @@ export async function GET(req: NextRequest) {
   let query = supabaseAdmin
     .from("agenda")
     .select("*, leads(nome, wa_id)")
-    .eq("user_id", user!.id)
+    .eq("user_id", userId)
     .order("data_hora", { ascending: true });
 
   if (inicio) query = query.gte("data_hora", inicio);
@@ -28,13 +29,14 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const { user, error } = await requireAuth();
   if (error) return error;
+  const userId = getEffectiveUserId(user!);
 
   const body = await req.json();
 
   const { data, error: dbError } = await supabaseAdmin
     .from("agenda")
     .insert({
-      user_id: user!.id,
+      user_id: userId,
       titulo: body.titulo,
       descricao: body.descricao || null,
       data_hora: body.data_hora,

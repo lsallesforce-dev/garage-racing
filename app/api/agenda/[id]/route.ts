@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { requireAuth } from "@/lib/api-auth";
+import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { user, error } = await requireAuth();
   if (error) return error;
+  const userId = getEffectiveUserId(user!);
 
   const body = await req.json();
 
@@ -15,7 +16,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     .eq("id", id)
     .single();
 
-  if (!existing || existing.user_id !== user!.id) {
+  if (!existing || existing.user_id !== userId) {
     return NextResponse.json({ error: "Não encontrado" }, { status: 404 });
   }
 
@@ -41,6 +42,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const { id } = await params;
   const { user, error } = await requireAuth();
   if (error) return error;
+  const userId = getEffectiveUserId(user!);
 
   const { data: existing } = await supabaseAdmin
     .from("agenda")
@@ -48,7 +50,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     .eq("id", id)
     .single();
 
-  if (!existing || existing.user_id !== user!.id) {
+  if (!existing || existing.user_id !== userId) {
     return NextResponse.json({ error: "Não encontrado" }, { status: 404 });
   }
 
