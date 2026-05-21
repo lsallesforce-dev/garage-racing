@@ -242,7 +242,9 @@ export async function POST(req: NextRequest) {
       bearerToken ||
       null;
 
-    const FIELDS = "user_id, nome_empresa, nome_fantasia, nome_agente, endereco, endereco_complemento, cidade, whatsapp, telefone_loja, vitrine_slug, webhook_token, avisa_base_url, avisa_token, tom_venda, instrucoes_adicionais, oferta_especial, horario_funcionamento, plano_ativo, trial_ends_at, plano_vence_em";
+    // NOTA: telefone_loja removido do SELECT até a migration 011 ser aplicada no banco.
+    // Adicionar de volta após: ALTER TABLE config_garage ADD COLUMN IF NOT EXISTS telefone_loja text;
+    const FIELDS = "user_id, nome_empresa, nome_fantasia, nome_agente, endereco, endereco_complemento, cidade, whatsapp, vitrine_slug, webhook_token, avisa_base_url, avisa_token, tom_venda, instrucoes_adicionais, oferta_especial, horario_funcionamento, plano_ativo, trial_ends_at, plano_vence_em";
     let tenantUserId: string | null = null;
     let garageConfig: any = null;
 
