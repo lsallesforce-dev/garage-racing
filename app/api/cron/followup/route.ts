@@ -1,33 +1,38 @@
 // app/api/cron/followup/route.ts
 //
 // Cron job de follow-up inteligente de leads.
-// Roda várias vezes ao dia via Vercel Cron (vercel.json): 11,13,15,17,19,21h UTC.
+// Roda 6x/dia via Vercel Cron (vercel.json): 11,13,15,17,19,21h UTC.
 // Gate de horário comercial (8h–18h BRT) bloqueia execuções fora do expediente.
-// Guard de idempotência garante que só executa UMA VEZ por dia.
-// Combinação: se a 1ª invocação (11h UTC = 8h BRT) estiver dentro do horário,
-// executa e trava; senão, tenta na próxima (13h UTC = 10h BRT), etc.
-// Regras de elegibilidade:
-//   - Lead MORNO ou QUENTE → sempre elegível
-//   - Lead FRIO → elegível SE tem veiculo_id (demonstrou interesse em carro específico)
-//   - Última mensagem > 24h atrás
-//   - ultimo_followup IS NULL ou > 7 dias atrás
-//   - Não está em atendimento humano
-//   - Tenant com plano/trial ativo
+// CADA EXECUÇÃO processa leads elegíveis — sem cronGuard global.
+// O cooldown é controlado por lead (ultimo_followup) com prazo por temperatura:
+//
+// Dois cohorts de follow-up:
+//
+//   COHORT A — Primeiro contato sem resposta (2h):
+//     · Cliente clicou no anúncio, agente mandou saudação, cliente sumiu
+//     · Condição: ≤ 2 mensagens, agente falou por último, ultimo_followup IS NULL
+//     · Aguarda 2h e manda: "Vi que você tem interesse no {carro}, ficou alguma dúvida?"
+//     · Requer veiculo_id (veio de anúncio com carro específico)
+//
+//   COHORT B — Leads estabelecidos que esfriaram:
+//     · Conversa tinha tração mas o cliente parou de responder
+//     · Cooldown por temperatura: QUENTE=48h, MORNO=4 dias, FRIO=7 dias
+//     · FRIO requer veiculo_id; MORNO/QUENTE aceita sem carro específico
 //
 // Fluxo por lead:
-//   1. Lê as últimas 4 mensagens da conversa (contexto real)
-//   2. Verifica se o carro de interesse ainda está disponível
-//   3. Se vendido → busca alternativa compatível (modelo → categoria)
-//   4. Gemini gera mensagem personalizada com base no histórico real
-//   5. Envia via Avisa ou Meta (detecta canal do tenant)
-//   6. Salva mensagem no histórico e atualiza ultimo_followup
+//   1. Detecta cohort (A ou B)
+//   2. Lê as últimas 5 mensagens da conversa (contexto real)
+//   3. Verifica se o carro de interesse ainda está disponível
+//   4. Se vendido → busca alternativa compatível (modelo → categoria)
+//   5. Gemini gera mensagem personalizada baseada no histórico
+//   6. Envia via Avisa ou Meta (detecta canal do tenant)
+//   7. Salva mensagem no histórico e atualiza ultimo_followup
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendMetaMessage } from "@/lib/meta";
 import { sendAvisaMessage } from "@/lib/avisa";
 import { geminiFlashSales } from "@/lib/gemini";
-import { cronGuard } from "@/lib/redis";
 
 export const maxDuration = 300;
 
@@ -39,9 +44,41 @@ function isAuthorized(req: NextRequest): boolean {
   return auth === `Bearer ${secret}`;
 }
 
-// ─── Geração de Mensagem Inteligente ──────────────────────────────────────────
-// Recebe o histórico real da conversa + contexto do veículo para gerar
-// uma mensagem que parece continuação natural da conversa.
+// ─── Cooldowns por temperatura ────────────────────────────────────────────────
+const COOLDOWN_DAYS: Record<string, number> = {
+  QUENTE: 2,  // 48h — lead quente esfriando é urgente
+  MORNO:  4,  // 4 dias
+  FRIO:   7,  // 7 dias
+};
+
+// ─── Cohort A — Mensagem de primeiro contato sem resposta ─────────────────────
+async function gerarMensagemPrimeiroContato(params: {
+  nomeAgente: string;
+  carro: string;
+  preco: string;
+}): Promise<string> {
+  const { nomeAgente, carro, preco } = params;
+  const prompt = `Você é ${nomeAgente}, vendedor de uma concessionária.
+Um cliente clicou num anúncio do ${carro}${preco ? ` (${preco})` : ""} mas não respondeu à sua saudação inicial há mais de 2 horas.
+Escreva UMA mensagem curtíssima e natural para retomar o contato.
+Regras:
+- Máximo 1 linha curta
+- Mencione o carro de interesse de forma natural
+- Tom leve, sem pressão, sem urgência artificial
+- PROIBIDO: "follow-up", "retomada", "checando", saudações (Bom dia/tarde/noite)
+- PROIBIDO: começar com o nome do cliente
+- Máximo 1 emoji
+- Responda APENAS com o texto da mensagem, sem aspas nem explicações`;
+
+  try {
+    const result = await geminiFlashSales.generateContent(prompt);
+    return result.response.text().trim().replace(/^["']|["']$/g, "").trim();
+  } catch {
+    return `Vi que você tem interesse no ${carro}${preco ? ` por ${preco}` : ""}. Ficou alguma dúvida? 😊`;
+  }
+}
+
+// ─── Cohort B — Mensagem de retomada de conversa estabelecida ─────────────────
 async function gerarMensagemFollowup(params: {
   nomeLead: string | null;
   nomeAgente: string;
@@ -60,14 +97,12 @@ async function gerarMensagemFollowup(params: {
     ultimasMensagens, temperatura,
   } = params;
 
-  // Formata o histórico real da conversa
   const historicoFormatado = ultimasMensagens.length > 0
     ? ultimasMensagens.map(m =>
         `${m.remetente === "usuario" ? "Cliente" : nomeAgente}: ${m.content}`
       ).join("\n")
     : "Sem histórico detalhado.";
 
-  // Detecta quem falou por último (impacta o tom da retomada)
   const ultimaMsg = ultimasMensagens[ultimasMensagens.length - 1];
   const agenteFalouPorUltimo = ultimaMsg?.remetente === "agente";
 
@@ -109,12 +144,9 @@ Regras:
 
   try {
     const result = await geminiFlashSales.generateContent(prompt);
-    const texto = result.response.text().trim();
-    // Remove aspas envolventes que o Gemini às vezes adiciona
-    return texto.replace(/^["']|["']$/g, "").trim();
+    return result.response.text().trim().replace(/^["']|["']$/g, "").trim();
   } catch (e) {
     console.warn("⚠️ Gemini falhou no follow-up, usando fallback:", String(e).slice(0, 200));
-    // Fallback manual contextualizado
     if (!disponivel && alternativa) {
       return `${nomeLead ? `Oi ${nomeLead}! ` : "Oi! "}Temos uma novidade que pode te interessar: ${alternativa}. Quer saber mais?`;
     }
@@ -134,11 +166,6 @@ export async function GET(req: NextRequest) {
   const agora = new Date();
 
   // ── Gate de horário comercial (8h–18h BRT) ────────────────────────────────
-  // Cron pode disparar em qualquer horário UTC. Se cair fora do horário
-  // comercial de Brasília, retorna ANTES do guard de idempotência — assim
-  // a próxima execução (dentro do horário) não é bloqueada.
-  // Isso garante que follow-ups nunca sejam enviados de madrugada,
-  // mesmo que o lead tenha interagido às 2h da manhã.
   const horaBRT = parseInt(
     agora.toLocaleString("pt-BR", { hour: "numeric", hour12: false, timeZone: "America/Sao_Paulo" }),
     10
@@ -148,20 +175,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: true, skipped: true, motivo: "fora_horario_comercial", hora_brt: horaBRT });
   }
 
-  // Guard de idempotência: impede duplo disparo no mesmo dia
-  const hoje = agora.toISOString().slice(0, 10);
-  const primeiraVez = await cronGuard(`followup:${hoje}`, 86_400);
-  if (!primeiraVez) {
-    console.log(`⏭️ Follow-up já executado hoje (${hoje}) — skip`);
-    return NextResponse.json({ ok: true, skipped: true, motivo: "already_ran_today" });
-  }
-
-  const limite24h = new Date(agora.getTime() - 24 * 60 * 60 * 1000).toISOString();
-  const limite7d = new Date(agora.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  // Cooldown mais permissivo para o filtro SQL (QUENTE = 48h)
+  // A validação fina por temperatura acontece no loop
+  const limite2h      = new Date(agora.getTime() -  2 * 60 * 60 * 1000).toISOString();
+  const limiteSQL     = new Date(agora.getTime() -  2 * 24 * 60 * 60 * 1000).toISOString(); // 48h — QUENTE
+  const limite24h     = new Date(agora.getTime() - 24 * 60 * 60 * 1000).toISOString();
 
   // ── 1. Busca leads elegíveis ───────────────────────────────────────────────
-  // MORNO/QUENTE: sempre elegíveis
-  // FRIO: elegível SE tem veiculo_id (demonstrou interesse em carro específico)
+  // Sem cronGuard global — cada lead controla seu próprio cooldown via ultimo_followup.
+  // Filtro SQL usa o cooldown mais permissivo (48h = QUENTE) para não excluir nada.
+  // MORNO e FRIO são filtrados no loop via COOLDOWN_DAYS.
   const { data: leads, error } = await supabaseAdmin
     .from("leads")
     .select(`
@@ -170,9 +193,8 @@ export async function GET(req: NextRequest) {
     `)
     .in("status", ["FRIO", "MORNO", "QUENTE"])
     .eq("em_atendimento_humano", false)
-    .not("veiculo_id", "is", null)
-    .or(`ultimo_followup.is.null,ultimo_followup.lt.${limite7d}`)
-    .limit(80); // busca mais que o necessário, filtra depois
+    .or(`ultimo_followup.is.null,ultimo_followup.lt.${limiteSQL}`)
+    .limit(100);
 
   if (error) {
     console.error("❌ Cron followup — erro ao buscar leads:", error);
@@ -196,21 +218,23 @@ export async function GET(req: NextRequest) {
     `)
     .in("user_id", tenantIds);
 
+  // Para config_garage com múltiplas linhas por tenant, pega a mais recente
   const configMap = new Map<string, any>();
   for (const c of configs ?? []) {
-    configMap.set(c.user_id, c);
+    const existing = configMap.get(c.user_id);
+    if (!existing || c.created_at > existing.created_at) {
+      configMap.set(c.user_id, c);
+    }
   }
 
   let enviados = 0;
   let ignorados = 0;
-  let motivosIgnorados: Record<string, number> = {};
-
+  const motivosIgnorados: Record<string, number> = {};
   const ignorar = (motivo: string) => {
     ignorados++;
     motivosIgnorados[motivo] = (motivosIgnorados[motivo] || 0) + 1;
   };
 
-  // Limite de processamento por execução (evita timeout de 300s)
   const MAX_ENVIOS = 50;
 
   for (const lead of leads) {
@@ -219,67 +243,79 @@ export async function GET(req: NextRequest) {
     try {
       // ── 2b. Gate de assinatura ──────────────────────────────────────────────
       const garagem = configMap.get(lead.user_id);
-      if (!garagem) {
-        ignorar("sem_config");
-        continue;
-      }
+      if (!garagem) { ignorar("sem_config"); continue; }
 
       const trialConfigurado = garagem.trial_ends_at != null;
       const trialValido = trialConfigurado && new Date(garagem.trial_ends_at) > agora;
       const planoValido = garagem.plano_ativo === true && garagem.plano_vence_em && new Date(garagem.plano_vence_em) > agora;
-      if (trialConfigurado && !trialValido && !planoValido) {
-        ignorar("assinatura_expirada");
-        continue;
+      if (trialConfigurado && !trialValido && !planoValido) { ignorar("assinatura_expirada"); continue; }
+
+      // ── 3. Cooldown por temperatura (MORNO e FRIO precisam de mais tempo) ──
+      if (lead.ultimo_followup) {
+        const cooldownDias = COOLDOWN_DAYS[lead.status as string] ?? 7;
+        const cooldownMs   = cooldownDias * 24 * 60 * 60 * 1000;
+        const msSinceFollowup = agora.getTime() - new Date(lead.ultimo_followup).getTime();
+        if (msSinceFollowup < cooldownMs) {
+          ignorar(`dentro_cooldown_${lead.status.toLowerCase()}`);
+          continue;
+        }
       }
 
-      // ── 3. Verifica última mensagem (> 24h?) ───────────────────────────────
-      const { data: ultimasMsgs } = await supabaseAdmin
+      // ── 4. Mensagens da conversa ────────────────────────────────────────────
+      const { data: ultimasMsgsDesc } = await supabaseAdmin
         .from("mensagens")
-        .select("content, remetente, created_at")
+        .select("content, remetente, created_at, media_tipo")
         .eq("lead_id", lead.id)
         .order("created_at", { ascending: false })
-        .limit(4);
+        .limit(5);
 
-      if (!ultimasMsgs || ultimasMsgs.length === 0) {
-        ignorar("sem_mensagens");
-        continue;
+      if (!ultimasMsgsDesc || ultimasMsgsDesc.length === 0) { ignorar("sem_mensagens"); continue; }
+
+      const ultimaMsg     = ultimasMsgsDesc[0];
+      const totalMensagens = ultimasMsgsDesc.length;
+      const agenteFalouPorUltimo = ultimaMsg.remetente === "agente";
+
+      // Filtra mensagens de mídia para o histórico (não enviar URL como contexto)
+      const mensagensOrdenadas = [...ultimasMsgsDesc]
+        .filter(m => !m.media_tipo) // remove registros de foto/vídeo
+        .reverse();
+
+      // ── 5. Detecta Cohort A (primeiro contato sem resposta) ─────────────────
+      // Condições: ≤ 2 trocas, agente falou por último, cliente nunca respondeu
+      // de volta, ultimo_followup IS NULL, veiculo_id existe (veio de anúncio)
+      const isCohortA =
+        lead.ultimo_followup === null &&
+        lead.veiculo_id !== null &&
+        totalMensagens <= 2 &&
+        agenteFalouPorUltimo &&
+        ultimaMsg.created_at < limite2h; // ≥ 2h sem resposta
+
+      // ── 6. Cohort B: verifica silêncio mínimo de 24h ───────────────────────
+      if (!isCohortA) {
+        // Conversa está ativa há menos de 24h — não interromper
+        if (ultimaMsg.created_at > limite24h) { ignorar("conversa_recente"); continue; }
+        // FRIO sem histórico real ou sem carro específico — não retomar
+        if (lead.status === "FRIO" && (totalMensagens < 2 || !lead.veiculo_id)) {
+          ignorar("frio_sem_contexto"); continue;
+        }
       }
 
-      // Verifica se última mensagem foi há menos de 24h
-      if (ultimasMsgs[0].created_at && ultimasMsgs[0].created_at > limite24h) {
-        ignorar("conversa_recente");
-        continue;
-      }
-
-      // FRIO sem pelo menos 2 mensagens → conversa não começou de verdade
-      if (lead.status === "FRIO" && ultimasMsgs.length < 2) {
-        ignorar("frio_sem_historico");
-        continue;
-      }
-
-      // Reverte para ordem cronológica (as mais antigas primeiro)
-      const mensagensOrdenadas = [...ultimasMsgs].reverse();
-
-      // ── 4. Config do tenant ─────────────────────────────────────────────────
-      const nomeAgente = garagem.nome_agente || "Assistente";
+      // ── 7. Config do tenant ─────────────────────────────────────────────────
+      const nomeAgente  = garagem.nome_agente  || "Assistente";
       const nomeEmpresa = garagem.nome_fantasia || garagem.nome_empresa || "a loja";
 
-      // Canal de envio: Avisa se configurado, caso contrário Meta
-      const useAvisa = !!garagem.avisa_base_url && !!garagem.avisa_token;
+      const useAvisa   = !!garagem.avisa_base_url && !!garagem.avisa_token;
       const avisaCreds = { baseUrl: garagem.avisa_base_url ?? "", token: garagem.avisa_token ?? "" };
-      const metaCreds = {
+      const metaCreds  = {
         phoneNumberId: garagem.meta_phone_id ?? "",
-        accessToken: garagem.meta_access_token || process.env.META_ACCESS_TOKEN || "",
+        accessToken:   garagem.meta_access_token || process.env.META_ACCESS_TOKEN || "",
       };
-
       const sendText = (to: string, text: string) =>
-        useAvisa
-          ? sendAvisaMessage(to, text, avisaCreds)
-          : sendMetaMessage(to, text, metaCreds);
+        useAvisa ? sendAvisaMessage(to, text, avisaCreds) : sendMetaMessage(to, text, metaCreds);
 
-      // ── 5. Dados do veículo ─────────────────────────────────────────────────
-      let carro = "veículo de interesse";
-      let preco = "";
+      // ── 8. Dados do veículo (se houver) ────────────────────────────────────
+      let carro    = "veículo de interesse";
+      let preco    = "";
       let disponivel = false;
       let alternativa: string | undefined;
 
@@ -297,7 +333,6 @@ export async function GET(req: NextRequest) {
             : "";
           disponivel = veiculo.status_venda === "DISPONIVEL";
 
-          // Se vendido, busca alternativa compatível
           if (!disponivel) {
             // Prioridade 1: mesmo modelo
             const { data: similar } = await supabaseAdmin
@@ -312,9 +347,7 @@ export async function GET(req: NextRequest) {
 
             if (similar) {
               alternativa = `${similar.marca} ${similar.modelo}${similar.versao ? " " + similar.versao : ""} ${similar.ano || ""}`.trim();
-              if (similar.preco_sugerido) {
-                alternativa += ` por R$ ${similar.preco_sugerido.toLocaleString("pt-BR")}`;
-              }
+              if (similar.preco_sugerido) alternativa += ` por R$ ${similar.preco_sugerido.toLocaleString("pt-BR")}`;
             } else {
               // Prioridade 2: mesma categoria
               const { data: mesmaCat } = await supabaseAdmin
@@ -329,61 +362,67 @@ export async function GET(req: NextRequest) {
 
               if (mesmaCat) {
                 alternativa = `${mesmaCat.marca} ${mesmaCat.modelo}${mesmaCat.versao ? " " + mesmaCat.versao : ""} ${mesmaCat.ano || ""}`.trim();
-                if (mesmaCat.preco_sugerido) {
-                  alternativa += ` por R$ ${mesmaCat.preco_sugerido.toLocaleString("pt-BR")}`;
-                }
+                if (mesmaCat.preco_sugerido) alternativa += ` por R$ ${mesmaCat.preco_sugerido.toLocaleString("pt-BR")}`;
               }
             }
 
-            // Sem alternativa disponível — pula este lead
-            if (!alternativa) {
-              ignorar("vendido_sem_alternativa");
-              continue;
-            }
+            // Cohort A: se o carro foi vendido e não tem alternativa, pula
+            if (isCohortA && !alternativa) { ignorar("vendido_sem_alternativa"); continue; }
+            // Cohort B: mesma regra
+            if (!isCohortA && !disponivel && !alternativa) { ignorar("vendido_sem_alternativa"); continue; }
           }
         }
       }
 
-      // ── 6. Gera mensagem contextualizada ────────────────────────────────────
-      const mensagem = await gerarMensagemFollowup({
-        nomeLead: lead.nome,
-        nomeAgente,
-        nomeEmpresa,
-        resumoNegociacao: lead.resumo_negociacao,
-        carro,
-        preco,
-        disponivel,
-        alternativa,
-        ultimasMensagens: mensagensOrdenadas,
-        temperatura: lead.status,
-      });
+      // ── 9. Gera mensagem ────────────────────────────────────────────────────
+      let mensagem: string;
 
-      // ── 7. Envia ────────────────────────────────────────────────────────────
+      if (isCohortA) {
+        // Cohort A: mensagem curta de primeiro contato
+        mensagem = await gerarMensagemPrimeiroContato({ nomeAgente, carro, preco });
+        console.log(`🆕 [Cohort A] ${lead.wa_id} (${lead.status}) — primeiro contato 2h`);
+      } else {
+        // Cohort B: retomada contextualizada
+        mensagem = await gerarMensagemFollowup({
+          nomeLead: lead.nome,
+          nomeAgente,
+          nomeEmpresa,
+          resumoNegociacao: lead.resumo_negociacao,
+          carro,
+          preco,
+          disponivel,
+          alternativa,
+          ultimasMensagens: mensagensOrdenadas,
+          temperatura: lead.status,
+        });
+        console.log(`🔁 [Cohort B] ${lead.wa_id} (${lead.status}) — retomada`);
+      }
+
+      // ── 10. Envia ───────────────────────────────────────────────────────────
       await sendText(lead.wa_id, mensagem);
 
-      // ── 8. Salva no histórico ───────────────────────────────────────────────
+      // ── 11. Salva no histórico e atualiza ultimo_followup ──────────────────
       await supabaseAdmin.from("mensagens").insert({
-        lead_id: lead.id,
-        content: mensagem,
+        lead_id:   lead.id,
+        content:   mensagem,
         remetente: "agente",
       });
-
-      // Atualiza ultimo_followup
       await supabaseAdmin
         .from("leads")
         .update({ ultimo_followup: agora.toISOString() })
         .eq("id", lead.id);
 
-      console.log(`✅ Follow-up enviado para ${lead.wa_id} (lead ${lead.id}, ${lead.status}) — "${mensagem.slice(0, 80)}..."`);
+      console.log(`✅ Follow-up enviado → ${lead.wa_id} (${isCohortA ? "A" : "B"}, ${lead.status}) — "${mensagem.slice(0, 80)}"`);
       enviados++;
 
-      // Pausa entre envios (3s) — anti-spam + rate limit
+      // Pausa entre envios (3s) — anti-spam + rate limit WhatsApp
       await new Promise((r) => setTimeout(r, 3000));
+
     } catch (e) {
       console.error(`❌ Erro no follow-up do lead ${lead.id}:`, e);
     }
   }
 
-  console.log(`📊 Cron followup: ${enviados} enviados, ${ignorados} ignorados (${JSON.stringify(motivosIgnorados)}) de ${leads.length} leads`);
+  console.log(`📊 Cron followup: ${enviados} enviados, ${ignorados} ignorados (${JSON.stringify(motivosIgnorados)}) de ${leads.length} candidatos`);
   return NextResponse.json({ ok: true, enviados, ignorados, motivos: motivosIgnorados, total: leads.length });
 }
