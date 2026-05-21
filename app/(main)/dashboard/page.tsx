@@ -4,8 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import {
   AlertTriangle, GitBranch, MessageCircle, CalendarCheck,
-  Flame, Users, ChevronRight,
-  Clock, Car, RefreshCw, Zap
+  Flame, Users, Clock, Car, RefreshCw, Zap
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -35,6 +34,13 @@ type LeadItem = {
   veiculo: { marca: string; modelo: string; ano: string } | null;
 };
 
+type TopVeiculo = {
+  marca: string;
+  modelo: string;
+  ano: string | null;
+  count: number;
+};
+
 type FunilData = {
   kpis: {
     pipeline: number;
@@ -53,6 +59,7 @@ type FunilData = {
   };
   etapas: EtapaInfo[];
   leads: LeadItem[];
+  topVeiculos: TopVeiculo[];
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -126,6 +133,7 @@ export default function Dashboard() {
   const [data, setData] = useState<FunilData | null>(null);
   const [loading, setLoading] = useState(true);
   const [etapaFiltro, setEtapaFiltro] = useState<Etapa | null>(null);
+  const [expandVeiculos, setExpandVeiculos] = useState(false);
   const [nomeEmpresa, setNomeEmpresa] = useState("");
   const [diasTrial, setDiasTrial] = useState<number | null>(null);
   const [planoId, setPlanoId] = useState("pro");
@@ -176,8 +184,6 @@ export default function Dashboard() {
 
   const leadsEmRisco = data?.leads.filter(l => l.em_risco) ?? [];
 
-  // Maior count para escalar as barras do funil
-  const maxCount = data ? Math.max(...data.etapas.map(e => e.count), 1) : 1;
 
   return (
     <div className="p-4 md:p-8 bg-[#f4f4f2] min-h-screen font-sans overflow-y-auto w-full">
@@ -368,91 +374,68 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* ── Funil Visual ── */}
-            <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-6 mb-4">
-              <div className="flex items-center justify-between mb-5">
-                <h3 className="text-[11px] font-black uppercase tracking-widest text-gray-400">Funil de Vendas</h3>
-                {etapaFiltro && (
-                  <button
-                    onClick={() => setEtapaFiltro(null)}
-                    className="text-[9px] font-black uppercase tracking-widest text-gray-400 hover:text-red-500 transition-colors flex items-center gap-1"
-                  >
-                    <span>Limpar filtro</span>
-                    <span className="w-4 h-4 rounded-full bg-gray-100 flex items-center justify-center text-[8px]">×</span>
-                  </button>
-                )}
-              </div>
-
-              <div className="flex flex-col gap-2">
-                {data.etapas.map((etapa, i) => {
-                  const cfg = ETAPA_CONFIG[etapa.etapa];
-                  const barPct = Math.round((etapa.count / maxCount) * 100);
-                  const isAtivo = etapaFiltro === etapa.etapa;
-                  const isPerdido = etapa.etapa === "PERDIDO";
-
-                  return (
-                    <div key={etapa.etapa}>
-                      {/* Seta de taxa de avanço */}
-                      {i > 0 && data.etapas[i - 1].taxaAvanco !== null && !isPerdido && (
-                        <div className="flex items-center gap-2 py-1 pl-2">
-                          <ChevronRight size={10} className="text-gray-300 shrink-0" />
-                          <span className="text-[9px] font-black text-gray-300 uppercase tracking-widest">
-                            {data.etapas[i - 1].taxaAvanco}% avançam
-                          </span>
-                        </div>
-                      )}
-
-                      <button
-                        onClick={() => setEtapaFiltro(isAtivo ? null : etapa.etapa)}
-                        className={`w-full text-left rounded-2xl p-3 transition-all border-2 ${
-                          isAtivo
-                            ? `${cfg.bg} border-current ${cfg.color}`
-                            : `hover:${cfg.bg} border-transparent hover:border-gray-100`
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-2 gap-4">
-                          <div className="flex items-center gap-2.5 shrink-0">
-                            <div className={`w-2.5 h-2.5 rounded-full ${cfg.dot}`} />
-                            <span className={`text-[10px] font-black uppercase tracking-widest ${
-                              isAtivo ? cfg.color : "text-gray-500"
-                            }`}>
-                              {etapa.label}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-4 text-right">
-                            <div>
-                              <span className={`text-xl font-black italic tracking-tighter ${
-                                isAtivo ? cfg.color : "text-gray-800"
-                              }`}>{etapa.count}</span>
-                              <span className="text-[9px] text-gray-400 font-bold ml-1">leads</span>
-                            </div>
-                            {etapa.valor > 0 && (
-                              <div className="hidden sm:block">
-                                <span className="text-[10px] font-black text-gray-400">
-                                  {formatBRL(etapa.valor)}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Barra de progresso */}
-                        <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full ${cfg.bar} rounded-full transition-all duration-700`}
-                            style={{ width: `${Math.max(barPct, etapa.count > 0 ? 3 : 0)}%` }}
-                          />
-                        </div>
-                      </button>
+            {/* ── Top Veículos ── */}
+            {data.topVeiculos.length > 0 && (() => {
+              const lista = expandVeiculos ? data.topVeiculos : data.topVeiculos.slice(0, 6);
+              const maxCount = data.topVeiculos[0]?.count || 1;
+              return (
+                <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-6 mb-4">
+                  <div className="flex items-center justify-between mb-5">
+                    <div>
+                      <h3 className="text-[11px] font-black uppercase tracking-widest text-gray-400">Carros Mais Consultados</h3>
+                      <p className="text-[9px] text-gray-300 font-bold uppercase tracking-widest mt-0.5">Últimos 6 meses</p>
                     </div>
-                  );
-                })}
-              </div>
+                    <span className="text-[9px] font-black bg-gray-100 text-gray-400 px-2.5 py-1 rounded-full">
+                      {data.topVeiculos.length} modelos
+                    </span>
+                  </div>
 
-              <p className="text-[9px] font-bold text-gray-300 uppercase tracking-widest mt-4 text-center">
-                Clique em uma etapa para filtrar os leads abaixo
-              </p>
-            </div>
+                  <div className="flex flex-col gap-3">
+                    {lista.map((v, i) => {
+                      const pct = Math.round((v.count / maxCount) * 100);
+                      const isTop3 = i < 3;
+                      return (
+                        <div key={i} className="flex items-center gap-3">
+                          <span className={`text-[10px] font-black w-4 shrink-0 text-right ${
+                            i === 0 ? "text-amber-500" : i === 1 ? "text-gray-400" : i === 2 ? "text-orange-400" : "text-gray-300"
+                          }`}>{i + 1}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between mb-1 gap-2">
+                              <span className={`text-[11px] font-black uppercase tracking-tight truncate ${isTop3 ? "text-gray-800" : "text-gray-500"}`}>
+                                {v.marca} {v.modelo} {v.ano ?? ""}
+                              </span>
+                              <span className="text-[10px] font-black text-gray-400 shrink-0">
+                                {v.count} {v.count === 1 ? "lead" : "leads"}
+                              </span>
+                            </div>
+                            <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all duration-700 ${
+                                  i === 0 ? "bg-amber-400" : i === 1 ? "bg-gray-400" : i === 2 ? "bg-orange-400" : "bg-gray-200"
+                                }`}
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {data.topVeiculos.length > 6 && (
+                    <button
+                      onClick={() => setExpandVeiculos(e => !e)}
+                      className="mt-4 w-full py-2.5 rounded-2xl border border-gray-100 text-[9px] font-black uppercase tracking-widest text-gray-400 hover:bg-gray-50 hover:text-gray-700 transition-all flex items-center justify-center gap-2"
+                    >
+                      {expandVeiculos
+                        ? <>Mostrar menos ↑</>
+                        : <>Ver todos os {data.topVeiculos.length} modelos ↓</>
+                      }
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* ── Agenda da Semana ── */}
             <AgendaSemana />

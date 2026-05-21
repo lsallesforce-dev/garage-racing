@@ -32,9 +32,9 @@ export async function GET(req: NextRequest) {
     { count: agendamentosMes },
     { count: humanAtivos },
   ] = await Promise.all([
-    // Todos os leads dos últimos 6 meses com preço do veículo
+    // Todos os leads dos últimos 6 meses com preço + dados do veículo
     supabaseAdmin.from("leads")
-      .select("id, etapa_funil, status, updated_at, veiculo_id, veiculos(preco_sugerido)")
+      .select("id, etapa_funil, status, updated_at, veiculo_id, veiculos(preco_sugerido, marca, modelo, ano)")
       .eq("user_id", userId)
       .gte("created_at", limite6m.toISOString()),
 
@@ -161,6 +161,21 @@ export async function GET(req: NextRequest) {
     };
   });
 
+  // ── Top Veículos por leads ───────────────────────────────────────────────────
+  const veiculoContagem: Record<string, { marca: string; modelo: string; ano: string | null; count: number }> = {};
+  for (const lead of leads) {
+    if (!lead.veiculo_id) continue;
+    const v = lead.veiculos as any;
+    if (!v) continue;
+    const key = String(lead.veiculo_id);
+    if (!veiculoContagem[key]) {
+      veiculoContagem[key] = { marca: v.marca ?? "", modelo: v.modelo ?? "", ano: v.ano ?? null, count: 0 };
+    }
+    veiculoContagem[key].count++;
+  }
+  const topVeiculos = Object.values(veiculoContagem)
+    .sort((a, b) => b.count - a.count);
+
   // ── Lista de leads formatada ──────────────────────────────────────────────────
   const leadsFormatados = (leadsRecentes ?? []).map((l: any) => ({
     id: l.id,
@@ -192,5 +207,6 @@ export async function GET(req: NextRequest) {
     },
     etapas,
     leads: leadsFormatados,
+    topVeiculos,
   });
 }
