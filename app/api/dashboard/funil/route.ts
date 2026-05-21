@@ -176,7 +176,7 @@ export async function GET(req: NextRequest) {
     icarros:    "iCarros",
     napista:    "Na Pista",
     manual:     "Manual",
-    whatsapp:   "Orgânico / Direto",
+    whatsapp:   "Origem não identificada",
   };
 
   const origemContagem: Record<string, number> = {};
