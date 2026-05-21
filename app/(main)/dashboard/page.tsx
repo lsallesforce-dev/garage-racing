@@ -540,11 +540,11 @@ export default function Dashboard() {
                 </div>
                 <div className="grid gap-2">
                   {leadsEmRisco.map(lead => (
-                    <div key={lead.id} className="flex items-center justify-between bg-white rounded-2xl px-4 py-3 border border-red-100 gap-3">
+                    <div key={lead.id} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between bg-white rounded-2xl px-4 py-3 border border-red-100">
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="w-2 h-2 rounded-full bg-red-500 animate-ping shrink-0" />
                         <div className="min-w-0">
-                          <p className="text-sm font-black uppercase tracking-tight truncate text-gray-800">{lead.nome}</p>
+                          <p className="text-sm font-black uppercase tracking-tight truncate text-gray-800">{lead.nome || lead.wa_id}</p>
                           {lead.veiculo && (
                             <p className="text-[10px] text-gray-400 font-bold truncate">
                               {lead.veiculo.marca} {lead.veiculo.modelo} {lead.veiculo.ano}
@@ -552,14 +552,14 @@ export default function Dashboard() {
                           )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
                         <span className="text-[9px] font-bold text-red-400 flex items-center gap-1">
                           <Clock size={9} />
                           {timeAgo(lead.updated_at)}
                         </span>
                         <button
                           onClick={() => router.push(`/chat?wa_id=${lead.wa_id}`)}
-                          className="px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all"
+                          className="px-4 py-2 sm:px-3 sm:py-1.5 bg-red-600 hover:bg-red-500 text-white rounded-xl text-[10px] sm:text-[9px] font-black uppercase tracking-widest transition-all"
                         >
                           Reativar →
                         </button>
