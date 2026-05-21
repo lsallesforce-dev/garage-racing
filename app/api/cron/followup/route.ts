@@ -367,10 +367,8 @@ export async function GET(req: NextRequest) {
               }
             }
 
-            // Cohort A: se o carro foi vendido e não tem alternativa, pula
-            if (isCohortA && !alternativa) { ignorar("vendido_sem_alternativa"); continue; }
-            // Cohort B: mesma regra
-            if (!isCohortA && !disponivel && !alternativa) { ignorar("vendido_sem_alternativa"); continue; }
+            // Carro vendido sem alternativa disponível — pula
+            if (!alternativa) { ignorar("vendido_sem_alternativa"); continue; }
           }
         }
       }
