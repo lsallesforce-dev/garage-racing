@@ -364,13 +364,15 @@ export async function GET(req: NextRequest) {
       const nomeEmpresa = garagem.nome_fantasia || garagem.nome_empresa || "a loja";
 
       const useAvisa   = !!garagem.avisa_base_url && !!garagem.avisa_token;
+
+      // Follow-up proativo só é permitido via Avisa API.
+      // Meta Cloud API exige template aprovado para mensagens fora da janela de sessão
+      // de 24h — enviar mensagem livre fora da sessão viola a política da Meta.
+      if (!useAvisa) { ignorar("meta_api_sem_followup"); continue; }
+
       const avisaCreds = { baseUrl: garagem.avisa_base_url ?? "", token: garagem.avisa_token ?? "" };
-      const metaCreds  = {
-        phoneNumberId: garagem.meta_phone_id ?? "",
-        accessToken:   garagem.meta_access_token || process.env.META_ACCESS_TOKEN || "",
-      };
       const sendText = (to: string, text: string) =>
-        useAvisa ? sendAvisaMessage(to, text, avisaCreds) : sendMetaMessage(to, text, metaCreds);
+        sendAvisaMessage(to, text, avisaCreds);
 
       // ── 8. Dados do veículo (se houver) ────────────────────────────────────
       let carro    = "veículo de interesse";
