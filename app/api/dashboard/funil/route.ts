@@ -31,6 +31,7 @@ export async function GET(req: NextRequest) {
     { count: agendamentosSemana },
     { count: agendamentosMes },
     { count: humanAtivos },
+    { data: origensRaw },
   ] = await Promise.all([
     // Todos os leads dos últimos 6 meses com preço + dados do veículo
     supabaseAdmin.from("leads")
@@ -95,6 +96,12 @@ export async function GET(req: NextRequest) {
       .select("*", { count: "exact", head: true })
       .eq("user_id", userId)
       .eq("em_atendimento_humano", true),
+
+    // Origens dos leads (últimos 6 meses)
+    supabaseAdmin.from("leads")
+      .select("origem")
+      .eq("user_id", userId)
+      .gte("created_at", limite6m.toISOString()),
   ]);
 
   const leads = todosLeads ?? [];
@@ -161,6 +168,26 @@ export async function GET(req: NextRequest) {
     };
   });
 
+  // ── Origem dos leads ─────────────────────────────────────────────────────────
+  const ORIGEM_LABELS: Record<string, string> = {
+    meta_ads:   "Meta Ads",
+    olx:        "OLX",
+    webmotors:  "Webmotors",
+    icarros:    "iCarros",
+    napista:    "Na Pista",
+    manual:     "Manual",
+    whatsapp:   "WhatsApp Direto",
+  };
+
+  const origemContagem: Record<string, number> = {};
+  for (const row of origensRaw ?? []) {
+    const origem = (row.origem as string) || "whatsapp";
+    origemContagem[origem] = (origemContagem[origem] || 0) + 1;
+  }
+  const origens = Object.entries(origemContagem)
+    .map(([key, count]) => ({ key, label: ORIGEM_LABELS[key] ?? key, count }))
+    .sort((a, b) => b.count - a.count);
+
   // ── Top Veículos por leads ───────────────────────────────────────────────────
   const veiculoContagem: Record<string, { marca: string; modelo: string; ano: string | null; count: number }> = {};
   for (const lead of leads) {
@@ -208,5 +235,6 @@ export async function GET(req: NextRequest) {
     etapas,
     leads: leadsFormatados,
     topVeiculos,
+    origens,
   });
 }
