@@ -36,9 +36,17 @@ export const maxDuration = 300;
 // ─── Autenticação ─────────────────────────────────────────────────────────────
 function isAuthorized(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET;
-  if (!secret) return process.env.NODE_ENV !== "production";
-  const auth = req.headers.get("authorization");
-  return auth === `Bearer ${secret}`;
+
+  if (secret) {
+    // CRON_SECRET configurado → exige o Bearer token que o Vercel envia automaticamente
+    return req.headers.get("authorization") === `Bearer ${secret}`;
+  }
+
+  // CRON_SECRET não configurado:
+  // – em dev: libera tudo
+  // – em produção: aceita apenas chamadas do próprio Vercel Cron (User-Agent vercel-cron/1.0)
+  if (process.env.NODE_ENV !== "production") return true;
+  return req.headers.get("user-agent") === "vercel-cron/1.0";
 }
 
 // ─── Timing de follow-up por temperatura ─────────────────────────────────────
