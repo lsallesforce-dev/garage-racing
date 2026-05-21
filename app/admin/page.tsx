@@ -1172,13 +1172,22 @@ export default function AdminPage() {
                         disabled={aprovando === p.user_id}
                         onClick={async () => {
                           setAprovando(p.user_id);
-                          await fetch("/api/admin/aprovar", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json", "x-admin-secret": secret },
-                            body: JSON.stringify({ user_id: p.user_id }),
-                          });
-                          setAprovando(null);
-                          carregarPendentes(secret);
+                          try {
+                            const res = await fetch("/api/admin/aprovar", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json", "x-admin-secret": secret },
+                              body: JSON.stringify({ user_id: p.user_id }),
+                            });
+                            if (!res.ok) {
+                              const err = await res.json().catch(() => ({}));
+                              alert(`Erro ao aprovar: ${err.error ?? res.status}`);
+                            }
+                          } catch (e) {
+                            alert("Erro de rede ao aprovar");
+                          } finally {
+                            setAprovando(null);
+                            carregarPendentes(secret);
+                          }
                         }}
                         className="flex items-center gap-1.5 px-4 py-2 bg-green-600 hover:bg-green-500 disabled:opacity-40 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-colors shrink-0">
                         {aprovando === p.user_id ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle size={12} />}

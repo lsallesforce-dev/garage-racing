@@ -9,8 +9,11 @@ export async function POST(req: NextRequest) {
   const { user_id } = await req.json();
   if (!user_id) return NextResponse.json({ error: "user_id obrigatório" }, { status: 400 });
 
+  // Atualiza app_metadata E user_metadata — o layout verifica app_metadata,
+  // o filtro de pendentes verifica user_metadata. Ambos precisam ser true.
   const { error } = await supabaseAdmin.auth.admin.updateUserById(user_id, {
     app_metadata: { aprovado: true },
+    user_metadata: { aprovado: true },
   });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
