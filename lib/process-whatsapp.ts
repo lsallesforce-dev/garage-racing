@@ -1000,6 +1000,31 @@ Responda apenas com o JSON, sem markdown.`;
     upsertData.origem_mensagem = `Lead do anúncio: ${adReferral.headline}`;
     upsertData.origem = "meta_ads";
     if (adReferral.ad_id) upsertData.origem_anuncio_id = adReferral.ad_id;
+  } else if (userMessage) {
+    // Detecção de portal pela mensagem — OLX/Webmotors/iCarros costumam preencher
+    // a mensagem automaticamente ou o cliente cita o portal.
+    // Só sobrescreve se o lead ainda está com origem=whatsapp (não rastreada).
+    const { data: leadExistente } = await supabaseAdmin
+      .from("leads")
+      .select("origem")
+      .eq("user_id", tenantUserId)
+      .eq("wa_id", phone)
+      .single();
+
+    const origemAtual = (leadExistente as any)?.origem ?? "whatsapp";
+    if (origemAtual === "whatsapp" || origemAtual === null) {
+      const msgLower = userMessage.toLowerCase();
+      const portalDetectado =
+        /\bolx\b/.test(msgLower)         ? "olx"       :
+        /webmotors/.test(msgLower)        ? "webmotors" :
+        /icarros|i-carros/.test(msgLower) ? "icarros"   :
+        /napista|na pista/.test(msgLower) ? "napista"   :
+        null;
+      if (portalDetectado) {
+        upsertData.origem = portalDetectado;
+        console.log(`🔍 Portal detectado na mensagem: ${portalDetectado} → ${phone}`);
+      }
+    }
   }
   const { data: lead } = await supabaseAdmin
     .from("leads")
