@@ -140,6 +140,7 @@ export interface WhatsAppJobPayload {
   audioUrl?: string;
   audioMediaKey?: string;
   audioMediaId?: string;  // Meta Cloud API: media ID para resolver via Graph API
+  imageThumbnail?: string; // base64 JPEG thumbnail de foto enviada pelo cliente (para exibir no chat)
   messageId?: string | null;
   tenantUserId: string;
   garageConfig: GarageConfig | null;
@@ -1056,6 +1057,11 @@ Responda apenas com o JSON, sem markdown.`;
       lead_id: lead.id,
       content: userMessage,
       remetente: "usuario",
+      // Thumbnail de foto enviada pelo cliente — base64 JPEG usado como data URL no chat
+      ...(job.imageThumbnail ? {
+        media_url: `data:image/jpeg;base64,${job.imageThumbnail}`,
+        media_tipo: "foto",
+      } : {}),
     });
   }
 

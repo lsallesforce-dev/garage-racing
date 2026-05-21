@@ -601,14 +601,17 @@ function CentralChatInner() {
                 <div key={msg.id} className={`flex ${isAgente ? "justify-end" : "justify-start"}`}>
                   <div className={`max-w-[85%] sm:max-w-[70%] flex flex-col gap-1 ${isAgente ? "items-end" : "items-start"}`}>
                     {msg.media_url && msg.media_tipo === "foto" ? (
-                      <a href={msg.media_url} target="_blank" rel="noopener noreferrer" className="block rounded-2xl overflow-hidden shadow-md hover:opacity-90 transition-opacity">
+                      <div className="flex flex-col gap-1">
                         <img
                           src={msg.media_url}
-                          alt={msg.content || "Foto enviada pelo agente"}
-                          className="max-w-[260px] max-h-[300px] object-cover rounded-2xl"
+                          alt={isAgente ? (msg.content || "Foto do veículo") : "Foto enviada pelo cliente"}
+                          className="max-w-[260px] max-h-[300px] object-cover rounded-2xl shadow-md"
                           loading="lazy"
                         />
-                      </a>
+                        {!isAgente && (
+                          <span className="text-[10px] text-gray-400 px-1">📷 Foto do cliente</span>
+                        )}
+                      </div>
                     ) : msg.media_url && msg.media_tipo === "video" ? (
                       <video
                         src={msg.media_url}

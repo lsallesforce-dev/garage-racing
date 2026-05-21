@@ -35,6 +35,7 @@ function extractFields(payload: any): {
   fromMe: boolean;
   audioUrl?: string;
   audioMediaKey?: string;
+  imageThumbnail?: string;  // base64 JPEG thumbnail da foto enviada pelo cliente
   messageId?: string | null;
   adReferral?: { headline: string | null; body: string | null; source_type: string | null; ad_id: string | null } | null;
 } {
@@ -59,6 +60,7 @@ function extractFields(payload: any): {
   let fromMe = false;
   let audioUrl: string | undefined;
   let audioMediaKey: string | undefined;
+  let imageThumbnail: string | undefined;
   let messageId: string | null = null;
   let adReferral: { headline: string | null; body: string | null; source_type: string | null; ad_id: string | null } | null = null;
 
@@ -124,6 +126,9 @@ function extractFields(payload: any): {
     messageId = info.ID;
     if (!userMessage && !audioUrl && msg?.imageMessage) {
       userMessage = "[Cliente enviou foto(s) do veículo]";
+      // Thumbnail base64 para exibir preview no chat (a imagem completa é criptografada)
+      const thumb = msg.imageMessage.JPEGThumbnail ?? msg.imageMessage.jpegThumbnail;
+      if (thumb) imageThumbnail = thumb;
     }
 
     // Link preview context (Instagram, Facebook, etc.)
@@ -179,6 +184,8 @@ function extractFields(payload: any): {
     messageId = key.id;
     if (!userMessage && msg?.imageMessage) {
       userMessage = "[Cliente enviou foto(s) do veículo]";
+      const thumb = msg.imageMessage.JPEGThumbnail ?? msg.imageMessage.jpegThumbnail;
+      if (thumb) imageThumbnail = thumb;
     }
 
     // Link preview context (Evolution API format)
@@ -199,7 +206,7 @@ function extractFields(payload: any): {
     };
   }
 
-  return { phone, isLid, lidPhone, userMessage: userMessage?.trim() || "", fromMe, audioUrl, audioMediaKey, messageId, adReferral };
+  return { phone, isLid, lidPhone, userMessage: userMessage?.trim() || "", fromMe, audioUrl, audioMediaKey, imageThumbnail, messageId, adReferral };
 }
 
 // ─── Webhook Principal ────────────────────────────────────────────────────────
@@ -313,7 +320,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Validação Básica ──────────────────────────────────────────────────────
-    let { phone, isLid, lidPhone, userMessage: rawMessage, fromMe, audioUrl, audioMediaKey, messageId, adReferral } =
+    let { phone, isLid, lidPhone, userMessage: rawMessage, fromMe, audioUrl, audioMediaKey, imageThumbnail, messageId, adReferral } =
       extractFields(payload);
 
     // Migração de lead LID → número real (roda antes do fromMe para capturar receipts)
@@ -389,6 +396,7 @@ export async function POST(req: NextRequest) {
         rawMessage,
         audioUrl,
         audioMediaKey,
+        imageThumbnail,
         messageId,
         tenantUserId: tenantUserId!,
         garageConfig,
