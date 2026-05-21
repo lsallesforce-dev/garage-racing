@@ -1015,10 +1015,14 @@ Responda apenas com o JSON, sem markdown.`;
     if (origemAtual === "whatsapp" || origemAtual === null) {
       const msgLower = userMessage.toLowerCase();
       const portalDetectado =
-        /\bolx\b/.test(msgLower)         ? "olx"       :
-        /webmotors/.test(msgLower)        ? "webmotors" :
-        /icarros|i-carros/.test(msgLower) ? "icarros"   :
-        /napista|na pista/.test(msgLower) ? "napista"   :
+        /tenho interesse e queria mais informa/i.test(userMessage) ? "olx"           :
+        /\bolx\b/.test(msgLower)                                   ? "olx"           :
+        /webmotors/.test(msgLower)                                 ? "webmotors"     :
+        /icarros|i-carros/.test(msgLower)                          ? "icarros"       :
+        /napista|na pista/.test(msgLower)                          ? "napista"       :
+        /vi o .+ na vitrine da/i.test(userMessage)                 ? "site"          :
+        /vitrine da /i.test(userMessage)                           ? "site"          :
+        /^\[Contexto do link:.*R\$/.test(userMessage)              ? "link_whatsapp" :
         null;
       if (portalDetectado) {
         upsertData.origem = portalDetectado;

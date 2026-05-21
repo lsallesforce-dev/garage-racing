@@ -170,13 +170,15 @@ export async function GET(req: NextRequest) {
 
   // ── Origem dos leads ─────────────────────────────────────────────────────────
   const ORIGEM_LABELS: Record<string, string> = {
-    meta_ads:   "Meta Ads",
-    olx:        "OLX",
-    webmotors:  "Webmotors",
-    icarros:    "iCarros",
-    napista:    "Na Pista",
-    manual:     "Manual",
-    whatsapp:   "Origem não identificada",
+    meta_ads:      "Meta Ads",
+    olx:           "OLX",
+    webmotors:     "Webmotors",
+    icarros:       "iCarros",
+    napista:       "Na Pista",
+    manual:        "Manual",
+    site:          "Site / Vitrine",
+    link_whatsapp: "Link WhatsApp",
+    whatsapp:      "Origem não identificada",
   };
 
   const origemContagem: Record<string, number> = {};
