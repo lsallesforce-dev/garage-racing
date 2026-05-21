@@ -83,6 +83,62 @@ Regras:
   }
 }
 
+// ─── Em Risco — Reengajamento de lead QUENTE sem resposta há 48h+ ─────────────
+async function gerarMensagemReengajamento(params: {
+  nomeLead: string | null;
+  nomeAgente: string;
+  nomeEmpresa: string;
+  carro: string;
+  preco: string;
+  disponivel: boolean;
+  alternativa?: string;
+  resumoNegociacao: string | null;
+  ultimasMensagens: Array<{ remetente: string; content: string }>;
+}): Promise<string> {
+  const { nomeLead, nomeAgente, nomeEmpresa, carro, preco, disponivel, alternativa, resumoNegociacao, ultimasMensagens } = params;
+
+  const historicoFormatado = ultimasMensagens.length > 0
+    ? ultimasMensagens.map(m =>
+        `${m.remetente === "usuario" ? "Cliente" : nomeAgente}: ${m.content}`
+      ).join("\n")
+    : "Sem histórico.";
+
+  const contextoDisp = disponivel
+    ? `O ${carro}${preco ? ` (${preco})` : ""} ainda está no pátio.`
+    : `O ${carro} foi vendido. Mas temos: ${alternativa || "outro veículo semelhante"}.`;
+
+  const prompt = `
+Você é ${nomeAgente}, vendedor da ${nomeEmpresa}.
+${nomeLead || "O cliente"} estava MUITO interessado no ${carro} e a conversa estava quente — mas sumiu há mais de 48 horas sem responder.
+Situação: ${contextoDisp}
+${resumoNegociacao ? `Resumo da negociação: ${resumoNegociacao}` : ""}
+
+Últimas mensagens:
+${historicoFormatado}
+
+Escreva UMA mensagem direta para recuperar este lead. Estratégia:
+- Crie URGÊNCIA real e legítima (estoque limitado, o carro pode sair antes de amanhã, etc.)
+- Seja assertivo mas não desesperado
+- Se o carro foi vendido → apresente a alternativa como oportunidade única
+- Tom: amigo que dá um alerta, não vendedor chato
+- Máximo 2 linhas
+- PROIBIDO: "follow-up", "retomada", "checando", saudação no início
+- PROIBIDO: começar com o nome do cliente
+- Máximo 1 emoji
+- Responda APENAS com o texto, sem aspas nem explicações
+`;
+
+  try {
+    const result = await geminiFlashSales.generateContent(prompt);
+    return result.response.text().trim().replace(/^["']|["']$/g, "").trim();
+  } catch {
+    if (!disponivel && alternativa) {
+      return `O ${carro} foi vendido, mas encontrei algo parecido: ${alternativa}. Posso te mostrar? 🔥`;
+    }
+    return `${nomeLead ? `${nomeLead}, ` : ""}o ${carro} ainda está aqui mas a procura tá alta — se quiser garantir, me chama agora 🔥`;
+  }
+}
+
 // ─── Cohort B — Mensagem de retomada de conversa estabelecida ─────────────────
 async function gerarMensagemFollowup(params: {
   nomeLead: string | null;
@@ -374,9 +430,15 @@ export async function GET(req: NextRequest) {
       }
 
       // ── 9. Gera mensagem ────────────────────────────────────────────────────
-      // Mensagem curta quando: FRIO, poucos histórico e primeiro follow-up
-      // Mensagem contextual quando: conversa já tinha tração ou lead QUENTE/MORNO
+      // 3 tipos de mensagem, em ordem de prioridade:
+      //   A) Em Risco     → QUENTE + silêncio ≥ 48h → reengajamento assertivo com urgência
+      //   B) Primeiro 2h  → FRIO, ≤2 msgs, sem follow-up anterior, com carro → mensagem curta
+      //   C) Contextual   → todos os outros casos → retomada baseada no histórico
+
+      const emRisco = lead.status === "QUENTE" && silencioHoras >= 48;
+
       const usarMensagemCurta =
+        !emRisco &&
         lead.status === "FRIO" &&
         totalMensagens <= 2 &&
         lead.ultimo_followup === null &&
@@ -384,7 +446,20 @@ export async function GET(req: NextRequest) {
 
       let mensagem: string;
 
-      if (usarMensagemCurta) {
+      if (emRisco) {
+        mensagem = await gerarMensagemReengajamento({
+          nomeLead: lead.nome,
+          nomeAgente,
+          nomeEmpresa,
+          carro,
+          preco,
+          disponivel,
+          alternativa,
+          resumoNegociacao: lead.resumo_negociacao,
+          ultimasMensagens: mensagensOrdenadas,
+        });
+        console.log(`🚨 [Em Risco] ${lead.wa_id} (QUENTE, ${Math.round(silencioHoras)}h sem resposta) — reengajamento`);
+      } else if (usarMensagemCurta) {
         mensagem = await gerarMensagemPrimeiroContato({ nomeAgente, carro, preco });
         console.log(`🆕 [Curta/2h] ${lead.wa_id} (FRIO) — primeiro contato`);
       } else {
