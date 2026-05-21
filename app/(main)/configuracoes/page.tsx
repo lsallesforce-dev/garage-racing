@@ -53,6 +53,7 @@ interface GarageConfig {
   instrucoes_adicionais?: string;
   horario_funcionamento?: string;
   oferta_especial?: string;
+  telefone_loja?: string;
   webmotors_usuario?: string;
   webmotors_senha?: string;
   nf_cep?: string;
@@ -127,6 +128,7 @@ export default function ConfiguracoesPage() {
     instrucoes_adicionais: "",
     horario_funcionamento: "",
     oferta_especial: "",
+    telefone_loja: "",
   });
   const fileRef = useRef<HTMLInputElement>(null);
   const pfxRef = useRef<HTMLInputElement>(null);
@@ -372,6 +374,7 @@ export default function ConfiguracoesPage() {
               instrucoes_adicionais: row.instrucoes_adicionais ?? "",
               horario_funcionamento: row.horario_funcionamento ?? "",
               oferta_especial: row.oferta_especial ?? "",
+              telefone_loja: row.telefone_loja ?? "",
               webmotors_usuario: row.webmotors_usuario ?? "",
               webmotors_senha:   row.webmotors_senha   ?? "",
               nf_cep:            row.nf_cep            ?? "",
@@ -579,6 +582,7 @@ export default function ConfiguracoesPage() {
             instrucoes_adicionais: config.instrucoes_adicionais || null,
             horario_funcionamento: config.horario_funcionamento || null,
             oferta_especial:      config.oferta_especial      || null,
+            telefone_loja:        config.telefone_loja        || null,
             webmotors_usuario:    config.webmotors_usuario    || null,
             webmotors_senha:      config.webmotors_senha      || null,
             nf_cep:               config.nf_cep               || null,
@@ -838,6 +842,22 @@ export default function ConfiguracoesPage() {
                 placeholder="Ex: 5517991141010"
                 className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
               />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+                Telefone Fixo / Ramal da Loja
+              </label>
+              <input
+                type="text"
+                value={config.telefone_loja || ""}
+                onChange={e => setConfig(c => ({ ...c, telefone_loja: e.target.value }))}
+                placeholder="Ex: (17) 3322-1010"
+                className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
+              />
+              <p className="text-[9px] text-gray-400 mt-0.5">
+                A IA responde com este número quando o cliente pedir para ligar.
+              </p>
             </div>
 
             <div className="flex flex-col gap-1.5">
@@ -1289,6 +1309,31 @@ export default function ConfiguracoesPage() {
                     className="shrink-0 p-2 bg-gray-900 hover:bg-red-600 text-white rounded-xl transition-colors"
                   >
                     {copied === "wh-url" ? <CheckCircle2 size={13} /> : <Copy size={13} />}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {webhookToken && (
+              <div className="bg-orange-50 border border-orange-100 rounded-2xl px-4 py-3 space-y-1">
+                <p className="text-[9px] font-black uppercase tracking-widest text-orange-500">📞 URL — Webhook de Ligação (PABX/VoIP)</p>
+                <p className="text-[9px] text-gray-500 mb-1.5">
+                  Configure esta URL no seu sistema de telefonia. Quando o cliente ligar, a IA manda um WhatsApp automático para ele.
+                  <br/>Body: <code className="bg-white px-1 rounded">{"{ \"phone\": \"5517999990000\" }"}</code>
+                </p>
+                <div className="flex items-center gap-2">
+                  <code className="text-[10px] text-gray-700 flex-1 break-all">
+                    {`${process.env.NEXT_PUBLIC_APP_URL ?? "https://autozap.digital"}/api/webhook/chamada/${webhookToken}`}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard(
+                      `${process.env.NEXT_PUBLIC_APP_URL ?? "https://autozap.digital"}/api/webhook/chamada/${webhookToken}`,
+                      "wh-chamada"
+                    )}
+                    className="shrink-0 p-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl transition-colors"
+                  >
+                    {copied === "wh-chamada" ? <CheckCircle2 size={13} /> : <Copy size={13} />}
                   </button>
                 </div>
               </div>

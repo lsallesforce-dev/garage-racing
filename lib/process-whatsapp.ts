@@ -120,6 +120,7 @@ export interface GarageConfig {
   endereco_complemento?: string;
   cidade?: string;
   whatsapp?: string;
+  telefone_loja?: string;
   vitrine_slug?: string;
   webhook_token?: string;
   meta_phone_id?: string;
@@ -194,6 +195,7 @@ interface BuildPromptParams {
   enderecoGaragem: string;
   enderecoComplemento: string;
   cidadeGaragem: string;
+  telefoneLojaDisplay: string;
   vitrineUrl: string | null;
   nomeCliente: string | null;
   context: string;
@@ -381,6 +383,7 @@ ${instrucoesBlock}${ofertaBlock}
 NOME DO CLIENTE: ${p.nomeCliente ?? "Não informado"}
 ${p.enderecoGaragem ? `ENDEREÇO DA LOJA: ${p.enderecoGaragem}${p.enderecoComplemento ? ` (${p.enderecoComplemento})` : ""}` : ""}
 ${p.cidadeGaragem ? `CIDADE DA LOJA: ${p.cidadeGaragem}` : ""}
+${p.telefoneLojaDisplay ? `TELEFONE DA LOJA: ${p.telefoneLojaDisplay} — quando o cliente pedir para ligar ou perguntar o telefone, informe este número.` : ""}
 ${p.horarioFuncionamento ? `HORÁRIO DE FUNCIONAMENTO: ${p.horarioFuncionamento}\n⚠️ REGRA DE AGENDAMENTO: NUNCA confirme visita em dia ou horário fora do HORÁRIO DE FUNCIONAMENTO acima. Se o cliente propuser um horário fora do expediente (ex: domingo quando a loja não abre, ou 20h quando fecha às 18h), informe gentilmente e sugira o horário disponível mais próximo.` : ""}
 ESTOQUE ESTRUTURADO:
 ${p.context}
@@ -1078,6 +1081,7 @@ Responda apenas com o JSON, sem markdown.`;
   const enderecoGaragem = garageConfig?.endereco || "";
   const enderecoComplemento = garageConfig?.endereco_complemento || "";
   const cidadeGaragem = garageConfig?.cidade || "";
+  const telefoneLojaDisplay = garageConfig?.telefone_loja || "";
   const vitrineUrl = garageConfig?.vitrine_slug
     ? `${process.env.NEXT_PUBLIC_APP_URL || "https://www.autozap.digital"}/vitrine/${garageConfig.vitrine_slug}`
     : null;
@@ -1860,6 +1864,7 @@ Responda apenas com o JSON, sem markdown.`;
       enderecoGaragem,
       enderecoComplemento,
       cidadeGaragem,
+      telefoneLojaDisplay,
       vitrineUrl,
       nomeCliente,
       context,
