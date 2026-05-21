@@ -2092,11 +2092,23 @@ Responda apenas com o JSON, sem markdown.`;
       delivered: false,
     }).select("id").single();
     mensagemAgenteId = msgInserida?.id ?? null;
+    // ── Avança etapa_funil automaticamente (nunca retrocede) ──
+    // NOVO → INTERESSADO: quando lead vira MORNO ou QUENTE
+    // INTERESSADO → AGENDADO: detectado no bloco de auto-agenda abaixo
+    const ETAPA_ORD = ["NOVO", "INTERESSADO", "AGENDADO", "VENDIDO", "PERDIDO"];
+    const etapaAtual = (lead as any).etapa_funil || "NOVO";
+    const idxAtual   = ETAPA_ORD.indexOf(etapaAtual);
+    let novaEtapaFunil: string | undefined;
+    if ((temperatura === "MORNO" || temperatura === "QUENTE") && idxAtual < ETAPA_ORD.indexOf("INTERESSADO")) {
+      novaEtapaFunil = "INTERESSADO";
+    }
+
     await supabaseAdmin
       .from("leads")
       .update({
         status: temperatura,
         ...(resumo ? { resumo_negociacao: resumo } : {}),
+        ...(novaEtapaFunil ? { etapa_funil: novaEtapaFunil } : {}),
       })
       .eq("id", lead.id);
 
@@ -2230,6 +2242,13 @@ Retorne JSON estrito:
                 created_by: "ia",
               });
               console.log(`📅 Auto-agenda criada para lead ${lead.id} — ${dataHoraAgenda}${horaAproximada ? " (aproximada)" : ""}`);
+
+              // Avança etapa_funil → AGENDADO quando visita confirmada
+              const etapaAgora = (lead as any).etapa_funil || "NOVO";
+              if (["NOVO", "INTERESSADO"].includes(etapaAgora)) {
+                await supabaseAdmin.from("leads").update({ etapa_funil: "AGENDADO" }).eq("id", lead.id);
+                console.log(`🏷️ etapa_funil → AGENDADO (lead ${lead.id})`);
+              }
             }
           } else {
             console.log(`📅 Auto-agenda aguardando indicação de quando (lead ${lead.id})`);
