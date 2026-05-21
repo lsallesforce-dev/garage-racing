@@ -11,12 +11,13 @@ export async function GET(req: NextRequest) {
   if (authError) return authError;
   const userId = getEffectiveUserId(user!);
 
-  const agora      = new Date();
-  const inicioMes  = new Date(agora.getFullYear(), agora.getMonth(), 1);
-  const inicioDia  = new Date(agora); inicioDia.setHours(0, 0, 0, 0);
+  const agora       = new Date();
+  const inicioMes   = new Date(agora.getFullYear(), agora.getMonth(), 1);
+  const inicioSemana = new Date(agora.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const inicioDia   = new Date(agora); inicioDia.setHours(0, 0, 0, 0);
   const ontemInicio = new Date(inicioDia); ontemInicio.setDate(ontemInicio.getDate() - 1);
-  const limite48h  = new Date(agora.getTime() - 48 * 60 * 60 * 1000);
-  const limite6m   = new Date(agora.getTime() - 180 * 24 * 60 * 60 * 1000);
+  const limite48h   = new Date(agora.getTime() - 48 * 60 * 60 * 1000);
+  const limite6m    = new Date(agora.getTime() - 180 * 24 * 60 * 60 * 1000);
 
   const [
     { data: todosLeads },
@@ -24,7 +25,12 @@ export async function GET(req: NextRequest) {
     { data: leadsRecentes },
     { count: leadsHoje },
     { count: leadsOntem },
+    { count: leadsSemana },
+    { count: leadsMes },
     { count: agendamentosHoje },
+    { count: agendamentosSemana },
+    { count: agendamentosMes },
+    { count: humanAtivos },
   ] = await Promise.all([
     // Todos os leads dos últimos 6 meses com preço do veículo
     supabaseAdmin.from("leads")
@@ -46,6 +52,7 @@ export async function GET(req: NextRequest) {
       .order("updated_at", { ascending: false })
       .limit(80),
 
+    // Contadores de leads por período
     supabaseAdmin.from("leads")
       .select("*", { count: "exact", head: true })
       .eq("user_id", userId)
@@ -57,10 +64,37 @@ export async function GET(req: NextRequest) {
       .gte("created_at", ontemInicio.toISOString())
       .lt("created_at", inicioDia.toISOString()),
 
+    supabaseAdmin.from("leads")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .gte("created_at", inicioSemana.toISOString()),
+
+    supabaseAdmin.from("leads")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .gte("created_at", inicioMes.toISOString()),
+
+    // Contadores de agenda por período
     supabaseAdmin.from("agenda")
       .select("*", { count: "exact", head: true })
       .eq("user_id", userId)
       .gte("data_hora", inicioDia.toISOString()),
+
+    supabaseAdmin.from("agenda")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .gte("data_hora", inicioSemana.toISOString()),
+
+    supabaseAdmin.from("agenda")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .gte("data_hora", inicioMes.toISOString()),
+
+    // Chats em atendimento humano ativo (gerente assumiu)
+    supabaseAdmin.from("leads")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("em_atendimento_humano", true),
   ]);
 
   const leads = todosLeads ?? [];
@@ -147,9 +181,14 @@ export async function GET(req: NextRequest) {
       conversao,
       emRisco,
       vendidoMes,
-      leadsHoje:  leadsHoje  ?? 0,
-      leadsOntem: leadsOntem ?? 0,
+      humanAtivos:      humanAtivos      ?? 0,
+      leadsHoje:        leadsHoje        ?? 0,
+      leadsOntem:       leadsOntem       ?? 0,
+      leadsSemana:      leadsSemana      ?? 0,
+      leadsMesCount:    leadsMes         ?? 0,
       agendamentosHoje: agendamentosHoje ?? 0,
+      agendamentosSemana: agendamentosSemana ?? 0,
+      agendamentosMes:    agendamentosMes    ?? 0,
     },
     etapas,
     leads: leadsFormatados,

@@ -3,8 +3,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import {
-  TrendingUp, AlertTriangle, GitBranch, MessageCircle, CalendarCheck,
-  ArrowRight, Flame, DollarSign, Target, Users, ChevronRight,
+  AlertTriangle, GitBranch, MessageCircle, CalendarCheck,
+  Flame, Users, ChevronRight,
   Clock, Car, RefreshCw, Zap
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -42,9 +42,14 @@ type FunilData = {
     conversao: number;
     emRisco: number;
     vendidoMes: number;
+    humanAtivos: number;
     leadsHoje: number;
     leadsOntem: number;
+    leadsSemana: number;
+    leadsMesCount: number;
     agendamentosHoje: number;
+    agendamentosSemana: number;
+    agendamentosMes: number;
   };
   etapas: EtapaInfo[];
   leads: LeadItem[];
@@ -214,14 +219,14 @@ export default function Dashboard() {
             {/* ── KPI Cards ── */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
 
-              {/* Pipeline */}
+              {/* Chats com gerente */}
               <div className="bg-slate-900 p-4 md:p-5 rounded-2xl text-white shadow-xl relative overflow-hidden group col-span-2 md:col-span-1">
                 <div className="absolute -right-4 -top-4 text-white/5 group-hover:text-white/10 transition-colors">
-                  <DollarSign size={80} />
+                  <MessageCircle size={80} />
                 </div>
-                <p className="text-[9px] font-black uppercase tracking-widest text-gray-500 mb-0.5">Pipeline Ativo</p>
-                <h4 className="text-2xl font-black italic tracking-tighter">{formatBRL(data.kpis.pipeline)}</h4>
-                <p className="text-[9px] text-green-400 font-bold uppercase mt-1 italic">Leads em negociação</p>
+                <p className="text-[9px] font-black uppercase tracking-widest text-gray-500 mb-0.5">Atendimento Humano</p>
+                <h4 className="text-2xl font-black italic tracking-tighter">{data.kpis.humanAtivos}</h4>
+                <p className="text-[9px] text-blue-400 font-bold uppercase mt-1 italic">Gerente assumiu o chat</p>
               </div>
 
               {/* Vendido Mês */}
@@ -247,49 +252,77 @@ export default function Dashboard() {
             </div>
 
             {/* KPIs de Atividade */}
-            <div className="grid grid-cols-3 gap-3 mb-4">
-              <div className="bg-white p-4 md:p-5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all">
-                <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-0.5">Leads Hoje</p>
-                <h4 className="text-2xl font-black italic tracking-tighter">{data.kpis.leadsHoje}</h4>
-                <div className="flex items-center gap-1 mt-1">
-                  {data.kpis.leadsHoje > data.kpis.leadsOntem
-                    ? <span className="text-[9px] text-green-500 font-bold uppercase">↑ {data.kpis.leadsOntem} ontem</span>
-                    : data.kpis.leadsHoje < data.kpis.leadsOntem
-                    ? <span className="text-[9px] text-red-400 font-bold uppercase">↓ {data.kpis.leadsOntem} ontem</span>
-                    : <span className="text-[9px] text-gray-400 font-bold uppercase">= {data.kpis.leadsOntem} ontem</span>
-                  }
-                </div>
-              </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
 
+              {/* Leads — Hoje / Semana / Mês */}
               <div className="bg-white p-4 md:p-5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-0.5">Agendamentos</p>
-                    <h4 className="text-2xl font-black italic tracking-tighter">{data.kpis.agendamentosHoje}</h4>
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">Novos Leads</p>
+                  <Users size={14} className="text-gray-300" />
+                </div>
+                <div className="grid grid-cols-3 gap-1">
+                  <div className="text-center">
+                    <p className="text-2xl font-black italic tracking-tighter text-gray-800">{data.kpis.leadsHoje}</p>
+                    <div className="flex items-center justify-center gap-0.5 mt-0.5">
+                      {data.kpis.leadsHoje > data.kpis.leadsOntem
+                        ? <span className="text-[8px] text-green-500 font-black">↑</span>
+                        : data.kpis.leadsHoje < data.kpis.leadsOntem
+                        ? <span className="text-[8px] text-red-400 font-black">↓</span>
+                        : <span className="text-[8px] text-gray-300 font-black">=</span>
+                      }
+                      <p className="text-[8px] font-black uppercase text-gray-400">Hoje</p>
+                    </div>
                   </div>
-                  <CalendarCheck size={18} className="text-purple-400 mt-0.5" />
+                  <div className="text-center border-x border-gray-100">
+                    <p className="text-2xl font-black italic tracking-tighter text-gray-800">{data.kpis.leadsSemana}</p>
+                    <p className="text-[8px] font-black uppercase text-gray-400 mt-0.5">7 dias</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-2xl font-black italic tracking-tighter text-gray-800">{data.kpis.leadsMesCount}</p>
+                    <p className="text-[8px] font-black uppercase text-gray-400 mt-0.5">Mês</p>
+                  </div>
                 </div>
-                <p className="text-[9px] text-purple-500 font-bold uppercase mt-1">Visitas hoje</p>
               </div>
 
+              {/* Agenda — Hoje / Semana / Mês */}
+              <div className="bg-white p-4 md:p-5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">Agendamentos</p>
+                  <CalendarCheck size={14} className="text-purple-400" />
+                </div>
+                <div className="grid grid-cols-3 gap-1">
+                  <div className="text-center">
+                    <p className="text-2xl font-black italic tracking-tighter text-purple-600">{data.kpis.agendamentosHoje}</p>
+                    <p className="text-[8px] font-black uppercase text-gray-400 mt-0.5">Hoje</p>
+                  </div>
+                  <div className="text-center border-x border-gray-100">
+                    <p className="text-2xl font-black italic tracking-tighter text-purple-600">{data.kpis.agendamentosSemana}</p>
+                    <p className="text-[8px] font-black uppercase text-gray-400 mt-0.5">7 dias</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-2xl font-black italic tracking-tighter text-purple-600">{data.kpis.agendamentosMes}</p>
+                    <p className="text-[8px] font-black uppercase text-gray-400 mt-0.5">Mês</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Em Risco */}
               <div className={`p-4 md:p-5 rounded-2xl border-2 transition-all ${
                 data.kpis.emRisco > 0
                   ? "bg-red-50 border-red-200 hover:scale-[1.01]"
                   : "bg-white border-gray-100 hover:shadow-md"
               }`}>
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className={`text-[9px] font-black uppercase tracking-widest mb-0.5 ${
-                      data.kpis.emRisco > 0 ? "text-red-500" : "text-gray-400"
-                    }`}>Em Risco</p>
-                    <h4 className={`text-2xl font-black italic tracking-tighter ${
-                      data.kpis.emRisco > 0 ? "text-red-600" : "text-gray-700"
-                    }`}>{data.kpis.emRisco}</h4>
-                  </div>
+                <div className="flex items-start justify-between mb-3">
+                  <p className={`text-[9px] font-black uppercase tracking-widest ${
+                    data.kpis.emRisco > 0 ? "text-red-500" : "text-gray-400"
+                  }`}>Em Risco</p>
                   {data.kpis.emRisco > 0 && (
-                    <Flame size={18} className="text-red-500 mt-0.5 animate-pulse" />
+                    <Flame size={14} className="text-red-500 animate-pulse" />
                   )}
                 </div>
+                <h4 className={`text-3xl font-black italic tracking-tighter ${
+                  data.kpis.emRisco > 0 ? "text-red-600" : "text-gray-700"
+                }`}>{data.kpis.emRisco}</h4>
                 <p className={`text-[9px] font-bold uppercase mt-1 ${
                   data.kpis.emRisco > 0 ? "text-red-500/70" : "text-gray-400"
                 }`}>Quentes &gt; 48h sem resp.</p>
