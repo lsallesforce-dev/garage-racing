@@ -2141,6 +2141,7 @@ Responda apenas com o JSON, sem markdown.`;
       .from("leads")
       .update({
         status: temperatura,
+        updated_at: new Date().toISOString(),   // ← sobe o lead no topo do chat
         ...(resumo ? { resumo_negociacao: resumo } : {}),
         ...(novaEtapaFunil ? { etapa_funil: novaEtapaFunil } : {}),
       })
