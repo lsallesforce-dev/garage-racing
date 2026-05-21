@@ -280,12 +280,14 @@ export async function POST(req: NextRequest) {
       // Fallback mono-tenant via env var (instalações legadas com WEBHOOK_USER_ID)
       tenantUserId = process.env.WEBHOOK_USER_ID || null;
       if (tenantUserId) {
-        const { data } = await supabaseAdmin
+        // Usa limit(1) em vez de maybeSingle() para não quebrar se houver múltiplas linhas por user_id
+        const { data: rows } = await supabaseAdmin
           .from("config_garage")
           .select(FIELDS)
           .eq("user_id", tenantUserId)
-          .maybeSingle();
-        garageConfig = data || null;
+          .order("created_at", { ascending: false })
+          .limit(1);
+        garageConfig = rows?.[0] ?? null;
       }
     }
 

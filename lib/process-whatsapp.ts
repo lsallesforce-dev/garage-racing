@@ -748,6 +748,13 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
 
   // Canal de envio: Avisa se tiver avisa_base_url, caso contrário Meta
   const useAvisa = !!avisaCreds.baseUrl && !!avisaCreds.token;
+  const useMeta  = !useAvisa && !!metaCreds.phoneNumberId && !!metaCreds.accessToken;
+
+  // Sem canal configurado → aborta imediatamente, sem chamar nada de Meta
+  if (!useAvisa && !useMeta) {
+    console.warn(`⚠️ [${phone}] Tenant ${tenantUserId} sem canal WhatsApp configurado (Avisa ou Meta) — mensagem ignorada`);
+    return;
+  }
 
   const sendText  = (to: string, text: string) =>
     useAvisa
