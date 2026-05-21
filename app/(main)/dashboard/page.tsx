@@ -57,6 +57,37 @@ type FunilData = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+// Cron roda 6x/dia: 11,13,15,17,19,21h UTC = 8,10,12,14,16,18h BRT
+const CRON_HORAS_BRT = [8, 10, 12, 14, 16, 18];
+
+function proximoReengajamento(): string {
+  const agora = new Date();
+  const horaBRT = parseInt(
+    agora.toLocaleString("pt-BR", { hour: "numeric", hour12: false, timeZone: "America/Sao_Paulo" }),
+    10
+  );
+  const minBRT = agora.getMinutes();
+
+  // Próxima hora do cron ainda por vir hoje
+  const proxHoje = CRON_HORAS_BRT.find(h => h > horaBRT || (h === horaBRT && minBRT < 5));
+
+  let diffMin: number;
+  let proxHoraLabel: string;
+
+  if (proxHoje !== undefined) {
+    diffMin = (proxHoje - horaBRT) * 60 - minBRT;
+    proxHoraLabel = `${proxHoje}h`;
+  } else {
+    // Próxima é amanhã às 8h BRT
+    diffMin = (24 - horaBRT + 8) * 60 - minBRT;
+    proxHoraLabel = "amanhã às 8h";
+  }
+
+  if (diffMin <= 60) return `em ~${diffMin}min (${proxHoraLabel})`;
+  const diffH = Math.round(diffMin / 60);
+  return `em ~${diffH}h (${proxHoraLabel})`;
+}
+
 function formatBRL(v: number) {
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
@@ -326,6 +357,14 @@ export default function Dashboard() {
                 <p className={`text-[9px] font-bold uppercase mt-1 ${
                   data.kpis.emRisco > 0 ? "text-red-500/70" : "text-gray-400"
                 }`}>Quentes &gt; 48h sem resp.</p>
+                {data.kpis.emRisco > 0 && (
+                  <div className="mt-2 pt-2 border-t border-red-100 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-ping shrink-0" />
+                    <p className="text-[8px] font-black uppercase tracking-widest text-red-400">
+                      Reabordagem IA {proximoReengajamento()}
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 
