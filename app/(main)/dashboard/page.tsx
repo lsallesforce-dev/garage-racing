@@ -125,7 +125,7 @@ const ORIGEM_CONFIG: Record<string, { emoji: string; bar: string; bg: string; co
   webmotors: { emoji: "🔴", bar: "bg-red-500",    bg: "bg-red-50",    color: "text-red-600"   },
   icarros:   { emoji: "🚗", bar: "bg-purple-500", bg: "bg-purple-50", color: "text-purple-600" },
   napista:   { emoji: "🏁", bar: "bg-green-500",  bg: "bg-green-50",  color: "text-green-600" },
-  whatsapp:  { emoji: "💬", bar: "bg-emerald-500",bg: "bg-emerald-50",color: "text-emerald-600"},
+  whatsapp:  { emoji: "🔗", bar: "bg-gray-400",   bg: "bg-gray-50",   color: "text-gray-500"  },
   manual:    { emoji: "✍️", bar: "bg-gray-400",   bg: "bg-gray-50",   color: "text-gray-500"  },
 };
 
