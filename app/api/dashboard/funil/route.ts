@@ -21,7 +21,6 @@ export async function GET(req: NextRequest) {
 
   const [
     { data: todosLeads },
-    { data: veiculosVendidosMes },
     { data: leadsRecentes },
     { count: leadsHoje },
     { count: leadsOntem },
@@ -32,21 +31,19 @@ export async function GET(req: NextRequest) {
     { count: agendamentosMes },
     { count: humanAtivos },
     { data: origensRaw },
+    { count: msgsIAHoje },
+    { count: msgsIASemana },
+    { count: msgsIAMes },
+    { count: followupsEnviados },
+    { count: leadsQuente },
   ] = await Promise.all([
-    // Todos os leads dos últimos 6 meses com preço + dados do veículo
+    // Todos os leads dos últimos 6 meses com dados do veículo
     supabaseAdmin.from("leads")
       .select("id, etapa_funil, status, updated_at, veiculo_id, veiculos(preco_sugerido, marca, modelo, ano)")
       .eq("user_id", userId)
       .gte("created_at", limite6m.toISOString()),
 
-    // Veículos vendidos este mês para calcular receita
-    supabaseAdmin.from("veiculos")
-      .select("preco_sugerido")
-      .eq("user_id", userId)
-      .eq("status_venda", "VENDIDO")
-      .gte("updated_at", inicioMes.toISOString()),
-
-    // Leads recentes para a lista filtrada (com veiculo + dados de contato)
+    // Leads recentes para a lista filtrada
     supabaseAdmin.from("leads")
       .select("id, nome, wa_id, status, etapa_funil, resumo_negociacao, updated_at, veiculos(marca, modelo, ano)")
       .eq("user_id", userId)
@@ -91,7 +88,7 @@ export async function GET(req: NextRequest) {
       .eq("user_id", userId)
       .gte("data_hora", inicioMes.toISOString()),
 
-    // Chats em atendimento humano ativo (gerente assumiu)
+    // Chats em atendimento humano ativo
     supabaseAdmin.from("leads")
       .select("*", { count: "exact", head: true })
       .eq("user_id", userId)
@@ -102,38 +99,49 @@ export async function GET(req: NextRequest) {
       .select("origem")
       .eq("user_id", userId)
       .gte("created_at", limite6m.toISOString()),
+
+    // Mensagens enviadas pela IA — hoje
+    supabaseAdmin.from("mensagens")
+      .select("id, leads!inner(user_id)", { count: "exact", head: true })
+      .eq("remetente", "agente")
+      .eq("leads.user_id", userId)
+      .gte("created_at", inicioDia.toISOString()),
+
+    // Mensagens enviadas pela IA — semana
+    supabaseAdmin.from("mensagens")
+      .select("id, leads!inner(user_id)", { count: "exact", head: true })
+      .eq("remetente", "agente")
+      .eq("leads.user_id", userId)
+      .gte("created_at", inicioSemana.toISOString()),
+
+    // Mensagens enviadas pela IA — mês
+    supabaseAdmin.from("mensagens")
+      .select("id, leads!inner(user_id)", { count: "exact", head: true })
+      .eq("remetente", "agente")
+      .eq("leads.user_id", userId)
+      .gte("created_at", inicioMes.toISOString()),
+
+    // Leads que receberam pelo menos 1 follow-up da IA
+    supabaseAdmin.from("leads")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .not("ultimo_followup", "is", null),
+
+    // Leads quentes ativos
+    supabaseAdmin.from("leads")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("status", "QUENTE"),
   ]);
 
   const leads = todosLeads ?? [];
 
   // ── KPIs ─────────────────────────────────────────────────────────────────────
 
-  // Pipeline: valor total dos veículos de leads ativos (não vendido/perdido)
-  const pipeline = leads
-    .filter(l => !["VENDIDO", "PERDIDO"].includes(l.etapa_funil ?? "NOVO"))
-    .reduce((sum, l) => sum + (Number((l.veiculos as any)?.preco_sugerido) || 0), 0);
-
-  // Receita do mês: soma dos veículos marcados como VENDIDO no mês
-  const vendidoMes = (veiculosVendidosMes ?? [])
-    .reduce((sum, v) => sum + (Number(v.preco_sugerido) || 0), 0);
-
-  // Ticket médio: média dos preços de todos os veículos nos leads
-  const precos = leads
-    .map(l => Number((l.veiculos as any)?.preco_sugerido) || 0)
-    .filter(p => p > 0);
-  const ticketMedio = precos.length
-    ? Math.round(precos.reduce((a, b) => a + b, 0) / precos.length)
-    : 0;
-
   // Em risco: leads QUENTE com última atividade > 48h atrás
   const emRisco = leads.filter(l =>
     l.status === "QUENTE" && new Date(l.updated_at) < limite48h
   ).length;
-
-  // Conversão do mês: leads que chegaram a VENDIDO / total criados no mês
-  const leadsMesTotal  = leads.filter(l => new Date(l.updated_at) >= inicioMes).length;
-  const leadsMesVendid = leads.filter(l => l.etapa_funil === "VENDIDO" && new Date(l.updated_at) >= inicioMes).length;
-  const conversao = leadsMesTotal > 0 ? Math.round((leadsMesVendid / leadsMesTotal) * 100) : 0;
 
   // ── Etapas do Funil ───────────────────────────────────────────────────────────
   type Etapa = "NOVO" | "INTERESSADO" | "AGENDADO" | "VENDIDO" | "PERDIDO";
@@ -220,19 +228,20 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     kpis: {
-      pipeline,
-      ticketMedio,
-      conversao,
       emRisco,
-      vendidoMes,
-      humanAtivos:      humanAtivos      ?? 0,
-      leadsHoje:        leadsHoje        ?? 0,
-      leadsOntem:       leadsOntem       ?? 0,
-      leadsSemana:      leadsSemana      ?? 0,
-      leadsMesCount:    leadsMes         ?? 0,
-      agendamentosHoje: agendamentosHoje ?? 0,
+      humanAtivos:        humanAtivos        ?? 0,
+      leadsHoje:          leadsHoje          ?? 0,
+      leadsOntem:         leadsOntem         ?? 0,
+      leadsSemana:        leadsSemana        ?? 0,
+      leadsMesCount:      leadsMes           ?? 0,
+      agendamentosHoje:   agendamentosHoje   ?? 0,
       agendamentosSemana: agendamentosSemana ?? 0,
       agendamentosMes:    agendamentosMes    ?? 0,
+      msgsIAHoje:         msgsIAHoje         ?? 0,
+      msgsIASemana:       msgsIASemana       ?? 0,
+      msgsIAMes:          msgsIAMes          ?? 0,
+      followupsEnviados:  followupsEnviados  ?? 0,
+      leadsQuente:        leadsQuente        ?? 0,
     },
     etapas,
     leads: leadsFormatados,

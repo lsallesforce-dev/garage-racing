@@ -49,11 +49,7 @@ type OrigemItem = {
 
 type FunilData = {
   kpis: {
-    pipeline: number;
-    ticketMedio: number;
-    conversao: number;
     emRisco: number;
-    vendidoMes: number;
     humanAtivos: number;
     leadsHoje: number;
     leadsOntem: number;
@@ -62,6 +58,11 @@ type FunilData = {
     agendamentosHoje: number;
     agendamentosSemana: number;
     agendamentosMes: number;
+    msgsIAHoje: number;
+    msgsIASemana: number;
+    msgsIAMes: number;
+    followupsEnviados: number;
+    leadsQuente: number;
   };
   etapas: EtapaInfo[];
   leads: LeadItem[];
@@ -285,25 +286,40 @@ export default function Dashboard() {
                 <p className="text-[9px] text-blue-400 font-bold uppercase mt-1 italic">Gerente assumiu o chat</p>
               </div>
 
-              {/* Vendido Mês */}
-              <div className="bg-white p-4 md:p-5 rounded-2xl border border-green-100 shadow-sm hover:shadow-md transition-all">
-                <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-0.5">Vendido no Mês</p>
-                <h4 className="text-2xl font-black italic tracking-tighter text-green-600">{formatBRL(data.kpis.vendidoMes)}</h4>
-                <p className="text-[9px] text-green-500 font-bold uppercase mt-1 italic">Receita realizada</p>
+              {/* Msgs da IA */}
+              <div className="bg-white p-4 md:p-5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">Msgs da IA</p>
+                  <MessageCircle size={14} className="text-gray-300" />
+                </div>
+                <div className="grid grid-cols-3 gap-1">
+                  <div className="text-center">
+                    <p className="text-2xl font-black italic tracking-tighter text-gray-800">{data.kpis.msgsIAHoje}</p>
+                    <p className="text-[8px] font-black uppercase text-gray-400 mt-0.5">Hoje</p>
+                  </div>
+                  <div className="text-center border-x border-gray-100">
+                    <p className="text-2xl font-black italic tracking-tighter text-gray-800">{data.kpis.msgsIASemana}</p>
+                    <p className="text-[8px] font-black uppercase text-gray-400 mt-0.5">7 dias</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-2xl font-black italic tracking-tighter text-gray-800">{data.kpis.msgsIAMes}</p>
+                    <p className="text-[8px] font-black uppercase text-gray-400 mt-0.5">Mês</p>
+                  </div>
+                </div>
               </div>
 
-              {/* Ticket Médio */}
+              {/* Follow-ups enviados */}
               <div className="bg-white p-4 md:p-5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all">
-                <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-0.5">Ticket Médio</p>
-                <h4 className="text-2xl font-black italic tracking-tighter">{formatBRL(data.kpis.ticketMedio)}</h4>
-                <p className="text-[9px] text-slate-500 font-bold uppercase mt-1 italic">Por veículo negociado</p>
+                <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-0.5">Follow-ups pela IA</p>
+                <h4 className="text-2xl font-black italic tracking-tighter text-blue-600">{data.kpis.followupsEnviados}</h4>
+                <p className="text-[9px] text-blue-400 font-bold uppercase mt-1">Leads reativados</p>
               </div>
 
-              {/* Conversão */}
-              <div className="bg-white p-4 md:p-5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all">
-                <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-0.5">Conversão Mês</p>
-                <h4 className="text-2xl font-black italic tracking-tighter">{data.kpis.conversao}%</h4>
-                <p className="text-[9px] text-blue-500 font-bold uppercase mt-1 italic">Lead → Vendido</p>
+              {/* Leads Quentes */}
+              <div className="bg-white p-4 md:p-5 rounded-2xl border border-orange-100 shadow-sm hover:shadow-md transition-all">
+                <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-0.5">Leads Quentes</p>
+                <h4 className="text-2xl font-black italic tracking-tighter text-orange-500">{data.kpis.leadsQuente}</h4>
+                <p className="text-[9px] text-orange-400 font-bold uppercase mt-1">🔥 Prontos para fechar</p>
               </div>
             </div>
 

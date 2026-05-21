@@ -14,7 +14,7 @@ import { after } from "next/server";
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { processWhatsAppMessage } from "@/lib/process-whatsapp";
-import { isDuplicateMessage, debounceClientImages } from "@/lib/redis";
+import { isDuplicateMessage, debounceClientImages, debounceFirstContact } from "@/lib/redis";
 import { logWebhookError } from "@/lib/error-log";
 import { resolveAvisaLid } from "@/lib/avisa";
 
@@ -349,9 +349,20 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Debounce de primeiro contato (CTWA/LID): em Click-to-WhatsApp, a Avisa pode entregar
+    // o mesmo lead duas vezes com messageIds diferentes (LID + número real).
+    // Janela de 60s garante que só o primeiro dispara processamento.
+    if (adReferral?.ad_id || adReferral?.headline) {
+      const isFirst = await debounceFirstContact(tenantUserId!, phone);
+      if (!isFirst) {
+        console.log(`📢 [CTWA Debounce] Re-entrega de primeiro contato de ${phone} — ignorando`);
+        return NextResponse.json({ status: "first_contact_debounced" });
+      }
+    }
+
     // Debounce de imagens: quando o cliente envia múltiplas fotos de uma vez
     // (ex: 3 fotos do carro para avaliação), Avisa dispara 3 webhooks separados.
-    // Só a PRIMEIRA é processada; as demais são ignoradas dentro da janela de 3s.
+    // Só a PRIMEIRA é processada; as demais são ignoradas dentro da janela de 10s.
     const isClientImage = rawMessage === "[Cliente enviou foto(s) do veículo]";
     if (isClientImage) {
       const isFirst = await debounceClientImages(tenantUserId!, phone);
