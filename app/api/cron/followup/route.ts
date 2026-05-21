@@ -7,14 +7,14 @@
 // O cooldown é controlado por lead (ultimo_followup) com prazo por temperatura:
 //
 // PRIMEIRO follow-up (ultimo_followup IS NULL):
-//   · FRIO  → aguarda 2h de silêncio (cliente sumiu após saudação ou conversa esfriou rápido)
+//   · FRIO   → aguarda 2h de silêncio
+//   · MORNO  → aguarda 2h de silêncio
 //   · QUENTE → aguarda 24h de silêncio (era quente, provavelmente ficou ocupado)
-//   · MORNO  → aguarda 48h de silêncio
 //
 // FOLLOW-UPS SUBSEQUENTES (ultimo_followup IS NOT NULL):
 //   · QUENTE → cooldown 24h
-//   · MORNO  → cooldown 48h
-//   · FRIO   → cooldown 48h (sequência: 2h → 48h → 48h → ...)
+//   · MORNO  → cooldown 24h  (sequência: 2h → 24h → 24h → ...)
+//   · FRIO   → cooldown 48h  (sequência: 2h → 48h → 48h → ...)
 //
 // Fluxo por lead:
 //   1. Detecta cohort (A ou B)
@@ -45,14 +45,14 @@ function isAuthorized(req: NextRequest): boolean {
 // Primeiro follow-up: horas de silêncio necessárias quando ultimo_followup IS NULL
 const PRIMEIRO_FOLLOWUP_HORAS: Record<string, number> = {
   FRIO:    2,   // 2h — cliente clicou no anúncio e sumiu → retoma rápido
+  MORNO:   2,   // 2h — mesmo critério; era morno mas esfriou rápido
   QUENTE: 24,   // 24h — era quente, provavelmente ficou ocupado
-  MORNO:  48,   // 48h
 };
 
 // Cooldown recorrente: horas após o último follow-up para enviar o próximo
 const COOLDOWN_RECORRENTE_HORAS: Record<string, number> = {
   QUENTE: 24,   // a cada 24h enquanto não responder
-  MORNO:  48,   // a cada 48h
+  MORNO:  24,   // após o 2h inicial, a cada 24h
   FRIO:   48,   // após o 2h inicial, a cada 48h
 };
 
