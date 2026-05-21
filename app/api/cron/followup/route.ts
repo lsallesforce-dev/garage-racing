@@ -499,15 +499,24 @@ export async function GET(req: NextRequest) {
       // ── 10. Envia ───────────────────────────────────────────────────────────
       await sendText(lead.wa_id, mensagem);
 
-      // ── 11. Salva no histórico e atualiza ultimo_followup ──────────────────
-      await supabaseAdmin.from("mensagens").insert({
+      // ── 11. Salva no histórico e atualiza lead ─────────────────────────────
+      const { error: insertErr } = await supabaseAdmin.from("mensagens").insert({
         lead_id:   lead.id,
         content:   mensagem,
         remetente: "agente",
       });
+      if (insertErr) {
+        console.error(`❌ Erro ao salvar mensagem no histórico do lead ${lead.id}:`, insertErr);
+      }
+
+      // Atualiza updated_at também para que o realtime do chat recarregue
+      // a conversa e o lead suba no topo da lista
       await supabaseAdmin
         .from("leads")
-        .update({ ultimo_followup: agora.toISOString() })
+        .update({
+          ultimo_followup: agora.toISOString(),
+          updated_at:      agora.toISOString(),
+        })
         .eq("id", lead.id);
 
       const tipoMensagem = emRisco ? "em_risco" : usarMensagemCurta ? "curta" : "contextual";
