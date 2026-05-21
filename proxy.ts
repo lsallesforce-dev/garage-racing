@@ -163,6 +163,7 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith("/api/marketing/webhook") ||
     pathname.startsWith("/api/assumir") ||
     pathname.startsWith("/api/health") ||
+    pathname.startsWith("/api/cron") ||
     pathname.startsWith("/api/pagarme/webhook") ||
     pathname.startsWith("/assinar/sucesso");
 
