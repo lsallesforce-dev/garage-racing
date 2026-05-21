@@ -6,18 +6,15 @@
 // CADA EXECUÇÃO processa leads elegíveis — sem cronGuard global.
 // O cooldown é controlado por lead (ultimo_followup) com prazo por temperatura:
 //
-// Dois cohorts de follow-up:
+// PRIMEIRO follow-up (ultimo_followup IS NULL):
+//   · FRIO  → aguarda 2h de silêncio (cliente sumiu após saudação ou conversa esfriou rápido)
+//   · QUENTE → aguarda 24h de silêncio (era quente, provavelmente ficou ocupado)
+//   · MORNO  → aguarda 48h de silêncio
 //
-//   COHORT A — Primeiro contato sem resposta (2h):
-//     · Cliente clicou no anúncio, agente mandou saudação, cliente sumiu
-//     · Condição: ≤ 2 mensagens, agente falou por último, ultimo_followup IS NULL
-//     · Aguarda 2h e manda: "Vi que você tem interesse no {carro}, ficou alguma dúvida?"
-//     · Requer veiculo_id (veio de anúncio com carro específico)
-//
-//   COHORT B — Leads estabelecidos que esfriaram:
-//     · Conversa tinha tração mas o cliente parou de responder
-//     · Cooldown por temperatura: QUENTE=48h, MORNO=4 dias, FRIO=7 dias
-//     · FRIO requer veiculo_id; MORNO/QUENTE aceita sem carro específico
+// FOLLOW-UPS SUBSEQUENTES (ultimo_followup IS NOT NULL):
+//   · QUENTE → cooldown 24h
+//   · MORNO  → cooldown 48h
+//   · FRIO   → cooldown 48h (sequência: 2h → 48h → 48h → ...)
 //
 // Fluxo por lead:
 //   1. Detecta cohort (A ou B)
@@ -44,11 +41,19 @@ function isAuthorized(req: NextRequest): boolean {
   return auth === `Bearer ${secret}`;
 }
 
-// ─── Cooldowns por temperatura ────────────────────────────────────────────────
-const COOLDOWN_DAYS: Record<string, number> = {
-  QUENTE: 2,  // 48h — lead quente esfriando é urgente
-  MORNO:  4,  // 4 dias
-  FRIO:   7,  // 7 dias
+// ─── Timing de follow-up por temperatura ─────────────────────────────────────
+// Primeiro follow-up: horas de silêncio necessárias quando ultimo_followup IS NULL
+const PRIMEIRO_FOLLOWUP_HORAS: Record<string, number> = {
+  FRIO:    2,   // 2h — cliente clicou no anúncio e sumiu → retoma rápido
+  QUENTE: 24,   // 24h — era quente, provavelmente ficou ocupado
+  MORNO:  48,   // 48h
+};
+
+// Cooldown recorrente: horas após o último follow-up para enviar o próximo
+const COOLDOWN_RECORRENTE_HORAS: Record<string, number> = {
+  QUENTE: 24,   // a cada 24h enquanto não responder
+  MORNO:  48,   // a cada 48h
+  FRIO:   48,   // após o 2h inicial, a cada 48h
 };
 
 // ─── Cohort A — Mensagem de primeiro contato sem resposta ─────────────────────
@@ -175,11 +180,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: true, skipped: true, motivo: "fora_horario_comercial", hora_brt: horaBRT });
   }
 
-  // Cooldown mais permissivo para o filtro SQL (QUENTE = 48h)
-  // A validação fina por temperatura acontece no loop
-  const limite2h      = new Date(agora.getTime() -  2 * 60 * 60 * 1000).toISOString();
-  const limiteSQL     = new Date(agora.getTime() -  2 * 24 * 60 * 60 * 1000).toISOString(); // 48h — QUENTE
-  const limite24h     = new Date(agora.getTime() - 24 * 60 * 60 * 1000).toISOString();
+  // Filtro SQL: usa cooldown recorrente mais permissivo (QUENTE = 24h).
+  // Validação fina de timing por lead e status acontece no loop.
+  const limiteSQL = new Date(agora.getTime() - 24 * 60 * 60 * 1000).toISOString(); // 24h — QUENTE recorrente
 
   // ── 1. Busca leads elegíveis ───────────────────────────────────────────────
   // Sem cronGuard global — cada lead controla seu próprio cooldown via ultimo_followup.
@@ -250,18 +253,7 @@ export async function GET(req: NextRequest) {
       const planoValido = garagem.plano_ativo === true && garagem.plano_vence_em && new Date(garagem.plano_vence_em) > agora;
       if (trialConfigurado && !trialValido && !planoValido) { ignorar("assinatura_expirada"); continue; }
 
-      // ── 3. Cooldown por temperatura (MORNO e FRIO precisam de mais tempo) ──
-      if (lead.ultimo_followup) {
-        const cooldownDias = COOLDOWN_DAYS[lead.status as string] ?? 7;
-        const cooldownMs   = cooldownDias * 24 * 60 * 60 * 1000;
-        const msSinceFollowup = agora.getTime() - new Date(lead.ultimo_followup).getTime();
-        if (msSinceFollowup < cooldownMs) {
-          ignorar(`dentro_cooldown_${lead.status.toLowerCase()}`);
-          continue;
-        }
-      }
-
-      // ── 4. Mensagens da conversa ────────────────────────────────────────────
+      // ── 3. Mensagens da conversa ────────────────────────────────────────────
       const { data: ultimasMsgsDesc } = await supabaseAdmin
         .from("mensagens")
         .select("content, remetente, created_at, media_tipo")
@@ -271,33 +263,42 @@ export async function GET(req: NextRequest) {
 
       if (!ultimasMsgsDesc || ultimasMsgsDesc.length === 0) { ignorar("sem_mensagens"); continue; }
 
-      const ultimaMsg     = ultimasMsgsDesc[0];
+      const ultimaMsg      = ultimasMsgsDesc[0];
       const totalMensagens = ultimasMsgsDesc.length;
       const agenteFalouPorUltimo = ultimaMsg.remetente === "agente";
 
-      // Filtra mensagens de mídia para o histórico (não enviar URL como contexto)
+      // Filtra mensagens de mídia do histórico (URLs não devem ir como contexto)
       const mensagensOrdenadas = [...ultimasMsgsDesc]
-        .filter(m => !m.media_tipo) // remove registros de foto/vídeo
+        .filter(m => !m.media_tipo)
         .reverse();
 
-      // ── 5. Detecta Cohort A (primeiro contato sem resposta) ─────────────────
-      // Condições: ≤ 2 trocas, agente falou por último, cliente nunca respondeu
-      // de volta, ultimo_followup IS NULL, veiculo_id existe (veio de anúncio)
-      const isCohortA =
-        lead.ultimo_followup === null &&
-        lead.veiculo_id !== null &&
-        totalMensagens <= 2 &&
-        agenteFalouPorUltimo &&
-        ultimaMsg.created_at < limite2h; // ≥ 2h sem resposta
+      // Tempo de silêncio desde a última mensagem
+      const silencioMs    = agora.getTime() - new Date(ultimaMsg.created_at).getTime();
+      const silencioHoras = silencioMs / (60 * 60 * 1000);
 
-      // ── 6. Cohort B: verifica silêncio mínimo de 24h ───────────────────────
-      if (!isCohortA) {
-        // Conversa está ativa há menos de 24h — não interromper
-        if (ultimaMsg.created_at > limite24h) { ignorar("conversa_recente"); continue; }
-        // FRIO sem histórico real ou sem carro específico — não retomar
-        if (lead.status === "FRIO" && (totalMensagens < 2 || !lead.veiculo_id)) {
-          ignorar("frio_sem_contexto"); continue;
+      // ── 4. Validação de timing por status ──────────────────────────────────
+      if (lead.ultimo_followup === null) {
+        // PRIMEIRO follow-up: verifica silêncio mínimo por temperatura
+        const horasNecessarias = PRIMEIRO_FOLLOWUP_HORAS[lead.status as string] ?? 24;
+        if (silencioHoras < horasNecessarias) {
+          ignorar(`aguardando_${lead.status.toLowerCase()}_${Math.round(horasNecessarias)}h`);
+          continue;
         }
+      } else {
+        // RECORRENTE: verifica cooldown desde o último follow-up enviado
+        const cooldownHoras  = COOLDOWN_RECORRENTE_HORAS[lead.status as string] ?? 48;
+        const cooldownMs     = cooldownHoras * 60 * 60 * 1000;
+        const msSinceFollowup = agora.getTime() - new Date(lead.ultimo_followup).getTime();
+        if (msSinceFollowup < cooldownMs) {
+          ignorar(`dentro_cooldown_${lead.status.toLowerCase()}`);
+          continue;
+        }
+      }
+
+      // ── 5. Filtros de qualidade ─────────────────────────────────────────────
+      // FRIO sem carro específico e sem histórico real → skip
+      if (lead.status === "FRIO" && totalMensagens < 2 && !lead.veiculo_id) {
+        ignorar("frio_sem_contexto"); continue;
       }
 
       // ── 7. Config do tenant ─────────────────────────────────────────────────
@@ -375,14 +376,20 @@ export async function GET(req: NextRequest) {
       }
 
       // ── 9. Gera mensagem ────────────────────────────────────────────────────
+      // Mensagem curta quando: FRIO, poucos histórico e primeiro follow-up
+      // Mensagem contextual quando: conversa já tinha tração ou lead QUENTE/MORNO
+      const usarMensagemCurta =
+        lead.status === "FRIO" &&
+        totalMensagens <= 2 &&
+        lead.ultimo_followup === null &&
+        lead.veiculo_id !== null;
+
       let mensagem: string;
 
-      if (isCohortA) {
-        // Cohort A: mensagem curta de primeiro contato
+      if (usarMensagemCurta) {
         mensagem = await gerarMensagemPrimeiroContato({ nomeAgente, carro, preco });
-        console.log(`🆕 [Cohort A] ${lead.wa_id} (${lead.status}) — primeiro contato 2h`);
+        console.log(`🆕 [Curta/2h] ${lead.wa_id} (FRIO) — primeiro contato`);
       } else {
-        // Cohort B: retomada contextualizada
         mensagem = await gerarMensagemFollowup({
           nomeLead: lead.nome,
           nomeAgente,
@@ -395,7 +402,7 @@ export async function GET(req: NextRequest) {
           ultimasMensagens: mensagensOrdenadas,
           temperatura: lead.status,
         });
-        console.log(`🔁 [Cohort B] ${lead.wa_id} (${lead.status}) — retomada`);
+        console.log(`🔁 [Contextual] ${lead.wa_id} (${lead.status}) — retomada`);
       }
 
       // ── 10. Envia ───────────────────────────────────────────────────────────
@@ -412,7 +419,7 @@ export async function GET(req: NextRequest) {
         .update({ ultimo_followup: agora.toISOString() })
         .eq("id", lead.id);
 
-      console.log(`✅ Follow-up enviado → ${lead.wa_id} (${isCohortA ? "A" : "B"}, ${lead.status}) — "${mensagem.slice(0, 80)}"`);
+      console.log(`✅ Follow-up enviado → ${lead.wa_id} (${lead.status}, ${usarMensagemCurta ? "curta" : "contextual"}) — "${mensagem.slice(0, 80)}"`);
       enviados++;
 
       // Pausa entre envios (3s) — anti-spam + rate limit WhatsApp
