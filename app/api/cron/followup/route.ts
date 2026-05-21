@@ -295,6 +295,8 @@ export async function GET(req: NextRequest) {
   };
 
   const MAX_ENVIOS = 50;
+  const MAX_EM_RISCO_POR_EXECUCAO = 5; // máx 5 leads em risco por rodada → ~150s, seguro no Vercel
+  let emRiscoEnviados = 0;
 
   for (const lead of leads) {
     if (enviados >= MAX_ENVIOS) break;
@@ -447,6 +449,11 @@ export async function GET(req: NextRequest) {
       let mensagem: string;
 
       if (emRisco) {
+        // Limita em risco por execução para evitar burst + risco de ban no WhatsApp
+        if (emRiscoEnviados >= MAX_EM_RISCO_POR_EXECUCAO) {
+          ignorar("limite_em_risco_por_execucao");
+          continue;
+        }
         mensagem = await gerarMensagemReengajamento({
           nomeLead: lead.nome,
           nomeAgente,
@@ -458,7 +465,8 @@ export async function GET(req: NextRequest) {
           resumoNegociacao: lead.resumo_negociacao,
           ultimasMensagens: mensagensOrdenadas,
         });
-        console.log(`🚨 [Em Risco] ${lead.wa_id} (QUENTE, ${Math.round(silencioHoras)}h sem resposta) — reengajamento`);
+        emRiscoEnviados++;
+        console.log(`🚨 [Em Risco ${emRiscoEnviados}/${MAX_EM_RISCO_POR_EXECUCAO}] ${lead.wa_id} (QUENTE, ${Math.round(silencioHoras)}h sem resposta) — reengajamento`);
       } else if (usarMensagemCurta) {
         mensagem = await gerarMensagemPrimeiroContato({ nomeAgente, carro, preco });
         console.log(`🆕 [Curta/2h] ${lead.wa_id} (FRIO) — primeiro contato`);
@@ -492,11 +500,15 @@ export async function GET(req: NextRequest) {
         .update({ ultimo_followup: agora.toISOString() })
         .eq("id", lead.id);
 
-      console.log(`✅ Follow-up enviado → ${lead.wa_id} (${lead.status}, ${usarMensagemCurta ? "curta" : "contextual"}) — "${mensagem.slice(0, 80)}"`);
+      const tipoMensagem = emRisco ? "em_risco" : usarMensagemCurta ? "curta" : "contextual";
+      console.log(`✅ Follow-up enviado → ${lead.wa_id} (${lead.status}, ${tipoMensagem}) — "${mensagem.slice(0, 80)}"`);
       enviados++;
 
-      // Pausa entre envios (3s) — anti-spam + rate limit WhatsApp
-      await new Promise((r) => setTimeout(r, 3000));
+      // Delay entre envios:
+      //   Em Risco → 30s (proteção contra ban em mensagens fora da sessão de 24h)
+      //   Demais   →  3s (anti-spam básico)
+      const delayMs = emRisco ? 30_000 : 3_000;
+      await new Promise((r) => setTimeout(r, delayMs));
 
     } catch (e) {
       console.error(`❌ Erro no follow-up do lead ${lead.id}:`, e);
