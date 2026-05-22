@@ -21,6 +21,7 @@ export interface MetaAdAccount {
 export interface CriarCampanhaParams {
   pageId: string;
   pageAccessToken: string;
+  userAccessToken?: string;     // User token com ads_management — usado para operações no Ad Account
   adAccountId: string;          // "act_123456789"
   instagramActorId?: string;
   veiculo: {
@@ -152,22 +153,26 @@ export async function criarLeadForm(
 // ─── Criar Campanha Completa ──────────────────────────────────────────────────
 
 export async function criarCampanhaLeadAd(p: CriarCampanhaParams): Promise<CampanhaResult> {
-  const { pageId, pageAccessToken, adAccountId, instagramActorId, veiculo, garagem, configuracao } = p;
+  const { pageId, pageAccessToken, userAccessToken, adAccountId, instagramActorId, veiculo, garagem, configuracao } = p;
+
+  // Token para operações no Ad Account: prefere userAccessToken (ads_management),
+  // mas faz fallback para pageAccessToken se não houver (compatibilidade).
+  const adToken = userAccessToken || pageAccessToken;
 
   const veiculoNome = `${veiculo.marca} ${veiculo.modelo} ${veiculo.ano}`;
   const precoFormatado = veiculo.preco.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   const kmFormatado = veiculo.km.toLocaleString("pt-BR") + " km";
 
-  // 1. Upload da foto principal
-  const imageHash = await uploadFotoParaMeta(adAccountId, veiculo.fotoUrl, pageAccessToken);
+  // 1. Upload da foto principal — usa adToken (requer ads_management no Ad Account)
+  const imageHash = await uploadFotoParaMeta(adAccountId, veiculo.fotoUrl, adToken);
 
-  // 2. Lead Form
+  // 2. Lead Form — usa pageAccessToken (operação no Page)
   const privacyUrl = garagem.privacyPolicyUrl ??
     `${process.env.NEXT_PUBLIC_APP_URL ?? "https://app.autozap.digital"}/privacidade`;
   const leadformId = await criarLeadForm(pageId, pageAccessToken, veiculoNome, privacyUrl);
 
-  // 3. Campaign
-  const campaign = await graphPost(`${adAccountId}/campaigns`, pageAccessToken, {
+  // 3. Campaign — usa adToken
+  const campaign = await graphPost(`${adAccountId}/campaigns`, adToken, {
     name: `AutoZap — ${veiculoNome}`,
     objective: "OUTCOME_LEADS",
     status: "ACTIVE",
@@ -237,7 +242,8 @@ export async function criarCampanhaLeadAd(p: CriarCampanhaParams): Promise<Campa
     ...(flexSpec.length           ? { flexible_spec: flexSpec }                 : {}),
   };
 
-  const adset = await graphPost(`${adAccountId}/adsets`, pageAccessToken, {
+  // 4. AdSet — usa adToken
+  const adset = await graphPost(`${adAccountId}/adsets`, adToken, {
     campaign_id:       campaignId,
     name:              `AdSet — ${veiculoNome}`,
     optimization_goal: "LEAD_GENERATION",
@@ -251,7 +257,7 @@ export async function criarCampanhaLeadAd(p: CriarCampanhaParams): Promise<Campa
   });
   const adsetId = adset.id as string;
 
-  // 5. Ad Creative
+  // 5. Ad Creative — usa adToken
   const adMessage =
     `🚗 ${veiculoNome}${veiculo.cor ? ` — ${veiculo.cor}` : ""}\n` +
     `💰 ${precoFormatado} | ${kmFormatado}\n\n` +
@@ -271,14 +277,14 @@ export async function criarCampanhaLeadAd(p: CriarCampanhaParams): Promise<Campa
     storySpec.instagram_actor_id = instagramActorId;
   }
 
-  const creative = await graphPost(`${adAccountId}/adcreatives`, pageAccessToken, {
+  const creative = await graphPost(`${adAccountId}/adcreatives`, adToken, {
     name:               `Creative — ${veiculoNome}`,
     object_story_spec:  storySpec,
   });
   const creativeId = creative.id as string;
 
-  // 6. Ad
-  const ad = await graphPost(`${adAccountId}/ads`, pageAccessToken, {
+  // 6. Ad — usa adToken
+  const ad = await graphPost(`${adAccountId}/ads`, adToken, {
     name:     `Ad — ${veiculoNome}`,
     adset_id: adsetId,
     creative: { creative_id: creativeId },

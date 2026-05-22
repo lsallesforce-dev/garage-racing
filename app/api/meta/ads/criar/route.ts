@@ -41,20 +41,28 @@ export async function POST(req: NextRequest) {
   if (!pagina) return NextResponse.json({ error: "Nenhuma página Facebook conectada. Configure em Configurações." }, { status: 400 });
   if (!pagina.ad_account_id) return NextResponse.json({ error: "Ad Account não configurado para esta página." }, { status: 400 });
 
-  // Busca config da garagem (endereço para geolocalização)
+  // Busca config da garagem (endereço para geolocalização + user access token)
   const { data: garage } = await supabaseAdmin
     .from("config_garage")
-    .select("nome_fantasia, nome_empresa, whatsapp, latitude, longitude, endereco")
+    .select("nome_fantasia, nome_empresa, whatsapp, latitude, longitude, endereco, meta_ads_token, meta_access_token")
     .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(1)
     .single();
 
   const latitude  = (garage as any)?.latitude  ?? -23.5505; // fallback SP
   const longitude = (garage as any)?.longitude ?? -46.6333;
 
+  // User access token: meta_ads_token tem escopos de Ads (ads_management);
+  // meta_access_token é o token de WhatsApp (pode não ter ads_management).
+  const userAccessToken: string | undefined =
+    (garage as any)?.meta_ads_token || (garage as any)?.meta_access_token || undefined;
+
   try {
     const result = await criarCampanhaLeadAd({
       pageId:            pagina.page_id,
       pageAccessToken:   pagina.page_access_token,
+      userAccessToken,
       adAccountId:       pagina.ad_account_id,
       instagramActorId:  pagina.instagram_actor_id ?? undefined,
       veiculo: {
