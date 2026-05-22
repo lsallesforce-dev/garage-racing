@@ -177,12 +177,16 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
   const [duracao, setDuracao]     = useState(7);
 
   // Localização
-  const [cidade, setCidade]             = useState("");
-  const [raio, setRaio]                 = useState(30);
-  const [cidadesExtras, setCidadesExtras] = useState<CidadeBR[]>([]);
-  const [buscaCidade, setBuscaCidade]   = useState("");
-  const [showDropdown, setShowDropdown] = useState(false);
-  const cidadeInputRef                  = useRef<HTMLInputElement>(null);
+  const [cidade, setCidade]                       = useState("");
+  const [raio, setRaio]                           = useState(30);
+  const [cidadesExtras, setCidadesExtras]         = useState<CidadeBR[]>([]);
+  // Busca cidade principal
+  const [buscaPrincipal, setBuscaPrincipal]       = useState("");
+  const [showDropdownPrincipal, setShowDropdownPrincipal] = useState(false);
+  // Busca cidades extras
+  const [buscaCidade, setBuscaCidade]             = useState("");
+  const [showDropdown, setShowDropdown]           = useState(false);
+  const cidadeInputRef                            = useRef<HTMLInputElement>(null);
 
   // Público-alvo
   const [idadeMin, setIdadeMin]           = useState(25);
@@ -393,16 +397,48 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
                         <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">Localização</p>
                       </div>
 
-                      {/* Cidade principal (da config) */}
-                      <div className="mb-3">
+                      {/* Cidade principal */}
+                      <div className="mb-3 relative">
                         <p className="text-[9px] text-gray-400 mb-1.5">Cidade principal</p>
                         <input
                           type="text"
-                          value={cidade}
-                          onChange={e => setCidade(e.target.value)}
-                          placeholder="Ex: São Paulo"
+                          autoComplete="off"
+                          value={buscaPrincipal || cidade}
+                          onChange={e => {
+                            setBuscaPrincipal(e.target.value);
+                            setCidade(e.target.value);
+                            setShowDropdownPrincipal(true);
+                          }}
+                          onFocus={() => { setBuscaPrincipal(cidade); setShowDropdownPrincipal(true); }}
+                          onBlur={() => setTimeout(() => { setShowDropdownPrincipal(false); setBuscaPrincipal(""); }, 150)}
+                          placeholder="Buscar cidade..."
                           className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-[12px] text-gray-700 placeholder-gray-300"
                         />
+                        {showDropdownPrincipal && (cidade.length >= 2 || buscaPrincipal.length >= 2) && (() => {
+                          const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+                          const q = norm(buscaPrincipal || cidade);
+                          const resultados = CIDADES_BR
+                            .filter(c => norm(c.nome).includes(q) || norm(c.estado).startsWith(q))
+                            .slice(0, 8);
+                          return resultados.length > 0 ? (
+                            <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-2xl shadow-xl z-20 overflow-hidden">
+                              {resultados.map(c => (
+                                <button
+                                  key={c.nome}
+                                  onMouseDown={() => {
+                                    setCidade(c.nome);
+                                    setBuscaPrincipal("");
+                                    setShowDropdownPrincipal(false);
+                                  }}
+                                  className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-blue-50 transition-colors text-left"
+                                >
+                                  <span className="text-[12px] text-gray-700 font-medium">{c.nome}</span>
+                                  <span className="text-[10px] font-black text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-lg">{c.estado}</span>
+                                </button>
+                              ))}
+                            </div>
+                          ) : null;
+                        })()}
                       </div>
 
                       {/* Outras cidades */}
@@ -434,6 +470,7 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
                           <input
                             ref={cidadeInputRef}
                             type="text"
+                            autoComplete="off"
                             value={buscaCidade}
                             onChange={e => { setBuscaCidade(e.target.value); setShowDropdown(true); }}
                             onFocus={() => setShowDropdown(true)}
