@@ -14,16 +14,26 @@ export async function GET(req: NextRequest) {
   const userId = getEffectiveUserId(user!);
 
   // Sempre retorna páginas já salvas (usadas pelo PublicarMetaButton)
-  const { data: salvas } = await supabaseAdmin
-    .from("meta_paginas")
-    .select("id, page_id, page_name, ad_account_id, instagram_actor_id")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false });
+  const [paginasResult, configResult] = await Promise.all([
+    supabaseAdmin
+      .from("meta_paginas")
+      .select("id, page_id, page_name, ad_account_id, instagram_actor_id")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false }),
+    supabaseAdmin
+      .from("config_garage")
+      .select("cidade")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(1),
+  ]);
+  const salvas = paginasResult.data;
+  const cidade = (configResult.data?.[0] as any)?.cidade ?? null;
 
   const listarBrutas = req.nextUrl.searchParams.get("listar") === "1";
 
   if (!listarBrutas) {
-    return NextResponse.json({ salvas: salvas ?? [] });
+    return NextResponse.json({ salvas: salvas ?? [], cidade });
   }
 
   // ?listar=1 — busca páginas e ad accounts brutas do token (tela de configuração)

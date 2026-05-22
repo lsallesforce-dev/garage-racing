@@ -8,7 +8,8 @@ import { criarCampanhaLeadAd } from "@/lib/meta-ads";
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { veiculoId, paginaId, placement, orcamentoDiario, duracaoDias, raioKm, idadeMin, idadeMax } = body;
+  const { veiculoId, paginaId, placement, orcamentoDiario, duracaoDias, raioKm, idadeMin, idadeMax,
+          genero, interesses, comportamentos, renda } = body;
 
   if (!veiculoId) return NextResponse.json({ error: "veiculoId obrigatório" }, { status: 400 });
 
@@ -79,6 +80,10 @@ export async function POST(req: NextRequest) {
         raioKm:          raioKm ?? 30,
         idadeMin:        idadeMin ?? 25,
         idadeMax:        idadeMax ?? 55,
+        genero:          genero ?? "todos",
+        interesses:      interesses ?? [],
+        comportamentos:  comportamentos ?? [],
+        renda:           renda ?? "todos",
       },
     });
 

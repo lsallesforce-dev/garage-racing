@@ -47,6 +47,10 @@ export interface CriarCampanhaParams {
     raioKm: number;
     idadeMin: number;
     idadeMax: number;
+    genero?: "todos" | "masculino" | "feminino";
+    interesses?: Array<{ id: string; nome: string }>;
+    comportamentos?: Array<{ id: string; nome: string }>;
+    renda?: string;
   };
 }
 
@@ -186,6 +190,20 @@ export async function criarCampanhaLeadAd(p: CriarCampanhaParams): Promise<Campa
     instagramPositions.push("stream", "story", "reels");
   }
 
+  // Gênero: 1=masculino, 2=feminino, vazio=todos
+  const genders: number[] =
+    configuracao.genero === "masculino" ? [1] :
+    configuracao.genero === "feminino"  ? [2] : [];
+
+  // Interesses + Comportamentos → flexible_spec
+  const flexSpec: Array<Record<string, any>> = [];
+  if (configuracao.interesses?.length) {
+    flexSpec.push({ interests: configuracao.interesses.map(i => ({ id: i.id, name: i.nome })) });
+  }
+  if (configuracao.comportamentos?.length) {
+    flexSpec.push({ behaviors: configuracao.comportamentos.map(b => ({ id: b.id, name: b.nome })) });
+  }
+
   const targeting: Record<string, any> = {
     geo_locations: {
       custom_locations: [{
@@ -200,6 +218,8 @@ export async function criarCampanhaLeadAd(p: CriarCampanhaParams): Promise<Campa
     publisher_platforms: publisherPlatforms,
     ...(facebookPositions.length  ? { facebook_positions: facebookPositions }   : {}),
     ...(instagramPositions.length ? { instagram_positions: instagramPositions } : {}),
+    ...(genders.length            ? { genders }                                 : {}),
+    ...(flexSpec.length           ? { flexible_spec: flexSpec }                 : {}),
   };
 
   const adset = await graphPost(`${adAccountId}/adsets`, pageAccessToken, {

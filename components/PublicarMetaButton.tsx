@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Loader2, CheckCircle2, AlertCircle, Facebook, Instagram, X, ChevronDown } from "lucide-react";
+import { Loader2, CheckCircle2, AlertCircle, Facebook, Instagram, X, ChevronDown, MapPin, MessageSquare, Zap } from "lucide-react";
+
+// ─── Tipos ────────────────────────────────────────────────────────────────────
 
 interface Pagina {
   id: string;
@@ -23,6 +25,11 @@ interface Campanha {
   encerra_em: string;
 }
 
+interface OpcaoTargeting {
+  id: string;
+  nome: string;
+}
+
 interface Props {
   veiculoId: string;
   marca?: string;
@@ -33,6 +40,31 @@ interface Props {
   onClose?: () => void;
 }
 
+// ─── Listas de targeting ──────────────────────────────────────────────────────
+
+const INTERESSES: OpcaoTargeting[] = [
+  { id: "6003200098907", nome: "Automóveis" },
+  { id: "6003183645424", nome: "Compra de veículo" },
+  { id: "6003208890647", nome: "Carro usado" },
+  { id: "6004483778498", nome: "Setor automotivo" },
+  { id: "6003139264106", nome: "Concessionárias" },
+  { id: "6003172012714", nome: "Financiamento auto" },
+  { id: "6002910399551", nome: "SUVs e Pickups" },
+];
+
+const COMPORTAMENTOS: OpcaoTargeting[] = [
+  { id: "6002714895372", nome: "Compradores carro novo" },
+  { id: "6002714898572", nome: "Compradores carro usado" },
+  { id: "6002783849748", nome: "Pesquisadores de veículo" },
+  { id: "6015235495383", nome: "Usuários app de carros" },
+];
+
+const ORCAMENTOS = [10, 15, 30, 50, 100];
+const ORCAMENTO_RECOMENDADO = 30;
+const DURACOES = [7, 14, 21, 30];
+
+// ─── Componente ───────────────────────────────────────────────────────────────
+
 export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, fotoUrl, defaultOpen = false, onClose }: Props) {
   const [open, setOpen] = useState(defaultOpen);
 
@@ -40,21 +72,31 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
     setOpen(false);
     onClose?.();
   };
-  const [paginas, setPaginas] = useState<Pagina[]>([]);
-  const [campanhas, setCampanhas] = useState<Campanha[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [publicando, setPublicando] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
-  const [sucesso, setSucesso] = useState(false);
 
-  // Configurações da campanha
-  const [paginaId, setPaginaId] = useState("");
+  const [paginas, setPaginas]       = useState<Pagina[]>([]);
+  const [campanhas, setCampanhas]   = useState<Campanha[]>([]);
+  const [loading, setLoading]       = useState(false);
+  const [publicando, setPublicando] = useState(false);
+  const [erro, setErro]             = useState<string | null>(null);
+  const [sucesso, setSucesso]       = useState(false);
+
+  // Configurações básicas
+  const [paginaId, setPaginaId]   = useState("");
   const [placement, setPlacement] = useState<"facebook" | "instagram" | "facebook,instagram">("facebook,instagram");
-  const [orcamento, setOrcamento] = useState(30);
-  const [duracao, setDuracao] = useState(7);
-  const [raio, setRaio] = useState(30);
-  const [idadeMin, setIdadeMin] = useState(25);
-  const [idadeMax, setIdadeMax] = useState(55);
+  const [orcamento, setOrcamento] = useState(ORCAMENTO_RECOMENDADO);
+  const [duracao, setDuracao]     = useState(7);
+
+  // Localização
+  const [cidade, setCidade] = useState("");
+  const [raio, setRaio]     = useState(30);
+
+  // Público-alvo
+  const [idadeMin, setIdadeMin]           = useState(25);
+  const [idadeMax, setIdadeMax]           = useState(55);
+  const [genero, setGenero]               = useState<"todos" | "masculino" | "feminino">("todos");
+  const [interesses, setInteresses]       = useState<string[]>([]);
+  const [comportamentos, setComportamentos] = useState<string[]>([]);
+  const [renda, setRenda]                 = useState<"todos" | "top50" | "top25" | "top10">("todos");
 
   useEffect(() => {
     if (!open) return;
@@ -66,27 +108,47 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
       fetch(`/api/meta/ads?veiculoId=${veiculoId}`).then(r => r.json()).catch(() => ({ campanhas: [] })),
     ]).then(([paginasData, campanhasData]) => {
       if (paginasData.error) { setErro(paginasData.error); return; }
-      // paginas vem do banco (já salvas), não das pages brutas do token
       setPaginas(paginasData.salvas ?? []);
       setCampanhas(campanhasData.campanhas ?? []);
       if (paginasData.salvas?.[0]) setPaginaId(paginasData.salvas[0].id);
+      // Carrega cidade das configurações
+      if (paginasData.cidade) setCidade(paginasData.cidade);
     }).catch(() => setErro("Erro ao carregar dados"))
       .finally(() => setLoading(false));
   }, [open, veiculoId]);
+
+  const toggleItem = (list: string[], setList: (v: string[]) => void, id: string) => {
+    setList(list.includes(id) ? list.filter(i => i !== id) : [...list, id]);
+  };
 
   const handlePublicar = async () => {
     setPublicando(true);
     setErro(null);
     try {
+      const interessesSelecionados = INTERESSES.filter(i => interesses.includes(i.id));
+      const comportamentosSelecionados = COMPORTAMENTOS.filter(c => comportamentos.includes(c.id));
+
       const res = await fetch("/api/meta/ads/criar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ veiculoId, paginaId: paginaId || undefined, placement, orcamentoDiario: orcamento, duracaoDias: duracao, raioKm: raio, idadeMin, idadeMax }),
+        body: JSON.stringify({
+          veiculoId,
+          paginaId: paginaId || undefined,
+          placement,
+          orcamentoDiario: orcamento,
+          duracaoDias: duracao,
+          raioKm: raio,
+          idadeMin,
+          idadeMax,
+          genero,
+          interesses: interessesSelecionados,
+          comportamentos: comportamentosSelecionados,
+          renda,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Erro ao criar campanha");
       setSucesso(true);
-      // Recarrega campanhas
       const updated = await fetch(`/api/meta/ads?veiculoId=${veiculoId}`).then(r => r.json());
       setCampanhas(updated.campanhas ?? []);
       setTimeout(() => setSucesso(false), 3000);
@@ -99,7 +161,6 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
 
   const totalInvestimento = orcamento * duracao;
   const veiculoNome = [marca, modelo, ano].filter(Boolean).join(" ");
-
   const campanhasAtivas = campanhas.filter(c => c.status === "ativo");
 
   return (
@@ -121,9 +182,10 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
       {/* Modal */}
       {open && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-3xl w-full max-w-md max-h-[90vh] overflow-y-auto shadow-2xl">
+          <div className="bg-white rounded-3xl w-full max-w-md max-h-[92vh] overflow-y-auto shadow-2xl">
+
             {/* Header */}
-            <div className="flex items-center justify-between p-5 border-b border-gray-100">
+            <div className="flex items-center justify-between p-5 border-b border-gray-100 sticky top-0 bg-white rounded-t-3xl z-10">
               <div>
                 <p className="font-black text-gray-900 text-sm">Publicar no Meta</p>
                 <p className="text-[11px] text-gray-400 truncate max-w-[220px]">{veiculoNome || "Veículo"}</p>
@@ -182,7 +244,7 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
 
                 {paginas.length > 0 && (
                   <>
-                    {/* Página */}
+                    {/* Seleção de página */}
                     {paginas.length > 1 && (
                       <div>
                         <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">Página</p>
@@ -201,7 +263,7 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
                       </div>
                     )}
 
-                    {/* Placement */}
+                    {/* ── ONDE PUBLICAR ──────────────────────────────── */}
                     <div>
                       <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">Onde publicar</p>
                       <div className="grid grid-cols-3 gap-2">
@@ -210,9 +272,7 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
                             key={p}
                             onClick={() => setPlacement(p)}
                             className={`flex flex-col items-center gap-1.5 py-3 rounded-2xl border-2 transition-all ${
-                              placement === p
-                                ? "border-blue-500 bg-blue-50"
-                                : "border-gray-100 bg-gray-50 hover:border-gray-200"
+                              placement === p ? "border-blue-500 bg-blue-50" : "border-gray-100 bg-gray-50 hover:border-gray-200"
                             }`}
                           >
                             {p === "facebook" && <Facebook size={18} className={placement === p ? "text-blue-600" : "text-gray-400"} />}
@@ -231,66 +291,195 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
                       </div>
                     </div>
 
-                    {/* Raio */}
+                    {/* ── LOCALIZAÇÃO ───────────────────────────────── */}
                     <div>
-                      <div className="flex justify-between mb-2">
-                        <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">Raio de alcance</p>
-                        <p className="text-[11px] font-black text-gray-700">{raio} km</p>
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <MapPin size={11} className="text-gray-400" />
+                        <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">Localização</p>
                       </div>
-                      <input
-                        type="range" min={5} max={200} step={5} value={raio}
-                        onChange={e => setRaio(Number(e.target.value))}
-                        className="w-full accent-blue-500"
-                      />
-                      <div className="flex justify-between text-[9px] text-gray-300 mt-1">
-                        <span>5 km</span><span>200 km</span>
-                      </div>
-                    </div>
-
-                    {/* Idade */}
-                    <div>
-                      <div className="flex justify-between mb-2">
-                        <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">Faixa etária</p>
-                        <p className="text-[11px] font-black text-gray-700">{idadeMin} – {idadeMax} anos</p>
-                      </div>
-                      <div className="flex gap-3">
+                      <div className="flex gap-2 mb-3">
                         <div className="flex-1">
-                          <p className="text-[9px] text-gray-400 mb-1">Mínima</p>
-                          <input type="number" min={18} max={idadeMax - 1} value={idadeMin}
-                            onChange={e => setIdadeMin(Number(e.target.value))}
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-[12px] text-center"
-                          />
-                        </div>
-                        <div className="flex-1">
-                          <p className="text-[9px] text-gray-400 mb-1">Máxima</p>
-                          <input type="number" min={idadeMin + 1} max={65} value={idadeMax}
-                            onChange={e => setIdadeMax(Number(e.target.value))}
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-[12px] text-center"
+                          <p className="text-[9px] text-gray-400 mb-1">Cidade</p>
+                          <input
+                            type="text"
+                            value={cidade}
+                            onChange={e => setCidade(e.target.value)}
+                            placeholder="Ex: São Paulo"
+                            className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-[12px] text-gray-700 placeholder-gray-300"
                           />
                         </div>
                       </div>
-                    </div>
-
-                    {/* Orçamento + Duração */}
-                    <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">R$/dia</p>
-                        <div className="flex gap-1">
-                          {[15, 30, 50, 100].map(v => (
-                            <button key={v} onClick={() => setOrcamento(v)}
-                              className={`flex-1 py-2 rounded-xl text-[10px] font-black transition-all ${
-                                orcamento === v ? "bg-blue-500 text-white" : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                        <div className="flex justify-between mb-1.5">
+                          <p className="text-[9px] text-gray-400">Raio de alcance</p>
+                          <p className="text-[11px] font-black text-gray-700">{raio} km</p>
+                        </div>
+                        <input
+                          type="range" min={5} max={200} step={5} value={raio}
+                          onChange={e => setRaio(Number(e.target.value))}
+                          className="w-full accent-blue-500"
+                        />
+                        <div className="flex justify-between text-[9px] text-gray-300 mt-1">
+                          <span>5 km</span><span>200 km</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* ── PÚBLICO-ALVO ──────────────────────────────── */}
+                    <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100 space-y-4">
+                      <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">Público-alvo</p>
+
+                      {/* Faixa etária */}
+                      <div>
+                        <div className="flex justify-between mb-1.5">
+                          <p className="text-[9px] text-gray-500 font-bold">Faixa etária</p>
+                          <p className="text-[10px] font-black text-gray-700">{idadeMin} – {idadeMax} anos</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <div className="flex-1">
+                            <p className="text-[8px] text-gray-400 mb-1">Mínima</p>
+                            <input type="number" min={18} max={idadeMax - 1} value={idadeMin}
+                              onChange={e => setIdadeMin(Number(e.target.value))}
+                              className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-[12px] text-center"
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <p className="text-[8px] text-gray-400 mb-1">Máxima</p>
+                            <input type="number" min={idadeMin + 1} max={65} value={idadeMax}
+                              onChange={e => setIdadeMax(Number(e.target.value))}
+                              className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-[12px] text-center"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Gênero */}
+                      <div>
+                        <p className="text-[9px] text-gray-500 font-bold mb-1.5">Gênero</p>
+                        <div className="flex gap-2">
+                          {([
+                            { id: "todos",     label: "Todos" },
+                            { id: "masculino", label: "Masculino" },
+                            { id: "feminino",  label: "Feminino" },
+                          ] as const).map(g => (
+                            <button
+                              key={g.id}
+                              onClick={() => setGenero(g.id)}
+                              className={`flex-1 py-2 rounded-xl text-[10px] font-black transition-all border ${
+                                genero === g.id
+                                  ? "bg-blue-500 text-white border-blue-500"
+                                  : "bg-white text-gray-500 border-gray-200 hover:border-gray-300"
                               }`}
                             >
-                              {v}
+                              {g.label}
                             </button>
                           ))}
                         </div>
                       </div>
+
+                      {/* Interesses */}
+                      <div>
+                        <p className="text-[9px] text-gray-500 font-bold mb-1.5">Interesses</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {INTERESSES.map(item => (
+                            <button
+                              key={item.id}
+                              onClick={() => toggleItem(interesses, setInteresses, item.id)}
+                              className={`px-3 py-1.5 rounded-full text-[10px] font-bold transition-all border ${
+                                interesses.includes(item.id)
+                                  ? "bg-blue-500 text-white border-blue-500"
+                                  : "bg-white text-gray-500 border-gray-200 hover:border-blue-300 hover:text-blue-600"
+                              }`}
+                            >
+                              {item.nome}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Comportamento */}
+                      <div>
+                        <p className="text-[9px] text-gray-500 font-bold mb-1.5">Comportamento</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {COMPORTAMENTOS.map(item => (
+                            <button
+                              key={item.id}
+                              onClick={() => toggleItem(comportamentos, setComportamentos, item.id)}
+                              className={`px-3 py-1.5 rounded-full text-[10px] font-bold transition-all border ${
+                                comportamentos.includes(item.id)
+                                  ? "bg-purple-500 text-white border-purple-500"
+                                  : "bg-white text-gray-500 border-gray-200 hover:border-purple-300 hover:text-purple-600"
+                              }`}
+                            >
+                              {item.nome}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Renda estimada */}
+                      <div>
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <p className="text-[9px] text-gray-500 font-bold">Renda estimada</p>
+                          <span className="px-1.5 py-0.5 bg-amber-100 text-amber-600 rounded-full text-[8px] font-black uppercase tracking-wide">Em breve</span>
+                        </div>
+                        <div className="flex gap-1.5">
+                          {([
+                            { id: "todos", label: "Todos" },
+                            { id: "top50", label: "Top 50%" },
+                            { id: "top25", label: "Top 25%" },
+                            { id: "top10", label: "Top 10%" },
+                          ] as const).map(r => (
+                            <button
+                              key={r.id}
+                              disabled
+                              onClick={() => setRenda(r.id)}
+                              className={`flex-1 py-1.5 rounded-xl text-[9px] font-black transition-all border opacity-50 cursor-not-allowed ${
+                                renda === r.id
+                                  ? "bg-green-500 text-white border-green-500"
+                                  : "bg-white text-gray-500 border-gray-200"
+                              }`}
+                            >
+                              {r.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* ── INVESTIMENTO ──────────────────────────────── */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">R$/dia</p>
+                        <div className="flex flex-wrap gap-1">
+                          {ORCAMENTOS.map(v => (
+                            <button
+                              key={v}
+                              onClick={() => setOrcamento(v)}
+                              className={`relative flex-1 min-w-[36px] py-2 rounded-xl text-[10px] font-black transition-all ${
+                                orcamento === v ? "bg-blue-500 text-white" : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                              }`}
+                            >
+                              {v}
+                              {v === ORCAMENTO_RECOMENDADO && (
+                                <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 whitespace-nowrap bg-green-500 text-white text-[7px] font-black px-1.5 py-0.5 rounded-full leading-none">
+                                  ★ TOP
+                                </span>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                        {orcamento === ORCAMENTO_RECOMENDADO && (
+                          <p className="text-[9px] text-green-600 font-bold mt-1.5">✓ Valor recomendado para mais leads</p>
+                        )}
+                        {orcamento === 10 && (
+                          <p className="text-[9px] text-gray-400 mt-1.5">Ideal para testes iniciais</p>
+                        )}
+                      </div>
                       <div>
                         <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">Duração</p>
                         <div className="flex gap-1">
-                          {[7, 14, 21, 30].map(v => (
+                          {DURACOES.map(v => (
                             <button key={v} onClick={() => setDuracao(v)}
                               className={`flex-1 py-2 rounded-xl text-[10px] font-black transition-all ${
                                 duracao === v ? "bg-blue-500 text-white" : "bg-gray-100 text-gray-500 hover:bg-gray-200"
@@ -303,25 +492,50 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
                       </div>
                     </div>
 
-                    {/* Resumo */}
-                    <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
+                    {/* ── RESUMO ────────────────────────────────────── */}
+                    <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100 space-y-1.5">
                       <div className="flex justify-between text-[11px]">
                         <span className="text-gray-500">Investimento total</span>
-                        <span className="font-black text-gray-900">
-                          R$ {totalInvestimento.toLocaleString("pt-BR")}
-                        </span>
+                        <span className="font-black text-gray-900">R$ {totalInvestimento.toLocaleString("pt-BR")}</span>
                       </div>
-                      <div className="flex justify-between text-[11px] mt-1">
+                      <div className="flex justify-between text-[11px]">
                         <span className="text-gray-500">Prazo</span>
                         <span className="font-bold text-gray-700">{duracao} dias</span>
                       </div>
-                      <div className="flex justify-between text-[11px] mt-1">
+                      {cidade && (
+                        <div className="flex justify-between text-[11px]">
+                          <span className="text-gray-500">Região</span>
+                          <span className="font-bold text-gray-700">{cidade} · {raio} km</span>
+                        </div>
+                      )}
+                      <div className="h-px bg-gray-200 my-1" />
+                      <div className="flex items-center justify-between text-[11px]">
                         <span className="text-gray-500">Lead responde no</span>
-                        <span className="font-bold text-green-600">WhatsApp automático ⚡</span>
+                        <span className="flex items-center gap-1 font-bold text-green-600">
+                          <Zap size={11} /> WhatsApp automático
+                        </span>
+                      </div>
+                      <div className="flex items-start gap-2 bg-green-50 rounded-xl p-2.5 mt-1 border border-green-100">
+                        <Zap size={12} className="text-green-600 mt-0.5 shrink-0" />
+                        <p className="text-[10px] text-green-700 leading-snug">
+                          O telefone do anúncio vai direto para o agente IA — cada lead é respondido automaticamente no WhatsApp da loja.
+                        </p>
                       </div>
                     </div>
 
-                    {/* Botão publicar */}
+                    {/* ── MENSAGENS DIRECT (segunda fase) ──────────── */}
+                    <div className="flex items-center gap-3 bg-indigo-50 rounded-2xl p-3.5 border border-indigo-100">
+                      <MessageSquare size={20} className="text-indigo-400 shrink-0" />
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          <p className="text-[11px] font-black text-indigo-700">Mensagens Direct → Chat</p>
+                          <span className="px-1.5 py-0.5 bg-indigo-200 text-indigo-600 rounded-full text-[8px] font-black uppercase tracking-wide">Em breve</span>
+                        </div>
+                        <p className="text-[10px] text-indigo-500 leading-snug">Leads que enviam direct no Instagram também entrarão no chat e serão respondidos pelo agente.</p>
+                      </div>
+                    </div>
+
+                    {/* ── BOTÃO PUBLICAR ────────────────────────────── */}
                     <button
                       onClick={handlePublicar}
                       disabled={publicando || !fotoUrl}
