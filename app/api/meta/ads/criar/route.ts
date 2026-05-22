@@ -41,11 +41,12 @@ export async function POST(req: NextRequest) {
   if (!pagina) return NextResponse.json({ error: "Nenhuma página Facebook conectada. Configure em Configurações." }, { status: 400 });
   if (!pagina.ad_account_id) return NextResponse.json({ error: "Ad Account não configurado para esta página." }, { status: 400 });
 
-  // Busca config da garagem (endereço para geolocalização + user access token)
+  // Busca config da garagem (token + dados da garagem para o anúncio)
   // IMPORTANTE: config_garage pode ter múltiplas linhas por tenant — NÃO usar .single()
+  // latitude/longitude não existem nessa tabela — coordenadas vêm de cidadesExtras do frontend
   const { data: garageRows, error: garageErr } = await supabaseAdmin
     .from("config_garage")
-    .select("nome_fantasia, nome_empresa, whatsapp, latitude, longitude, endereco, meta_ads_token")
+    .select("nome_fantasia, nome_empresa, whatsapp, meta_ads_token")
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(1);
@@ -54,8 +55,10 @@ export async function POST(req: NextRequest) {
 
   console.log(`[meta/ads/criar] userId=${userId} garageRows=${garageRows?.length ?? 0} garageErr=${garageErr?.message ?? "none"} token_present=${!!(garage?.meta_ads_token)}`);
 
-  const latitude  = garage?.latitude  ?? -23.5505; // fallback SP
-  const longitude = garage?.longitude ?? -46.6333;
+  // Coordenadas: usa cidade principal enviada pelo frontend (cidadesExtras[0]) ou fallback SP
+  const cidadePrincipal = (cidadesExtras ?? [])[0];
+  const latitude  = cidadePrincipal?.lat  ?? -23.5505;
+  const longitude = cidadePrincipal?.lng  ?? -46.6333;
 
   // meta_ads_token = User Access Token com ads_management (obtido via /api/meta/connect)
   // meta_access_token (WhatsApp) NÃO tem ads_management — não usar aqui.
