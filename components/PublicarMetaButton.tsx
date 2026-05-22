@@ -86,8 +86,9 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
   const [loading, setLoading]       = useState(false);
   const [publicando, setPublicando]   = useState(false);
   const [erro, setErro]               = useState<string | null>(null);
-  const [erroToken, setErroToken]     = useState(false);  // true = falta meta_ads_token
-  const [sucesso, setSucesso]         = useState(false);
+  const [erroToken, setErroToken]     = useState(false);
+  const [adsConectado, setAdsConectado] = useState<boolean | null>(null); // null = carregando
+  const [sucesso, setSucesso]           = useState(false);
 
   // Configurações básicas
   const [paginaId, setPaginaId]   = useState("");
@@ -147,8 +148,10 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
       setPaginas(paginasData.salvas ?? []);
       setCampanhas(campanhasData.campanhas ?? []);
       if (paginasData.salvas?.[0]) setPaginaId(paginasData.salvas[0].id);
-      // Carrega cidade das configurações
       if (paginasData.cidade) setCidade(paginasData.cidade);
+      const conectado = paginasData.adsConectado ?? false;
+      setAdsConectado(conectado);
+      if (!conectado) setErroToken(true);
     }).catch(() => setErro("Erro ao carregar dados"))
       .finally(() => setLoading(false));
   }, [open, veiculoId]);

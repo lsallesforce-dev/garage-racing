@@ -53,15 +53,32 @@ export async function GET(req: NextRequest) {
 
     const accessToken = longData.access_token;
 
-    // 3. Salva no tenant
-    const { error: dbErr } = await supabaseAdmin
+    // 3. Verifica se a linha existe antes de tentar atualizar
+    const { data: existingRows, error: selectErr } = await supabaseAdmin
       .from("config_garage")
-      .update({ meta_ads_token: accessToken })
+      .select("id")
       .eq("user_id", state);
 
-    if (dbErr) throw new Error("Erro ao salvar token: " + dbErr.message);
+    console.log(`[meta/ads-callback] tenant=${state} rows_found=${existingRows?.length ?? 0} selectErr=${selectErr?.message ?? "none"}`);
 
-    console.log(`✅ [meta/ads-callback] Token Ads salvo para tenant ${state}`);
+    if (!existingRows || existingRows.length === 0) {
+      // Sem linha no config_garage — cria uma entrada mínima com o token
+      const { error: insertErr } = await supabaseAdmin
+        .from("config_garage")
+        .insert({ user_id: state, meta_ads_token: accessToken });
+      if (insertErr) throw new Error("Erro ao criar config: " + insertErr.message);
+      console.log(`✅ [meta/ads-callback] Config criada com token para tenant ${state}`);
+    } else {
+      // Atualiza todas as linhas do tenant
+      const { error: dbErr, count } = await supabaseAdmin
+        .from("config_garage")
+        .update({ meta_ads_token: accessToken })
+        .eq("user_id", state)
+        .select("id");
+      if (dbErr) throw new Error("Erro ao salvar token: " + dbErr.message);
+      console.log(`✅ [meta/ads-callback] Token Ads salvo para tenant ${state} (rows_updated=${count ?? "?"}, rows_available=${existingRows.length})`);
+    }
+
     return NextResponse.redirect(new URL("/configuracoes?meta_ads_ok=1", req.url));
   } catch (e: any) {
     console.error("[meta/ads-callback] Erro:", e.message);

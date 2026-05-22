@@ -22,18 +22,20 @@ export async function GET(req: NextRequest) {
       .order("created_at", { ascending: false }),
     supabaseAdmin
       .from("config_garage")
-      .select("cidade")
+      .select("cidade, meta_ads_token")
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(1),
   ]);
-  const salvas = paginasResult.data;
-  const cidade = (configResult.data?.[0] as any)?.cidade ?? null;
+  const salvas      = paginasResult.data;
+  const configRow   = configResult.data?.[0] as any;
+  const cidade      = configRow?.cidade ?? null;
+  const adsConectado = !!(configRow?.meta_ads_token);
 
   const listarBrutas = req.nextUrl.searchParams.get("listar") === "1";
 
   if (!listarBrutas) {
-    return NextResponse.json({ salvas: salvas ?? [], cidade });
+    return NextResponse.json({ salvas: salvas ?? [], cidade, adsConectado });
   }
 
   // ?listar=1 — busca páginas e ad accounts brutas do token (tela de configuração)
