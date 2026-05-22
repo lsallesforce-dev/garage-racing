@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
   // Busca config da garagem (endereço para geolocalização + user access token)
   const { data: garage } = await supabaseAdmin
     .from("config_garage")
-    .select("nome_fantasia, nome_empresa, whatsapp, latitude, longitude, endereco, meta_ads_token, meta_access_token")
+    .select("nome_fantasia, nome_empresa, whatsapp, latitude, longitude, endereco, meta_ads_token")
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(1)
@@ -53,10 +53,17 @@ export async function POST(req: NextRequest) {
   const latitude  = (garage as any)?.latitude  ?? -23.5505; // fallback SP
   const longitude = (garage as any)?.longitude ?? -46.6333;
 
-  // User access token: meta_ads_token tem escopos de Ads (ads_management);
-  // meta_access_token é o token de WhatsApp (pode não ter ads_management).
-  const userAccessToken: string | undefined =
-    (garage as any)?.meta_ads_token || (garage as any)?.meta_access_token || undefined;
+  // meta_ads_token = User Access Token com ads_management (obtido via /api/meta/connect)
+  // meta_access_token (WhatsApp) NÃO tem ads_management — não usar aqui.
+  const userAccessToken: string | undefined = (garage as any)?.meta_ads_token || undefined;
+
+  if (!userAccessToken) {
+    return NextResponse.json({
+      error: "Token Meta Ads não configurado. Acesse Configurações → Integração Meta e clique em 'Conectar Meta Ads' para autorizar a criação de campanhas.",
+    }, { status: 400 });
+  }
+
+  console.log(`[meta/ads/criar] userId=${userId} adAccount=${pagina.ad_account_id} tokenPrefix=${userAccessToken.slice(0, 8)}...`);
 
   try {
     const result = await criarCampanhaLeadAd({

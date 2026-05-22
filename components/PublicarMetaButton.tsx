@@ -84,9 +84,10 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
   const [paginas, setPaginas]       = useState<Pagina[]>([]);
   const [campanhas, setCampanhas]   = useState<Campanha[]>([]);
   const [loading, setLoading]       = useState(false);
-  const [publicando, setPublicando] = useState(false);
-  const [erro, setErro]             = useState<string | null>(null);
-  const [sucesso, setSucesso]       = useState(false);
+  const [publicando, setPublicando]   = useState(false);
+  const [erro, setErro]               = useState<string | null>(null);
+  const [erroToken, setErroToken]     = useState(false);  // true = falta meta_ads_token
+  const [sucesso, setSucesso]         = useState(false);
 
   // Configurações básicas
   const [paginaId, setPaginaId]   = useState("");
@@ -183,7 +184,13 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Erro ao criar campanha");
+      if (!res.ok) {
+        if (data.error?.includes("Token Meta Ads não configurado")) {
+          setErroToken(true);
+          throw new Error(data.error);
+        }
+        throw new Error(data.error || "Erro ao criar campanha");
+      }
       setSucesso(true);
       const updated = await fetch(`/api/meta/ads?veiculoId=${veiculoId}`).then(r => r.json());
       setCampanhas(updated.campanhas ?? []);
@@ -262,8 +269,33 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
                   </div>
                 )}
 
-                {/* Erro */}
-                {erro && (
+                {/* Erro de token não configurado */}
+                {erroToken && (
+                  <div className="bg-amber-50 rounded-2xl p-4 border border-amber-200 space-y-2">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle size={16} className="text-amber-500 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-[12px] font-bold text-amber-800 mb-1">Autorização Meta Ads necessária</p>
+                        <p className="text-[11px] text-amber-700 leading-snug">
+                          Para criar campanhas você precisa conectar sua conta de Ads do Meta uma vez.
+                        </p>
+                      </div>
+                    </div>
+                    <a
+                      href="/api/meta/connect"
+                      className="flex items-center justify-center gap-2 w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-black uppercase tracking-wider rounded-xl transition-colors"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+                      </svg>
+                      Conectar Meta Ads agora
+                    </a>
+                    <p className="text-[9px] text-amber-600 text-center">Você será redirecionado para o Facebook e voltará automaticamente.</p>
+                  </div>
+                )}
+
+                {/* Erro genérico */}
+                {erro && !erroToken && (
                   <div className="bg-red-50 rounded-2xl p-4 border border-red-100 flex gap-2">
                     <AlertCircle size={16} className="text-red-500 flex-shrink-0 mt-0.5" />
                     <p className="text-[11px] text-red-700">{erro}</p>
