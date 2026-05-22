@@ -42,20 +42,24 @@ export async function POST(req: NextRequest) {
   if (!pagina.ad_account_id) return NextResponse.json({ error: "Ad Account não configurado para esta página." }, { status: 400 });
 
   // Busca config da garagem (endereço para geolocalização + user access token)
-  const { data: garage } = await supabaseAdmin
+  // IMPORTANTE: config_garage pode ter múltiplas linhas por tenant — NÃO usar .single()
+  const { data: garageRows, error: garageErr } = await supabaseAdmin
     .from("config_garage")
     .select("nome_fantasia, nome_empresa, whatsapp, latitude, longitude, endereco, meta_ads_token")
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
-    .limit(1)
-    .single();
+    .limit(1);
 
-  const latitude  = (garage as any)?.latitude  ?? -23.5505; // fallback SP
-  const longitude = (garage as any)?.longitude ?? -46.6333;
+  const garage = garageRows?.[0] ?? null;
+
+  console.log(`[meta/ads/criar] userId=${userId} garageRows=${garageRows?.length ?? 0} garageErr=${garageErr?.message ?? "none"} token_present=${!!(garage?.meta_ads_token)}`);
+
+  const latitude  = garage?.latitude  ?? -23.5505; // fallback SP
+  const longitude = garage?.longitude ?? -46.6333;
 
   // meta_ads_token = User Access Token com ads_management (obtido via /api/meta/connect)
   // meta_access_token (WhatsApp) NÃO tem ads_management — não usar aqui.
-  const userAccessToken: string | undefined = (garage as any)?.meta_ads_token || undefined;
+  const userAccessToken: string | undefined = garage?.meta_ads_token || undefined;
 
   if (!userAccessToken) {
     return NextResponse.json({
