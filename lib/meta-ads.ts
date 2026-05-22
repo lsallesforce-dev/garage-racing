@@ -51,6 +51,7 @@ export interface CriarCampanhaParams {
     interesses?: Array<{ id: string; nome: string }>;
     comportamentos?: Array<{ id: string; nome: string }>;
     renda?: string;
+    cidadesExtras?: Array<{ lat: number; lng: number; nome: string }>;
   };
 }
 
@@ -204,14 +205,17 @@ export async function criarCampanhaLeadAd(p: CriarCampanhaParams): Promise<Campa
     flexSpec.push({ behaviors: configuracao.comportamentos.map(b => ({ id: b.id, name: b.nome })) });
   }
 
+  // Monta lista de custom_locations: cidade principal + cidades extras
+  const customLocations = [
+    { latitude: garagem.latitude, longitude: garagem.longitude, radius: configuracao.raioKm, distance_unit: "kilometer" },
+    ...(configuracao.cidadesExtras ?? []).map(c => ({
+      latitude: c.lat, longitude: c.lng, radius: configuracao.raioKm, distance_unit: "kilometer",
+    })),
+  ];
+
   const targeting: Record<string, any> = {
     geo_locations: {
-      custom_locations: [{
-        latitude:      garagem.latitude,
-        longitude:     garagem.longitude,
-        radius:        configuracao.raioKm,
-        distance_unit: "kilometer",
-      }],
+      custom_locations: customLocations,
     },
     age_min: configuracao.idadeMin,
     age_max: configuracao.idadeMax,
