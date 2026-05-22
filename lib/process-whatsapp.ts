@@ -1586,7 +1586,8 @@ Responda apenas com o JSON, sem markdown.`;
   ];
 
   // Confirmação ("sim/pode/ok") é válida somente se a msg anterior do cliente OU do agente mencionou foto/vídeo
-  const msgConfirmacao = /^(sim|envia|manda|pode|quero|vai|claro|ok|isso|bora|manda sim|pode sim)$/i.test(userMessage.trim());
+  // Permite pontuação e espaços no final: "Sim.", "Ok!", "Pode sim."
+  const msgConfirmacao = /^(sim|envia|manda|pode|quero|vai|claro|ok|isso|bora|manda sim|pode sim)[.!?]?\s*$/i.test(userMessage.trim());
   // Strip prefixo de anúncio também da mensagem anterior (evita falso clientePediuFotoAntes
   // quando a msg CTWA anterior tinha "fotos" no texto do link, ex: "Confira as fotos do HR-V")
   const ultimaMsgClienteRaw = historico.filter((h: any) => h.role === "user").slice(-2, -1)[0]?.parts?.[0]?.text ?? "";
@@ -1594,11 +1595,17 @@ Responda apenas com o JSON, sem markdown.`;
   const clientePediuFotoAntes = gatilhosFoto.some((g) => ultimaMsgCliente.includes(g));
   const clientePediuVideoAntes = gatilhosVideo.some((g) => ultimaMsgCliente.includes(g));
 
-  // Agente ofereceu foto/vídeo na última mensagem? ("Quer ver as fotos?", "Posso mandar o vídeo?")
+  // Agente ofereceu foto/vídeo nas últimas mensagens? ("Quer ver as fotos?", "Posso mandar o vídeo?")
   // Cobre o caso: agente oferece → cliente responde "Sim" → clientePediuFotoAntes seria false
-  const ultimaMsgAgenteRaw = historico.filter((h: any) => h.role === "model").slice(-1)[0]?.parts?.[0]?.text ?? "";
-  const agenteMencionouFoto  = /\b(foto|fotos|imagem|imagens)\b/i.test(ultimaMsgAgenteRaw);
-  const agenteMencionouVideo = /\bv[íi]deo\b/i.test(ultimaMsgAgenteRaw);
+  // Varre as últimas 3 msgs do agente (não só a última) pois após envio de fotos a msg mais recente
+  // pode ser uma legenda como "📷 Polo Track" que não contém a palavra "foto".
+  const ultimasMsgsAgente = historico
+    .filter((h: any) => h.role === "model")
+    .slice(-3)
+    .map((h: any) => h.parts?.[0]?.text ?? "")
+    .join(" ");
+  const agenteMencionouFoto  = /\b(foto|fotos|imagem|imagens)\b/i.test(ultimasMsgsAgente);
+  const agenteMencionouVideo = /\bv[íi]deo\b/i.test(ultimasMsgsAgente);
 
   // Continuação implícita: "e da ranger?", "e o gol?", "e a strada?" após pedido de foto anterior
   // O cliente não repete a palavra "foto" mas está claramente continuando o pedido anterior
