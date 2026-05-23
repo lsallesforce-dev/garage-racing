@@ -1006,7 +1006,9 @@ Responda apenas com o JSON, sem markdown.`;
   // Quando há adReferral, persiste o headline no campo origem_mensagem para que
   // o contexto do anúncio sobreviva entre mensagens (ex: Msg 1 com ad context via LID,
   // Msg 2 sem ad context com número real — a origem_mensagem permite recovery).
-  const upsertData: Record<string, any> = { wa_id: phone, user_id: tenantUserId };
+  // Quando o cliente responde, zera o ciclo de follow-up para que o cron
+  // possa iniciar um novo ciclo de 2 mensagens caso o lead fique inativo novamente.
+  const upsertData: Record<string, any> = { wa_id: phone, user_id: tenantUserId, followup_count: 0 };
   if (adReferral?.headline && adReferral.headline.length > 3) {
     upsertData.origem_mensagem = `Lead do anúncio: ${adReferral.headline}`;
     upsertData.origem = "meta_ads";

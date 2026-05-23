@@ -1,29 +1,23 @@
 // app/api/cron/followup/route.ts
 //
-// Cron job de follow-up inteligente de leads.
+// Cron job de follow-up de leads — ciclo de 2 mensagens por lead, encerrado.
 // Roda 6x/dia via Vercel Cron (vercel.json): 11,13,15,17,19,21h UTC.
 // Gate de horário comercial (8h–18h BRT) bloqueia execuções fora do expediente.
-// CADA EXECUÇÃO processa leads elegíveis — sem cronGuard global.
-// O cooldown é controlado por lead (ultimo_followup) com prazo por temperatura:
 //
-// PRIMEIRO follow-up (ultimo_followup IS NULL):
-//   · FRIO   → aguarda 2h de silêncio
-//   · MORNO  → aguarda 2h de silêncio
-//   · QUENTE → aguarda 24h de silêncio (era quente, provavelmente ficou ocupado)
+// CICLO FIXO — máximo 2 follow-ups por lead (campo followup_count):
+//   · followup_count = 0 → 1° follow-up: aguarda 2h de silêncio do cliente
+//   · followup_count = 1 → 2° follow-up: aguarda 24h desde o 1° (ultimo_followup)
+//   · followup_count ≥ 2 → ciclo encerrado, lead não recebe mais follow-ups
 //
-// FOLLOW-UPS SUBSEQUENTES (ultimo_followup IS NOT NULL):
-//   · QUENTE → cooldown 24h
-//   · MORNO  → cooldown 24h  (sequência: 2h → 24h → 24h → ...)
-//   · FRIO   → cooldown 48h  (sequência: 2h → 48h → 48h → ...)
+// Se o cliente responder entre os follow-ups → followup_count é zerado pelo webhook.
 //
 // Fluxo por lead:
-//   1. Detecta cohort (A ou B)
-//   2. Lê as últimas 5 mensagens da conversa (contexto real)
-//   3. Verifica se o carro de interesse ainda está disponível
-//   4. Se vendido → busca alternativa compatível (modelo → categoria)
-//   5. Gemini gera mensagem personalizada baseada no histórico
-//   6. Envia via Avisa ou Meta (detecta canal do tenant)
-//   7. Salva mensagem no histórico e atualiza ultimo_followup
+//   1. Lê as últimas 5 mensagens da conversa (contexto real)
+//   2. Verifica se o carro de interesse ainda está disponível
+//   3. Se vendido → busca alternativa compatível (modelo → categoria)
+//   4. Gemini gera mensagem personalizada baseada no histórico
+//   5. Envia via Avisa (Meta exige template aprovado para mensagens fora da sessão)
+//   6. Salva mensagem no histórico, incrementa followup_count e atualiza ultimo_followup
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
@@ -49,20 +43,10 @@ function isAuthorized(req: NextRequest): boolean {
   return req.headers.get("user-agent") === "vercel-cron/1.0";
 }
 
-// ─── Timing de follow-up por temperatura ─────────────────────────────────────
-// Primeiro follow-up: horas de silêncio necessárias quando ultimo_followup IS NULL
-const PRIMEIRO_FOLLOWUP_HORAS: Record<string, number> = {
-  FRIO:    2,   // 2h — cliente clicou no anúncio e sumiu → retoma rápido
-  MORNO:   2,   // 2h — mesmo critério; era morno mas esfriou rápido
-  QUENTE: 24,   // 24h — era quente, provavelmente ficou ocupado
-};
-
-// Cooldown recorrente: horas após o último follow-up para enviar o próximo
-const COOLDOWN_RECORRENTE_HORAS: Record<string, number> = {
-  QUENTE: 24,   // a cada 24h enquanto não responder
-  MORNO:  24,   // após o 2h inicial, a cada 24h
-  FRIO:   48,   // após o 2h inicial, a cada 48h
-};
+// ─── Timing de follow-up (fixo para todos os status) ─────────────────────────
+const SILENCIO_PRIMEIRO_FOLLOWUP_HORAS = 2;   // 2h sem resposta → dispara o 1°
+const COOLDOWN_SEGUNDO_FOLLOWUP_HORAS  = 24;  // 24h após o 1° → dispara o 2° e encerra
+const MAX_FOLLOWUPS = 2;                       // ciclo máximo por lead
 
 // ─── Cohort A — Mensagem de primeiro contato sem resposta ─────────────────────
 async function gerarMensagemPrimeiroContato(params: {
@@ -244,23 +228,23 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: true, skipped: true, motivo: "fora_horario_comercial", hora_brt: horaBRT });
   }
 
-  // Filtro SQL: usa cooldown recorrente mais permissivo (QUENTE = 24h).
-  // Validação fina de timing por lead e status acontece no loop.
-  const limiteSQL = new Date(agora.getTime() - 24 * 60 * 60 * 1000).toISOString(); // 24h — QUENTE recorrente
+  // Filtro SQL: pega leads com ciclo ainda aberto (followup_count < 2) e
+  // que já passaram do cooldown mínimo (2h de silêncio ou 24h desde o 1°).
+  // Validação fina de timing acontece no loop.
+  const limite2h  = new Date(agora.getTime() - SILENCIO_PRIMEIRO_FOLLOWUP_HORAS * 60 * 60 * 1000).toISOString();
+  const limite24h = new Date(agora.getTime() - COOLDOWN_SEGUNDO_FOLLOWUP_HORAS  * 60 * 60 * 1000).toISOString();
 
   // ── 1. Busca leads elegíveis ───────────────────────────────────────────────
-  // Sem cronGuard global — cada lead controla seu próprio cooldown via ultimo_followup.
-  // Filtro SQL usa o cooldown mais permissivo (48h = QUENTE) para não excluir nada.
-  // MORNO e FRIO são filtrados no loop via COOLDOWN_DAYS.
   const { data: leads, error } = await supabaseAdmin
     .from("leads")
     .select(`
       id, wa_id, nome, user_id, veiculo_id, status,
-      resumo_negociacao, ultimo_followup
+      resumo_negociacao, ultimo_followup, followup_count
     `)
     .in("status", ["FRIO", "MORNO", "QUENTE"])
     .eq("em_atendimento_humano", false)
-    .or(`ultimo_followup.is.null,ultimo_followup.lt.${limiteSQL}`)
+    .lt("followup_count", MAX_FOLLOWUPS)
+    .or(`ultimo_followup.is.null,ultimo_followup.lt.${limite24h}`)
     .limit(100);
 
   if (error) {
@@ -303,8 +287,6 @@ export async function GET(req: NextRequest) {
   };
 
   const MAX_ENVIOS = 50;
-  const MAX_EM_RISCO_POR_EXECUCAO = 5; // máx 5 leads em risco por rodada → ~150s, seguro no Vercel
-  let emRiscoEnviados = 0;
 
   for (const lead of leads) {
     if (enviados >= MAX_ENVIOS) break;
@@ -342,29 +324,31 @@ export async function GET(req: NextRequest) {
       const silencioMs    = agora.getTime() - new Date(ultimaMsg.created_at).getTime();
       const silencioHoras = silencioMs / (60 * 60 * 1000);
 
-      // ── 4. Validação de timing por status ──────────────────────────────────
-      if (lead.ultimo_followup === null) {
-        // PRIMEIRO follow-up: verifica silêncio mínimo por temperatura
-        const horasNecessarias = PRIMEIRO_FOLLOWUP_HORAS[lead.status as string] ?? 24;
-        if (silencioHoras < horasNecessarias) {
-          ignorar(`aguardando_${lead.status.toLowerCase()}_${Math.round(horasNecessarias)}h`);
+      // ── 4. Validação de timing — ciclo fixo de 2 follow-ups ──────────────
+      const followupCount = lead.followup_count ?? 0;
+
+      if (followupCount === 0) {
+        // 1° follow-up: aguarda 2h de silêncio do cliente
+        if (silencioHoras < SILENCIO_PRIMEIRO_FOLLOWUP_HORAS) {
+          ignorar(`aguardando_2h_silencio`);
           continue;
         }
       } else {
-        // RECORRENTE: verifica cooldown desde o último follow-up enviado
-        const cooldownHoras  = COOLDOWN_RECORRENTE_HORAS[lead.status as string] ?? 48;
-        const cooldownMs     = cooldownHoras * 60 * 60 * 1000;
-        const msSinceFollowup = agora.getTime() - new Date(lead.ultimo_followup).getTime();
-        if (msSinceFollowup < cooldownMs) {
-          ignorar(`dentro_cooldown_${lead.status.toLowerCase()}`);
+        // 2° follow-up: aguarda 24h desde o 1° (ultimo_followup)
+        const msSinceFollowup = lead.ultimo_followup
+          ? agora.getTime() - new Date(lead.ultimo_followup).getTime()
+          : Infinity;
+        const horasSinceFollowup = msSinceFollowup / (60 * 60 * 1000);
+        if (horasSinceFollowup < COOLDOWN_SEGUNDO_FOLLOWUP_HORAS) {
+          ignorar(`aguardando_24h_segundo_followup`);
           continue;
         }
       }
 
       // ── 5. Filtros de qualidade ─────────────────────────────────────────────
-      // FRIO sem carro específico e sem histórico real → skip
-      if (lead.status === "FRIO" && totalMensagens < 2 && !lead.veiculo_id) {
-        ignorar("frio_sem_contexto"); continue;
+      // Lead sem histórico real e sem carro → skip
+      if (totalMensagens < 2 && !lead.veiculo_id) {
+        ignorar("sem_contexto"); continue;
       }
 
       // ── 7. Config do tenant ─────────────────────────────────────────────────
@@ -442,45 +426,22 @@ export async function GET(req: NextRequest) {
       }
 
       // ── 9. Gera mensagem ────────────────────────────────────────────────────
-      // 3 tipos de mensagem, em ordem de prioridade:
-      //   A) Em Risco     → QUENTE + silêncio ≥ 48h → reengajamento assertivo com urgência
-      //   B) Primeiro 2h  → FRIO, ≤2 msgs, sem follow-up anterior, com carro → mensagem curta
-      //   C) Contextual   → todos os outros casos → retomada baseada no histórico
+      // 1° follow-up (followup_count=0): mensagem curta se poucos msgs e tem carro,
+      //                                  ou contextual baseada no histórico
+      // 2° follow-up (followup_count=1): sempre contextual (reengajamento mais direto)
 
-      const emRisco = lead.status === "QUENTE" && silencioHoras >= 48;
-
+      const isFirstFollowup = followupCount === 0;
       const usarMensagemCurta =
-        !emRisco &&
-        lead.status === "FRIO" &&
+        isFirstFollowup &&
         totalMensagens <= 2 &&
-        lead.ultimo_followup === null &&
         lead.veiculo_id !== null;
 
       let mensagem: string;
 
-      if (emRisco) {
-        // Limita em risco por execução para evitar burst + risco de ban no WhatsApp
-        if (emRiscoEnviados >= MAX_EM_RISCO_POR_EXECUCAO) {
-          ignorar("limite_em_risco_por_execucao");
-          continue;
-        }
-        mensagem = await gerarMensagemReengajamento({
-          nomeLead: lead.nome,
-          nomeAgente,
-          nomeEmpresa,
-          carro,
-          preco,
-          disponivel,
-          alternativa,
-          resumoNegociacao: lead.resumo_negociacao,
-          ultimasMensagens: mensagensOrdenadas,
-        });
-        emRiscoEnviados++;
-        console.log(`🚨 [Em Risco ${emRiscoEnviados}/${MAX_EM_RISCO_POR_EXECUCAO}] ${lead.wa_id} (QUENTE, ${Math.round(silencioHoras)}h sem resposta) — reengajamento`);
-      } else if (usarMensagemCurta) {
+      if (usarMensagemCurta) {
         mensagem = await gerarMensagemPrimeiroContato({ nomeAgente, carro, preco });
-        console.log(`🆕 [Curta/2h] ${lead.wa_id} (FRIO) — primeiro contato`);
-      } else {
+        console.log(`🆕 [1° follow-up/curta] ${lead.wa_id} (${lead.status}) — primeiro contato`);
+      } else if (isFirstFollowup) {
         mensagem = await gerarMensagemFollowup({
           nomeLead: lead.nome,
           nomeAgente,
@@ -493,7 +454,21 @@ export async function GET(req: NextRequest) {
           ultimasMensagens: mensagensOrdenadas,
           temperatura: lead.status,
         });
-        console.log(`🔁 [Contextual] ${lead.wa_id} (${lead.status}) — retomada`);
+        console.log(`🔁 [1° follow-up/contextual] ${lead.wa_id} (${lead.status}) — retomada`);
+      } else {
+        // 2° e último follow-up — reengajamento assertivo
+        mensagem = await gerarMensagemReengajamento({
+          nomeLead: lead.nome,
+          nomeAgente,
+          nomeEmpresa,
+          carro,
+          preco,
+          disponivel,
+          alternativa,
+          resumoNegociacao: lead.resumo_negociacao,
+          ultimasMensagens: mensagensOrdenadas,
+        });
+        console.log(`🚨 [2° follow-up/final] ${lead.wa_id} (${lead.status}) — ciclo encerra após este`);
       }
 
       // ── 10. Envia ───────────────────────────────────────────────────────────
@@ -509,25 +484,21 @@ export async function GET(req: NextRequest) {
         console.error(`❌ Erro ao salvar mensagem no histórico do lead ${lead.id}:`, insertErr);
       }
 
-      // Atualiza updated_at também para que o realtime do chat recarregue
-      // a conversa e o lead suba no topo da lista
+      // Incrementa followup_count e atualiza updated_at para o lead subir no chat
       await supabaseAdmin
         .from("leads")
         .update({
           ultimo_followup: agora.toISOString(),
+          followup_count:  followupCount + 1,
           updated_at:      agora.toISOString(),
         })
         .eq("id", lead.id);
 
-      const tipoMensagem = emRisco ? "em_risco" : usarMensagemCurta ? "curta" : "contextual";
-      console.log(`✅ Follow-up enviado → ${lead.wa_id} (${lead.status}, ${tipoMensagem}) — "${mensagem.slice(0, 80)}"`);
+      const tipoMensagem = usarMensagemCurta ? "curta" : isFirstFollowup ? "contextual" : "final";
+      console.log(`✅ Follow-up ${followupCount + 1}/${MAX_FOLLOWUPS} → ${lead.wa_id} (${lead.status}, ${tipoMensagem}) — "${mensagem.slice(0, 80)}"`);
       enviados++;
 
-      // Delay entre envios:
-      //   Em Risco → 30s (proteção contra ban em mensagens fora da sessão de 24h)
-      //   Demais   →  3s (anti-spam básico)
-      const delayMs = emRisco ? 30_000 : 3_000;
-      await new Promise((r) => setTimeout(r, delayMs));
+      await new Promise((r) => setTimeout(r, 3_000)); // 3s entre envios (anti-spam)
 
     } catch (e) {
       console.error(`❌ Erro no follow-up do lead ${lead.id}:`, e);
