@@ -2,11 +2,12 @@
 
 import { useEffect, useState, useRef, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useUserRole } from "@/components/SidebarWrapper";
 import {
   Send, MessageSquare, Phone, Bot, ArrowLeft,
-  Search, User, Zap, ChevronDown, Trash2,
+  Search, User, Zap, ChevronDown, Trash2, Kanban,
 } from "lucide-react";
 
 type UltimaMensagem = {
@@ -345,9 +346,19 @@ function CentralChatInner() {
         <div className="p-5 border-b border-gray-100 flex-shrink-0 space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-black uppercase italic tracking-tighter text-gray-900">Central de Chat</h2>
-            <span className="text-[9px] font-black uppercase tracking-widest text-gray-400 bg-gray-50 border border-gray-100 px-2 py-1 rounded-lg">
-              {leadsFiltrados.length} {leadsFiltrados.length === 1 ? "contato" : "contatos"}
-            </span>
+            <div className="flex items-center gap-2">
+              <Link
+                href="/funil"
+                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-gray-50 border border-gray-100 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+                title="Abrir Kanban"
+              >
+                <Kanban size={13} />
+                <span className="text-[9px] font-black uppercase tracking-widest">Kanban</span>
+              </Link>
+              <span className="text-[9px] font-black uppercase tracking-widest text-gray-400 bg-gray-50 border border-gray-100 px-2 py-1 rounded-lg">
+                {leadsFiltrados.length} {leadsFiltrados.length === 1 ? "contato" : "contatos"}
+              </span>
+            </div>
           </div>
 
           {/* Busca */}
