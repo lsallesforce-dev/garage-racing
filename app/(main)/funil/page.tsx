@@ -179,39 +179,39 @@ export default function FunilPage() {
                     const temNext = idxAtual < ORDEM.length - 1;
 
                     return (
-                      <div key={lead.id} className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm hover:shadow-md transition-all group">
-                        <div className="flex items-start justify-between mb-2">
-                          <p className="text-[11px] font-black uppercase tracking-tight text-gray-900 leading-tight">
+                      <div key={lead.id} className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm hover:shadow-md transition-all group">
+                        <div className="flex items-start justify-between mb-3">
+                          <p className="text-sm font-black uppercase tracking-tight text-gray-900 leading-tight">
                             {lead.nome || "Lead Anônimo"}
                           </p>
-                          <span className="text-[8px] text-gray-300 font-bold shrink-0 ml-2">{fmtData(lead.created_at)}</span>
+                          <span className="text-[10px] text-gray-300 font-bold shrink-0 ml-2">{fmtData(lead.created_at)}</span>
                         </div>
 
                         {lead.veiculos && (
-                          <div className="flex items-center gap-1 mb-2">
-                            <Car size={9} className="text-red-400 shrink-0" />
-                            <p className="text-[9px] text-gray-400 font-bold truncate">
+                          <div className="flex items-center gap-1.5 mb-3">
+                            <Car size={11} className="text-red-400 shrink-0" />
+                            <p className="text-[11px] text-gray-400 font-bold truncate">
                               {lead.veiculos.marca} {lead.veiculos.modelo} {lead.veiculos.ano}
                             </p>
                           </div>
                         )}
 
                         {/* Etiqueta */}
-                        <div className="relative mb-2" ref={etiquetaOpen === lead.id ? etiquetaRef : null}>
+                        <div className="relative mb-3" ref={etiquetaOpen === lead.id ? etiquetaRef : null}>
                           {lead.etiqueta ? (
                             (() => {
                               const cfg = ETIQUETAS.find(e => e.value === lead.etiqueta)!;
                               return (
-                                <div className="flex items-center gap-1">
+                                <div className="flex items-center gap-1.5">
                                   <button
                                     onClick={() => setEtiquetaOpen(etiquetaOpen === lead.id ? null : lead.id)}
-                                    className={`flex items-center gap-1 px-2 py-0.5 rounded-full border text-[8px] font-black uppercase tracking-widest ${cfg.bg} ${cfg.text} ${cfg.border}`}
+                                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] font-black uppercase tracking-widest ${cfg.bg} ${cfg.text} ${cfg.border}`}
                                   >
-                                    <Tag size={7} />
+                                    <Tag size={9} />
                                     {cfg.label}
                                   </button>
                                   <button onClick={() => salvarEtiqueta(lead.id, null)} className="text-gray-300 hover:text-red-400 transition">
-                                    <X size={9} />
+                                    <X size={11} />
                                   </button>
                                 </div>
                               );
@@ -219,22 +219,22 @@ export default function FunilPage() {
                           ) : (
                             <button
                               onClick={() => setEtiquetaOpen(etiquetaOpen === lead.id ? null : lead.id)}
-                              className="flex items-center gap-1 text-[8px] font-black uppercase tracking-widest text-gray-300 hover:text-gray-500 transition"
+                              className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-gray-300 hover:text-gray-500 transition"
                             >
-                              <Tag size={9} />
+                              <Tag size={11} />
                               Etiqueta
                             </button>
                           )}
 
                           {etiquetaOpen === lead.id && (
-                            <div className="absolute left-0 top-full mt-1 z-50 bg-white border border-gray-100 rounded-xl shadow-xl p-1 min-w-[160px]">
+                            <div className="absolute left-0 top-full mt-1 z-50 bg-white border border-gray-100 rounded-xl shadow-xl p-1 min-w-[180px]">
                               {ETIQUETAS.map(e => (
                                 <button
                                   key={e.value}
                                   onClick={() => salvarEtiqueta(lead.id, e.value)}
-                                  className={`w-full text-left flex items-center gap-2 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition hover:opacity-80 ${e.bg} ${e.text} mb-0.5`}
+                                  className={`w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition hover:opacity-80 ${e.bg} ${e.text} mb-0.5`}
                                 >
-                                  <Tag size={8} />
+                                  <Tag size={9} />
                                   {e.label}
                                 </button>
                               ))}
@@ -243,7 +243,7 @@ export default function FunilPage() {
                         </div>
 
                         {lead.resumo_negociacao && (
-                          <p className="text-[9px] text-gray-400 line-clamp-2 mb-3 italic leading-relaxed">
+                          <p className="text-[11px] text-gray-400 line-clamp-2 mb-4 italic leading-relaxed">
                             "{lead.resumo_negociacao}"
                           </p>
                         )}
@@ -251,7 +251,7 @@ export default function FunilPage() {
                         <div className="flex items-center justify-between">
                           <button
                             onClick={() => router.push(`/chat?wa_id=${lead.wa_id}`)}
-                            className="flex items-center gap-1 text-[8px] font-black uppercase tracking-widest text-gray-400 hover:text-red-600 transition"
+                            className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-red-600 transition"
                           >
                             <Phone size={9} />
                             Chat
@@ -259,21 +259,21 @@ export default function FunilPage() {
 
                           <div className="flex gap-1">
                             {movendo === lead.id ? (
-                              <Loader2 size={12} className="animate-spin text-gray-300" />
+                              <Loader2 size={14} className="animate-spin text-gray-300" />
                             ) : (
                               <>
                                 {temPrev && (
                                   <button onClick={() => mover(lead.id, "prev")}
-                                    className="w-6 h-6 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition"
+                                    className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition"
                                     title={`Mover para ${COLUNAS[idxAtual - 1].label}`}>
-                                    <ChevronLeft size={10} className="text-gray-500" />
+                                    <ChevronLeft size={13} className="text-gray-500" />
                                   </button>
                                 )}
                                 {temNext && (
                                   <button onClick={() => mover(lead.id, "next")}
-                                    className="w-6 h-6 rounded-lg bg-red-50 hover:bg-red-100 flex items-center justify-center transition"
+                                    className="w-8 h-8 rounded-lg bg-red-50 hover:bg-red-100 flex items-center justify-center transition"
                                     title={`Mover para ${COLUNAS[idxAtual + 1].label}`}>
-                                    <ChevronRight size={10} className="text-red-500" />
+                                    <ChevronRight size={13} className="text-red-500" />
                                   </button>
                                 )}
                               </>
