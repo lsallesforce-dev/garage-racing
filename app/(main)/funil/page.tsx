@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
-import { Phone, Car, ChevronRight, ChevronLeft, Loader2 } from "lucide-react";
+import { Phone, Car, ChevronRight, ChevronLeft, Loader2, Tag, X } from "lucide-react";
 
 type Etapa = "NOVO" | "INTERESSADO" | "AGENDADO" | "VENDIDO" | "PERDIDO";
+type Etiqueta = "EM_NEGOCIACAO" | "PROPOSTA_ENVIADA" | "EM_APROVACAO" | "VISITA_CONFIRMADA";
 
 interface Lead {
   id: string;
@@ -15,8 +16,16 @@ interface Lead {
   status: string;
   resumo_negociacao: string | null;
   created_at: string;
+  etiqueta: Etiqueta | null;
   veiculos: { marca: string; modelo: string; ano: string | null } | null;
 }
+
+const ETIQUETAS: { value: Etiqueta; label: string; bg: string; text: string; border: string }[] = [
+  { value: "EM_NEGOCIACAO",    label: "Em Negociação",    bg: "bg-orange-100", text: "text-orange-700", border: "border-orange-300" },
+  { value: "PROPOSTA_ENVIADA", label: "Proposta Enviada", bg: "bg-blue-100",   text: "text-blue-700",   border: "border-blue-300"   },
+  { value: "EM_APROVACAO",     label: "Em Aprovação",     bg: "bg-purple-100", text: "text-purple-700", border: "border-purple-300" },
+  { value: "VISITA_CONFIRMADA",label: "Visita Confirmada",bg: "bg-green-100",  text: "text-green-700",  border: "border-green-300"  },
+];
 
 const COLUNAS: { etapa: Etapa; label: string; cor: string; bg: string }[] = [
   { etapa: "NOVO",       label: "Novo",       cor: "text-gray-600",  bg: "bg-gray-100"   },
@@ -38,6 +47,8 @@ export default function FunilPage() {
   const [totalLeads, setTotalLeads] = useState(0);
   const [loading, setLoading] = useState(true);
   const [movendo, setMovendo] = useState<string | null>(null);
+  const [etiquetaOpen, setEtiquetaOpen] = useState<string | null>(null);
+  const etiquetaRef = useRef<HTMLDivElement | null>(null);
   const LIMIT = 200;
 
   const carregar = useCallback(async () => {
@@ -47,7 +58,7 @@ export default function FunilPage() {
 
     const { data, count } = await supabase
       .from("leads")
-      .select("id, nome, wa_id, etapa_funil, status, resumo_negociacao, created_at, veiculos(marca, modelo, ano)", { count: "exact" })
+      .select("id, nome, wa_id, etapa_funil, status, resumo_negociacao, created_at, etiqueta, veiculos(marca, modelo, ano)", { count: "exact" })
       .eq("user_id", user.id)
       .order("updated_at", { ascending: false })
       .limit(LIMIT);
@@ -89,6 +100,23 @@ export default function FunilPage() {
 
     setMovendo(null);
   }
+
+  async function salvarEtiqueta(leadId: string, etiqueta: Etiqueta | null) {
+    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, etiqueta } : l));
+    setEtiquetaOpen(null);
+    await supabase.from("leads").update({ etiqueta }).eq("id", leadId);
+  }
+
+  // Fecha dropdown ao clicar fora
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (etiquetaRef.current && !etiquetaRef.current.contains(e.target as Node)) {
+        setEtiquetaOpen(null);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const leadsNaEtapa = (etapa: Etapa) => leads.filter(l => l.etapa_funil === etapa);
 
@@ -167,6 +195,52 @@ export default function FunilPage() {
                             </p>
                           </div>
                         )}
+
+                        {/* Etiqueta */}
+                        <div className="relative mb-2" ref={etiquetaOpen === lead.id ? etiquetaRef : null}>
+                          {lead.etiqueta ? (
+                            (() => {
+                              const cfg = ETIQUETAS.find(e => e.value === lead.etiqueta)!;
+                              return (
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    onClick={() => setEtiquetaOpen(etiquetaOpen === lead.id ? null : lead.id)}
+                                    className={`flex items-center gap-1 px-2 py-0.5 rounded-full border text-[8px] font-black uppercase tracking-widest ${cfg.bg} ${cfg.text} ${cfg.border}`}
+                                  >
+                                    <Tag size={7} />
+                                    {cfg.label}
+                                  </button>
+                                  <button onClick={() => salvarEtiqueta(lead.id, null)} className="text-gray-300 hover:text-red-400 transition">
+                                    <X size={9} />
+                                  </button>
+                                </div>
+                              );
+                            })()
+                          ) : (
+                            <button
+                              onClick={() => setEtiquetaOpen(etiquetaOpen === lead.id ? null : lead.id)}
+                              className="flex items-center gap-1 text-[8px] font-black uppercase tracking-widest text-gray-300 hover:text-gray-500 transition"
+                            >
+                              <Tag size={9} />
+                              Etiqueta
+                            </button>
+                          )}
+
+                          {etiquetaOpen === lead.id && (
+                            <div className="absolute left-0 top-full mt-1 z-50 bg-white border border-gray-100 rounded-xl shadow-xl p-1 min-w-[160px]">
+                              {ETIQUETAS.map(e => (
+                                <button
+                                  key={e.value}
+                                  onClick={() => salvarEtiqueta(lead.id, e.value)}
+                                  className={`w-full text-left flex items-center gap-2 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition hover:opacity-80 ${e.bg} ${e.text} mb-0.5`}
+                                >
+                                  <Tag size={8} />
+                                  {e.label}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
 
                         {lead.resumo_negociacao && (
                           <p className="text-[9px] text-gray-400 line-clamp-2 mb-3 italic leading-relaxed">
