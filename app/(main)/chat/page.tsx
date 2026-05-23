@@ -44,16 +44,17 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; dot: string 
   FRIO:     { label: "Frio",      color: "text-blue-600 bg-blue-50 border-blue-100",       dot: "bg-blue-400"  },
 };
 
-const FILTROS = ["Todos", "QUENTE", "MORNO", "FRIO", "PROBLEMA"] as const;
+const FILTROS = ["Todos", "QUENTE", "MORNO", "FRIO", "HUMANO", "PROBLEMA"] as const;
 type Filtro = typeof FILTROS[number];
 const FILTRO_LABELS: Record<string, string> = {
-  Todos: "Todos", QUENTE: "Quente", MORNO: "Morno", FRIO: "Frio", PROBLEMA: "Pós-venda",
+  Todos: "Todos", QUENTE: "Quente", MORNO: "Morno", FRIO: "Frio", HUMANO: "Humano", PROBLEMA: "Pós-venda",
 };
 const FILTRO_COLORS: Record<string, { active: string; inactive: string }> = {
   Todos:    { active: "bg-gray-900 text-white",          inactive: "bg-gray-50 text-gray-400 hover:bg-gray-100" },
   QUENTE:   { active: "bg-red-500 text-white",           inactive: "bg-red-50 text-red-500 hover:bg-red-100 border border-red-100" },
   MORNO:    { active: "bg-amber-400 text-white",         inactive: "bg-amber-50 text-amber-500 hover:bg-amber-100 border border-amber-100" },
   FRIO:     { active: "bg-blue-400 text-white",          inactive: "bg-blue-50 text-blue-500 hover:bg-blue-100 border border-blue-100" },
+  HUMANO:   { active: "bg-green-600 text-white",         inactive: "bg-green-50 text-green-700 hover:bg-green-100 border border-green-200" },
   PROBLEMA: { active: "bg-red-600 text-white",           inactive: "bg-red-50 text-red-700 hover:bg-red-100 border border-red-200" },
 };
 
@@ -314,7 +315,8 @@ function CentralChatInner() {
   // Filtragem + ordenação por atividade mais recente
   const leadsFiltrados = leads
     .filter((l) => {
-      const matchFiltro = filtro === "Todos" || l.status === filtro;
+      const matchFiltro = filtro === "Todos"
+        || (filtro === "HUMANO" ? l.em_atendimento_humano === true : l.status === filtro);
       const termo = busca.toLowerCase();
       const matchBusca = !termo
         || (l.nome ?? "").toLowerCase().includes(termo)
