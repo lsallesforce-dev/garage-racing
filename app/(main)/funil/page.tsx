@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
-import { Phone, Car, ChevronUp, ChevronDown, Loader2, Tag, X } from "lucide-react";
+import { Phone, Car, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Loader2, Tag, X } from "lucide-react";
 
 type Etapa = "NOVO" | "INTERESSADO" | "AGENDADO" | "VENDIDO" | "PERDIDO";
 type Etiqueta = "EM_NEGOCIACAO" | "PROPOSTA_ENVIADA" | "EM_APROVACAO" | "VISITA_CONFIRMADA";
@@ -262,21 +262,37 @@ export default function FunilPage() {
                               <Loader2 size={14} className="animate-spin text-gray-300" />
                             ) : (
                               <>
-                                <div className="flex flex-col gap-1">
+                                <div className="flex items-center gap-1">
                                   {temPrev && (
                                     <button onClick={() => mover(lead.id, "prev")}
                                       className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition"
                                       title={`Mover para ${COLUNAS[idxAtual - 1].label}`}>
-                                      <ChevronUp size={13} className="text-gray-500" />
+                                      <ChevronLeft size={13} className="text-gray-500" />
                                     </button>
                                   )}
                                   {temNext && (
                                     <button onClick={() => mover(lead.id, "next")}
                                       className="w-8 h-8 rounded-lg bg-red-50 hover:bg-red-100 flex items-center justify-center transition"
                                       title={`Mover para ${COLUNAS[idxAtual + 1].label}`}>
-                                      <ChevronDown size={13} className="text-red-500" />
+                                      <ChevronRight size={13} className="text-red-500" />
                                     </button>
                                   )}
+                                  <div className="flex flex-col gap-0.5 ml-1">
+                                    {temNext && (
+                                      <button onClick={() => mover(lead.id, "next")}
+                                        className="w-7 h-5 rounded bg-red-50 hover:bg-red-100 flex items-center justify-center transition"
+                                        title={`Avançar para ${COLUNAS[idxAtual + 1].label}`}>
+                                        <ChevronUp size={11} className="text-red-500" />
+                                      </button>
+                                    )}
+                                    {temPrev && (
+                                      <button onClick={() => mover(lead.id, "prev")}
+                                        className="w-7 h-5 rounded bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition"
+                                        title={`Voltar para ${COLUNAS[idxAtual - 1].label}`}>
+                                        <ChevronDown size={11} className="text-gray-500" />
+                                      </button>
+                                    )}
+                                  </div>
                                 </div>
                               </>
                             )}
