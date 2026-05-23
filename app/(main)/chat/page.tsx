@@ -85,6 +85,7 @@ function CentralChatInner() {
   const [mensagens, setMensagens] = useState<Mensagem[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [topoFeedback, setTopoFeedback] = useState(false);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [busca, setBusca] = useState("");
@@ -282,6 +283,8 @@ function CentralChatInner() {
     const agora = new Date().toISOString();
     await supabase.from("leads").update({ updated_at: agora }).eq("id", selectedLead.id);
     setLeads(prev => prev.map(l => l.id === selectedLead.id ? { ...l, updated_at: agora } : l));
+    setTopoFeedback(true);
+    setTimeout(() => setTopoFeedback(false), 2500);
   };
 
   const excluirConversa = async () => {
@@ -538,6 +541,22 @@ function CentralChatInner() {
 
             {/* Controles direita */}
             <div className="flex items-center gap-2 flex-shrink-0">
+              {/* Botão Topo Kanban */}
+              <button
+                onClick={moverParaTopoKanban}
+                className={`flex items-center gap-1.5 px-3 py-2 text-[9px] font-black uppercase tracking-widest rounded-xl transition-all whitespace-nowrap ${
+                  topoFeedback
+                    ? "bg-indigo-600 text-white"
+                    : "bg-gray-100 hover:bg-indigo-600 hover:text-white text-gray-400"
+                }`}
+                title="Mover para o topo do Kanban"
+              >
+                <Kanban size={13} />
+                <span className="hidden sm:inline">
+                  {topoFeedback ? "Adicionado ao topo!" : "Topo"}
+                </span>
+              </button>
+
               {/* Indicador + botão de modo */}
               {modoHumano ? (
                 <div className="flex items-center gap-2">
@@ -574,15 +593,6 @@ function CentralChatInner() {
                   </button>
                 </div>
               )}
-
-              <button
-                onClick={moverParaTopoKanban}
-                className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-indigo-600 hover:text-white text-gray-400 text-[9px] font-black uppercase tracking-widest rounded-xl transition-all whitespace-nowrap"
-                title="Mover para o topo do Kanban"
-              >
-                <Kanban size={13} />
-                <span className="hidden sm:inline">Topo</span>
-              </button>
 
               <button
                 onClick={excluirConversa}
