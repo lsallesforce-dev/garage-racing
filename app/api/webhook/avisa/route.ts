@@ -159,6 +159,8 @@ function extractFields(payload: any): {
     userMessage =
       parsedData.message || parsedData.text?.message || parsedData.body || "";
     fromMe = parsedData.isGroup || parsedData.fromMe || false;
+    // Extrai messageId nos campos comuns do Z-API / Avisa
+    messageId = parsedData.messageId || parsedData.id || parsedData.text?.messageId || null;
     if (!userMessage && parsedData.type === "image") {
       userMessage = "[Cliente enviou foto(s) do veículo]";
     } else if (!userMessage && !parsedData.text && parsedData.type !== "text") {
@@ -351,6 +353,12 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Deduplicação Redis (SET NX EX — atômico, cross-instância) ──────────────
+    // Fallback: se messageId não veio no payload (comum no formato Z-API/Avisa),
+    // gera pseudo-ID por phone + janela de 10s — bloqueia bursts do mesmo webhook.
+    if (!messageId && phone) {
+      const win10s = Math.floor(Date.now() / 10_000);
+      messageId = `pseudo:${phone}:${win10s}`;
+    }
     if (messageId) {
       if (await isDuplicateMessage(tenantUserId!, messageId)) {
         console.log(`🔁 [Dedup] messageId ${messageId} já processado — ignorando.`);
