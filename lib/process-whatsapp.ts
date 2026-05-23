@@ -295,7 +295,7 @@ Siga estritamente este comportamento para as seguintes situações:
    ⚠️ PEDIDO DE ENDEREÇO PARA VISITA: Se o cliente disser "me passa o endereço", "qual o endereço", "vou aí hoje/amanhã/à tarde", "vou ir ver ele" — dê o endereço DIRETAMENTE e confirme a visita com naturalidade. Ex: "Nosso endereço é [ENDEREÇO]. Te aguardo aqui!" ou "Fica em [ENDEREÇO]. Pode vir tranquilo!". PROIBIDO condicionar a visita a "verificar disponibilidade" — o carro está no seu contexto, está disponível.
 5. CARRO NA TROCA: Se o cliente mencionar que quer dar o carro na troca ("quero dar meu carro", "aceita troca?", "tenho um carro pra dar"), responda confirmando que sim e explique que a avaliação é feita presencialmente — com suas palavras, nunca a mesma frase. OBRIGATÓRIO: use precisa_instrucao com "Cliente quer dar carro na troca" para que o gerente seja notificado imediatamente.
 6. VALOR DA TROCA: Nunca estime o valor do carro do cliente. Oriente que só é possível após avaliação do nosso avaliador presencial.
-7. FINANCIAMENTO: Se perguntar se financia, confirme que sim e pergunte qual valor o cliente pensa em financiar. Nunca peça CPF ou dados pessoais.
+7. FINANCIAMENTO: Se o cliente perguntar sobre financiamento, parcelas ou entrada, responda APENAS com uma mensagem curta confirmando que financia e que vai passar para o especialista cuidar — ex: "Sim, trabalhamos com financiamento! Já vou chamar nosso especialista para te atender 😊". NUNCA calcule parcelas, NUNCA cite valores de prestação, NUNCA faça simulações. O gerente assume a conversa em seguida.
 8. NEGOCIAÇÃO E DESCONTO: Você não tem autorização para dar descontos finais pelo WhatsApp. Jogue para a gerência de forma natural ("Deixa eu ver o que consigo com meu gerente"). Não convide o cliente para a loja em TODAS as respostas — isso cansa e afasta.
    ▶ FUNIL DE AQUECIMENTO (siga esta ordem antes de chamar para visita):
       1. Lead FRIO/MORNO → responda a pergunta e engaje o cliente. Se o veículo tem vídeo disponível ("Vídeo: Sim" na ficha), sugira: "Quer ver um vídeo dele?". Se NÃO tem vídeo, NÃO mencione — use as informações da ficha para gerar interesse.
@@ -2389,6 +2389,25 @@ Retorne JSON estrito:
       ).catch(() => {});
     }
     console.log(`🔄 [Troca] Stand-by ativado para lead ${lead.id} — gerente notificado`);
+  }
+
+  // ── 15c. Financiamento — passa para atendimento humano imediatamente ──────────
+  // Detecta perguntas sobre financiamento/parcelas. O agente já respondeu com
+  // uma mensagem curta (conforme instrução do prompt). Aqui ativamos o stand-by
+  // e notificamos o gerente para assumir a conversa.
+  const FINANCIAMENTO_KEYWORDS = /\b(financiamento|financiar|financiado|parcela[s]?|prestação|prestações|entrada.*mês|mês.*entrada|simulate?|simula[rç]|quanto fica por mês|cabe no bolso|valor.*mensal|mensal.*valor|banco.*financ|financ.*banco|cdc|consórcio|fgts|fundo.*garanti)\b/i;
+  if (lead?.id && !lead.em_atendimento_humano && FINANCIAMENTO_KEYWORDS.test(mensagemClientePura)) {
+    await supabaseAdmin.from("leads").update({ em_atendimento_humano: true }).eq("id", lead.id);
+    const gerenteWaFin = garageConfig?.whatsapp ?? null;
+    if (gerenteWaFin) {
+      const normWa = (n: string) => { const d = n.replace(/\D/g, ""); return d.startsWith("55") ? d : `55${d}`; };
+      const nomeLeadFin = (lead as any).nome || `Lead ${phone.slice(-4)}`;
+      const veiculoLabelFin = veiculoPrincipal ? `\n🚗 Interesse: ${veiculoPrincipal.marca} ${veiculoPrincipal.modelo}` : "";
+      await sendAlert(normWa(gerenteWaFin),
+        `💳 *Financiamento*\n\n👤 Cliente: ${nomeLeadFin}\n📱 ${phone}${veiculoLabelFin}\n\n💬 "${rawMessage.slice(0, 200)}"\n\n👉 Assuma a conversa para negociar o financiamento.`
+      ).catch(() => {});
+    }
+    console.log(`💳 [Financiamento] Stand-by ativado para lead ${lead.id} — gerente notificado`);
   }
 
   if (lead?.id) await releaseLeadLock(tenantUserId, lead.id).catch(() => {});
