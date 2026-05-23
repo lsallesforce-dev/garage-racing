@@ -353,22 +353,20 @@ function CentralChatInner() {
       <div className={`${showChat ? "hidden md:flex" : "flex"} w-full md:w-80 flex-shrink-0 bg-white border-r border-gray-100 flex-col`}>
 
         {/* Cabeçalho sidebar */}
-        <div className="p-5 border-b border-gray-100 flex-shrink-0 space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-black uppercase italic tracking-tighter text-gray-900">Central de Chat</h2>
-            <div className="flex items-center gap-2">
-              <Link
-                href="/funil"
-                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-gray-50 border border-gray-100 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
-                title="Abrir Kanban"
-              >
-                <Kanban size={13} />
-                <span className="text-[9px] font-black uppercase tracking-widest">Kanban</span>
-              </Link>
-              <span className="text-[9px] font-black uppercase tracking-widest text-gray-400 bg-gray-50 border border-gray-100 px-2 py-1 rounded-lg">
-                {leadsFiltrados.length} {leadsFiltrados.length === 1 ? "contato" : "contatos"}
-              </span>
-            </div>
+        <div className="px-4 py-3 border-b border-gray-100 flex-shrink-0 space-y-3">
+          <div className="flex items-center gap-2">
+            <h2 className="text-base font-black uppercase italic tracking-tighter text-gray-900 mr-auto">Chat</h2>
+            <Link
+              href="/funil"
+              className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-gray-50 border border-gray-100 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+              title="Abrir Kanban"
+            >
+              <Kanban size={12} />
+              <span className="text-[9px] font-black uppercase tracking-widest">Kanban</span>
+            </Link>
+            <span className="text-[9px] font-black uppercase tracking-widest text-gray-400 bg-gray-50 border border-gray-100 px-2 py-1.5 rounded-lg whitespace-nowrap">
+              {leadsFiltrados.length} {leadsFiltrados.length === 1 ? "contato" : "contatos"}
+            </span>
           </div>
 
           {/* Busca */}
