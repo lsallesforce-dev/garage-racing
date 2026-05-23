@@ -277,6 +277,13 @@ function CentralChatInner() {
     carregarLeads();
   };
 
+  const moverParaTopoKanban = async () => {
+    if (!selectedLead) return;
+    const agora = new Date().toISOString();
+    await supabase.from("leads").update({ updated_at: agora }).eq("id", selectedLead.id);
+    setLeads(prev => prev.map(l => l.id === selectedLead.id ? { ...l, updated_at: agora } : l));
+  };
+
   const excluirConversa = async () => {
     if (!selectedLead) return;
     if (!confirm(`Excluir conversa com ${selectedLead.nome || selectedLead.wa_id}? Esta ação não pode ser desfeita.`)) return;
@@ -567,6 +574,15 @@ function CentralChatInner() {
                   </button>
                 </div>
               )}
+
+              <button
+                onClick={moverParaTopoKanban}
+                className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-indigo-600 hover:text-white text-gray-400 text-[9px] font-black uppercase tracking-widest rounded-xl transition-all whitespace-nowrap"
+                title="Mover para o topo do Kanban"
+              >
+                <Kanban size={13} />
+                <span className="hidden sm:inline">Topo</span>
+              </button>
 
               <button
                 onClick={excluirConversa}
