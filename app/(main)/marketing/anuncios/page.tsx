@@ -294,7 +294,7 @@ export default function AnunciosPage() {
             <div className="flex items-center gap-3 mb-1">
               <button
                 onClick={() => router.push("/marketing")}
-                className="text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-gray-700 transition-colors"
+                className="text-sm font-black uppercase tracking-widest text-gray-400 hover:text-gray-700 transition-colors"
               >
                 ← Marketing
               </button>
