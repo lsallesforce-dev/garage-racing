@@ -72,6 +72,38 @@ export async function POST(req: NextRequest) {
 
   console.log(`[meta/ads/criar] userId=${userId} adAccount=${pagina.ad_account_id} tokenPrefix=${userAccessToken.slice(0, 8)}...`);
 
+  // ── Pre-check: validar se o token tem Standard Access na Marketing API ──
+  // Se o app está em Basic Access, chamadas a /adimages, /campaigns etc.
+  // retornam erro #3 "Application does not have the capability".
+  // Melhor falhar rápido com mensagem clara do que no meio da criação.
+  try {
+    const checkRes = await fetch(
+      `https://graph.facebook.com/v21.0/${pagina.ad_account_id}?fields=name&access_token=${userAccessToken}`
+    );
+    const checkData = await checkRes.json();
+    if (checkData.error) {
+      const code = checkData.error.code;
+      const msg = checkData.error.message ?? "";
+
+      // Erro #3 = app sem Standard Access | Erro #190 = token expirado/inválido
+      if (code === 3 || msg.includes("does not have the capability")) {
+        return NextResponse.json({
+          error: "Seu app Meta não tem acesso Standard à Marketing API. Acesse developers.facebook.com → seu app → 'Criar e gerenciar anúncios com a API de Marketing' e solicite Standard Access antes de criar campanhas.",
+        }, { status: 403 });
+      }
+      if (code === 190) {
+        return NextResponse.json({
+          error: "Token Meta Ads expirado. Acesse Configurações → Integração Meta e clique em 'Conectar Meta Ads' para renovar.",
+        }, { status: 401 });
+      }
+      // Outro erro — loga e segue (pode ser transitório)
+      console.warn(`⚠️ [meta/ads/criar] Pre-check retornou erro ${code}: ${msg}`);
+    }
+  } catch (e: any) {
+    // Falha de rede no pre-check — loga mas não bloqueia
+    console.warn(`⚠️ [meta/ads/criar] Pre-check falhou:`, e.message?.slice(0, 200));
+  }
+
   try {
     const result = await criarCampanhaLeadAd({
       pageId:            pagina.page_id,
