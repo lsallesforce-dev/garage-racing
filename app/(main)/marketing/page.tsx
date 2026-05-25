@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useUserRole } from "@/components/SidebarWrapper";
-import { Megaphone, CheckCircle2, Clock, XCircle, AlertCircle, LayoutList } from "lucide-react";
+import { Megaphone, LayoutList } from "lucide-react";
 import PublicarMetaButton from "@/components/PublicarMetaButton";
 import PublicarPortaisModal from "@/components/PublicarPortaisModal";
 
@@ -45,215 +45,48 @@ function IconWebmotors({ className }: { className?: string }) {
   );
 }
 
-// ─── Badge de status OLX ─────────────────────────────────────────────────────
+// ─── Botão de portal genérico (com bolinha verde quando ativo) ───────────────
 
-function OlxStatusBadge({ veiculoId, olxAdId, statusInicial }: { veiculoId: string; olxAdId: string | null; statusInicial: string | null }) {
-  const [status, setStatus]   = useState<string | null>(statusInicial);
-  const [reason, setReason]   = useState<string | null>(null);
-  const [tooltip, setTooltip] = useState(false);
-
-  useEffect(() => {
-    if (!olxAdId) return;
-    fetch(`/api/olx/status?veiculoId=${veiculoId}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (!data) return;
-        setStatus(data.status);
-        setReason(data.reason ?? null);
-      })
-      .catch(() => {});
-  }, [veiculoId, olxAdId]);
-
-  if (!olxAdId) return null;
-
-  if (status === "active" || status === "publicado") {
-    return (
-      <span className="flex items-center gap-0.5 px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-[9px] font-black uppercase tracking-wider">
-        <CheckCircle2 size={9} /> Ativo
-      </span>
-    );
-  }
-
-  if (status === "pending" || status === "pendente") {
-    return (
-      <span className="flex items-center gap-0.5 px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded-full text-[9px] font-black uppercase tracking-wider">
-        <Clock size={9} /> Pendente
-      </span>
-    );
-  }
-
-  if (status === "rejected" || status === "rejeitado") {
-    return (
-      <div className="relative">
-        {tooltip && <div className="fixed inset-0 z-40" onClick={() => setTooltip(false)} />}
-        <button
-          onClick={() => setTooltip(v => !v)}
-          className="flex items-center gap-0.5 px-2 py-0.5 bg-red-100 text-red-600 rounded-full text-[9px] font-black uppercase tracking-wider"
-        >
-          <AlertCircle size={9} /> Rejeitado
-        </button>
-        {tooltip && reason && (
-          <div className="absolute bottom-full mb-1.5 left-0 w-52 bg-gray-900 text-white rounded-xl p-2.5 shadow-xl z-50 text-[10px] leading-snug">
-            {reason}
-            <div className="absolute top-full left-3 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900" />
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // Status desconhecido ou ainda carregando
-  return (
-    <span className="flex items-center gap-0.5 px-2 py-0.5 bg-gray-100 text-gray-400 rounded-full text-[9px] font-black uppercase tracking-wider">
-      <CheckCircle2 size={9} /> Publicado
-    </span>
-  );
-}
-
-// ─── Badge de campanha ativa ──────────────────────────────────────────────────
-
-function MetaBadge({ veiculoId }: { veiculoId: string }) {
-  const [campanhas, setCampanhas] = useState<any[] | null>(null);
-
-  useEffect(() => {
-    fetch(`/api/meta/ads?veiculoId=${veiculoId}`)
-      .then((r) => r.json())
-      .then(({ campanhas }) => setCampanhas(campanhas ?? []))
-      .catch(() => setCampanhas([]));
-  }, [veiculoId]);
-
-  const ativas = (campanhas ?? []).filter((c) => c.status === "ativo");
-
-  if (campanhas === null) return null;
-
-  if (ativas.length > 0) {
-    return (
-      <span className="flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-[9px] font-black uppercase tracking-wider">
-        <CheckCircle2 size={9} />
-        {ativas.length} ativa{ativas.length > 1 ? "s" : ""}
-      </span>
-    );
-  }
-
-  return null;
-}
-
-// ─── Botão Webmotors com tooltip inline ──────────────────────────────────────
-
-function WmButton({ wmConfigurado, publicado, onPublicar }: { wmConfigurado: boolean; publicado?: boolean; onPublicar?: () => void }) {
-  const [hint, setHint] = useState(false);
-
-  if (wmConfigurado) {
-    return (
-      <div className="flex flex-col items-center gap-1">
-        <button
-          onClick={onPublicar}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-50 border border-red-100 hover:bg-red-100 transition-colors"
-        >
-          <IconWebmotors className="w-4 h-4" />
-          <span className="text-[9px] font-black uppercase tracking-wider text-red-700">Webmotors</span>
-        </button>
-        <span className="flex items-center gap-0.5 px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-[9px] font-black uppercase tracking-wider">
-          <CheckCircle2 size={9} /> {publicado ? "Publicado" : "Ativo"}
-        </span>
-      </div>
-    );
-  }
-
-  return (
-    <>
-      {hint && (
-        <div className="fixed inset-0 z-40" onClick={() => setHint(false)} />
-      )}
-      <div className="flex flex-col items-center gap-1 relative">
-        <button
-          onClick={() => setHint((v) => !v)}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-50 hover:bg-red-100 border border-red-100 transition-colors opacity-60"
-        >
-          <IconWebmotors className="w-4 h-4" />
-          <span className="text-[9px] font-black uppercase tracking-wider text-red-700">Webmotors</span>
-        </button>
-        <span className="text-[8px] text-gray-300 font-bold uppercase tracking-wider">Configurar</span>
-
-        {hint && (
-          <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-52 bg-gray-900 text-white rounded-xl p-3 shadow-xl z-50 text-center">
-            <p className="text-[10px] font-bold leading-snug mb-2">
-              Configure as credenciais Webmotors em Configurações para ativar.
-            </p>
-            <a
-              href="/configuracoes"
-              className="inline-block px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-[9px] font-black uppercase rounded-lg transition-colors"
-            >
-              Ir para Configurações
-            </a>
-            <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900" />
-          </div>
-        )}
-      </div>
-    </>
-  );
-}
-
-// ─── Botão OLX ────────────────────────────────────────────────────────────────
-
-function OlxButton({ olxConectado, publicado, veiculoId, olxAdId, statusOlx, onPublicar }: {
-  olxConectado: boolean;
-  publicado?: boolean;
-  veiculoId: string;
-  olxAdId: string | null;
-  statusOlx: string | null;
-  onPublicar?: () => void;
+function PortalButton({ label, icon, active, disabled, hint, onClick }: {
+  label: string;
+  icon: React.ReactNode;
+  active: boolean;
+  disabled?: boolean;
+  hint?: string;
+  onClick?: () => void;
 }) {
-  const [hint, setHint] = useState(false);
+  const [showHint, setShowHint] = useState(false);
 
-  if (olxConectado) {
-    return (
-      <div className="flex flex-col items-center gap-1">
-        <button
-          onClick={onPublicar}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-purple-50 border border-purple-100 hover:bg-purple-100 transition-colors"
-        >
-          <IconOLX className="w-4 h-4" />
-          <span className="text-[9px] font-black uppercase tracking-wider text-purple-700">OLX</span>
-        </button>
-        {publicado
-          ? <OlxStatusBadge veiculoId={veiculoId} olxAdId={olxAdId} statusInicial={statusOlx} />
-          : <span className="flex items-center gap-0.5 px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-[9px] font-black uppercase tracking-wider">
-              <CheckCircle2 size={9} /> Conectado
-            </span>
-        }
-      </div>
-    );
-  }
+  const handleClick = () => {
+    if (disabled) return;
+    if (!active && hint) { setShowHint(v => !v); return; }
+    onClick?.();
+  };
 
   return (
     <>
-      {hint && (
-        <div className="fixed inset-0 z-40" onClick={() => setHint(false)} />
-      )}
-      <div className="flex flex-col items-center gap-1 relative">
+      {showHint && <div className="fixed inset-0 z-40" onClick={() => setShowHint(false)} />}
+      <div className="relative">
         <button
-          onClick={() => setHint((v) => !v)}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 border border-purple-100 transition-colors opacity-70"
+          onClick={handleClick}
+          className={`relative flex items-center gap-2 px-4 py-2.5 rounded-2xl border text-[11px] font-black uppercase tracking-wider transition-all ${
+            disabled
+              ? "bg-gray-50 border-gray-100 text-gray-300 cursor-not-allowed"
+              : active
+                ? "bg-white border-gray-200 text-gray-800 shadow-sm hover:shadow-md"
+                : "bg-gray-50 border-gray-100 text-gray-400 hover:bg-gray-100 cursor-pointer"
+          }`}
         >
-          <IconOLX className="w-4 h-4" />
-          <span className="text-[9px] font-black uppercase tracking-wider text-purple-700">OLX</span>
+          {icon}
+          {label}
+          {active && (
+            <span className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white shadow" />
+          )}
         </button>
-        <span className="text-[8px] text-gray-300 font-bold uppercase tracking-wider">Conectar</span>
 
-        {hint && (
+        {showHint && hint && (
           <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-52 bg-gray-900 text-white rounded-xl p-3 shadow-xl z-50 text-center">
-            <p className="text-[10px] font-bold leading-snug mb-2">
-              Conecte sua conta OLX para publicar anúncios automaticamente.
-            </p>
-            <a
-              href="/api/oauth/olx/authorize"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-block px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-[9px] font-black uppercase rounded-lg transition-colors"
-            >
-              Conectar OLX
-            </a>
+            <p className="text-[10px] font-bold leading-snug">{hint}</p>
             <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900" />
           </div>
         )}
@@ -262,7 +95,7 @@ function OlxButton({ olxConectado, publicado, veiculoId, olxAdId, statusOlx, onP
   );
 }
 
-// ─── Card de veículo ──────────────────────────────────────────────────────────
+// ─── Card de veículo (layout horizontal) ─────────────────────────────────────
 
 function VeiculoMarketingCard({ carro, wmConfigurado, olxConectado }: { carro: any; wmConfigurado: boolean; olxConectado: boolean }) {
   const [metaOpen, setMetaOpen]       = useState(false);
@@ -271,76 +104,71 @@ function VeiculoMarketingCard({ carro, wmConfigurado, olxConectado }: { carro: a
   const fotoUrl = carroLocal.capa_marketing_url ?? carroLocal.fotos?.[0] ?? null;
   const vendido = carroLocal.status_venda === "VENDIDO";
 
+  const olxPublicado = carroLocal.status_olx === "publicado" || carroLocal.status_olx === "pendente";
+  const wmPublicado  = carroLocal.status_webmotors === "publicado";
+
   return (
-    <div className={`bg-white rounded-[2rem] border border-gray-100 shadow-sm hover:shadow-lg transition-all ${vendido ? "opacity-60" : ""}`}>
-      {/* Foto + info */}
-      <div className="flex items-center gap-4 p-4 pb-3">
-        <div className="w-20 h-14 flex-shrink-0 bg-gray-100 rounded-xl overflow-hidden relative">
-          {fotoUrl ? (
-            <img src={fotoUrl} alt={carro.modelo} className="w-full h-full object-contain" />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center text-gray-300">
-              <Megaphone size={20} />
-            </div>
-          )}
-          {vendido && (
-            <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-              <span className="text-[7px] font-black uppercase tracking-widest text-white">Vendido</span>
-            </div>
-          )}
-        </div>
+    <div className={`bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all ${vendido ? "opacity-50" : ""}`}>
+      <div className="flex flex-col sm:flex-row sm:items-center gap-4 p-4">
 
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-black uppercase italic leading-tight text-gray-900 truncate">
-            {carro.marca} {carro.modelo}
-          </p>
-          <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mt-0.5 truncate">
-            {carro.versao || "—"} • {carro.ano_modelo ?? carro.ano ?? "—"}
-          </p>
-          <p className="text-[11px] font-black text-slate-900 mt-1">
-            {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(carro.preco_sugerido || 0)}
-          </p>
-        </div>
-      </div>
-
-      {/* Plataformas */}
-      <div className="px-4 pb-4 border-t border-gray-50 pt-3">
-        <p className="text-[8px] font-black uppercase tracking-widest text-gray-300 mb-2.5">Publicar em</p>
-
-        <div className="flex flex-wrap gap-2">
-          {/* Meta (Facebook + Instagram) */}
-          <div className="flex flex-col items-center gap-1">
-            <button
-              disabled={vendido || !fotoUrl}
-              onClick={() => setMetaOpen(true)}
-              title={!fotoUrl ? "Adicione uma foto ao veículo primeiro" : "Publicar no Facebook/Instagram"}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors border border-blue-100"
-            >
-              <IconFacebook className="w-3.5 h-3.5 text-blue-600" />
-              <IconInstagram className="w-3.5 h-3.5 text-pink-500" />
-              <span className="text-[9px] font-black uppercase tracking-wider text-blue-700">Meta Ads</span>
-            </button>
-            {!fotoUrl && !vendido
-              ? <span className="text-[8px] text-gray-300 font-bold uppercase tracking-wider">Sem foto</span>
-              : <MetaBadge veiculoId={carro.id} />
-            }
+        {/* ── Esquerda: foto + info ── */}
+        <div className="flex items-center gap-4 flex-1 min-w-0">
+          <div className="w-28 h-20 flex-shrink-0 bg-gray-100 rounded-xl overflow-hidden relative">
+            {fotoUrl ? (
+              <img src={fotoUrl} alt={carro.modelo} className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-gray-300">
+                <Megaphone size={22} />
+              </div>
+            )}
+            {vendido && (
+              <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                <span className="text-[8px] font-black uppercase tracking-widest text-white">Vendido</span>
+              </div>
+            )}
           </div>
 
-          {/* OLX */}
-          <OlxButton
-            olxConectado={olxConectado}
-            publicado={carroLocal.status_olx === "publicado" || carroLocal.status_olx === "rejeitado" || carroLocal.status_olx === "pendente"}
+          <div className="min-w-0">
+            <p className="text-base font-black uppercase italic leading-tight text-gray-900 truncate">
+              {carro.marca} {carro.modelo}
+            </p>
+            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mt-0.5 truncate">
+              {carro.versao || "—"} • {carro.ano_modelo ?? carro.ano ?? "—"}
+            </p>
+            <p className="text-sm font-black text-slate-900 mt-1.5">
+              {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(carro.preco_sugerido || 0)}
+            </p>
+          </div>
+        </div>
+
+        {/* ── Direita: botões de portal ── */}
+        <div className="flex items-center gap-2 flex-shrink-0 flex-wrap sm:flex-nowrap">
+          {/* Meta Ads */}
+          <MetaPortalButton
             veiculoId={carro.id}
-            olxAdId={carroLocal.olx_ad_id ?? null}
-            statusOlx={carroLocal.status_olx ?? null}
-            onPublicar={!vendido ? () => setPortaisOpen(true) : undefined}
+            disabled={vendido || !fotoUrl}
+            noPhoto={!fotoUrl && !vendido}
+            onClick={() => setMetaOpen(true)}
+          />
+
+          {/* OLX */}
+          <PortalButton
+            label="OLX"
+            icon={<IconOLX className="w-5 h-5" />}
+            active={olxConectado && olxPublicado}
+            disabled={vendido}
+            hint={!olxConectado ? "Conecte sua conta OLX em Configurações." : undefined}
+            onClick={olxConectado ? () => setPortaisOpen(true) : undefined}
           />
 
           {/* Webmotors */}
-          <WmButton
-            wmConfigurado={wmConfigurado}
-            publicado={carroLocal.status_webmotors === "publicado"}
-            onPublicar={!vendido ? () => setPortaisOpen(true) : undefined}
+          <PortalButton
+            label="Webmotors"
+            icon={<IconWebmotors className="w-5 h-5" />}
+            active={wmConfigurado && wmPublicado}
+            disabled={vendido}
+            hint={!wmConfigurado ? "Configure Webmotors em Configurações." : undefined}
+            onClick={wmConfigurado ? () => setPortaisOpen(true) : undefined}
           />
         </div>
       </div>
@@ -372,6 +200,39 @@ function VeiculoMarketingCard({ carro, wmConfigurado, olxConectado }: { carro: a
         />
       )}
     </div>
+  );
+}
+
+// ─── Botão Meta com estado de campanhas ativas ───────────────────────────────
+
+function MetaPortalButton({ veiculoId, disabled, noPhoto, onClick }: {
+  veiculoId: string; disabled?: boolean; noPhoto?: boolean; onClick: () => void;
+}) {
+  const [ativas, setAtivas] = useState(0);
+
+  useEffect(() => {
+    fetch(`/api/meta/ads?veiculoId=${veiculoId}`)
+      .then(r => r.json())
+      .then(({ campanhas }) => {
+        setAtivas((campanhas ?? []).filter((c: any) => c.status === "ativo").length);
+      })
+      .catch(() => {});
+  }, [veiculoId]);
+
+  return (
+    <PortalButton
+      label="Meta Ads"
+      icon={
+        <span className="flex items-center gap-0.5">
+          <IconFacebook className="w-4 h-4 text-blue-600" />
+          <IconInstagram className="w-4 h-4 text-pink-500" />
+        </span>
+      }
+      active={ativas > 0}
+      disabled={disabled}
+      hint={noPhoto ? "Adicione uma foto ao veículo primeiro." : undefined}
+      onClick={onClick}
+    />
   );
 }
 
@@ -486,7 +347,7 @@ function MarketingPageInner() {
             Nenhum veículo disponível no estoque.
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="flex flex-col gap-3">
             {carrosFiltrados.map((carro) => (
               <VeiculoMarketingCard key={carro.id} carro={carro} wmConfigurado={wmConfigurado} olxConectado={olxConectado} />
             ))}
