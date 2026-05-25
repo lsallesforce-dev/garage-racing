@@ -109,6 +109,7 @@ ${resumoNegociacao ? `Resumo da negociação: ${resumoNegociacao}` : ""}
 ${historicoFormatado}
 
 Escreva UMA mensagem direta para recuperar este lead. Estratégia:
+- ⚠️ REGRA CRÍTICA — CONVERSA ENCERRADA: Se as últimas mensagens mostram que o cliente ENCERROU a conversa (disse "obrigado", "valeu", "não preciso", "não vai dar", "desculpa", "tchau", despedida clara), NÃO mande follow-up. Retorne EXATAMENTE o texto: "SKIP_ENCERRADO" — nada mais.
 - Crie URGÊNCIA real e legítima (estoque limitado, o carro pode sair antes de amanhã, etc.)
 - Seja assertivo mas não desesperado
 - Se o carro foi vendido → apresente a alternativa como oportunidade única
@@ -116,6 +117,7 @@ Escreva UMA mensagem direta para recuperar este lead. Estratégia:
 - Máximo 2 linhas
 - PROIBIDO: "follow-up", "retomada", "checando", saudação no início
 - PROIBIDO: começar com o nome do cliente
+- PROIBIDO: terminar com "😉"
 - Máximo 1 emoji
 - Responda APENAS com o texto, sem aspas nem explicações
 `;
@@ -181,6 +183,7 @@ ${agenteFalouPorUltimo
 
 Escreva UMA mensagem curta de retomada baseada EXATAMENTE no que estava sendo discutido.
 Regras:
+- ⚠️ REGRA CRÍTICA — CONVERSA ENCERRADA: Se as últimas mensagens mostram que o cliente ENCERROU a conversa (disse "obrigado", "valeu", "não preciso", "não vai dar", "desculpa", "tchau", despedida clara), NÃO mande follow-up. Retorne EXATAMENTE o texto: "SKIP_ENCERRADO" — nada mais.
 - Se o cliente fez uma pergunta que ficou sem resposta → responda e pergunte se ainda tem interesse
 - Se o agente fez uma pergunta e o cliente não respondeu → retome perguntando se viu a mensagem
 - Se discutiram visita/agendamento → pergunte se quer confirmar o dia
@@ -191,7 +194,7 @@ Regras:
 - PROIBIDO: "follow-up", "retomada", "checando", "conferindo", "retorno"
 - PROIBIDO: começar com saudação (Bom dia/Boa tarde/Boa noite) — vá direto ao ponto
 - PROIBIDO: usar o nome do cliente mais de uma vez
-- Máximo 1 emoji
+- PROIBIDO: terminar com "😉" — use no máximo 1 emoji diferente, e só se natural
 - Responda APENAS com o texto da mensagem, sem aspas nem explicações
 `;
 
@@ -469,6 +472,18 @@ export async function GET(req: NextRequest) {
           ultimasMensagens: mensagensOrdenadas,
         });
         console.log(`🚨 [2° follow-up/final] ${lead.wa_id} (${lead.status}) — ciclo encerra após este`);
+      }
+
+      // ── 9b. Se Gemini detectou conversa encerrada, pula o envio ────────────
+      if (mensagem.includes("SKIP_ENCERRADO")) {
+        console.log(`⏭️ [follow-up] ${lead.wa_id} — conversa encerrada pelo cliente, pulando`);
+        // Encerra o ciclo de follow-up para esse lead
+        await supabaseAdmin
+          .from("leads")
+          .update({ followup_count: MAX_FOLLOWUPS })
+          .eq("id", lead.id);
+        enviados++;
+        continue;
       }
 
       // ── 10. Envia ───────────────────────────────────────────────────────────
