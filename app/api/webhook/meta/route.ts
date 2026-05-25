@@ -88,11 +88,14 @@ async function processLeadgenEvent(entry: any, pageAccessToken: string) {
   }
 
   // Busca config da garagem para alertar o gerente
-  const { data: garage } = await supabaseAdmin
+  // IMPORTANTE: config_garage pode ter múltiplas linhas por tenant — NÃO usar .single()
+  const { data: garageRows } = await supabaseAdmin
     .from("config_garage")
     .select("nome_fantasia, nome_empresa, whatsapp, meta_phone_id, meta_access_token, avisa_base_url, avisa_token")
     .eq("user_id", tenantUserId)
-    .single();
+    .order("created_at", { ascending: false })
+    .limit(1);
+  const garage = garageRows?.[0] ?? null;
 
   // Busca campanha para saber qual veículo
   const { data: campanha } = await supabaseAdmin
