@@ -1,23 +1,29 @@
 // app/api/cron/followup/route.ts
 //
 // Cron job de follow-up de leads — ciclo de 2 mensagens por lead, encerrado.
-// Roda 6x/dia via Vercel Cron (vercel.json): 11,13,15,17,19,21h UTC.
+// Roda 3x/dia via Vercel Cron (vercel.json): 11,15,19h UTC (08h, 12h, 16h BRT).
 // Gate de horário comercial (8h–18h BRT) bloqueia execuções fora do expediente.
 //
 // CICLO FIXO — máximo 2 follow-ups por lead (campo followup_count):
-//   · followup_count = 0 → 1° follow-up: aguarda 2h de silêncio do cliente
+//   · followup_count = 0 → 1° follow-up: aguarda 4h de silêncio do cliente
 //   · followup_count = 1 → 2° follow-up: aguarda 24h desde o 1° (ultimo_followup)
 //   · followup_count ≥ 2 → ciclo encerrado, lead não recebe mais follow-ups
 //
 // Se o cliente responder entre os follow-ups → followup_count é zerado pelo webhook.
 //
+// DETECÇÃO DE CONVERSA ENCERRADA (pré-Gemini):
+//   Antes de chamar o Gemini, analisa as últimas mensagens do CLIENTE.
+//   Se detectar sinais de despedida/rejeição/impossibilidade → pula o lead
+//   e encerra o ciclo (followup_count = MAX). Evita spam em leads mortos.
+//
 // Fluxo por lead:
 //   1. Lê as últimas 5 mensagens da conversa (contexto real)
-//   2. Verifica se o carro de interesse ainda está disponível
-//   3. Se vendido → busca alternativa compatível (modelo → categoria)
-//   4. Gemini gera mensagem personalizada baseada no histórico
-//   5. Envia via Avisa (Meta exige template aprovado para mensagens fora da sessão)
-//   6. Salva mensagem no histórico, incrementa followup_count e atualiza ultimo_followup
+//   2. Detecção pré-Gemini de conversa encerrada
+//   3. Verifica se o carro de interesse ainda está disponível
+//   4. Se vendido → busca alternativa compatível (modelo → categoria)
+//   5. Gemini gera mensagem personalizada baseada no histórico
+//   6. Envia via Avisa (Meta exige template aprovado para mensagens fora da sessão)
+//   7. Salva mensagem no histórico, incrementa followup_count e atualiza ultimo_followup
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
@@ -44,9 +50,55 @@ function isAuthorized(req: NextRequest): boolean {
 }
 
 // ─── Timing de follow-up (fixo para todos os status) ─────────────────────────
-const SILENCIO_PRIMEIRO_FOLLOWUP_HORAS = 2;   // 2h sem resposta → dispara o 1°
+const SILENCIO_PRIMEIRO_FOLLOWUP_HORAS = 4;   // 4h sem resposta → dispara o 1°
 const COOLDOWN_SEGUNDO_FOLLOWUP_HORAS  = 24;  // 24h após o 1° → dispara o 2° e encerra
 const MAX_FOLLOWUPS = 2;                       // ciclo máximo por lead
+
+// ─── Detecção pré-Gemini de conversa encerrada ──────────────────────────────
+// Analisa as últimas mensagens do CLIENTE (não do agente) e detecta sinais de
+// que a conversa acabou: despedida, recusa, impossibilidade, etc.
+// Se detectar → pula o lead sem gastar tokens do Gemini.
+const CONVERSA_ENCERRADA_PATTERNS = [
+  // Despedida explícita
+  /\b(?:tchau|adeus|até\s*(?:mais|logo|breve)|flw|falou|valeu)\b/i,
+  // Agradecimento final (sem pergunta = encerrou)
+  /^(?:obrigad[oa]|muito\s+obrigad[oa]|agradeço|grato)\b/i,
+  // Já comprou / resolveu
+  /\b(?:j[áa]\s+compr[ei]|j[áa]\s+(?:fechei|resolvi|achei)|comprei\s+(?:outro|um))\b/i,
+  // Outra cidade / longe
+  /\b(?:outra?\s+cidade|n[ãa]o\s+(?:[eé]\s+)?(?:daqui|da\s+minha|perto)|longe\s+demais|pensei\s+que\s+(?:era|fosse)\s+(?:aqui|daqui))\b/i,
+  // Não vai dar / não tenho interesse
+  /\b(?:n[ãa]o\s+vai?\s+(?:dar|adiantar|rolar)|desist[io]|n[ãa]o\s+(?:tenho|quero)\s+(?:mais\s+)?interesse|n[ãa]o\s+(?:vou|posso)\s+(?:poder\s+)?comprar)\b/i,
+  // Velório / luto
+  /\b(?:vel[oó]rio|faleceu|falecimento|enterro|luto)\b/i,
+];
+
+function conversaEncerradaPeloCliente(
+  mensagens: Array<{ remetente: string; content: string }>
+): string | null {
+  // Pega as últimas 3 mensagens do CLIENTE (ignora agente)
+  const clienteMsgs = mensagens
+    .filter(m => m.remetente === "usuario")
+    .slice(-3);
+
+  for (const msg of clienteMsgs) {
+    // Remove contexto de anúncio para não ter falso positivo
+    const texto = msg.content
+      .replace(/\[Lead veio do anúncio:.*?\]/gs, "")
+      .replace(/\[Contexto do link:.*?\]/gs, "")
+      .trim();
+
+    if (!texto) continue;
+
+    for (const pattern of CONVERSA_ENCERRADA_PATTERNS) {
+      if (pattern.test(texto)) {
+        return texto.slice(0, 80);
+      }
+    }
+  }
+
+  return null;
+}
 
 // ─── Cohort A — Mensagem de primeiro contato sem resposta ─────────────────────
 async function gerarMensagemPrimeiroContato(params: {
@@ -64,14 +116,15 @@ Regras:
 - Tom leve, sem pressão, sem urgência artificial
 - PROIBIDO: "follow-up", "retomada", "checando", saudações (Bom dia/tarde/noite)
 - PROIBIDO: começar com o nome do cliente
-- Máximo 1 emoji
+- NÃO use emoji nenhum
+- PROIBIDO: "Fico à disposição", "Que ótimo", "Que legal", "Que bom", "Pronto para te ajudar"
 - Responda APENAS com o texto da mensagem, sem aspas nem explicações`;
 
   try {
     const result = await geminiFlashSales.generateContent(prompt);
-    return result.response.text().trim().replace(/^["']|["']$/g, "").trim();
+    return result.response.text().trim().replace(/^["']|["']$/g, "").replace(/[😉😊😔🤔👋🚗💨✨🔥📸📞👍🤗]/g, "").trim();
   } catch {
-    return `Vi que você tem interesse no ${carro}${preco ? ` por ${preco}` : ""}. Ficou alguma dúvida? 😊`;
+    return `Vi que você tem interesse no ${carro}${preco ? ` por ${preco}` : ""}. Ficou alguma dúvida?`;
   }
 }
 
@@ -117,19 +170,20 @@ Escreva UMA mensagem direta para recuperar este lead. Estratégia:
 - Máximo 2 linhas
 - PROIBIDO: "follow-up", "retomada", "checando", saudação no início
 - PROIBIDO: começar com o nome do cliente
-- PROIBIDO: terminar com "😉"
-- Máximo 1 emoji
+- NÃO use emoji nenhum
+- PROIBIDO: "Fico à disposição", "Que ótimo", "Que legal", "Que bom", "Pronto para te ajudar"
+- PROIBIDO: "Viu minha mensagem", "Conseguiu ver minha mensagem" — varie a abordagem
 - Responda APENAS com o texto, sem aspas nem explicações
 `;
 
   try {
     const result = await geminiFlashSales.generateContent(prompt);
-    return result.response.text().trim().replace(/^["']|["']$/g, "").trim();
+    return result.response.text().trim().replace(/^["']|["']$/g, "").replace(/[😉😊😔🤔👋🚗💨✨🔥📸📞👍🤗]/g, "").trim();
   } catch {
     if (!disponivel && alternativa) {
-      return `O ${carro} foi vendido, mas encontrei algo parecido: ${alternativa}. Posso te mostrar? 🔥`;
+      return `O ${carro} foi vendido, mas encontrei algo parecido: ${alternativa}. Posso te mostrar?`;
     }
-    return `${nomeLead ? `${nomeLead}, ` : ""}o ${carro} ainda está aqui mas a procura tá alta — se quiser garantir, me chama agora 🔥`;
+    return `${nomeLead ? `${nomeLead}, ` : ""}o ${carro} ainda está aqui mas a procura tá alta — se quiser garantir, me chama agora.`;
   }
 }
 
@@ -194,22 +248,24 @@ Regras:
 - PROIBIDO: "follow-up", "retomada", "checando", "conferindo", "retorno"
 - PROIBIDO: começar com saudação (Bom dia/Boa tarde/Boa noite) — vá direto ao ponto
 - PROIBIDO: usar o nome do cliente mais de uma vez
-- PROIBIDO: terminar com "😉" — use no máximo 1 emoji diferente, e só se natural
+- NÃO use emoji nenhum
+- PROIBIDO: "Fico à disposição", "Que ótimo", "Que legal", "Que bom", "Pronto para te ajudar"
+- PROIBIDO: "Viu minha mensagem", "Conseguiu ver minha mensagem" — varie a abordagem
 - Responda APENAS com o texto da mensagem, sem aspas nem explicações
 `;
 
   try {
     const result = await geminiFlashSales.generateContent(prompt);
-    return result.response.text().trim().replace(/^["']|["']$/g, "").trim();
+    return result.response.text().trim().replace(/^["']|["']$/g, "").replace(/[😉😊😔🤔👋🚗💨✨🔥📸📞👍🤗]/g, "").trim();
   } catch (e) {
     console.warn("⚠️ Gemini falhou no follow-up, usando fallback:", String(e).slice(0, 200));
     if (!disponivel && alternativa) {
-      return `${nomeLead ? `Oi ${nomeLead}! ` : "Oi! "}Temos uma novidade que pode te interessar: ${alternativa}. Quer saber mais?`;
+      return `${nomeLead ? `${nomeLead}, ` : ""}temos uma novidade que pode te interessar: ${alternativa}. Quer saber mais?`;
     }
     if (agenteFalouPorUltimo) {
-      return `${nomeLead ? `${nomeLead}, ` : ""}conseguiu ver minha última mensagem? O ${carro} ainda está aqui${preco ? ` por ${preco}` : ""} 😉`;
+      return `${nomeLead ? `${nomeLead}, ` : ""}o ${carro} ainda está aqui${preco ? ` por ${preco}` : ""}. Alguma dúvida?`;
     }
-    return `${nomeLead ? `Oi ${nomeLead}! ` : "Oi! "}O ${carro} ainda está disponível${preco ? ` por ${preco}` : ""}. Ficou com alguma dúvida?`;
+    return `${nomeLead ? `${nomeLead}, ` : ""}o ${carro} ainda está disponível${preco ? ` por ${preco}` : ""}. Posso te ajudar?`;
   }
 }
 
@@ -352,6 +408,20 @@ export async function GET(req: NextRequest) {
       // Lead sem histórico real e sem carro → skip
       if (totalMensagens < 2 && !lead.veiculo_id) {
         ignorar("sem_contexto"); continue;
+      }
+
+      // ── 6. Detecção pré-Gemini de conversa encerrada ────────────────────────
+      // Analisa últimas msgs do CLIENTE antes de gastar tokens do Gemini.
+      // Se detectar despedida/rejeição/impossibilidade → encerra o ciclo.
+      const motivoEncerramento = conversaEncerradaPeloCliente(mensagensOrdenadas);
+      if (motivoEncerramento) {
+        console.log(`⏭️ [pré-Gemini] ${lead.wa_id} — conversa encerrada detectada: "${motivoEncerramento}"`);
+        await supabaseAdmin
+          .from("leads")
+          .update({ followup_count: MAX_FOLLOWUPS })
+          .eq("id", lead.id);
+        ignorar("conversa_encerrada");
+        continue;
       }
 
       // ── 7. Config do tenant ─────────────────────────────────────────────────
