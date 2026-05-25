@@ -64,7 +64,7 @@ const CONVERSA_ENCERRADA_PATTERNS = [
   // Agradecimento final (sem pergunta = encerrou)
   /^(?:obrigad[oa]|muito\s+obrigad[oa]|agradeço|grato)\b/i,
   // Já comprou / resolveu
-  /\b(?:j[áa]\s+compr[ei]|j[áa]\s+(?:fechei|resolvi|achei)|comprei\s+(?:outro|um))\b/i,
+  /\b(?:j[áa]\s+compr[ei]|j[áa]\s+(?:fechei|resolvi|achei|troquei|peguei)|comprei\s+(?:outro|um))\b/i,
   // Outra cidade / longe
   /\b(?:outra?\s+cidade|n[ãa]o\s+(?:[eé]\s+)?(?:daqui|da\s+minha|perto)|longe\s+demais|pensei\s+que\s+(?:era|fosse)\s+(?:aqui|daqui))\b/i,
   // Não vai dar / não tenho interesse
@@ -122,7 +122,7 @@ Regras:
 
   try {
     const result = await geminiFlashSales.generateContent(prompt);
-    return result.response.text().trim().replace(/^["']|["']$/g, "").replace(/[😉😊😔🤔👋🚗💨✨🔥📸📞👍🤗]/g, "").trim();
+    return result.response.text().trim().replace(/^["']|["']$/g, "").replace(/\p{Extended_Pictographic}/gu, "").trim();
   } catch {
     return `Vi que você tem interesse no ${carro}${preco ? ` por ${preco}` : ""}. Ficou alguma dúvida?`;
   }
@@ -178,7 +178,7 @@ Escreva UMA mensagem direta para recuperar este lead. Estratégia:
 
   try {
     const result = await geminiFlashSales.generateContent(prompt);
-    return result.response.text().trim().replace(/^["']|["']$/g, "").replace(/[😉😊😔🤔👋🚗💨✨🔥📸📞👍🤗]/g, "").trim();
+    return result.response.text().trim().replace(/^["']|["']$/g, "").replace(/\p{Extended_Pictographic}/gu, "").trim();
   } catch {
     if (!disponivel && alternativa) {
       return `O ${carro} foi vendido, mas encontrei algo parecido: ${alternativa}. Posso te mostrar?`;
@@ -256,7 +256,7 @@ Regras:
 
   try {
     const result = await geminiFlashSales.generateContent(prompt);
-    return result.response.text().trim().replace(/^["']|["']$/g, "").replace(/[😉😊😔🤔👋🚗💨✨🔥📸📞👍🤗]/g, "").trim();
+    return result.response.text().trim().replace(/^["']|["']$/g, "").replace(/\p{Extended_Pictographic}/gu, "").trim();
   } catch (e) {
     console.warn("⚠️ Gemini falhou no follow-up, usando fallback:", String(e).slice(0, 200));
     if (!disponivel && alternativa) {
