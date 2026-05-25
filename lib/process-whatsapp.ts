@@ -779,6 +779,18 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
       ? sendAvisaMessage(to, text, avisaCreds, { typing: false })
       : sendMetaMessage(to, text, metaCreds);
 
+  // sendAlertComLink: alerta ao gerente com botão "Abrir Conversa" (wa.me link clicável)
+  // Meta → CTA button com fallback texto; Avisa → texto com link
+  const sendAlertComLink = async (gerenteTo: string, body: string, clientePhone: string) => {
+    const clienteClean = clientePhone.replace(/\D/g, "");
+    const waLink = `https://wa.me/${clienteClean}`;
+    if (!useAvisa && metaCreds.phoneNumberId && metaCreds.accessToken) {
+      return sendMetaCtaButton(gerenteTo, body, "Abrir Conversa", waLink, metaCreds)
+        .catch(() => sendAlert(gerenteTo, `${body}\n\n🔗 ${waLink}`).catch(() => {}));
+    }
+    return sendAlert(gerenteTo, `${body}\n\n🔗 ${waLink}`).catch(() => {});
+  };
+
   const sendImage = (to: string, url: string, caption?: string) =>
     useAvisa
       ? sendAvisaImage(to, url, caption, avisaCreds)
@@ -1527,13 +1539,14 @@ Responda apenas com o JSON, sem markdown.`;
     const instrucao = "Cliente não conseguiu identificar o veículo de interesse após 2 trocas de mensagem. Por favor, assuma o atendimento.";
     await supabaseAdmin.from("leads").update({ instrucao_pendente: instrucao }).eq("id", lead.id);
     const nomeLead = lead.nome || phone;
-    await sendAlert(
+    await sendAlertComLink(
       gerentePhone,
       `❓ *AGENTE PRECISA DE INSTRUÇÃO*\n\n` +
       `👤 Cliente: ${nomeLead}\n` +
       `📱 Número: +${phone}\n\n` +
       `💬 Dúvida: ${instrucao}\n\n` +
-      `👉 Responda a esta mensagem com a instrução para o agente continuar.`
+      `👉 Responda a esta mensagem com a instrução para o agente continuar.`,
+      phone
     ).catch((err: any) => console.error("❌ Alerta carro-não-identificado não entregue:", err?.message));
     console.log(`❓ [Alerta gerente] carro não identificado para lead ${lead.id} após ${historico.length} msgs`);
   }
@@ -1557,15 +1570,8 @@ Responda apenas com o JSON, sem markdown.`;
       .eq("id", lead.id);
 
     if (gerentePhone) {
-      const clientePhone = phone.replace(/\D/g, "");
-      const posvBody = `🔴 *ALERTA PÓS-VENDA!*\n\n👤 ${lead.nome || phone}\n💬 "${userMessage.slice(0, 100)}"\n⚠️ Agente em stand-by automaticamente.`;
-      const posvLink = `https://wa.me/${clientePhone}`;
-      if (!useAvisa && metaCreds.phoneNumberId && metaCreds.accessToken) {
-        await sendMetaCtaButton(gerentePhone, posvBody, "Abrir Conversa", posvLink, metaCreds)
-          .catch(() => sendAlert(gerentePhone, `${posvBody}\n\n${posvLink}`).catch(() => {}));
-      } else {
-        await sendAlert(gerentePhone, `${posvBody}\n\n${posvLink}`).catch(() => {});
-      }
+      const posvBody = `🔴 *ALERTA PÓS-VENDA!*\n\n👤 ${lead.nome || phone}\n📱 Número: +${phone}\n💬 "${userMessage.slice(0, 100)}"\n⚠️ Agente em stand-by automaticamente.`;
+      await sendAlertComLink(gerentePhone, posvBody, phone).catch(() => {});
     }
   }
 
@@ -1591,8 +1597,8 @@ Responda apenas com o JSON, sem markdown.`;
 
     // Alerta gerente
     if (gerentePhone) {
-      const alertBody = `📋 *CONVERSA ENCERRADA*\n\n👤 ${lead.nome || phone}\n💬 "${textoClientePosvenda.slice(0, 100)}"\n⚠️ Cliente informou que já resolveu. Agente em stand-by.`;
-      await sendAlert(gerentePhone, alertBody).catch(() => {});
+      const alertBody = `📋 *CONVERSA ENCERRADA*\n\n👤 ${lead.nome || phone}\n📱 Número: +${phone}\n💬 "${textoClientePosvenda.slice(0, 100)}"\n⚠️ Cliente informou que já resolveu. Agente em stand-by.`;
+      await sendAlertComLink(gerentePhone, alertBody, phone).catch(() => {});
     }
 
     return new Response("ok — conversa encerrada pelo cliente", { status: 200 });
@@ -1910,6 +1916,7 @@ Responda apenas com o JSON, sem markdown.`;
   let aiResponse = "";
   let resumo = "";
   let temperatura: Temperatura = "FRIO";
+  let alertaGerenteJaEnviado = false; // dedup: evita alerta duplicado (Gemini + keyword)
 
   // Determina saudação correta com base na hora de Brasília (timezone explícito — robusto em qualquer runtime)
   const horaBrasilia = parseInt(new Date().toLocaleString("pt-BR", { hour: "numeric", hour12: false, timeZone: "America/Sao_Paulo" }), 10);
@@ -2067,14 +2074,17 @@ Responda apenas com o JSON, sem markdown.`;
             const veiculoAlert = veiculoFoco
               ? `${veiculoFoco.marca} ${veiculoFoco.modelo}`
               : "veículo em negociação";
-            await sendAlert(
+            await sendAlertComLink(
               gerentePhone,
               `❓ *AGENTE PRECISA DE INSTRUÇÃO*\n\n` +
               `👤 Cliente: ${nomeLead}\n` +
+              `📱 Número: +${phone}\n` +
               `🚗 Veículo: ${veiculoAlert}\n\n` +
               `💬 Dúvida: ${precisaInstrucao}\n\n` +
-              `👉 Responda a esta mensagem com a instrução para o agente continuar.`
+              `👉 Responda a esta mensagem com a instrução para o agente continuar.`,
+              phone
             ).catch((err: any) => console.error("❌ precisa_instrucao não entregue ao gerente:", err?.message?.slice(0, 300)));
+            alertaGerenteJaEnviado = true;
           }
         }
 
@@ -2159,13 +2169,15 @@ Responda apenas com o JSON, sem markdown.`;
 
             if (gerentePhone) {
               const nomeLead = nomeCliente || phone;
-              await sendAlert(
+              await sendAlertComLink(
                 gerentePhone,
                 `🚨 *AGENTE QUASE MENTIU SOBRE ESTOQUE*\n\n` +
                 `👤 Cliente: ${nomeLead}\n` +
+                `📱 Número: +${phone}\n` +
                 `🚗 Veículo: ${carroLabel} (DISPONÍVEL no estoque)\n\n` +
                 `O agente tentou dizer "não temos" mas o sistema interceptou.\n` +
                 `👉 Confirme com o cliente a disponibilidade e dê o próximo passo.`,
+                phone
               ).catch((err: any) => console.error("❌ Alerta de guarda anti-mentira não entregue:", err?.message?.slice(0, 300)));
             }
           }
@@ -2420,12 +2432,13 @@ Retorne JSON estrito:
     await setTrocaStandby(tenantUserId, lead.id);
     await supabaseAdmin.from("leads").update({ em_atendimento_humano: true }).eq("id", lead.id);
     const gerenteWa = garageConfig?.whatsapp ?? null;
-    if (gerenteWa) {
+    if (gerenteWa && !alertaGerenteJaEnviado) {
       const normWa = (n: string) => { const d = n.replace(/\D/g, ""); return d.startsWith("55") ? d : `55${d}`; };
       const nomeLead = (lead as any).nome || `Lead ${phone.slice(-4)}`;
       const veiculoLabel = veiculoPrincipal ? `\n🚗 Interesse: ${veiculoPrincipal.marca} ${veiculoPrincipal.modelo}` : "";
-      await sendAlert(normWa(gerenteWa),
-        `🔄 *Troca de Veículo*\n\n👤 Cliente: ${nomeLead}\n📱 ${phone}${veiculoLabel}\n\n💬 "${rawMessage.slice(0, 200)}"\n\n👉 Assuma a conversa para negociar a troca.`
+      await sendAlertComLink(normWa(gerenteWa),
+        `🔄 *Troca de Veículo*\n\n👤 Cliente: ${nomeLead}\n📱 Número: +${phone}${veiculoLabel}\n\n💬 "${rawMessage.slice(0, 200)}"\n\n👉 Assuma a conversa para negociar a troca.`,
+        phone
       ).catch(() => {});
     }
     console.log(`🔄 [Troca] Stand-by ativado para lead ${lead.id} — gerente notificado`);
@@ -2439,12 +2452,13 @@ Retorne JSON estrito:
   if (lead?.id && !lead.em_atendimento_humano && FINANCIAMENTO_KEYWORDS.test(mensagemClientePura)) {
     await supabaseAdmin.from("leads").update({ em_atendimento_humano: true }).eq("id", lead.id);
     const gerenteWaFin = garageConfig?.whatsapp ?? null;
-    if (gerenteWaFin) {
+    if (gerenteWaFin && !alertaGerenteJaEnviado) {
       const normWa = (n: string) => { const d = n.replace(/\D/g, ""); return d.startsWith("55") ? d : `55${d}`; };
       const nomeLeadFin = (lead as any).nome || `Lead ${phone.slice(-4)}`;
       const veiculoLabelFin = veiculoPrincipal ? `\n🚗 Interesse: ${veiculoPrincipal.marca} ${veiculoPrincipal.modelo}` : "";
-      await sendAlert(normWa(gerenteWaFin),
-        `💳 *Financiamento*\n\n👤 Cliente: ${nomeLeadFin}\n📱 ${phone}${veiculoLabelFin}\n\n💬 "${rawMessage.slice(0, 200)}"\n\n👉 Assuma a conversa para negociar o financiamento.`
+      await sendAlertComLink(normWa(gerenteWaFin),
+        `💳 *Financiamento*\n\n👤 Cliente: ${nomeLeadFin}\n📱 Número: +${phone}${veiculoLabelFin}\n\n💬 "${rawMessage.slice(0, 200)}"\n\n👉 Assuma a conversa para negociar o financiamento.`,
+        phone
       ).catch(() => {});
     }
     console.log(`💳 [Financiamento] Stand-by ativado para lead ${lead.id} — gerente notificado`);
