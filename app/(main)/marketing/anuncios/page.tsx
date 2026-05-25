@@ -294,9 +294,10 @@ export default function AnunciosPage() {
             <div className="flex items-center gap-3 mb-1">
               <button
                 onClick={() => router.push("/marketing")}
-                className="text-sm font-black uppercase tracking-widest text-gray-400 hover:text-gray-700 transition-colors"
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white border border-gray-200 text-sm font-bold text-gray-500 hover:text-gray-900 hover:border-gray-300 shadow-sm hover:shadow transition-all"
               >
-                ← Marketing
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>
+                Marketing
               </button>
             </div>
             <h1 className="text-4xl md:text-6xl font-black italic uppercase text-gray-300 leading-none tracking-tighter">
