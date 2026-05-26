@@ -249,6 +249,8 @@ ${tomBlock}
 [ROTEIRO DE ATENDIMENTO E GATILHOS]
 Siga estritamente este comportamento para as seguintes situações:
 
+0. ⛔ RESPONDER TUDO QUE FOI PERGUNTADO (REGRA ABSOLUTA): Se o cliente fez VÁRIAS perguntas na mesma mensagem (ex: "Consegue me enviar fotos, km e valor"), você DEVE responder TODAS elas em UMA SÓ resposta. NUNCA ignore parte da pergunta para fazer outra pergunta sua (ex: pedir o nome dele). Ordem correta: 1º responda o que foi perguntado, 2º se ainda não souber o nome, peça no FINAL da mesma mensagem. PROIBIDO desviar do que o cliente pediu para coletar o nome antes — isso é falha grave que faz o cliente repetir o pedido várias vezes.
+
 1. SAUDAÇÃO INICIAL: Se for a primeira mensagem da conversa (histórico vazio ou só a mensagem atual), siga esta regra:
    a) Se a mensagem contiver "[Contexto do link:" ou "[Lead veio do anúncio:", mencione o veículo do anúncio na saudação. Exemplo: "${p.saudacaoHoraria}, me chamo ${p.nomeAgente}, da equipe da ${p.nomeEmpresa}! Vi que você tem interesse no [MODELO DO CARRO] — com quem eu falo?"
    b) Se a mensagem contiver uma PERGUNTA DIRETA junto com a saudação (ex: "oi, qual o preço?", "olá, tem Creta?", "bom dia, ainda disponível?"), faça a saudação e JÁ responda a pergunta na mesma mensagem. Termine sempre com "com quem eu falo?" para capturar o nome. Exemplo: "${p.saudacaoHoraria}, me chamo ${p.nomeAgente}, da ${p.nomeEmpresa}! O [CARRO] está por R$ X. Com quem eu falo?"
@@ -1634,17 +1636,26 @@ Responda apenas com o JSON, sem markdown.`;
   }
 
   // ── 11. Enviar Foto ─────────────────────────────────────────────────────────
-  // Exige intenção explícita ("manda", "tem", "envia"...) antes de "foto/imagem"
-  // para evitar falsos positivos em comentários como "Gostei dessa foto" ou "Essa foto parece arranhada"
+  // Detecção robusta de pedido de foto:
+  // 1. Verbo de intenção (radicais cobrem conjugações: manda/mandar/mandou, envia/enviar/enviou…)
+  // 2. + palavra foto/fotos/imagem/imagens
+  // 3. NÃO casa exclusões (comentários sobre foto já vista, pedido de documento, etc.)
+  //
+  // Bug anterior: regex usava `\b(envia)\b` que falha em "enviar fotos" porque a→r
+  // não tem word boundary. Cliente pedia "Consegue me enviar fotos" 4× e o sistema
+  // ignorava. Agora aceita radicais com sufixo opcional (`envi[aoui]r?`).
   const temIntencaoFoto =
-    /\b(manda|envia|me manda|me envia|me passa|tem|posso ver|quero ver|pode mandar|pode enviar|ver as|cad[eê]|onde est[aá]|me mostra)\b/
+    /\b(mand[aoui]r?|envi[aoui]r?|pass[aoui]r?|most[rt][aoui]r?|consegu[ei]|consigo|pod[ei]r?[ia]?|poderia|posso|prec[ei]s[aoi]|quer[oei]a?|queri[ae]|gostari[ae]|t[êe]m?|tem como|d[áa]\s+pra|d[áa]\s+para|posso ver|quero ver|ver as|cad[eê]|onde\s+est[aá]|me\s+v[eê])\b/i
       .test(mensagemLower) &&
-    /\b(foto|fotos|imagem|imagens)\b/.test(mensagemLower);
+    /\b(foto|fotos|imagem|imagens)\b/i.test(mensagemLower);
   const mensagemSoFoto = /^(foto|fotos|imagem|imagens)[.!?]?$/.test(mensagemLower.trim());
   const gatilhosFoto = [
     "manda foto", "tem foto", "tem imagem",
     "manda a foto", "manda as foto", "me manda a foto", "me envia a foto", "envia a foto",
     "envia as foto", "me passa a foto", "me passa as foto",
+    "mandar foto", "mandar fotos", "enviar foto", "enviar fotos",
+    "preciso de foto", "preciso de fotos", "queria foto", "queria fotos",
+    "gostaria de foto", "gostaria de fotos",
   ];
   // "quero ver" e "ver o carro" removidos — são frases de visita presencial, não pedido de foto
   const exclusoesFoto = [
@@ -1653,6 +1664,8 @@ Responda apenas com o JSON, sem markdown.`;
     "pessoalmente", "na loja", "em pessoa", "ir lá", "vou lá", "visitar",
     // comentários sobre foto já vista — não é pedido de envio
     "gostei", "essa foto", "nessa foto", "aquela foto", "essa imagem", "pelo foto",
+    // tirar foto na loja (cliente perguntando se PODE tirar uma foto)
+    "tirar foto", "tirar uma foto", "tirei foto",
   ];
 
   // ── 11b. Enviar Vídeo ───────────────────────────────────────────────────────
