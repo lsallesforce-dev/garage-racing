@@ -1123,12 +1123,29 @@ Responda apenas com o JSON, sem markdown.`;
 
   // ── Lock por lead — impede processamento concorrente em múltiplas instâncias ──
   // Adquire APÓS o upsert do lead (precisamos do lead.id) e ANTES de qualquer lógica pesada.
-  // Se outro worker já está processando este lead, descarta silenciosamente.
+  //
+  // Antes descartávamos a mensagem se o lock estivesse ocupado — bug grave: cliente
+  // mandava 2-3 msgs em sequência e só a primeira era processada, as outras
+  // sumiam pra sempre. Agora fazemos wait-and-retry com fail-open final: se após
+  // 60s o lock ainda estiver preso, processa mesmo sem lock (mensagem do cliente
+  // é mais importante que evitar uma duplicação rara de resposta).
   if (lead?.id) {
-    const locked = await acquireLeadLock(tenantUserId, lead.id);
+    let locked = await acquireLeadLock(tenantUserId, lead.id);
     if (!locked) {
-      console.log(`🔒 [Lock] Lead ${lead.id} já em processamento — mensagem descartada`);
-      return;
+      console.log(`⏳ [Lock] Lead ${lead.id} ocupado — aguardando liberar...`);
+      // 12 tentativas × 5s = 60s total de espera
+      for (let attempt = 1; attempt <= 12 && !locked; attempt++) {
+        await new Promise(r => setTimeout(r, 5000));
+        locked = await acquireLeadLock(tenantUserId, lead.id);
+        if (locked) {
+          console.log(`✅ [Lock] Lead ${lead.id} liberado na tentativa ${attempt}`);
+          break;
+        }
+      }
+      if (!locked) {
+        console.warn(`⚠️ [Lock] Lead ${lead.id} preso após 60s — processando SEM lock (fail-open, risco mínimo de duplicação)`);
+        // continua o processamento mesmo assim — não perder a mensagem do cliente
+      }
     }
   }
 
@@ -1632,6 +1649,7 @@ Responda apenas com o JSON, sem markdown.`;
       await sendAlertComLink(gerentePhone, alertBody, phone).catch(() => {});
     }
 
+    if (lead?.id) await releaseLeadLock(tenantUserId, lead.id).catch(() => {});
     return new Response("ok — conversa encerrada pelo cliente", { status: 200 });
   }
 
