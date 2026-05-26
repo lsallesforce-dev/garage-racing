@@ -3,10 +3,10 @@
 // Cron temporário — "esquenta" a Ads API para atingir 500 chamadas com <15% erro.
 // Requisito da Meta para aprovar Marketing API Standard Access Tier.
 //
-// Faz ~50 GETs variados por execução × 4x/dia = ~200/dia → 500 em ~3 dias.
+// Faz ~50 GETs variados por execução × 6x/dia = ~300/dia → 500 em ~1,5 dia.
 // REMOVER este cron depois de aprovado.
 //
-// Schedule: 0 6,12,18,23 * * *  (06h, 12h, 18h, 23h UTC)
+// Schedule: 0 2,6,10,14,18,22 * * *  (intervalos de 4h em UTC — parece uso natural)
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";

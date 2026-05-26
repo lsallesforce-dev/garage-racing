@@ -18,7 +18,7 @@
     },
     {
       "path": "/api/cron/meta-warmup",
-      "schedule": "0 6,12,18,23 * * *"
+      "schedule": "0 2,6,10,14,18,22 * * *"
     }
   ]
 }
