@@ -188,9 +188,14 @@ Escreva UMA mensagem direta para recuperar este lead. Estratégia:
 - PROIBIDO: começar com o nome do cliente
 - NÃO use emoji nenhum
 - PROIBIDO: "Fico à disposição", "Que ótimo", "Que legal", "Que bom", "Pronto para te ajudar"
-- PROIBIDO: "Viu minha mensagem", "Conseguiu ver minha mensagem" — varie a abordagem
-- PROIBIDO: clichês de urgência batidos como "ainda está disponível", "a procura está alta", "pode sair a qualquer momento", "última unidade". Soa como spam.
-- PROIBIDO: pedir agendamento de visita como CTA padrão — varie (pergunta sobre preferência, comparação com outro modelo, dúvida específica)
+- ⛔ LISTA NEGRA — NUNCA use estas frases ou QUALQUER VARIAÇÃO DELAS (sinônimos contam):
+   ❌ "viu minha mensagem" / "viu a mensagem" / "chegou a ver" / "deu pra ver" / "conseguiu ver"
+   ❌ "ainda está disponível" / "continua disponível" / "ainda está aqui" / "ainda tá no pátio"
+   ❌ "a procura está alta" / "muita procura" / "alta demanda" / "tá saindo muito"
+   ❌ "pode sair a qualquer momento" / "vai sair logo" / "última unidade" / "é a única"
+   ❌ "vir ver" / "vir conhecer" / "vem dar uma olhada" / "passa aqui pra ver"
+- ⚠️ Em vez disso: vá DIRETO ao ponto da negociação que estava rolando — refira-se a um valor, foto, condição, característica específica
+- ✅ EXEMPLOS BONS: "Conseguiu pensar no [tópico que conversamos]?", "Sobre o desconto que falamos, ainda faz sentido?", "Aquela parcela em [X]× ainda te interessa?"
 - Responda APENAS com o texto, sem aspas nem explicações
 `;
 
@@ -268,9 +273,17 @@ Regras:
 - PROIBIDO: usar o nome do cliente mais de uma vez
 - NÃO use emoji nenhum
 - PROIBIDO: "Fico à disposição", "Que ótimo", "Que legal", "Que bom", "Pronto para te ajudar"
-- PROIBIDO: "Viu minha mensagem", "Conseguiu ver minha mensagem" — varie a abordagem
-- PROIBIDO: clichês batidos como "ainda está disponível", "a procura está alta", "pode sair a qualquer momento", "última unidade". Soa como spam.
-- PROIBIDO: pedir visita/agendamento como CTA padrão — prefira perguntar sobre dúvida específica, comparação, perfil de uso
+- ⛔ LISTA NEGRA — NUNCA use estas frases ou QUALQUER VARIAÇÃO DELAS (sinônimos contam):
+   ❌ "viu minha mensagem" / "viu a mensagem" / "chegou a ver a mensagem" / "deu pra ver a mensagem" / "conseguiu ver"
+   ❌ "ainda está disponível" / "continua disponível" / "ainda está aqui" / "ainda tá no pátio"
+   ❌ "a procura está alta" / "muita procura" / "alta demanda" / "tá saindo muito"
+   ❌ "pode sair a qualquer momento" / "vai sair logo" / "última unidade" / "é a única"
+   ❌ "vir ver" / "vir conhecer" / "vem dar uma olhada" / "passa aqui pra ver"
+   ❌ "pensou em algum dia" / "pensou em vir" / "vamos marcar"
+- ⚠️ Em vez de "ainda está disponível" → vá DIRETO ao ponto (responda a pergunta pendente, comente algo específico do carro, refira-se a fotos/condições enviadas)
+- ⚠️ Em vez de "viu a mensagem" → faça uma pergunta SOBRE O CARRO (preferência de cor, perfil de uso, comparação com outro modelo, dúvida específica)
+- ⚠️ Em vez de pedir visita → pergunte sobre interesse, dúvida técnica, ou refira-se a um detalhe específico já discutido
+- ✅ EXEMPLOS BONS: "O que achou das fotos do [carro]?", "Sobre [carro], ficou alguma dúvida?", "Verifiquei o [dado pedido]: [resposta]", "Sobre o [carro], pensou no [perfil/uso]?"
 - Responda APENAS com o texto da mensagem, sem aspas nem explicações
 `;
 
