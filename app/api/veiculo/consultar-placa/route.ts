@@ -169,6 +169,7 @@ export async function POST(req: NextRequest) {
     if (!existing.cor && corRaw)      updates.cor = corRaw.toLowerCase();
     if (!existing.combustivel && combustivelRaw) updates.combustivel = combustivelRaw;
     if (!existing.motor && geminiData.motor)     updates.motor = geminiData.motor;
+    if (!existing.placa)              updates.placa = placa;
     if (!existing.final_placa)        updates.final_placa = finalPlaca;
     if ((!existing.opcionais || existing.opcionais.length === 0) && geminiData.opcionais?.length)
       updates.opcionais = geminiData.opcionais;
@@ -202,6 +203,7 @@ export async function POST(req: NextRequest) {
     local: "PÁTIO",
     user_id: userId,
     vendedor_id: vendedorId,
+    placa,
     final_placa: finalPlaca,
   };
 

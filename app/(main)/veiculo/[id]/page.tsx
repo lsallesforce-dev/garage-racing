@@ -936,6 +936,7 @@ export default function DetalheVeiculo() {
     setOpcionais(veiculo.opcionais || []);
     setRoteiro(veiculo.roteiro_pitch || "");
     setVendedorId(veiculo.vendedor_responsavel_id || "");
+    setPlacaConsulta((prev) => prev || (veiculo.placa ?? "").toUpperCase());
     setHistorico({
       qtd_proprietarios:   veiculo.qtd_proprietarios  ?? "",
       procedencia:         veiculo.procedencia         ?? "",
