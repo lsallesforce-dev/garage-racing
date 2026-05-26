@@ -385,7 +385,9 @@ export async function GET(req: NextRequest) {
     motivosIgnorados[motivo] = (motivosIgnorados[motivo] || 0) + 1;
   };
 
-  const MAX_ENVIOS = 50;
+  // Com delay de ~60s entre envios + maxDuration de 300s, cabem ~4-5 follow-ups por execução.
+  // 5 execuções/dia × 5 = ~25 follow-ups/dia (suficiente para o ciclo de MAX_FOLLOWUPS=1).
+  const MAX_ENVIOS = 5;
 
   for (const lead of leads) {
     if (enviados >= MAX_ENVIOS) break;
@@ -686,7 +688,13 @@ export async function GET(req: NextRequest) {
       console.log(`✅ Follow-up ${followupCount + 1}/${MAX_FOLLOWUPS} → ${lead.wa_id} (${lead.status}, ${tipoMensagem}) — "${mensagem.slice(0, 80)}"`);
       enviados++;
 
-      await new Promise((r) => setTimeout(r, 3_000)); // 3s entre envios (anti-spam)
+      // Delay anti-ban WhatsApp: 60s ± 15s (jitter) entre envios.
+      // Bursts rápidos (3s) parecem bot e disparam alertas do WhatsApp → risco de ban do número.
+      // Comportamento humano: ~1 msg por minuto com variação aleatória.
+      const jitterMs = Math.floor(Math.random() * 30_000) - 15_000; // -15s a +15s
+      const delayMs = 60_000 + jitterMs; // 45-75s
+      console.log(`⏱️  Aguardando ${(delayMs / 1000).toFixed(0)}s antes do próximo envio...`);
+      await new Promise((r) => setTimeout(r, delayMs));
 
     } catch (e) {
       console.error(`❌ Erro no follow-up do lead ${lead.id}:`, e);
