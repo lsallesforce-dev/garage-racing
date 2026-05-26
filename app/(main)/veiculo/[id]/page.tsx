@@ -905,6 +905,13 @@ export default function DetalheVeiculo() {
   const [igStatus, setIgStatus] = useState<"idle" | "ok" | "error">("idle");
   const [igMsg, setIgMsg] = useState("");
 
+  // Upload de vídeo do dispositivo (enriquece veículo via Gemini Vision)
+  const [uploadStep, setUploadStep] = useState<string>("");
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [isUploadingVideo, setIsUploadingVideo] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const videoInputRef = React.useRef<HTMLInputElement>(null);
+
   // NF-e
   const [showNFModal, setShowNFModal] = useState(false);
   const [nfHabilitado, setNfHabilitado] = useState(false);
@@ -1149,6 +1156,114 @@ export default function DetalheVeiculo() {
     }
   };
 
+  // ── Upload de vídeo do dispositivo + análise IA ───────────────────────────
+  const handleVideoUpload = async (file: File) => {
+    if (!file || !veiculo) return;
+    setIsUploadingVideo(true);
+    setUploadError(null);
+    setUploadStep("Preparando upload...");
+
+    try {
+      // 1. Detectar Content-Type
+      const ext = file.name.split(".").pop()?.toLowerCase() || "mp4";
+      const mimeMap: Record<string, string> = {
+        mp4: "video/mp4", mov: "video/quicktime", avi: "video/x-msvideo",
+        mkv: "video/x-matroska", webm: "video/webm", "3gp": "video/3gpp",
+      };
+      const fileType = (file.type && file.type !== "application/octet-stream")
+        ? file.type
+        : (mimeMap[ext] ?? "video/mp4");
+
+      // 2. Pede signed URL
+      const metaRes = await fetch("/api/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileName: file.name, fileType }),
+      });
+      const metaData = await metaRes.json();
+      if (!metaRes.ok || !metaData.signedUrl) {
+        throw new Error(metaData.error || "Erro ao obter URL de upload");
+      }
+
+      // 3. Upload com retry
+      setUploadStep("Enviando arquivo...");
+      let uploadOk = false;
+      let lastError = "";
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          if (attempt > 1) {
+            const waitSec = attempt - 1;
+            setUploadStep(`Tentativa ${attempt}/3 — aguardando ${waitSec}s...`);
+            await new Promise((r) => setTimeout(r, waitSec * 1000));
+            setUploadStep(`Tentativa ${attempt}/3 — enviando...`);
+          }
+          const uploadRes = await fetch(metaData.signedUrl, {
+            method: "PUT",
+            headers: { "Content-Type": fileType },
+            body: file,
+          });
+          if (uploadRes.ok) { uploadOk = true; break; }
+          const errBody = await uploadRes.text().catch(() => "");
+          lastError = `HTTP ${uploadRes.status}: ${errBody || uploadRes.statusText}`;
+        } catch (err: any) {
+          lastError = err.message || "Erro de rede";
+        }
+      }
+      if (!uploadOk) throw new Error(`Upload falhou após 3 tentativas. Último erro: ${lastError}`);
+
+      // 4. Análise IA (enriquece o veículo existente)
+      setUploadStep("Analisando vídeo com IA... (pode levar alguns minutos)");
+      const { data: { user } } = await supabase.auth.getUser();
+      const vendedorId = user?.id || "00000000-0000-0000-0000-000000000000";
+
+      const analyzeRes = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          videoUrl: metaData.publicUrl,
+          vendedorId,
+          veiculoId: veiculo.id,
+        }),
+      });
+      const analyzeData = await analyzeRes.json();
+      if (!analyzeData.success) {
+        throw new Error(analyzeData.error || "Falha na análise");
+      }
+
+      setUploadStep("");
+      setIsUploadingVideo(false);
+      // Recarrega a página para refletir todos os campos enriquecidos
+      setTimeout(() => window.location.reload(), 500);
+    } catch (error: any) {
+      console.error("Upload error:", error);
+      setUploadError(error.message);
+      setUploadStep("");
+      setIsUploadingVideo(false);
+    }
+  };
+
+  const handleVideoDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isUploadingVideo) setIsDragOver(true);
+  };
+
+  const handleVideoDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  };
+
+  const handleVideoDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    if (isUploadingVideo) return;
+    const file = e.dataTransfer.files?.[0];
+    if (file && file.type.startsWith("video/")) {
+      handleVideoUpload(file);
+    }
+  };
+
   const handleImportarIG = async () => {
     if (!igUrl.trim() || !veiculo) return;
     setImportandoIG(true);
@@ -1302,6 +1417,73 @@ export default function DetalheVeiculo() {
                 setVeiculo({ ...veiculo, fotos: newPhotos })
               }
             />
+
+            {/* ── ENVIAR VÍDEO (dispositivo) ── */}
+            <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm p-8">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-red-500 via-red-600 to-red-700 flex items-center justify-center">
+                  <Video size={18} className="text-white" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black uppercase italic tracking-tight text-gray-900">
+                    Enviar Vídeo
+                  </h3>
+                  <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">
+                    IA enriquece os campos vazios do veículo
+                  </p>
+                </div>
+              </div>
+
+              <input
+                ref={videoInputRef}
+                type="file"
+                accept="video/*"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) handleVideoUpload(f);
+                  e.target.value = "";
+                }}
+                disabled={isUploadingVideo}
+              />
+
+              <div
+                onDragOver={handleVideoDragOver}
+                onDragLeave={handleVideoDragLeave}
+                onDrop={handleVideoDrop}
+                onClick={() => !isUploadingVideo && videoInputRef.current?.click()}
+                className={`
+                  border-2 border-dashed rounded-2xl px-6 py-8 text-center transition-all
+                  ${isUploadingVideo ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:bg-gray-50"}
+                  ${isDragOver ? "border-red-400 bg-red-50" : "border-gray-200"}
+                `}
+              >
+                {isUploadingVideo ? (
+                  <div className="flex flex-col items-center gap-2">
+                    <Loader2 size={24} className="text-red-500 animate-spin" />
+                    <p className="text-[10px] font-black text-gray-700 uppercase tracking-widest">
+                      {uploadStep || "Processando..."}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center gap-2">
+                    <Video size={24} className="text-gray-400" />
+                    <p className="text-[11px] font-black text-gray-700 uppercase tracking-widest">
+                      Arraste ou clique para enviar vídeo
+                    </p>
+                    <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">
+                      Vídeos de 30-60s geram os melhores insights
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {uploadError && (
+                <p className="mt-3 text-[10px] font-black uppercase tracking-widest text-red-600">
+                  ✗ {uploadError}
+                </p>
+              )}
+            </div>
 
             {/* ── IMPORTAR DO INSTAGRAM ── */}
             <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm p-8">

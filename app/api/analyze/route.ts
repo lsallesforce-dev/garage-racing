@@ -10,7 +10,7 @@ export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
   try {
-    const { videoUrl, vendedorId } = await req.json();
+    const { videoUrl, vendedorId, veiculoId } = await req.json();
 
     if (!videoUrl || !vendedorId) {
       return NextResponse.json(
@@ -147,7 +147,62 @@ export async function POST(req: NextRequest) {
       console.warn("⚠️ Embedding indisponível — veículo será cadastrado sem busca semântica");
     }
 
-    // 6. Inserir no Supabase
+    // 6a. Enriquecer veículo existente (só preenche campos vazios, sempre atualiza video_url)
+    if (veiculoId) {
+      const { data: existing, error: fetchError } = await supabaseAdmin
+        .from("veiculos")
+        .select("*")
+        .eq("id", veiculoId)
+        .eq("user_id", userId)
+        .single();
+
+      if (fetchError || !existing) {
+        return NextResponse.json({ success: false, error: "Veículo não encontrado" }, { status: 404 });
+      }
+
+      const updates: Record<string, any> = { video_url: videoUrl };
+
+      // Campos escalares — só preenche se vazio
+      const scalarFields = [
+        "marca", "modelo", "versao", "ano_modelo", "condicao", "local",
+        "preco_sugerido", "parcelas", "quilometragem_estimada", "cor",
+        "combustivel", "motor", "categoria", "tipo_banco", "estado_pneus",
+        "final_placa", "detalhes_inspecao", "transcricao_vendedor", "tags_busca",
+      ];
+      for (const f of scalarFields) {
+        if (!existing[f] && parsedData[f]) updates[f] = parsedData[f];
+      }
+      if (existing.segundo_dono == null && parsedData.segundo_dono != null) {
+        updates.segundo_dono = parsedData.segundo_dono;
+      }
+
+      // Arrays — só preenche se vazio
+      if ((!existing.opcionais || existing.opcionais.length === 0) && parsedData.opcionais?.length) {
+        updates.opcionais = parsedData.opcionais;
+      }
+      if ((!existing.pontos_fortes_venda || existing.pontos_fortes_venda.length === 0) && parsedData.pontos_fortes_venda?.length) {
+        updates.pontos_fortes_venda = parsedData.pontos_fortes_venda;
+      }
+
+      // Embedding — atualiza sempre (a nova análise é mais rica)
+      if (embedding) updates.embedding = embedding;
+
+      const { data, error } = await supabaseAdmin
+        .from("veiculos")
+        .update(updates)
+        .eq("id", veiculoId)
+        .select();
+
+      if (error) {
+        console.error("Supabase Update Error:", error);
+        throw error;
+      }
+
+      console.log(`[analyze] Enriqueceu veículo ${veiculoId} com ${Object.keys(updates).length} campos`);
+      return NextResponse.json({ success: true, data, enriched: true, updatedFields: Object.keys(updates) });
+    }
+
+    // 6b. Inserir veículo novo
     const vehicleToInsert = {
       ...parsedData,
       video_url: videoUrl,
