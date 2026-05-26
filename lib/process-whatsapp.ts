@@ -1029,9 +1029,38 @@ Responda apenas com o JSON, sem markdown.`;
   // Quando há adReferral, persiste o headline no campo origem_mensagem para que
   // o contexto do anúncio sobreviva entre mensagens (ex: Msg 1 com ad context via LID,
   // Msg 2 sem ad context com número real — a origem_mensagem permite recovery).
-  // Quando o cliente responde, zera o ciclo de follow-up para que o cron
-  // possa iniciar um novo ciclo de 2 mensagens caso o lead fique inativo novamente.
-  const upsertData: Record<string, any> = { wa_id: phone, user_id: tenantUserId, followup_count: 0 };
+  //
+  // Zera followup_count APENAS quando o cliente está REALMENTE respondendo a uma msg
+  // do agente — NÃO em mensagens iniciais repetidas (cliente clicando no anúncio várias
+  // vezes) nem em eventos não-mensagem. Isso impede o ciclo de follow-up de reiniciar
+  // sozinho e causar spam.
+  const upsertData: Record<string, any> = { wa_id: phone, user_id: tenantUserId };
+
+  // Zera followup_count somente se a última msg do histórico foi do AGENTE
+  // (= cliente realmente respondendo, não primeira interação)
+  {
+    const { data: leadAtual } = await supabaseAdmin
+      .from("leads")
+      .select("id, followup_count")
+      .eq("user_id", tenantUserId)
+      .eq("wa_id", phone)
+      .maybeSingle();
+
+    if (leadAtual?.id && (leadAtual.followup_count ?? 0) > 0) {
+      const { data: ultimaMsg } = await supabaseAdmin
+        .from("mensagens")
+        .select("remetente")
+        .eq("lead_id", leadAtual.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (ultimaMsg?.remetente === "agente") {
+        upsertData.followup_count = 0;
+        console.log(`✅ [followup] Cliente respondeu — zerando followup_count de ${leadAtual.followup_count} → 0`);
+      }
+    }
+  }
   if (adReferral?.headline && adReferral.headline.length > 3) {
     upsertData.origem_mensagem = `Lead do anúncio: ${adReferral.headline}`;
     upsertData.origem = "meta_ads";

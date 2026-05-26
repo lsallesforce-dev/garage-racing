@@ -1,29 +1,32 @@
 // app/api/cron/followup/route.ts
 //
-// Cron job de follow-up de leads — ciclo de 2 mensagens por lead, encerrado.
+// Cron job de follow-up de leads — ciclo de 1 mensagem por lead, depois encerra.
 // Roda 3x/dia via Vercel Cron (vercel.json): 11,15,19h UTC (08h, 12h, 16h BRT).
 // Gate de horário comercial (8h–18h BRT) bloqueia execuções fora do expediente.
 //
-// CICLO FIXO — máximo 2 follow-ups por lead (campo followup_count):
+// CICLO FIXO — máximo 1 follow-up por lead (campo followup_count):
 //   · followup_count = 0 → 1° follow-up: aguarda 4h de silêncio do cliente
-//   · followup_count = 1 → 2° follow-up: aguarda 24h desde o 1° (ultimo_followup)
-//   · followup_count ≥ 2 → ciclo encerrado, lead não recebe mais follow-ups
+//   · followup_count ≥ 1 → ciclo encerrado, lead não recebe mais follow-ups
 //
-// Se o cliente responder entre os follow-ups → followup_count é zerado pelo webhook.
+// Se o cliente responder ao follow-up → followup_count é zerado pelo webhook.
 //
-// DETECÇÃO DE CONVERSA ENCERRADA (pré-Gemini):
-//   Antes de chamar o Gemini, analisa as últimas mensagens do CLIENTE.
-//   Se detectar sinais de despedida/rejeição/impossibilidade → pula o lead
-//   e encerra o ciclo (followup_count = MAX). Evita spam em leads mortos.
+// GUARDS ANTI-SPAM (em camadas):
+//   1. Detecção pré-Gemini de conversa encerrada (regex em padrões de dispensa)
+//   2. Hard cap por msgs CONSECUTIVAS do agente (≥2 sem resposta → encerra)
+//   3. Cliente nunca respondeu (só template do anúncio + 1 follow-up → encerra)
+//   4. Dupla checagem do followup_count no momento do envio (anti-race)
 //
 // Fluxo por lead:
 //   1. Lê as últimas 5 mensagens da conversa (contexto real)
-//   2. Detecção pré-Gemini de conversa encerrada
-//   3. Verifica se o carro de interesse ainda está disponível
-//   4. Se vendido → busca alternativa compatível (modelo → categoria)
-//   5. Gemini gera mensagem personalizada baseada no histórico
-//   6. Envia via Avisa (Meta exige template aprovado para mensagens fora da sessão)
-//   7. Salva mensagem no histórico, incrementa followup_count e atualiza ultimo_followup
+//   2. Hard cap por msgs consecutivas do agente
+//   3. Cliente mudo (≤1 msg do cliente e já tentou 1 follow-up)
+//   4. Detecção pré-Gemini de conversa encerrada
+//   5. Verifica se o carro de interesse ainda está disponível
+//   6. Se vendido → busca alternativa compatível (modelo → categoria)
+//   7. Gemini gera mensagem personalizada baseada no histórico
+//   8. Dupla checagem followup_count antes de enviar
+//   9. Envia via Avisa (Meta exige template aprovado para mensagens fora da sessão)
+//  10. Salva mensagem no histórico, incrementa followup_count e atualiza ultimo_followup
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
@@ -51,8 +54,8 @@ function isAuthorized(req: NextRequest): boolean {
 
 // ─── Timing de follow-up (fixo para todos os status) ─────────────────────────
 const SILENCIO_PRIMEIRO_FOLLOWUP_HORAS = 4;   // 4h sem resposta → dispara o 1°
-const COOLDOWN_SEGUNDO_FOLLOWUP_HORAS  = 24;  // 24h após o 1° → dispara o 2° e encerra
-const MAX_FOLLOWUPS = 2;                       // ciclo máximo por lead
+const COOLDOWN_SEGUNDO_FOLLOWUP_HORAS  = 24;  // (não usado mais — MAX=1)
+const MAX_FOLLOWUPS = 1;                       // ciclo máximo: 1 follow-up por lead, depois encerra
 
 // ─── Detecção pré-Gemini de conversa encerrada ──────────────────────────────
 // Analisa as últimas mensagens do CLIENTE (não do agente) e detecta sinais de
@@ -71,6 +74,19 @@ const CONVERSA_ENCERRADA_PATTERNS = [
   /\b(?:n[ãa]o\s+vai?\s+(?:dar|adiantar|rolar)|desist[io]|n[ãa]o\s+(?:tenho|quero)\s+(?:mais\s+)?interesse|n[ãa]o\s+(?:vou|posso)\s+(?:poder\s+)?comprar)\b/i,
   // Velório / luto
   /\b(?:vel[oó]rio|faleceu|falecimento|enterro|luto)\b/i,
+  // "Te procuro / te chamo / te aviso" — cliente toma a iniciativa, não insistir
+  /\b(?:te|te\s+|eu\s+te)\s*(?:procur[oa]|cham[oa]|avis[oa]|lig[oa]|contat[oa])\b/i,
+  /\b(?:se|qualquer\s+coisa|qualquer)\s+(?:tiver\s+interesse|interessar|coisa)\b.{0,30}\b(?:te|eu\s+te|me)\b/i,
+  // "Vou pensar / vou ver / depois eu vejo"
+  /\b(?:vou|to\s+(?:indo|pra)|estou)\s+(?:pensar|ver|olhar|analisar|avaliar)\b/i,
+  /\bdepois\s+(?:eu\s+)?(?:vejo|olho|penso|decido|falo)\b/i,
+  // "Tá caro / muito caro / fora do orçamento" (objeção financeira sem pedir negociação)
+  /\b(?:t[áa]|est[áa])\s+(?:muito\s+|meio\s+)?caro\b/i,
+  /\b(?:acima|fora)\s+(?:do\s+)?(?:meu\s+)?(?:or[çc]amento|preço|valor)\b/i,
+  /\b(?:n[ãa]o\s+(?:t[ô]|estou|tenho)\s+podendo)\b/i,
+  // "Não posso agora / sem condições"
+  /\b(?:n[ãa]o\s+(?:posso|d[áa])\s+(?:agora|nesse\s+momento|esse\s+m[êe]s))\b/i,
+  /\b(?:sem\s+condi[çc][õo]es|t[áa]\s+apertado)\b/i,
 ];
 
 function conversaEncerradaPeloCliente(
@@ -173,6 +189,8 @@ Escreva UMA mensagem direta para recuperar este lead. Estratégia:
 - NÃO use emoji nenhum
 - PROIBIDO: "Fico à disposição", "Que ótimo", "Que legal", "Que bom", "Pronto para te ajudar"
 - PROIBIDO: "Viu minha mensagem", "Conseguiu ver minha mensagem" — varie a abordagem
+- PROIBIDO: clichês de urgência batidos como "ainda está disponível", "a procura está alta", "pode sair a qualquer momento", "última unidade". Soa como spam.
+- PROIBIDO: pedir agendamento de visita como CTA padrão — varie (pergunta sobre preferência, comparação com outro modelo, dúvida específica)
 - Responda APENAS com o texto, sem aspas nem explicações
 `;
 
@@ -251,6 +269,8 @@ Regras:
 - NÃO use emoji nenhum
 - PROIBIDO: "Fico à disposição", "Que ótimo", "Que legal", "Que bom", "Pronto para te ajudar"
 - PROIBIDO: "Viu minha mensagem", "Conseguiu ver minha mensagem" — varie a abordagem
+- PROIBIDO: clichês batidos como "ainda está disponível", "a procura está alta", "pode sair a qualquer momento", "última unidade". Soa como spam.
+- PROIBIDO: pedir visita/agendamento como CTA padrão — prefira perguntar sobre dúvida específica, comparação, perfil de uso
 - Responda APENAS com o texto da mensagem, sem aspas nem explicações
 `;
 
@@ -410,6 +430,52 @@ export async function GET(req: NextRequest) {
         ignorar("sem_contexto"); continue;
       }
 
+      // ── 5b. Hard cap por msgs CONSECUTIVAS do agente sem resposta ──────────
+      // Independente do followup_count salvo (que pode ter sido zerado por bug),
+      // se as últimas 2+ msgs forem todas do agente sem nenhuma resposta intercalada
+      // do cliente, encerra o ciclo. Última linha de defesa contra spam.
+      {
+        let msgsAgenteSemResposta = 0;
+        // Itera mensagens em ordem inversa (mais recente primeiro)
+        for (const m of ultimasMsgsDesc) {
+          if (m.remetente === "agente") {
+            msgsAgenteSemResposta++;
+          } else {
+            break; // achou msg do cliente — para
+          }
+        }
+        if (msgsAgenteSemResposta >= 2) {
+          console.log(`⏭️ [hard-cap] ${lead.wa_id} — ${msgsAgenteSemResposta} msgs do agente sem resposta → encerrando ciclo`);
+          await supabaseAdmin
+            .from("leads")
+            .update({ followup_count: MAX_FOLLOWUPS })
+            .eq("id", lead.id);
+          ignorar("hard_cap_sem_resposta");
+          continue;
+        }
+      }
+
+      // ── 5c. Cliente nunca respondeu (só mandou template do anúncio) ────────
+      // Conta TODAS as msgs do cliente desse lead (não só as últimas 5).
+      // Se ≤ 1 msg do cliente E já mandou 1 follow-up → encerra.
+      if (followupCount >= 1) {
+        const { count: msgsCliente } = await supabaseAdmin
+          .from("mensagens")
+          .select("*", { count: "exact", head: true })
+          .eq("lead_id", lead.id)
+          .eq("remetente", "usuario");
+
+        if ((msgsCliente ?? 0) <= 1) {
+          console.log(`⏭️ [cliente-mudo] ${lead.wa_id} — só ${msgsCliente} msg(s) do cliente e já tentou 1 follow-up → encerrando`);
+          await supabaseAdmin
+            .from("leads")
+            .update({ followup_count: MAX_FOLLOWUPS })
+            .eq("id", lead.id);
+          ignorar("cliente_nunca_respondeu");
+          continue;
+        }
+      }
+
       // ── 6. Detecção pré-Gemini de conversa encerrada ────────────────────────
       // Analisa últimas msgs do CLIENTE antes de gastar tokens do Gemini.
       // Se detectar despedida/rejeição/impossibilidade → encerra o ciclo.
@@ -554,6 +620,23 @@ export async function GET(req: NextRequest) {
           .eq("id", lead.id);
         enviados++;
         continue;
+      }
+
+      // ── 9c. Dupla checagem ANTES de enviar — protege contra race & bug do upsert ──
+      // Re-lê followup_count do banco no momento do envio. Se outro processo
+      // (ou o bug do upsert) já incrementou/zerou, respeita o estado real.
+      {
+        const { data: leadFresh } = await supabaseAdmin
+          .from("leads")
+          .select("followup_count")
+          .eq("id", lead.id)
+          .single();
+        const freshCount = leadFresh?.followup_count ?? 0;
+        if (freshCount >= MAX_FOLLOWUPS) {
+          console.log(`⏭️ [dupla-checagem] ${lead.wa_id} — followup_count já é ${freshCount} no momento do envio, pulando`);
+          ignorar("dupla_checagem_max");
+          continue;
+        }
       }
 
       // ── 10. Envia ───────────────────────────────────────────────────────────
