@@ -168,7 +168,7 @@ export async function criarCampanhaLeadAd(p: CriarCampanhaParams): Promise<Campa
 
   // 2. Lead Form — usa pageAccessToken (operação no Page)
   const privacyUrl = garagem.privacyPolicyUrl ??
-    `${process.env.NEXT_PUBLIC_APP_URL ?? "https://app.autozap.digital"}/privacidade`;
+    `${process.env.NEXT_PUBLIC_APP_URL ?? "https://www.autozap.digital"}/privacidade`;
   const leadformId = await criarLeadForm(pageId, pageAccessToken, veiculoNome, privacyUrl);
 
   // 3. Campaign — usa adToken

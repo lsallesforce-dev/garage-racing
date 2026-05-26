@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
         due_at: boletoVenc.toISOString(),
       });
     } else {
-      const origin = req.headers.get("origin") ?? "https://autozap.digital";
+      const origin = req.headers.get("origin") ?? "https://www.autozap.digital";
       result = await createCardCheckout({
         amount,
         description: descricao,

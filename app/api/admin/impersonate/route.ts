@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
   const { data, error } = await supabaseAdmin.auth.admin.generateLink({
     type: "magiclink",
     email: user.user.email,
-    options: { redirectTo: "https://autozap.digital/dashboard?admin_session=1" },
+    options: { redirectTo: "https://www.autozap.digital/dashboard?admin_session=1" },
   });
 
   if (error || !data.properties?.action_link) {

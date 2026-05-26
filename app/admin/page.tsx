@@ -82,7 +82,7 @@ interface Pagamento {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const PRECOS = { starter: 1150, pro: 1500, premium: 2135 };
-const APP_URL = "https://autozap.digital";
+const APP_URL = "https://www.autozap.digital";
 
 function dias(dataISO?: string | null) {
   if (!dataISO) return 0;

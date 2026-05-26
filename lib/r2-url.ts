@@ -4,7 +4,7 @@ const R2_DOMAINS = [
   "pub-2bb6444be4534fb686a17d19cf31e8b1.r2.dev",
 ];
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://autozap.digital";
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://www.autozap.digital";
 
 // Para uso no browser (path relativo)
 export function toVideoUrl(url: string | null | undefined): string {

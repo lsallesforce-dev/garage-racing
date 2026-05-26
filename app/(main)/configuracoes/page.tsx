@@ -1298,12 +1298,12 @@ export default function ConfiguracoesPage() {
                 <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">URL do Webhook (Meta / Avisa)</p>
                 <div className="flex items-center gap-2">
                   <code className="text-[10px] text-gray-700 flex-1 break-all">
-                    {`${process.env.NEXT_PUBLIC_APP_URL ?? "https://autozap.digital"}/api/webhook/avisa/${webhookToken || currentUserId}`}
+                    {`${process.env.NEXT_PUBLIC_APP_URL ?? "https://www.autozap.digital"}/api/webhook/avisa/${webhookToken || currentUserId}`}
                   </code>
                   <button
                     type="button"
                     onClick={() => copyToClipboard(
-                      `${process.env.NEXT_PUBLIC_APP_URL ?? "https://autozap.digital"}/api/webhook/avisa/${webhookToken || currentUserId}`,
+                      `${process.env.NEXT_PUBLIC_APP_URL ?? "https://www.autozap.digital"}/api/webhook/avisa/${webhookToken || currentUserId}`,
                       "wh-url"
                     )}
                     className="shrink-0 p-2 bg-gray-900 hover:bg-red-600 text-white rounded-xl transition-colors"
@@ -1323,12 +1323,12 @@ export default function ConfiguracoesPage() {
                 </p>
                 <div className="flex items-center gap-2">
                   <code className="text-[10px] text-gray-700 flex-1 break-all">
-                    {`${process.env.NEXT_PUBLIC_APP_URL ?? "https://autozap.digital"}/api/webhook/chamada/${webhookToken}`}
+                    {`${process.env.NEXT_PUBLIC_APP_URL ?? "https://www.autozap.digital"}/api/webhook/chamada/${webhookToken}`}
                   </code>
                   <button
                     type="button"
                     onClick={() => copyToClipboard(
-                      `${process.env.NEXT_PUBLIC_APP_URL ?? "https://autozap.digital"}/api/webhook/chamada/${webhookToken}`,
+                      `${process.env.NEXT_PUBLIC_APP_URL ?? "https://www.autozap.digital"}/api/webhook/chamada/${webhookToken}`,
                       "wh-chamada"
                     )}
                     className="shrink-0 p-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl transition-colors"
@@ -1553,10 +1553,10 @@ export default function ConfiguracoesPage() {
                     <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">URL do Webhook (cadastrar na OLX)</p>
                     <div className="flex items-center gap-2">
                       <code className="text-[10px] text-gray-700 break-all flex-1">
-                        {`${process.env.NEXT_PUBLIC_APP_URL ?? "https://autozap.digital"}/api/webhook/olx/${currentUserId}`}
+                        {`${process.env.NEXT_PUBLIC_APP_URL ?? "https://www.autozap.digital"}/api/webhook/olx/${currentUserId}`}
                       </code>
                       <button
-                        onClick={() => navigator.clipboard.writeText(`${process.env.NEXT_PUBLIC_APP_URL ?? "https://autozap.digital"}/api/webhook/olx/${currentUserId}`)}
+                        onClick={() => navigator.clipboard.writeText(`${process.env.NEXT_PUBLIC_APP_URL ?? "https://www.autozap.digital"}/api/webhook/olx/${currentUserId}`)}
                         className="text-[9px] font-black text-gray-400 hover:text-gray-700 shrink-0"
                       >
                         Copiar
@@ -1649,12 +1649,12 @@ export default function ConfiguracoesPage() {
               <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">URL de Callback (copiar para a Webmotors)</p>
               <div className="flex items-center gap-2">
                 <div className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 font-mono text-[10px] text-gray-700 truncate">
-                  {`${process.env.NEXT_PUBLIC_APP_URL ?? "https://app.autozap.digital"}/api/webhook/webmotors`}
+                  {`${process.env.NEXT_PUBLIC_APP_URL ?? "https://www.autozap.digital"}/api/webhook/webmotors`}
                 </div>
                 <button
                   type="button"
                   onClick={() => copyToClipboard(
-                    `${process.env.NEXT_PUBLIC_APP_URL ?? "https://app.autozap.digital"}/api/webhook/webmotors`,
+                    `${process.env.NEXT_PUBLIC_APP_URL ?? "https://www.autozap.digital"}/api/webhook/webmotors`,
                     "wm-url"
                   )}
                   className="flex-shrink-0 p-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl transition-colors"
