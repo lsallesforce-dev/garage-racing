@@ -1,8 +1,8 @@
 // app/api/cron/followup/route.ts
 //
 // Cron job de follow-up de leads — ciclo de 1 mensagem por lead, depois encerra.
-// Roda 3x/dia via Vercel Cron (vercel.json): 11,15,19h UTC (08h, 12h, 16h BRT).
-// Gate de horário comercial (8h–18h BRT) bloqueia execuções fora do expediente.
+// Roda 5x/dia via Vercel Cron (vercel.json): 11,14,17,20,23h UTC (08h, 11h, 14h, 17h, 20h BRT).
+// Gate de horário comercial (8h–20h BRT) bloqueia execuções fora do expediente.
 //
 // CICLO FIXO — máximo 1 follow-up por lead (campo followup_count):
 //   · followup_count = 0 → 1° follow-up: aguarda 4h de silêncio do cliente
@@ -315,12 +315,14 @@ export async function GET(req: NextRequest) {
 
   const agora = new Date();
 
-  // ── Gate de horário comercial (8h–18h BRT) ────────────────────────────────
+  // ── Gate de horário comercial (8h–20h BRT) ────────────────────────────────
+  // Permite follow-ups entre 08h e 20h59 BRT. Antes 8-18h era apertado e cliente
+  // que mandava msg à tarde só recebia resposta no dia seguinte de manhã.
   const horaBRT = parseInt(
     agora.toLocaleString("pt-BR", { hour: "numeric", hour12: false, timeZone: "America/Sao_Paulo" }),
     10
   );
-  if (horaBRT < 8 || horaBRT >= 18) {
+  if (horaBRT < 8 || horaBRT >= 21) {
     console.log(`⏰ Cron followup: fora do horário comercial (${horaBRT}h BRT) — adiando`);
     return NextResponse.json({ ok: true, skipped: true, motivo: "fora_horario_comercial", hora_brt: horaBRT });
   }
