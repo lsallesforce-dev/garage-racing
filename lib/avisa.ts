@@ -8,9 +8,14 @@ function formatPhone(phone: string): string {
 }
 
 // Números brasileiros válidos: 12 dígitos (55 + DDD 2 + 8 fixo) ou 13 (55 + DDD 2 + 9 celular)
-// Qualquer coisa fora disso (LID do WhatsApp para anúncios CTWA) não é telefone real
+// Qualquer coisa fora disso (LID do WhatsApp para anúncios CTWA) não é telefone real.
+//
+// Bug fix: limpa o device suffix (":91", ":32", etc) ANTES de contar dígitos.
+// Antes: phone "5517991900099:91" → digits "551799190009991" (15 chars) → classificava como LID
+// → enviava para "551799190009991@lid" e o WhatsApp mostrava como "Usuário desconhecido"
 function isLidPhone(phone: string): boolean {
-  const digits = phone.replace(/\D/g, "");
+  const withoutDevice = phone.split(":")[0];
+  const digits = withoutDevice.replace(/\D/g, "");
   return digits.length < 12 || digits.length > 13 || !digits.startsWith("55");
 }
 
@@ -102,7 +107,8 @@ function buildTarget(phone: string): { number: string } {
   // For LID contacts (Instagram CTWA), pass the full @lid JID so Baileys can route correctly.
   // Sending just the numeric part causes HTTP 500 because Baileys needs the JID suffix.
   if (isLidPhone(phone)) {
-    const lid = phone.replace(/\D/g, "");
+    // Remove device suffix antes (":91" não deve fazer parte do LID enviado à Avisa)
+    const lid = phone.split(":")[0].replace(/\D/g, "");
     console.log(`📋 [LID] Enviando via JID completo: ${lid}@lid`);
     return { number: `${lid}@lid` };
   }
