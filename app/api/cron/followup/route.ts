@@ -74,9 +74,14 @@ const CONVERSA_ENCERRADA_PATTERNS = [
   /\b(?:n[ãa]o\s+vai?\s+(?:dar|adiantar|rolar)|desist[io]|n[ãa]o\s+(?:tenho|quero)\s+(?:mais\s+)?interesse|n[ãa]o\s+(?:vou|posso)\s+(?:poder\s+)?comprar)\b/i,
   // Velório / luto
   /\b(?:vel[oó]rio|faleceu|falecimento|enterro|luto)\b/i,
-  // "Te procuro / te chamo / te aviso" — cliente toma a iniciativa, não insistir
-  /\b(?:te|te\s+|eu\s+te)\s*(?:procur[oa]|cham[oa]|avis[oa]|lig[oa]|contat[oa])\b/i,
-  /\b(?:se|qualquer\s+coisa|qualquer)\s+(?:tiver\s+interesse|interessar|coisa)\b.{0,30}\b(?:te|eu\s+te|me)\b/i,
+  // Cliente toma a iniciativa, não insistir
+  // Cobre: "te procuro", "procuro vc", "vou te procurar", "eu procuro depois",
+  //        "eu te chamo", "te aviso", "vou avisar", "me chamo", "eu ligo", "te ligo"
+  /\b(?:te|me|eu\s+te|vou\s+te|vou)\s*(?:procur[oaá]r?|cham[oaá]r?|avis[oaá]r?|lig[oaá]r?|contat[oaá]r?|fal[oaá]r?)\b/i,
+  /\bprocur[oa]\s+(?:vc|voc[eê]|tu|depois)\b/i,
+  /\b(?:eu\s+)?(?:te\s+)?(?:procur[oaá]|cham[oaá])\s+(?:depois|amanh[aã]|mais\s+tarde|na\s+volta|qualquer\s+coisa)\b/i,
+  /\b(?:se|qualquer\s+coisa|qualquer)\s+(?:tiver\s+interesse|interessar|coisa|resposta|novidade)\b.{0,30}\b(?:te|eu\s+te|me|procuro|chamo|aviso)\b/i,
+  /\bassim\s+que\s+(?:tiver|souber|chegar)\b.{0,40}\b(?:procur|cham|avis|fal|ligo|retorno)/i,
   // "Vou pensar / vou ver / depois eu vejo"
   /\b(?:vou|to\s+(?:indo|pra)|estou)\s+(?:pensar|ver|olhar|analisar|avaliar)\b/i,
   /\bdepois\s+(?:eu\s+)?(?:vejo|olho|penso|decido|falo)\b/i,
