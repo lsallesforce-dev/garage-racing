@@ -2282,8 +2282,12 @@ Responda apenas com o JSON, sem markdown.`;
   // 2. E o sistema NÃO enviou mídia neste turno (fotoEnviada=false E videoEnviado=false)
   // 3. Então força o envio agora — usando o veiculoPrincipal como fallback
   {
-    const indicaEnvioFoto = /\b(aqui\s+est[aãáà]|aqui\s+v[aãáà]|te\s+mande[ie]?|acabei\s+de\s+enviar|j[áa]\s+te\s+mande[ie]?|segue|seguem|olha\s+(?:s[oó]\s+)?(?:as?|os?)\s+fotos?)\b/i.test(aiResponse);
-    const indicaEnvioVideo = /\b(aqui\s+(?:est[aãáà]|v[aãáà])\s+o?\s*v[íi]deo|te\s+mande[ie]?\s+o?\s*v[íi]deo|segue\s+o?\s*v[íi]deo)\b/i.test(aiResponse);
+    // Detecta APENAS padrões que afirmam envio NESTE TURNO (presente).
+    // Evita falso positivo em follow-ups que referem mídia enviada dias antes
+    // (ex: "Viu as fotos que te mandei?" — passado, não é mentira).
+    const indicaEnvioFoto = /\b(aqui\s+est[aãáà]o?\s+(?:as?\s+)?fotos?|aqui\s+v[aãáà]o?\s+(?:as?\s+)?fotos?|segue[m]?\s+(?:as?\s+)?fotos?|olha\s+(?:s[oó]\s+)?(?:as?\s+)?fotos?|acabei\s+de\s+(?:te\s+)?enviar)\b/i.test(aiResponse) ||
+                              /^aqui\s+est[aãáà]o?[!.\s]/i.test(aiResponse.trim()); // "Aqui estão!" no início (caso Denize)
+    const indicaEnvioVideo = /\b(aqui\s+(?:est[aãáà]o?|v[aãáà]o?)\s+o?\s*v[íi]deo|segue[m]?\s+o?\s*v[íi]deo)\b/i.test(aiResponse);
 
     if ((indicaEnvioFoto && !fotoEnviada) || (indicaEnvioVideo && !videoEnviado)) {
       console.warn(`🚨 [safety-net mídia] Gemini afirmou envio mas sistema não enviou. Forçando envio agora.`);
