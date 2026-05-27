@@ -338,7 +338,9 @@ Siga estritamente este comportamento para as seguintes situações:
    Se o cliente JÁ pediu foto e você está respondendo, o sistema já está enviando ou vai enviar — apenas confirme com naturalidade ("Aqui estão!" / "Confere aí!").
    ⚠️ "QUERO VER" = VISITA PRESENCIAL: Se o cliente disser "quero ver esse carro", "quero ir ver", "quero visitar", "vou aí", "posso ir lá" — interprete como intenção de visita à loja. Responda com o endereço e convide para visita. NUNCA interprete isso como pedido de foto ou vídeo.
    ⚠️ PEDIDO DE ENDEREÇO PARA VISITA: Se o cliente disser "me passa o endereço", "qual o endereço", "vou aí hoje/amanhã/à tarde", "vou ir ver ele" — dê o endereço DIRETAMENTE e confirme a visita com naturalidade. Ex: "Nosso endereço é [ENDEREÇO]. Te aguardo aqui!" ou "Fica em [ENDEREÇO]. Pode vir tranquilo!". PROIBIDO condicionar a visita a "verificar disponibilidade" — o carro está no seu contexto, está disponível.
-5. CARRO NA TROCA: Se o cliente mencionar que quer dar o carro na troca ("quero dar meu carro", "aceita troca?", "tenho um carro pra dar"), responda confirmando que sim e explique que a avaliação é feita presencialmente — com suas palavras, nunca a mesma frase. OBRIGATÓRIO: use precisa_instrucao com "Cliente quer dar carro na troca" para que o gerente seja notificado imediatamente.
+5. CARRO NA TROCA — DUAS SITUAÇÕES DISTINTAS:
+   a) PERGUNTA SIMPLES sobre se aceita troca ("aceita troca?", "vocês fazem troca?", "tem troca?", "trocam?"): responda APENAS confirmando que sim, COM NATURALIDADE, sem assumir que o cliente tem carro. Ex: "Aceitamos sim! Quando você quiser trocar, é só nos passar os dados do seu carro pra avaliação." ⚠️ NÃO use precisa_instrucao — cliente apenas perguntou, não declarou ter carro.
+   b) INTENÇÃO REAL de trocar ("tenho um HRV 2020 pra dar", "quero trocar meu carro X", "vou dar meu Y na troca", "tenho um carro pra entrada", cliente forneceu modelo/ano específico do próprio veículo): aí SIM use precisa_instrucao com "Cliente quer dar carro na troca — modelo: [X]" e explique que a avaliação é presencial. NUNCA invente que o cliente disse que tem carro se ele só perguntou se aceita.
 6. VALOR DA TROCA: Nunca estime o valor do carro do cliente. Oriente que só é possível após avaliação do nosso avaliador presencial.
 7. FINANCIAMENTO: Se o cliente perguntar sobre financiamento, parcelas ou entrada, responda APENAS com uma mensagem curta confirmando que financia e que vai passar para o especialista cuidar — ex: "Sim, trabalhamos com financiamento! Já vou chamar nosso especialista para te atender 😊". NUNCA calcule parcelas, NUNCA cite valores de prestação, NUNCA faça simulações. O gerente assume a conversa em seguida.
 8. NEGOCIAÇÃO E DESCONTO: Você não tem autorização para dar descontos finais pelo WhatsApp. Jogue para a gerência de forma natural ("Deixa eu ver o que consigo com meu gerente"). Não convide o cliente para a loja em TODAS as respostas — isso cansa e afasta.
@@ -439,7 +441,16 @@ ${p.instrucaoPendente ? `✅ INSTRUÇÃO DO GERENTE (use esta informação para 
 
 ${p.clientePediuFoto ? "❌ FOTO: Não há foto disponível para esse veículo. Responda ao cliente: 'Esse ainda não tem foto disponível, mas posso te passar mais detalhes.' E use precisa_instrucao com: 'Cliente pediu foto do veículo mas não há foto cadastrada no sistema.'" : ""}
 ${p.clientePediuVideo ? "❌ VÍDEO: Não há vídeo disponível para esse veículo. Responda ao cliente: 'Esse não tem vídeo disponível no momento.' E use precisa_instrucao com: 'Cliente pediu vídeo do veículo mas não há vídeo cadastrado no sistema.'" : ""}
-${p.midiaSendada ? `⚠️ MÍDIA ENVIADA AUTOMATICAMENTE: ${p.midiaSendada} foram enviadas neste turno antes desta resposta de texto. Escreva APENAS uma frase curta e natural de acompanhamento (máximo 1 linha). PROIBIDO dizer "vou enviar" ou "já te mando" — a mídia já chegou. Ex: "Aqui estão as fotos do Gol!" ou "Confere aí e me diz o que achou!"` : ""}
+${p.midiaSendada ? `⚠️ MÍDIA ENVIADA AUTOMATICAMENTE: ${p.midiaSendada} foram enviadas neste turno. O sistema JÁ enviou uma legenda na última foto convidando o cliente a pedir partes específicas. Por isso, sua resposta DEVE ser:
+- SE não precisa dizer mais nada → resposta vazia "" (preferível)
+- SE QUISER complementar → no MÁXIMO 4-6 palavras, sem perguntas ("Confere aí!" ou "Show, né?")
+PROIBIDO TERMINANTE:
+- "Aqui estão as fotos" (duplicaria a legenda)
+- "Quer ver mais fotos?" / "Quer ver por dentro?" / "Quer ver outras partes?" (a legenda já pergunta isso)
+- "As fotos foram enviadas" / "Te mandei" / "Já te mandei" (cliente ESTÁ vendo)
+- Frases > 1 linha
+- "vou enviar" / "já te mando" (mídia já chegou)
+` : ""}
 ${(!p.midiaSendada && (p.clientePediuFoto || p.clientePediuVideo)) ? `⛔ ATENÇÃO CRÍTICA: O cliente pediu mídia mas o sistema NÃO ENVIOU NADA neste turno. NÃO escreva "Aqui estão", "Te mandei", "Acabei de enviar", "Já te mando", "Vou enviar", "Tá indo" — seria mentira. Em vez disso, peça desculpa e diga que vai verificar com a equipe. Ex: "Deixa eu confirmar essas fotos com o pessoal do pátio." E use precisa_instrucao para alertar o gerente.` : ""}
 
 [AÇÃO REQUERIDA]
@@ -1889,11 +1900,16 @@ Responda apenas com o JSON, sem markdown.`;
     }
 
     // Detecta se cliente está pedindo MAIS fotos (continuação) ou de PARTE específica do carro.
-    // Casos: "tem mais foto", "tem foto por dentro", "ver interior", "quero ver tudo"
-    const pedindoMaisFotos = /\b(mais\s+fotos?|outras?\s+fotos?|tem\s+mais|todas\s+as\s+fotos?|todas?|quero\s+ver\s+tudo|ver\s+tudo|fotos?\s+(?:por\s+)?dentro|interior|por\s+dentro|painel|bagageiro|porta-malas|motor|de\s+lado|por\s+tr[aá]s|tras[ei]ra|de\s+frente)\b/i.test(mensagemLower);
+    const pedindoMaisFotos = /\b(mais\s+fotos?|outras?\s+fotos?|tem\s+mais|fotos?\s+(?:por\s+)?dentro|interior|por\s+dentro|painel|bagageiro|porta-malas|motor|de\s+lado|por\s+tr[aá]s|tras[ei]ra|de\s+frente)\b/i.test(mensagemLower);
 
-    // Limite de fotos por turno (4 normalmente, 6 se cliente pediu "mais fotos")
-    const MAX_FOTOS_POR_VEICULO = pedindoMaisFotos ? 6 : 4;
+    // Detecta se cliente pediu TODAS — quer ver tudo de uma vez sem limite
+    const pedindoTodasFotos = /\b(todas?\s+(?:as\s+)?fotos?|manda\s+todas?|pode\s+mandar\s+todas?|quero\s+(?:ver\s+)?todas?|quero\s+ver\s+tudo|ver\s+tudo|me\s+manda\s+todas?)\b/i.test(mensagemLower);
+
+    // Limite de fotos por turno:
+    // - "todas" → até 12 (basicamente tudo)
+    // - "mais" / "interior" → 6
+    // - padrão → 4
+    const MAX_FOTOS_POR_VEICULO = pedindoTodasFotos ? 12 : (pedindoMaisFotos ? 6 : 4);
 
     for (const v of veiculosParaFoto) {
       // Se pedindoFotosMultiplos (vários carros), envia só a capa de cada um.
@@ -1935,21 +1951,27 @@ Responda apenas com o JSON, sem markdown.`;
         console.log(`📷 [foto] Enviando ${fotosParaEnviar.length}/${todasFotosRaw.length} fotos do ${v.marca} ${v.modelo} (já enviadas: ${fotosJaEnviadas.size})`);
       }
 
-      // Caption da última foto:
-      // - Se ainda tem MAIS fotos no banco (não enviadas), avisa: "Quer ver por dentro/motor/etc?"
-      // - Se já enviou todas, oferece o link da vitrine (último recurso)
+      // Caption da última foto — pensada pra evitar duplicação com a resposta do Gemini
+      // que vem DEPOIS. Por isso é mais sucinta. O Gemini complementa naturalmente.
       const carUrl = vitrineUrl ? `${vitrineUrl}/${v.id}` : null;
       const totalFotos = todasFotosRaw.length;
       const restamFotos = poolFotos.length - fotosParaEnviar.length;
 
       let captionUltima: string | undefined;
-      if (restamFotos > 0) {
-        // Convida o cliente a pedir mais (em vez de mandar link)
-        captionUltima = `Tenho mais ${restamFotos} ${restamFotos === 1 ? "foto" : "fotos"} desse carro. Quer ver por dentro, motor, ou alguma parte específica?`;
-      } else if (carUrl && totalFotos > 1) {
-        // Já mandou tudo — link da vitrine como referência (fallback)
-        captionUltima = `Quer ver na vitrine completa? ${carUrl}`;
+      if (reenviando) {
+        // Já mandou todas antes — sem caption pra evitar "tenho mais X" mentiroso
+        captionUltima = undefined;
+      } else if (pedindoTodasFotos && restamFotos === 0) {
+        // Cliente pediu TODAS e enviamos tudo — caption simples, sem pergunta extra
+        captionUltima = undefined;
+      } else if (restamFotos > 0 && !pedindoTodasFotos) {
+        // Tem mais fotos disponíveis E cliente não pediu todas — convida pra pedir
+        captionUltima = `Tenho mais ${restamFotos} ${restamFotos === 1 ? "foto" : "fotos"} dele. Quer ver alguma parte específica?`;
+      } else if (restamFotos === 0 && carUrl && totalFotos > 4) {
+        // Mandamos tudo + vitrine como referência (só pra carros com >4 fotos)
+        captionUltima = `Ver na vitrine completa: ${carUrl}`;
       }
+      // Caso padrão: sem caption — Gemini gera texto livre depois
 
       for (let i = 0; i < fotosParaEnviar.length; i++) {
         const isUltima = i === fotosParaEnviar.length - 1;
