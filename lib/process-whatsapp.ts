@@ -1888,8 +1888,12 @@ Responda apenas com o JSON, sem markdown.`;
       }
     }
 
-    // Máximo de fotos por veículo — evita spam de +16 fotos no chat
-    const MAX_FOTOS_POR_VEICULO = 4;
+    // Detecta se cliente está pedindo MAIS fotos (continuação) ou de PARTE específica do carro.
+    // Casos: "tem mais foto", "tem foto por dentro", "ver interior", "quero ver tudo"
+    const pedindoMaisFotos = /\b(mais\s+fotos?|outras?\s+fotos?|tem\s+mais|todas\s+as\s+fotos?|todas?|quero\s+ver\s+tudo|ver\s+tudo|fotos?\s+(?:por\s+)?dentro|interior|por\s+dentro|painel|bagageiro|porta-malas|motor|de\s+lado|por\s+tr[aá]s|tras[ei]ra|de\s+frente)\b/i.test(mensagemLower);
+
+    // Limite de fotos por turno (4 normalmente, 6 se cliente pediu "mais fotos")
+    const MAX_FOTOS_POR_VEICULO = pedindoMaisFotos ? 6 : 4;
 
     for (const v of veiculosParaFoto) {
       // Se pedindoFotosMultiplos (vários carros), envia só a capa de cada um.
@@ -1904,13 +1908,52 @@ Responda apenas com o JSON, sem markdown.`;
 
       if (todasFotosRaw.length === 0) continue;
 
-      const fotosParaEnviar = todasFotosRaw.slice(0, MAX_FOTOS_POR_VEICULO);
-      const temMaisFotos = todasFotosRaw.length > MAX_FOTOS_POR_VEICULO;
+      // Busca quais fotos JÁ FORAM ENVIADAS pra esse lead/veículo (evita repetir)
+      let fotosJaEnviadas = new Set<string>();
+      if (lead?.id && !pedindoFotosMultiplos) {
+        const { data: msgsComMidia } = await supabaseAdmin
+          .from("mensagens")
+          .select("media_url")
+          .eq("lead_id", lead.id)
+          .eq("remetente", "agente")
+          .eq("media_tipo", "foto")
+          .not("media_url", "is", null);
+        fotosJaEnviadas = new Set((msgsComMidia ?? []).map((m: any) => m.media_url).filter(Boolean));
+      }
 
-      const carUrl = temMaisFotos && vitrineUrl ? `${vitrineUrl}/${v.id}` : null;
+      // Prioriza fotos NUNCA enviadas. Se já mandou todas, recomeça do início.
+      const fotosNaoEnviadas = todasFotosRaw.filter(f => !fotosJaEnviadas.has(f));
+      const poolFotos = fotosNaoEnviadas.length > 0 ? fotosNaoEnviadas : todasFotosRaw;
+      const reenviando = fotosNaoEnviadas.length === 0 && fotosJaEnviadas.size > 0;
+
+      const fotosParaEnviar = poolFotos.slice(0, MAX_FOTOS_POR_VEICULO);
+      const temMaisFotos = poolFotos.length > MAX_FOTOS_POR_VEICULO;
+
+      if (reenviando) {
+        console.log(`🔁 [foto] Todas as ${todasFotosRaw.length} fotos do ${v.marca} ${v.modelo} já foram enviadas — reenviando.`);
+      } else {
+        console.log(`📷 [foto] Enviando ${fotosParaEnviar.length}/${todasFotosRaw.length} fotos do ${v.marca} ${v.modelo} (já enviadas: ${fotosJaEnviadas.size})`);
+      }
+
+      // Caption da última foto:
+      // - Se ainda tem MAIS fotos no banco (não enviadas), avisa: "Quer ver por dentro/motor/etc?"
+      // - Se já enviou todas, oferece o link da vitrine (último recurso)
+      const carUrl = vitrineUrl ? `${vitrineUrl}/${v.id}` : null;
+      const totalFotos = todasFotosRaw.length;
+      const restamFotos = poolFotos.length - fotosParaEnviar.length;
+
+      let captionUltima: string | undefined;
+      if (restamFotos > 0) {
+        // Convida o cliente a pedir mais (em vez de mandar link)
+        captionUltima = `Tenho mais ${restamFotos} ${restamFotos === 1 ? "foto" : "fotos"} desse carro. Quer ver por dentro, motor, ou alguma parte específica?`;
+      } else if (carUrl && totalFotos > 1) {
+        // Já mandou tudo — link da vitrine como referência (fallback)
+        captionUltima = `Quer ver na vitrine completa? ${carUrl}`;
+      }
+
       for (let i = 0; i < fotosParaEnviar.length; i++) {
         const isUltima = i === fotosParaEnviar.length - 1;
-        const caption = (isUltima && carUrl) ? `Ver mais fotos: ${carUrl}` : undefined;
+        const caption = isUltima ? captionUltima : undefined;
         try {
           await sendImage(phone, fotosParaEnviar[i], caption);
           fotoEnviada = true;
