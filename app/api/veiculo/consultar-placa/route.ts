@@ -18,8 +18,13 @@ async function consultarApiBrasil(placa: string) {
   if (!res.ok) {
     const text = await res.text();
 
-    // Log COMPLETO pro servidor — ajuda a diagnosticar problemas de crédito/quota/fornecedor
-    console.error(`[apibrasil-RAW] HTTP ${res.status} para placa ${placa}: ${text.slice(0, 800)}`);
+    // Log em partes — Vercel UI trunca em ~50 chars por linha, então separamos em múltiplas
+    console.error(`[apibrasil-1] STATUS=${res.status} PLACA=${placa}`);
+    console.error(`[apibrasil-2-0to200] ${text.slice(0, 200)}`);
+    console.error(`[apibrasil-3-200to400] ${text.slice(200, 400)}`);
+    console.error(`[apibrasil-4-400to600] ${text.slice(400, 600)}`);
+    console.error(`[apibrasil-5-600to800] ${text.slice(600, 800)}`);
+    console.error(`[apibrasil-6-len] response total: ${text.length} chars`);
 
     // Extrai mensagem amigável do JSON da apibrasil (em vez de mostrar payload cru)
     let mensagemAmigavel = "";
