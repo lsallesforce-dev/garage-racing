@@ -18,25 +18,36 @@ async function consultarApiBrasil(placa: string) {
   if (!res.ok) {
     const text = await res.text();
 
+    // Log COMPLETO pro servidor — ajuda a diagnosticar problemas de crédito/quota/fornecedor
+    console.error(`[apibrasil-RAW] HTTP ${res.status} para placa ${placa}: ${text.slice(0, 800)}`);
+
     // Extrai mensagem amigável do JSON da apibrasil (em vez de mostrar payload cru)
     let mensagemAmigavel = "";
+    let detectouCredito = false;
     try {
       const parsed = JSON.parse(text);
       // apibrasil costuma retornar message ou error.message no topo do JSON
       const raw = String(parsed?.message ?? parsed?.error?.message ?? parsed?.error ?? "");
       const upper = raw.toUpperCase();
 
-      if (/N[ÃA]O\s+FOI\s+POSS[ÍI]VEL\s+OBTER|FORNECEDOR/i.test(raw)) {
-        mensagemAmigavel = "Placa não encontrada ou fornecedor de dados indisponível. Verifique se a placa está correta ou tente novamente em alguns minutos.";
-      } else if (upper.includes("INVALID") || upper.includes("INV[AÁ]LID")) {
+      // Detecta crédito/quota PRIMEIRO (antes de fornecedor) — apibrasil pode mascarar
+      // crédito esgotado como "sem resposta do fornecedor"
+      if (/CR[ÉE]DITO|CREDIT|QUOTA|LIMITE|SEM\s+SALDO|INSUFFICIENT/i.test(raw)) {
+        mensagemAmigavel = "Limite de consultas esgotado na apibrasil.io. Recarregue os créditos.";
+        detectouCredito = true;
+      } else if (/N[ÃA]O\s+FOI\s+POSS[ÍI]VEL\s+OBTER|FORNECEDOR/i.test(raw)) {
+        mensagemAmigavel = "Placa não encontrada ou fornecedor de dados indisponível. Verifique a placa ou tente novamente em alguns minutos.";
+      } else if (upper.includes("INVALID")) {
         mensagemAmigavel = "Placa inválida. Confira o formato (ex: ABC1234 ou ABC1D23).";
-      } else if (upper.includes("CRÉDITO") || upper.includes("CREDIT") || upper.includes("QUOTA")) {
-        mensagemAmigavel = "Limite de consultas esgotado. Avise o administrador.";
       } else if (raw) {
         mensagemAmigavel = raw.slice(0, 150);
       }
+
+      // Alerta visível no log se for crédito
+      if (detectouCredito) {
+        console.error(`💸 [apibrasil] CRÉDITOS ESGOTADOS — recarregar em https://apibrasil.io/dashboard`);
+      }
     } catch {
-      // se nem JSON é, mostra os primeiros 150 chars do texto
       mensagemAmigavel = text.slice(0, 150);
     }
 
