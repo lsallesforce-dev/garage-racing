@@ -414,6 +414,7 @@ ${p.instrucaoPendente ? `✅ INSTRUÇÃO DO GERENTE (use esta informação para 
 ${p.clientePediuFoto ? "❌ FOTO: Não há foto disponível para esse veículo. Responda ao cliente: 'Esse ainda não tem foto disponível, mas posso te passar mais detalhes.' E use precisa_instrucao com: 'Cliente pediu foto do veículo mas não há foto cadastrada no sistema.'" : ""}
 ${p.clientePediuVideo ? "❌ VÍDEO: Não há vídeo disponível para esse veículo. Responda ao cliente: 'Esse não tem vídeo disponível no momento.' E use precisa_instrucao com: 'Cliente pediu vídeo do veículo mas não há vídeo cadastrado no sistema.'" : ""}
 ${p.midiaSendada ? `⚠️ MÍDIA ENVIADA AUTOMATICAMENTE: ${p.midiaSendada} foram enviadas neste turno antes desta resposta de texto. Escreva APENAS uma frase curta e natural de acompanhamento (máximo 1 linha). PROIBIDO dizer "vou enviar" ou "já te mando" — a mídia já chegou. Ex: "Aqui estão as fotos do Gol!" ou "Confere aí e me diz o que achou!"` : ""}
+${(!p.midiaSendada && (p.clientePediuFoto || p.clientePediuVideo)) ? `⛔ ATENÇÃO CRÍTICA: O cliente pediu mídia mas o sistema NÃO ENVIOU NADA neste turno. NÃO escreva "Aqui estão", "Te mandei", "Acabei de enviar", "Já te mando", "Vou enviar", "Tá indo" — seria mentira. Em vez disso, peça desculpa e diga que vai verificar com a equipe. Ex: "Deixa eu confirmar essas fotos com o pessoal do pátio." E use precisa_instrucao para alertar o gerente.` : ""}
 
 [AÇÃO REQUERIDA]
 Você DEVE retornar a resposta estritamente no formato JSON, usando a seguinte estrutura exata:
@@ -1700,9 +1701,23 @@ Responda apenas com o JSON, sem markdown.`;
     "manda o vídeo", "envia o vídeo", "envia o video", "me manda o video", "me manda o vídeo",
   ];
 
-  // Confirmação ("sim/pode/ok") é válida somente se a msg anterior do cliente OU do agente mencionou foto/vídeo
-  // Permite pontuação e espaços no final: "Sim.", "Ok!", "Pode sim."
-  const msgConfirmacao = /^(sim|envia|manda|pode|quero|vai|claro|ok|isso|bora|manda sim|pode sim)[.!?]?\s*$/i.test(userMessage.trim());
+  // Confirmação ("sim/pode/ok/quero sim/manda aí") é válida somente se a msg anterior
+  // do cliente OU do agente mencionou foto/vídeo.
+  //
+  // Bug anterior: regex `^(sim|quero|...)$` exigia match exato. "Quero sim" tem 2 palavras
+  // → falhava. Cliente Denize disse "Quero sim" depois do agente perguntar "Quer ver as fotos?"
+  // e o sistema não enviou foto. Gemini alucinou "Aqui estão!" sem mídia.
+  //
+  // Fix: aceitar mensagem CURTA (≤ 6 palavras) que contenha palavra positiva E não tenha
+  // palavra interrogativa (que indicaria mudança de assunto, ex: "Quero saber o preço").
+  const msgConfirmacao = (() => {
+    const msg = userMessage.trim();
+    const palavras = msg.split(/\s+/);
+    if (palavras.length > 6) return false; // msgs longas não são confirmação simples
+    const temPositiva = /\b(sim|envia|envie|manda|mande|mandar|enviar|pode|quero|queria|gostaria|vai|claro|ok|okay|isso|bora|aham|uhum|positivo|certo|preciso|t[áa]\s*bom|com\s+certeza|por\s+favor|please)\b/i.test(msg);
+    const temInterrogativa = /\b(quanto|qual|como|onde|por\s*qu[eê]|porqu[eê]|porque|quando|cad[eê]|aceita|tem\s+como|d[áa]\s+pra)\b/i.test(msg) || msg.includes("?");
+    return temPositiva && !temInterrogativa;
+  })();
   // Strip prefixo de anúncio também da mensagem anterior (evita falso clientePediuFotoAntes
   // quando a msg CTWA anterior tinha "fotos" no texto do link, ex: "Confira as fotos do HR-V")
   const ultimaMsgClienteRaw = historico.filter((h: any) => h.role === "user").slice(-2, -1)[0]?.parts?.[0]?.text ?? "";
@@ -2253,6 +2268,89 @@ Responda apenas com o JSON, sem markdown.`;
     } catch (guardErr) {
       console.error("⚠️ Guarda anti-mentira falhou:", guardErr);
       // Não bloqueia o fluxo — mantém aiResponse original
+    }
+  }
+
+  // ── 12c. SAFETY NET DE MÍDIA — força envio se Gemini disse que mandou mas não mandou ──
+  // Caso real (Denize, 26/05 22h): Cliente disse "Quero sim" depois do agente
+  // perguntar "Quer ver as fotos?". O regex de confirmação não pegou "Quero sim"
+  // (2 palavras), o sistema não enviou foto, e o Gemini alucinou "Aqui estão!"
+  // sem ter mídia anexada. Resultado: cliente recebe texto, mas nenhuma foto.
+  //
+  // Este safety net intercepta DEPOIS do Gemini gerar a resposta:
+  // 1. Se o texto contém frases que afirmam envio ("aqui estão", "te mandei", etc)
+  // 2. E o sistema NÃO enviou mídia neste turno (fotoEnviada=false E videoEnviado=false)
+  // 3. Então força o envio agora — usando o veiculoPrincipal como fallback
+  {
+    const indicaEnvioFoto = /\b(aqui\s+est[aãáà]|aqui\s+v[aãáà]|te\s+mande[ie]?|acabei\s+de\s+enviar|j[áa]\s+te\s+mande[ie]?|segue|seguem|olha\s+(?:s[oó]\s+)?(?:as?|os?)\s+fotos?)\b/i.test(aiResponse);
+    const indicaEnvioVideo = /\b(aqui\s+(?:est[aãáà]|v[aãáà])\s+o?\s*v[íi]deo|te\s+mande[ie]?\s+o?\s*v[íi]deo|segue\s+o?\s*v[íi]deo)\b/i.test(aiResponse);
+
+    if ((indicaEnvioFoto && !fotoEnviada) || (indicaEnvioVideo && !videoEnviado)) {
+      console.warn(`🚨 [safety-net mídia] Gemini afirmou envio mas sistema não enviou. Forçando envio agora.`);
+      const veiculoSeguranca = veiculoPrincipal ?? topVeiculos[0];
+
+      if (veiculoSeguranca && indicaEnvioFoto && !fotoEnviada) {
+        const fotos: string[] = [
+          ...((veiculoSeguranca as any).capa_marketing_url ? [(veiculoSeguranca as any).capa_marketing_url] : []),
+          ...(((veiculoSeguranca as any).fotos ?? []).filter((f: string) => f !== (veiculoSeguranca as any).capa_marketing_url)),
+        ].filter(Boolean).slice(0, 4);
+
+        if (fotos.length > 0) {
+          for (let i = 0; i < fotos.length; i++) {
+            const carUrl = vitrineUrl ? `${vitrineUrl}/${veiculoSeguranca.id}` : null;
+            const caption = (i === fotos.length - 1 && carUrl) ? `Ver mais: ${carUrl}` : undefined;
+            try {
+              await sendImage(phone, fotos[i], caption);
+              if (lead) {
+                await supabaseAdmin.from("mensagens").insert({
+                  lead_id: lead.id,
+                  content: caption ?? `📷 ${veiculoSeguranca.marca} ${veiculoSeguranca.modelo}`,
+                  remetente: "agente",
+                  media_url: fotos[i],
+                  media_tipo: "foto",
+                }).then(() => {}, () => {});
+              }
+            } catch (e) {
+              console.warn(`⚠️ [safety-net] Falha ao enviar foto:`, e);
+            }
+          }
+          fotoEnviada = true;
+        } else {
+          // Sem fotos cadastradas — corrige o aiResponse para não mentir
+          aiResponse = `Vou confirmar essas fotos com o pessoal do pátio. Qualquer dúvida já me chama aqui!`;
+          if (lead) {
+            await supabaseAdmin.from("leads").update({
+              instrucao_pendente: `Cliente pediu fotos do ${veiculoSeguranca.marca} ${veiculoSeguranca.modelo} mas o veículo não tem fotos cadastradas.`,
+            }).eq("id", lead.id).then(() => {}, () => {});
+          }
+        }
+      }
+
+      if (veiculoSeguranca && indicaEnvioVideo && !videoEnviado) {
+        const videoUrlRaw = (veiculoSeguranca as any).video_marketing_url ?? (veiculoSeguranca as any).video_url ?? null;
+        if (videoUrlRaw) {
+          try {
+            const videoUrl = await ensureCompressedVideo(videoUrlRaw, veiculoSeguranca.id);
+            if (videoUrl) {
+              await sendVideo(phone, videoUrl, undefined);
+              videoEnviado = true;
+              if (lead) {
+                await supabaseAdmin.from("mensagens").insert({
+                  lead_id: lead.id,
+                  content: `🎥 ${veiculoSeguranca.marca} ${veiculoSeguranca.modelo}`,
+                  remetente: "agente",
+                  media_url: videoUrl,
+                  media_tipo: "video",
+                }).then(() => {}, () => {});
+              }
+            }
+          } catch (e) {
+            console.warn(`⚠️ [safety-net] Falha ao enviar vídeo:`, e);
+          }
+        } else {
+          aiResponse = aiResponse.replace(/\b(aqui\s+(?:est[aãáà]|v[aãáà])\s+o?\s*v[íi]deo|te\s+mande[ie]?\s+o?\s*v[íi]deo|segue\s+o?\s*v[íi]deo)/i, "Esse não tem vídeo cadastrado");
+        }
+      }
     }
   }
 
