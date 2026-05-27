@@ -6,13 +6,17 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
 async function consultarApiBrasil(placa: string) {
+  // 27/05/2026: apibrasil descontinuou o tipo "fipe-chassi" sem aviso.
+  // Tipo "fipe" passou a ser o único habilitado no plano atual.
+  // Histórico do diagnóstico: /api/debug/placa-tipos confirmou que apenas
+  // "fipe" retorna 200 (último "fipe-chassi" OK foi 26/05 14:16 BRT).
   const res = await fetch("https://gateway.apibrasil.io/api/v2/consulta/veiculos/credits", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${process.env.APIBRASIL_TOKEN}`,
     },
-    body: JSON.stringify({ tipo: "fipe-chassi", placa, homolog: false }),
+    body: JSON.stringify({ tipo: "fipe", placa, homolog: false }),
   });
 
   if (!res.ok) {
