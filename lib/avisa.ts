@@ -99,8 +99,14 @@ async function sendWithRetry(url: string, payload: any, token: string, retries =
 }
 
 // Delay humanizado: ~1.5s curto, ~7s longo (máx)
+// Delay humanizado: 3-12s. Pessoas digitam mais devagar que esse cálculo
+// previa antes (1.5-7s parecia robótico em mensagens longas).
+// 3s base + 700ms por 50 chars + jitter aleatório 0-1500ms
 function typingDelay(text: string): number {
-  return Math.min(1500 + Math.floor(text.length / 50) * 500, 7000);
+  const base = 3000;
+  const porChars = Math.floor(text.length / 50) * 700;
+  const jitter = Math.floor(Math.random() * 1500); // 0 a 1.5s aleatório
+  return Math.min(base + porChars + jitter, 12000);
 }
 
 function buildTarget(phone: string): { number: string } {
