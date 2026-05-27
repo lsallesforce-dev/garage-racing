@@ -144,27 +144,39 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: err.message }, { status: 502 });
   }
 
-  const resultado = apiData?.data?.resultados?.[0] ?? apiData?.data ?? apiData;
-  if (!resultado) {
+  // Estrutura nova do tipo "fipe" (27/05/2026):
+  //   apiData.data.data[0] = info FIPE (marca, modelo, anoFabricacao, anoModelo, combustivel, valor, codigoFipe, ipva)
+  //   apiData.data.veiculo = info DETRAN (chassi, cor, cilindradas, potencia, municipio, uf, tipo_veiculo)
+  //
+  // Estrutura antiga (fipe-chassi, descontinuado): apiData.data.resultados[0] com campos MAIÚSCULOS
+  // Mantemos fallback pra estrutura antiga caso a apibrasil restaure ou plano use outro tipo.
+  const fipeInfo = apiData?.data?.data?.[0] ?? apiData?.data?.resultados?.[0] ?? apiData?.data ?? apiData;
+  const veiculoInfo = apiData?.data?.veiculo ?? {};
+
+  if (!fipeInfo) {
     return NextResponse.json({ error: "Veículo não encontrado para esta placa" }, { status: 404 });
   }
 
   const trunc = (s: string, n: number) => (s ?? "").slice(0, n);
 
-  // Normaliza campos da API (nomes podem variar)
-  const marcaRaw: string = trunc(resultado.MARCA ?? resultado.marca ?? "", 100);
-  const modeloRaw: string = trunc(resultado.MODELO ?? resultado.modelo ?? "", 100);
-  const versaoRaw: string = trunc(resultado.VERSAO ?? resultado.versao ?? resultado.SUBMODELO ?? resultado.submodelo ?? "", 150);
-  const anoFab: number | undefined = Number(resultado.ANO_FABRICACAO ?? resultado.anoFabricacao) || undefined;
-  const anoMod: number | undefined = Number(resultado.ANO_MODELO ?? resultado.anoModelo) || undefined;
-  const corRaw: string = trunc(resultado.COR ?? resultado.cor ?? "", 50);
-  const combustivelRaw: string = trunc(resultado.COMBUSTIVEL ?? resultado.combustivel ?? "", 50);
+  // Normaliza campos — aceita camelCase (tipo "fipe" novo) e UPPER (legacy)
+  const marcaRaw: string = trunc(fipeInfo.MARCA ?? fipeInfo.marca ?? "", 100);
+  const modeloRaw: string = trunc(fipeInfo.MODELO ?? fipeInfo.modelo ?? "", 100);
+  const versaoRaw: string = trunc(fipeInfo.VERSAO ?? fipeInfo.versao ?? fipeInfo.SUBMODELO ?? fipeInfo.submodelo ?? "", 150);
+  const anoFab: number | undefined = Number(fipeInfo.ANO_FABRICACAO ?? fipeInfo.anoFabricacao) || undefined;
+  const anoMod: number | undefined = Number(fipeInfo.ANO_MODELO ?? fipeInfo.anoModelo) || undefined;
+  // Cor vem do DETRAN (veiculo), não do FIPE
+  const corRaw: string = trunc(veiculoInfo.COR ?? veiculoInfo.cor ?? fipeInfo.COR ?? fipeInfo.cor ?? "", 50);
+  // Combustível: prefere DETRAN (vem UPPERCASE: "DIESEL"), depois FIPE (lowercase: "diesel")
+  const combustivelRaw: string = trunc(veiculoInfo.COMBUSTIVEL ?? veiculoInfo.combustivel ?? fipeInfo.COMBUSTIVEL ?? fipeInfo.combustivel ?? "", 50);
   const finalPlaca: string = placa.slice(-1);
 
-  // Valor FIPE — API retorna string "R$ 175.000,00" ou número
-  const valorFipeRaw = resultado.VALOR ?? resultado.valor ?? resultado.valorFipe ?? resultado.valor_fipe ?? null;
+  // Valor FIPE — campo `valor` é numérico no novo formato (138332 = R$ 138.332,00)
+  const valorFipeRaw = fipeInfo.VALOR ?? fipeInfo.valor ?? fipeInfo.valorFipe ?? fipeInfo.valor_fipe ?? null;
   const valorFipe: number | null = valorFipeRaw
-    ? Number(String(valorFipeRaw).replace(/[^0-9,]/g, "").replace(",", ".")) || null
+    ? typeof valorFipeRaw === "number"
+      ? valorFipeRaw
+      : Number(String(valorFipeRaw).replace(/[^0-9,]/g, "").replace(",", ".")) || null
     : null;
 
   console.log(`[consultar-placa] ${placa} → ${marcaRaw} ${modeloRaw} ${anoMod ?? anoFab ?? ""}`);
