@@ -179,6 +179,40 @@ export async function POST(req: NextRequest) {
       : Number(String(valorFipeRaw).replace(/[^0-9,]/g, "").replace(",", ".")) || null
     : null;
 
+  // Dados extras do novo response (apibrasil tipo "fipe")
+  const codigoFipe: string | null = fipeInfo.codigoFipe ?? fipeInfo.codigo_fipe ?? null;
+  const ipvaValor: number | null = typeof fipeInfo?.ipva?.valor === "number" ? fipeInfo.ipva.valor : null;
+  const chassi: string | null = veiculoInfo.chassi ?? veiculoInfo.CHASSI ?? null;
+  const cilindradas: number | null = veiculoInfo.cilindradas ? parseInt(String(veiculoInfo.cilindradas)) || null : null;
+  const potenciaCv: number | null = typeof veiculoInfo.potencia === "number" ? veiculoInfo.potencia : null;
+  const municipioOrigem: string | null = veiculoInfo.municipio ?? null;
+  const ufOrigem: string | null = veiculoInfo.uf ?? null;
+  const tipoVeiculoApibrasil: string | null = veiculoInfo.tipo_veiculo ?? null;
+
+  // Mapeia tipo_veiculo da apibrasil → categoria do AutoZap
+  // AutoZap aceita: Hatch, Sedan, SUV, Pick-up, Esportivo
+  const categoriaInferida: string | null = (() => {
+    const t = (tipoVeiculoApibrasil ?? "").toLowerCase();
+    if (t.includes("caminhonete") || t.includes("pick")) return "Pick-up";
+    if (t.includes("utilit")) return "SUV";
+    if (t.includes("sedan")) return "Sedan";
+    if (t.includes("hatch")) return "Hatch";
+    return null; // Gemini vai inferir nos detalhes
+  })();
+
+  // Constrói motor automaticamente: "2.4 Diesel 190cv"
+  const motorInferido: string | null = (() => {
+    if (!cilindradas && !potenciaCv) return null;
+    const litros = cilindradas ? (cilindradas / 1000).toFixed(1) : "";
+    const comb = combustivelRaw ? combustivelRaw.charAt(0).toUpperCase() + combustivelRaw.slice(1).toLowerCase() : "";
+    const partes = [
+      litros && `${litros}`,
+      comb,
+      potenciaCv && `${potenciaCv}cv`,
+    ].filter(Boolean);
+    return partes.length > 0 ? partes.join(" ") : null;
+  })();
+
   console.log(`[consultar-placa] ${placa} → ${marcaRaw} ${modeloRaw} ${anoMod ?? anoFab ?? ""}`);
 
   if (!marcaRaw || !modeloRaw) {
@@ -228,17 +262,27 @@ export async function POST(req: NextRequest) {
     if (!existing.ano_modelo && anoMod) updates.ano_modelo = anoMod;
     if (!existing.cor && corRaw)      updates.cor = corRaw.toLowerCase();
     if (!existing.combustivel && combustivelRaw) updates.combustivel = combustivelRaw;
-    if (!existing.motor && geminiData.motor)     updates.motor = geminiData.motor;
+    // motor: prefere o do Gemini (mais rico, com versão "Turbo"), senão usa inferido pela API
+    if (!existing.motor && (geminiData.motor || motorInferido)) updates.motor = geminiData.motor || motorInferido;
     if (!existing.placa)              updates.placa = placa;
     if (!existing.final_placa)        updates.final_placa = finalPlaca;
+    if (!existing.chassi && chassi)   updates.chassi = chassi;
+    if (!existing.categoria && categoriaInferida) updates.categoria = categoriaInferida;
     if ((!existing.opcionais || existing.opcionais.length === 0) && geminiData.opcionais?.length)
       updates.opcionais = geminiData.opcionais;
     if ((!existing.pontos_fortes_venda || existing.pontos_fortes_venda.length === 0) && geminiData.pontos_fortes_venda?.length)
       updates.pontos_fortes_venda = geminiData.pontos_fortes_venda;
     if (!existing.detalhes_inspecao && geminiData.detalhes)
       updates.detalhes_inspecao = geminiData.detalhes;
-    if (!existing.valor_fipe && valorFipe)
-      updates.valor_fipe = valorFipe;
+    // Dados FIPE/DETRAN — sempre atualiza se vier (são fontes oficiais, dados frescos)
+    if (valorFipe) updates.valor_fipe = valorFipe;
+    if (codigoFipe) updates.codigo_fipe = codigoFipe;
+    if (ipvaValor) updates.ipva_valor = ipvaValor;
+    if (cilindradas) updates.cilindradas = cilindradas;
+    if (potenciaCv) updates.potencia_cv = potenciaCv;
+    if (municipioOrigem) updates.municipio_origem = municipioOrigem;
+    if (ufOrigem) updates.uf_origem = ufOrigem;
+    if (tipoVeiculoApibrasil) updates.tipo_veiculo_apibrasil = tipoVeiculoApibrasil;
 
     if (Object.keys(updates).length > 0) {
       const { error: updateError } = await supabaseAdmin
@@ -271,11 +315,22 @@ export async function POST(req: NextRequest) {
   if (anoMod) insertPayload.ano_modelo = anoMod;
   if (corRaw) insertPayload.cor = corRaw.toLowerCase();
   if (combustivelRaw) insertPayload.combustivel = combustivelRaw;
-  if (geminiData.motor) insertPayload.motor = geminiData.motor;
+  // motor: prefere Gemini (mais rico), senão usa inferido pela API (cilindradas + combustível + cv)
+  if (geminiData.motor || motorInferido) insertPayload.motor = geminiData.motor || motorInferido;
   if (geminiData.opcionais?.length) insertPayload.opcionais = geminiData.opcionais;
   if (geminiData.pontos_fortes_venda?.length) insertPayload.pontos_fortes_venda = geminiData.pontos_fortes_venda;
   if (geminiData.detalhes) insertPayload.detalhes_inspecao = geminiData.detalhes;
   if (valorFipe) insertPayload.valor_fipe = valorFipe;
+  // Dados FIPE/DETRAN extras
+  if (chassi) insertPayload.chassi = chassi;
+  if (categoriaInferida) insertPayload.categoria = categoriaInferida;
+  if (codigoFipe) insertPayload.codigo_fipe = codigoFipe;
+  if (ipvaValor) insertPayload.ipva_valor = ipvaValor;
+  if (cilindradas) insertPayload.cilindradas = cilindradas;
+  if (potenciaCv) insertPayload.potencia_cv = potenciaCv;
+  if (municipioOrigem) insertPayload.municipio_origem = municipioOrigem;
+  if (ufOrigem) insertPayload.uf_origem = ufOrigem;
+  if (tipoVeiculoApibrasil) insertPayload.tipo_veiculo_apibrasil = tipoVeiculoApibrasil;
 
   const { data, error } = await supabaseAdmin
     .from("veiculos")

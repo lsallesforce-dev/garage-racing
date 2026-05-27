@@ -16,6 +16,9 @@ const ALLOWED_FIELDS = new Set([
   "qtd_proprietarios", "procedencia", "restricoes_veiculo",
   "historico_sinistros", "historico_manutencao", "observacoes_vistoria",
   "passou_leilao",
+  // Dados vindos da apibrasil tipo "fipe" (FIPE + DETRAN)
+  "codigo_fipe", "ipva_valor", "cilindradas", "potencia_cv",
+  "municipio_origem", "uf_origem", "tipo_veiculo_apibrasil",
 ]);
 
 export async function PATCH(req: NextRequest) {
