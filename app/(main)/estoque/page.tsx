@@ -108,7 +108,7 @@ export default function ListaEstoque() {
   return (
     <div className="p-4 md:p-10 bg-[#f4f4f2] min-h-screen font-sans overflow-y-auto w-full">
       <div className="max-w-6xl mx-auto">
-        <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-end mb-8 md:mb-12">
+        <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-end mb-6 md:mb-8">
             <div>
                 <h1 className="text-4xl md:text-6xl font-black italic uppercase text-gray-300 leading-none mb-2 tracking-tighter">Estoque Inteligente</h1>
                 <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-gray-400">Gerenciamento completo do pátio digital.</p>
@@ -116,6 +116,33 @@ export default function ListaEstoque() {
             <Link href="/upload" className="self-start sm:self-auto px-6 py-3 md:px-8 md:py-4 bg-red-600 text-white font-black uppercase italic rounded-2xl shadow-xl shadow-red-200 flex items-center gap-2 hover:scale-105 transition-all tracking-widest text-[10px]">
                 <Plus size={18} strokeWidth={3} /> Cadastrar Nova Máquina
               </Link>
+        </div>
+
+        {/* ── Contadores: Estoque + Vendidos ── */}
+        <div className="grid grid-cols-2 gap-3 md:gap-4 mb-6 md:mb-10">
+          <div className="bg-white rounded-2xl md:rounded-3xl p-4 md:p-5 border border-gray-100 shadow-sm flex items-center gap-3 md:gap-4">
+            <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl md:rounded-2xl bg-emerald-50 flex items-center justify-center flex-shrink-0">
+              <Car size={18} className="text-emerald-600" strokeWidth={2.5} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-gray-400 leading-tight">Carros em Estoque</p>
+              <p className="text-2xl md:text-3xl font-black italic text-gray-900 leading-none mt-1">
+                {loading ? "—" : carros.filter(c => c.status_venda !== 'VENDIDO').length}
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl md:rounded-3xl p-4 md:p-5 border border-gray-100 shadow-sm flex items-center gap-3 md:gap-4">
+            <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl md:rounded-2xl bg-slate-100 flex items-center justify-center flex-shrink-0">
+              <Check size={18} className="text-slate-700" strokeWidth={2.5} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-gray-400 leading-tight">Carros Vendidos</p>
+              <p className="text-2xl md:text-3xl font-black italic text-gray-900 leading-none mt-1">
+                {loading ? "—" : carros.filter(c => c.status_venda === 'VENDIDO').length}
+              </p>
+            </div>
+          </div>
         </div>
 
         <div className="grid gap-4">
