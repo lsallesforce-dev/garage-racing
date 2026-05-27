@@ -17,7 +17,34 @@ async function consultarApiBrasil(placa: string) {
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`apibrasil.io ${res.status}: ${text.slice(0, 300)}`);
+
+    // Extrai mensagem amigável do JSON da apibrasil (em vez de mostrar payload cru)
+    let mensagemAmigavel = "";
+    try {
+      const parsed = JSON.parse(text);
+      // apibrasil costuma retornar message ou error.message no topo do JSON
+      const raw = String(parsed?.message ?? parsed?.error?.message ?? parsed?.error ?? "");
+      const upper = raw.toUpperCase();
+
+      if (/N[ÃA]O\s+FOI\s+POSS[ÍI]VEL\s+OBTER|FORNECEDOR/i.test(raw)) {
+        mensagemAmigavel = "Placa não encontrada ou fornecedor de dados indisponível. Verifique se a placa está correta ou tente novamente em alguns minutos.";
+      } else if (upper.includes("INVALID") || upper.includes("INV[AÁ]LID")) {
+        mensagemAmigavel = "Placa inválida. Confira o formato (ex: ABC1234 ou ABC1D23).";
+      } else if (upper.includes("CRÉDITO") || upper.includes("CREDIT") || upper.includes("QUOTA")) {
+        mensagemAmigavel = "Limite de consultas esgotado. Avise o administrador.";
+      } else if (raw) {
+        mensagemAmigavel = raw.slice(0, 150);
+      }
+    } catch {
+      // se nem JSON é, mostra os primeiros 150 chars do texto
+      mensagemAmigavel = text.slice(0, 150);
+    }
+
+    if (!mensagemAmigavel) {
+      mensagemAmigavel = `Falha na consulta (HTTP ${res.status}). Tente novamente ou cadastre manualmente.`;
+    }
+
+    throw new Error(mensagemAmigavel);
   }
 
   return res.json();
@@ -93,7 +120,8 @@ export async function POST(req: NextRequest) {
     apiData = await consultarApiBrasil(placa);
   } catch (err: any) {
     console.error("[consultar-placa] apibrasil erro:", err.message);
-    return NextResponse.json({ error: `Falha na consulta de placa: ${err.message}` }, { status: 502 });
+    // err.message já vem amigável de consultarApiBrasil — sem prefixo redundante
+    return NextResponse.json({ error: err.message }, { status: 502 });
   }
 
   const resultado = apiData?.data?.resultados?.[0] ?? apiData?.data ?? apiData;
