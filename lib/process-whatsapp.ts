@@ -1102,9 +1102,21 @@ Responda apenas com o JSON, sem markdown.`;
         .limit(1)
         .maybeSingle();
 
-      if (ultimaMsg?.remetente === "agente") {
+      // Detecta se a resposta do cliente é SUBSTANTIVA ou só "Sim/Ok/Bom dia"
+      // Respostas mínimas não devem zerar o contador — evita loop de:
+      // 1. cliente diz "Bom dia" → conta zera → recebe outro FU
+      // 2. cliente diz "Ok" → conta zera de novo → recebe outro FU
+      // Caso real (553484435698): cliente recebeu 6 follow-ups em 15 dias por isso.
+      const userMsgTrim = (userMessage ?? "").trim();
+      const userMsgClean = userMsgTrim.replace(/^\[(?:Contexto do link|Lead veio do anúncio)[^\n]*\n?/m, "").trim();
+      const ehRespostaMinima = userMsgClean.length <= 25 &&
+        /^(sim|n[ãa]o|ok|okay|certo|claro|t[áa]|tudo\s+bem|aham|uhum|bom\s+dia|boa\s+tarde|boa\s+noite|valeu|obrigad[oa]|tchau|at[ée]\s+mais|entendi|combinado|beleza|positivo|isso|isso\s+mesmo|exato)[.!?\s]*$/i.test(userMsgClean);
+
+      if (ultimaMsg?.remetente === "agente" && !ehRespostaMinima) {
         upsertData.followup_count = 0;
-        console.log(`✅ [followup] Cliente respondeu — zerando followup_count de ${leadAtual.followup_count} → 0`);
+        console.log(`✅ [followup] Cliente respondeu (substantivo) — zerando followup_count de ${leadAtual.followup_count} → 0`);
+      } else if (ultimaMsg?.remetente === "agente" && ehRespostaMinima) {
+        console.log(`⏸️ [followup] Cliente respondeu apenas "${userMsgClean.slice(0, 30)}" — mantendo followup_count=${leadAtual.followup_count}`);
       }
     }
   }

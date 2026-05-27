@@ -452,6 +452,75 @@ export async function GET(req: NextRequest) {
         ignorar("sem_contexto"); continue;
       }
 
+      // ── 5a-1. LIFETIME CAP: máximo 3 follow-ups totais no lead (independente de reset) ──
+      // Mesmo se cliente responder "Sim/Ok/Bom dia" e zerar followup_count, conta total
+      // de follow-ups disparados pra esse lead. Acima de 3 = encerra ciclo definitivamente.
+      // Caso real (553484435698): cliente respondeu 3x com "Bom dia/Sim/Ok" → recebeu 6 FUs.
+      {
+        const { count: totalFollowupsLifetime } = await supabaseAdmin
+          .from("mensagens")
+          .select("*", { count: "exact", head: true })
+          .eq("lead_id", lead.id)
+          .eq("remetente", "agente")
+          .gte("created_at", new Date(agora.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString());
+
+        // Approx: msgs do agente sem resposta de cliente intercalada nas últimas 5
+        // Já temos o hard-cap por msgs consecutivas (5b). Aqui é total absoluto.
+        // Conta msgs de "follow-up típico" — mensagens do agente fora do horário de
+        // resposta direta (gap > 6h entre msg anterior do cliente e a do agente)
+        const { data: msgsAgenteRecentes } = await supabaseAdmin
+          .from("mensagens")
+          .select("created_at, remetente, content")
+          .eq("lead_id", lead.id)
+          .gte("created_at", new Date(agora.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString())
+          .order("created_at", { ascending: true });
+
+        let followupsContados = 0;
+        if (msgsAgenteRecentes) {
+          for (let i = 0; i < msgsAgenteRecentes.length; i++) {
+            const m = msgsAgenteRecentes[i];
+            if (m.remetente !== "agente") continue;
+            const anterior = msgsAgenteRecentes[i - 1];
+            // Se não há msg anterior OU a msg anterior foi do agente OU gap > 6h
+            // após msg do cliente → é follow-up típico
+            if (!anterior) continue; // primeira msg = saudação
+            const gapMs = new Date(m.created_at).getTime() - new Date(anterior.created_at).getTime();
+            const gapHours = gapMs / (60 * 60 * 1000);
+            if (anterior.remetente === "agente" && gapHours > 6) followupsContados++;
+            else if (anterior.remetente === "usuario" && gapHours > 6) followupsContados++;
+          }
+        }
+
+        if (followupsContados >= 3) {
+          console.log(`⏭️ [lifetime-cap] ${lead.wa_id} — já recebeu ${followupsContados} follow-ups em 30d, encerrando definitivamente`);
+          await supabaseAdmin
+            .from("leads")
+            .update({ followup_count: MAX_FOLLOWUPS, em_atendimento_humano: true })
+            .eq("id", lead.id);
+          ignorar("lifetime_cap_3_followups");
+          continue;
+        }
+      }
+
+      // ── 5a-2. AGENTE JÁ ESCALOU PRO FINANCEIRO/ESPECIALISTA → stand-by ──
+      // Se nas últimas 5 msgs o agente disse "vou chamar nosso especialista" / "setor financeiro"
+      // / "já encaminhei" → cliente já está aguardando humano. Não disparar follow-up.
+      const ultimasMsgsAgenteTexto = ultimasMsgsDesc
+        .filter(m => m.remetente === "agente")
+        .map(m => m.content || "")
+        .join(" ");
+      const jaEscalouPraHumano = /\b(especialista|setor\s+financeiro|j[áa]\s+encaminhei|j[áa]\s+anotei|j[áa]\s+repassei|gerente\s+vai|gerente\s+entrar[áa])\b/i.test(ultimasMsgsAgenteTexto);
+
+      if (jaEscalouPraHumano) {
+        console.log(`⏭️ [escalado] ${lead.wa_id} — agente já encaminhou pro especialista/financeiro, pulando follow-up`);
+        await supabaseAdmin
+          .from("leads")
+          .update({ em_atendimento_humano: true })
+          .eq("id", lead.id);
+        ignorar("ja_escalado_humano");
+        continue;
+      }
+
       // ── 5b. Hard cap por msgs CONSECUTIVAS do agente sem resposta ──────────
       // Independente do followup_count salvo (que pode ter sido zerado por bug),
       // se as últimas 2+ msgs forem todas do agente sem nenhuma resposta intercalada
