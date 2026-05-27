@@ -79,6 +79,9 @@ async function enriquecerComGemini(dadosPlaca: {
 }): Promise<{
   versao: string;
   motor: string;
+  combustivel: string;
+  categoria: string;
+  cambio: string;
   opcionais: string[];
   pontos_fortes_venda: string[];
   detalhes: string;
@@ -92,14 +95,17 @@ Veículo consultado:
 - Modelo: ${dadosPlaca.modelo}
 ${dadosPlaca.versao ? `- Versão: ${dadosPlaca.versao}` : ""}
 ${dadosPlaca.anoModelo ? `- Ano modelo: ${dadosPlaca.anoModelo}` : ""}
-${dadosPlaca.combustivel ? `- Combustível: ${dadosPlaca.combustivel}` : ""}
+${dadosPlaca.combustivel ? `- Combustível confirmado pela DETRAN: ${dadosPlaca.combustivel}` : ""}
 
-Baseie-se na ficha técnica oficial desta versão/ano para listar os equipamentos. Se não souber a versão exata, use os equipamentos da versão intermediária/mais comum comercializada no Brasil nesse período.
+Baseie-se na ficha técnica oficial desta versão/ano. Se não souber a versão exata, use os equipamentos da versão intermediária/mais comum comercializada no Brasil nesse período.
 
 Retorne SOMENTE um JSON válido (sem markdown, sem \`\`\`) com os campos:
 {
   "versao": "versão/trim do veículo (ex: EX CVT, LTZ 2.0, S 1.4 Turbo) — deixe vazio se incerto",
   "motor": "descrição completa do motor (ex: 1.0 Turbo 3-cilindros 130cv flex)",
+  "combustivel": "uma palavra: Gasolina, Etanol, Flex, Diesel, GNV, Híbrido ou Elétrico (NUNCA invente — se já recebeu o confirmado pela DETRAN acima, repita ele)",
+  "categoria": "uma palavra EXATA desta lista: Hatch, Sedan, SUV, Pick-up, Esportivo, Minivan, Conversível, Coupe — se incerto, deixe vazio",
+  "cambio": "uma palavra: Manual, Automático, CVT, Semi-automático — se incerto, deixe vazio",
   "opcionais": [
     "liste de 10 a 15 itens de série/opcionais reais desta versão",
     "inclua: tipo de direção, freios, airbags, multimidia, conectividade, câmeras, sensores, controles eletrônicos, ar-condicionado, bancos, vidros/travas elétricos, rodas, faróis",
@@ -220,7 +226,16 @@ export async function POST(req: NextRequest) {
   }
 
   // 2. Enriquece com Gemini
-  let geminiData = { versao: versaoRaw, motor: "", opcionais: [] as string[], pontos_fortes_venda: [] as string[], detalhes: "" };
+  let geminiData = {
+    versao: versaoRaw,
+    motor: "",
+    combustivel: "",
+    categoria: "",
+    cambio: "",
+    opcionais: [] as string[],
+    pontos_fortes_venda: [] as string[],
+    detalhes: "",
+  };
   try {
     const enriched = await enriquecerComGemini({
       marca: marcaRaw,
@@ -232,6 +247,9 @@ export async function POST(req: NextRequest) {
     geminiData = {
       versao: trunc(enriched.versao ?? geminiData.versao, 150),
       motor: trunc(enriched.motor ?? "", 100),
+      combustivel: trunc(enriched.combustivel ?? "", 50),
+      categoria: trunc(enriched.categoria ?? "", 30),
+      cambio: trunc(enriched.cambio ?? "", 30),
       opcionais: (enriched.opcionais ?? []).map(o => trunc(o, 150)),
       pontos_fortes_venda: (enriched.pontos_fortes_venda ?? []).map(p => trunc(p, 200)),
       detalhes: enriched.detalhes ?? "",
@@ -240,6 +258,10 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.warn("[consultar-placa] Gemini enrich falhou:", err);
   }
+
+  // Fallback: se DETRAN não retornou cor/combustível, usa o que Gemini inferiu
+  const combustivelFinal = combustivelRaw || geminiData.combustivel || "";
+  const categoriaFinal = categoriaInferida || geminiData.categoria || "";
 
   // 3a. Enriquecer veículo existente (só preenche campos vazios)
   if (veiculoId) {
@@ -261,13 +283,16 @@ export async function POST(req: NextRequest) {
     if (!existing.ano && anoFab)      updates.ano = anoFab;
     if (!existing.ano_modelo && anoMod) updates.ano_modelo = anoMod;
     if (!existing.cor && corRaw)      updates.cor = corRaw.toLowerCase();
-    if (!existing.combustivel && combustivelRaw) updates.combustivel = combustivelRaw;
+    // Combustível: DETRAN > Gemini (fallback)
+    if (!existing.combustivel && combustivelFinal) updates.combustivel = combustivelFinal;
+    if (!existing.cambio && geminiData.cambio)     updates.cambio = geminiData.cambio;
     // motor: prefere o do Gemini (mais rico, com versão "Turbo"), senão usa inferido pela API
     if (!existing.motor && (geminiData.motor || motorInferido)) updates.motor = geminiData.motor || motorInferido;
     if (!existing.placa)              updates.placa = placa;
     if (!existing.final_placa)        updates.final_placa = finalPlaca;
     if (!existing.chassi && chassi)   updates.chassi = chassi;
-    if (!existing.categoria && categoriaInferida) updates.categoria = categoriaInferida;
+    // Categoria: tipo_veiculo da API (mapeado) > Gemini (fallback)
+    if (!existing.categoria && categoriaFinal) updates.categoria = categoriaFinal;
     if ((!existing.opcionais || existing.opcionais.length === 0) && geminiData.opcionais?.length)
       updates.opcionais = geminiData.opcionais;
     if ((!existing.pontos_fortes_venda || existing.pontos_fortes_venda.length === 0) && geminiData.pontos_fortes_venda?.length)
@@ -314,7 +339,9 @@ export async function POST(req: NextRequest) {
   if (anoFab) insertPayload.ano = anoFab;
   if (anoMod) insertPayload.ano_modelo = anoMod;
   if (corRaw) insertPayload.cor = corRaw.toLowerCase();
-  if (combustivelRaw) insertPayload.combustivel = combustivelRaw;
+  // Combustível: DETRAN > Gemini (fallback)
+  if (combustivelFinal) insertPayload.combustivel = combustivelFinal;
+  if (geminiData.cambio) insertPayload.cambio = geminiData.cambio;
   // motor: prefere Gemini (mais rico), senão usa inferido pela API (cilindradas + combustível + cv)
   if (geminiData.motor || motorInferido) insertPayload.motor = geminiData.motor || motorInferido;
   if (geminiData.opcionais?.length) insertPayload.opcionais = geminiData.opcionais;
@@ -323,7 +350,8 @@ export async function POST(req: NextRequest) {
   if (valorFipe) insertPayload.valor_fipe = valorFipe;
   // Dados FIPE/DETRAN extras
   if (chassi) insertPayload.chassi = chassi;
-  if (categoriaInferida) insertPayload.categoria = categoriaInferida;
+  // Categoria: tipo_veiculo da API (mapeado) > Gemini (fallback)
+  if (categoriaFinal) insertPayload.categoria = categoriaFinal;
   if (codigoFipe) insertPayload.codigo_fipe = codigoFipe;
   if (ipvaValor) insertPayload.ipva_valor = ipvaValor;
   if (cilindradas) insertPayload.cilindradas = cilindradas;
