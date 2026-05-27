@@ -24,13 +24,14 @@ export async function GET(req: NextRequest) {
   let upstreamHeaders: Record<string, string> = {};
 
   try {
+    const tipo = req.nextUrl.searchParams.get("tipo") ?? "fipe";
     const res = await fetch("https://gateway.apibrasil.io/api/v2/consulta/veiculos/credits", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${process.env.APIBRASIL_TOKEN}`,
       },
-      body: JSON.stringify({ tipo: "fipe-chassi", placa, homolog: false }),
+      body: JSON.stringify({ tipo, placa, homolog: false }),
     });
 
     upstreamStatus = res.status;
