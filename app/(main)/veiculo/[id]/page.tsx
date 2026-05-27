@@ -2167,21 +2167,29 @@ export default function DetalheVeiculo() {
               renavam={veiculo.renavam ?? null}
               chassi={veiculo.chassi ?? null}
               onAplicar={async (dados) => {
+                // ⚠️ Política: só preenche campos VAZIOS no veículo.
+                // Não sobrescreve dados oficiais (apibrasil/DETRAN) com OCR
+                // que pode ter erro (foto borrada, letra ruim, sombras).
+                // Se o cliente quiser CORRIGIR um dado, ele edita manualmente
+                // no formulário — não via scan do CRLV.
                 const updates: Record<string, any> = {};
-                if (dados.placa)          updates.placa          = dados.placa;
-                if (dados.renavam)        updates.renavam        = dados.renavam;
-                if (dados.chassi)         updates.chassi         = dados.chassi;
-                if (dados.marca)          updates.marca          = dados.marca;
-                if (dados.modelo)         updates.modelo         = dados.modelo;
-                if (dados.versao)         updates.versao         = dados.versao;
-                // anos são colunas integer no DB — converter string → number
-                if (dados.ano_fabricacao) { const n = parseInt(dados.ano_fabricacao); if (!isNaN(n)) updates.ano = n; }
-                if (dados.ano_modelo)     { const n = parseInt(dados.ano_modelo);     if (!isNaN(n)) updates.ano_modelo = n; }
-                if (dados.combustivel)    updates.combustivel    = dados.combustivel;
-                if (dados.cor)            updates.cor            = dados.cor;
-                if (dados.placa) {
+                if (dados.placa && !veiculo.placa)             updates.placa = dados.placa;
+                if (dados.renavam && !veiculo.renavam)         updates.renavam = dados.renavam;
+                if (dados.chassi && !veiculo.chassi)           updates.chassi = dados.chassi;
+                if (dados.marca && !veiculo.marca)             updates.marca = dados.marca;
+                if (dados.modelo && !veiculo.modelo)           updates.modelo = dados.modelo;
+                if (dados.versao && !veiculo.versao)           updates.versao = dados.versao;
+                if (dados.ano_fabricacao && !veiculo.ano)      { const n = parseInt(dados.ano_fabricacao); if (!isNaN(n)) updates.ano = n; }
+                if (dados.ano_modelo && !veiculo.ano_modelo)   { const n = parseInt(dados.ano_modelo); if (!isNaN(n)) updates.ano_modelo = n; }
+                if (dados.combustivel && !veiculo.combustivel) updates.combustivel = dados.combustivel;
+                if (dados.cor && !veiculo.cor)                 updates.cor = dados.cor;
+                if (dados.placa && !veiculo.final_placa) {
                   const digitos = dados.placa.replace(/[^0-9]/g, "");
                   if (digitos.length > 0) updates.final_placa = digitos.slice(-1);
+                }
+                if (Object.keys(updates).length === 0) {
+                  alert("Os dados do veículo já estão preenchidos. Se precisar corrigir, edite manualmente no formulário.");
+                  return;
                 }
                 setVeiculo((v: any) => ({ ...v, ...updates }));
                 await patch(updates);
