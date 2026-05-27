@@ -1111,8 +1111,9 @@ Responda apenas com o JSON, sem markdown.`;
       // Caso real (553484435698): cliente recebeu 6 follow-ups em 15 dias por isso.
       const userMsgTrim = (userMessage ?? "").trim();
       const userMsgClean = userMsgTrim.replace(/^\[(?:Contexto do link|Lead veio do anúncio)[^\n]*\n?/m, "").trim();
+      // Aceita variações com letras repetidas: Simm, Okk, Issoo
       const ehRespostaMinima = userMsgClean.length <= 25 &&
-        /^(sim|n[ãa]o|ok|okay|certo|claro|t[áa]|tudo\s+bem|aham|uhum|bom\s+dia|boa\s+tarde|boa\s+noite|valeu|obrigad[oa]|tchau|at[ée]\s+mais|entendi|combinado|beleza|positivo|isso|isso\s+mesmo|exato)[.!?\s]*$/i.test(userMsgClean);
+        /^(s[ií]m+|n[ãa]o+|ok+|okay+|cert[oa]+|clar[oa]+|t[áa]+|tudo\s+bem|aham+|uhum+|bom\s+dia|boa\s+tarde|boa\s+noite|valeu+|obrigad[oa]+|tchau+|at[ée]\s+mais|entendi+|combinado+|beleza+|positivo+|isso+|isso\s+mesmo|exato+)[.!?\s]*$/i.test(userMsgClean);
 
       if (ultimaMsg?.remetente === "agente" && !ehRespostaMinima) {
         upsertData.followup_count = 0;
@@ -1765,7 +1766,12 @@ Responda apenas com o JSON, sem markdown.`;
     const msg = userMessage.trim();
     const palavras = msg.split(/\s+/);
     if (palavras.length > 6) return false; // msgs longas não são confirmação simples
-    const temPositiva = /\b(sim|envia|envie|manda|mande|mandar|enviar|pode|quero|queria|gostaria|vai|claro|ok|okay|isso|bora|aham|uhum|positivo|certo|preciso|t[áa]\s*bom|com\s+certeza|por\s+favor|please)\b/i.test(msg);
+    // Aceita variações com letras repetidas no final ("Simm", "Mandaa", "Okkk", "Issoo")
+    // que são comuns em chat informal. Antes "Simm" não casava com \bsim\b porque
+    // "mm" quebra a word boundary depois de "sim". Agora aceita repetição.
+    // Caso real: Valdene (5516999778070) disse "Simm" depois de "Quer ver as fotos?"
+    // e o sistema não enviou.
+    const temPositiva = /\b(s[ií]m+|envi[ae]+|envia+r|mand[ae]+|manda+r|enviar+|pod[ei]+|quer[oei]+a?|queri[ae]+|gostari[ae]+|vai+|clar[oa]+|ok+|okay+|isso+|bora+|aham+|uhum+|positivo+|cert[oa]+|preciso+|t[áa]\s*bom|com\s+certeza|por\s+favor|please)\b/i.test(msg);
     const temInterrogativa = /\b(quanto|qual|como|onde|por\s*qu[eê]|porqu[eê]|porque|quando|cad[eê]|aceita|tem\s+como|d[áa]\s+pra)\b/i.test(msg) || msg.includes("?");
     return temPositiva && !temInterrogativa;
   })();
