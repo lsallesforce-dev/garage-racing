@@ -20,7 +20,16 @@ interface PagamentoItem {
 interface DadosContrato {
   vendedor: { nome: string; cnpj: string; endereco: string; cidade: string; estado: string; logo_url?: string };
   comprador: { nome: string; cpf: string; email: string; endereco: string; cidade: string; estado: string; cep: string; telefone: string; apelido?: string };
-  veiculo: { marca: string; modelo: string; versao?: string; ano_fab: string; ano_mod: string; placa: string; renavam: string; chassi: string };
+  veiculo: {
+    marca: string; modelo: string; versao?: string;
+    ano_fab: string; ano_mod: string;
+    placa: string; renavam: string; chassi: string;
+    cor?: string; combustivel?: string;
+    cilindradas?: number | null; potencia_cv?: number | null;
+    motor?: string;
+    quilometragem?: number | null;
+    codigo_fipe?: string;
+  };
   regularidade: { furto: string; multas: string; alienacao: string; outros: string };
   valor_total: number;
   pagamentos: PagamentoItem[];
@@ -147,7 +156,7 @@ export default function ImprimirContratoPage() {
 
         {/* Objeto */}
         <p style={{ marginBottom: "14px", textAlign: "justify" }}>
-          <strong>OBJETO DO CONTRATO:</strong> Veículo Marca {(d.veiculo.marca || "").toUpperCase()}, {(d.veiculo.modelo || "").toUpperCase()}{d.veiculo.versao ? ` ${d.veiculo.versao.toUpperCase()}` : ""}, ANO {d.veiculo.ano_fab} MODELO {d.veiculo.ano_mod}, PLACA {(d.veiculo.placa || "").toUpperCase()}{d.veiculo.renavam ? `, RENAVAM ${d.veiculo.renavam}` : ""}{d.veiculo.chassi ? `, CHASSI ${d.veiculo.chassi.toUpperCase()}` : ""}.
+          <strong>OBJETO DO CONTRATO:</strong> Veículo Marca {(d.veiculo.marca || "").toUpperCase()}, {(d.veiculo.modelo || "").toUpperCase()}{d.veiculo.versao ? ` ${d.veiculo.versao.toUpperCase()}` : ""}, ANO {d.veiculo.ano_fab} MODELO {d.veiculo.ano_mod}{d.veiculo.cor ? `, COR ${d.veiculo.cor.toUpperCase()}` : ""}{d.veiculo.combustivel ? `, COMBUSTÍVEL ${d.veiculo.combustivel.toUpperCase()}` : ""}, PLACA {(d.veiculo.placa || "").toUpperCase()}{d.veiculo.renavam ? `, RENAVAM ${d.veiculo.renavam}` : ""}{d.veiculo.chassi ? `, CHASSI ${d.veiculo.chassi.toUpperCase()}` : ""}{d.veiculo.cilindradas ? `, ${d.veiculo.cilindradas} CILINDRADAS` : ""}{d.veiculo.potencia_cv ? `, POTÊNCIA ${d.veiculo.potencia_cv}CV` : ""}{d.veiculo.motor ? `, MOTOR ${d.veiculo.motor.toUpperCase()}` : ""}{d.veiculo.quilometragem ? `, KM ${d.veiculo.quilometragem.toLocaleString('pt-BR')}` : ""}{d.veiculo.codigo_fipe ? `, CÓDIGO FIPE ${d.veiculo.codigo_fipe}` : ""}.
         </p>
 
         {/* Situação */}
