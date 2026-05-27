@@ -14,6 +14,32 @@ import { Vehicle } from "@/types/vehicle";
 
 type Temperatura = "FRIO" | "MORNO" | "QUENTE";
 
+// ─── Limpeza de nome do veículo para caption/histórico ───────────────────────
+// Remove prefixos feios (GM - Chevrolet, VW - Volkswagen) e termos técnicos
+// (1.4, 8V, Flex, Aut., 5P, HATCH SEDAN) — fica nome curto e natural.
+function nomeCarroLimpo(v: { marca?: string | null; modelo?: string | null }): string {
+  const marcaRaw = (v.marca ?? "").trim();
+  const modeloRaw = (v.modelo ?? "").trim();
+
+  // marca: remove prefixos comerciais e pega primeira palavra
+  const marca = marcaRaw
+    .replace(/^(GM\s*-\s*|VW\s*-\s*|FIAT\s*-\s*)/i, "")
+    .split(/\s+/)[0]
+    .trim();
+
+  // modelo: remove termos técnicos comuns e pega 2 primeiras palavras úteis
+  const modeloTokens = modeloRaw
+    .replace(/\b(\d\.\d|8V|16V|Flex|Aut\.?|MT|CVT|Turbo|HATCH|SEDAN|5P|3P|4P|Plus|Premium|TDi|TSI|MPI)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .filter(t => t.length >= 2)
+    .slice(0, 2);
+
+  const nome = [marca, ...modeloTokens].filter(Boolean).join(" ");
+  return nome || `${marcaRaw} ${modeloRaw}`.trim() || "veículo";
+}
+
 // ─── Compressão de vídeo com cache no R2 ──────────────────────────────────────
 // Na primeira vez: comprime, salva no R2 e atualiza o DB. Próximas chamadas: instantâneo.
 async function ensureCompressedVideo(videoUrl: string | null, veiculoId: string): Promise<string | null> {
@@ -1893,7 +1919,7 @@ Responda apenas com o JSON, sem markdown.`;
             try {
               await supabaseAdmin.from("mensagens").insert({
                 lead_id: lead.id,
-                content: caption ?? `📷 ${v.marca} ${v.modelo}`,
+                content: caption ?? `📷 ${nomeCarroLimpo(v)}`,
                 remetente: "agente",
                 media_url: fotosParaEnviar[i],
                 media_tipo: "foto",
@@ -1951,7 +1977,7 @@ Responda apenas com o JSON, sem markdown.`;
             try {
               await supabaseAdmin.from("mensagens").insert({
                 lead_id: lead.id,
-                content: `🎥 ${veiculoParaVideo.marca} ${veiculoParaVideo.modelo}`,
+                content: `🎥 ${nomeCarroLimpo(veiculoParaVideo)}`,
                 remetente: "agente",
                 media_url: videoUrl,
                 media_tipo: "video",
@@ -2079,6 +2105,10 @@ Responda apenas com o JSON, sem markdown.`;
         aiResponse =
           parsed.resposta ||
           "Tivemos uma pequena instabilidade, mas já estamos de volta. Posso te ajudar com os carros do pátio?";
+
+        // Strip emojis: o prompt proíbe mas o Gemini ignorava em ~22% das msgs.
+        // Safety net pós-Gemini remove qualquer Extended_Pictographic (😊, 😉, 🚀, etc).
+        aiResponse = aiResponse.replace(/\p{Extended_Pictographic}/gu, "").replace(/\s{2,}/g, " ").trim();
         if (parsed.temperatura && ["FRIO", "MORNO", "QUENTE"].includes(parsed.temperatura)) {
           temperatura = parsed.temperatura;
         }
@@ -2308,7 +2338,7 @@ Responda apenas com o JSON, sem markdown.`;
               if (lead) {
                 await supabaseAdmin.from("mensagens").insert({
                   lead_id: lead.id,
-                  content: caption ?? `📷 ${veiculoSeguranca.marca} ${veiculoSeguranca.modelo}`,
+                  content: caption ?? `📷 ${nomeCarroLimpo(veiculoSeguranca)}`,
                   remetente: "agente",
                   media_url: fotos[i],
                   media_tipo: "foto",
@@ -2341,7 +2371,7 @@ Responda apenas com o JSON, sem markdown.`;
               if (lead) {
                 await supabaseAdmin.from("mensagens").insert({
                   lead_id: lead.id,
-                  content: `🎥 ${veiculoSeguranca.marca} ${veiculoSeguranca.modelo}`,
+                  content: `🎥 ${nomeCarroLimpo(veiculoSeguranca)}`,
                   remetente: "agente",
                   media_url: videoUrl,
                   media_tipo: "video",
