@@ -1849,9 +1849,18 @@ Responda apenas com o JSON, sem markdown.`;
   // Detecta pedido de fotos de MÚLTIPLOS carros ("foto deles", "de ambos", "dos dois", "de cada um")
   const pedindoFotosMultiplos = /\b(deles|delas|dos dois|das duas|de ambos|de todos|de cada|de cada um)\b/i.test(mensagemLower);
 
+  // Cliente pede PARTE ESPECÍFICA do carro (interna, externa, motor, painel, etc).
+  // Inclui variações coloquiais: "interna" (cliente Gabriel disse), "interno",
+  // "internos", "intern", "fotos de dentro", etc.
+  // Caso real: Gabriel (5517991046403) — agente perguntou "Quer ver alguma parte
+  // específica?" → cliente: "Interna dele vcs tem ?" → sistema não enviou.
+  const pedindoParteCarro = /\b(intern[ao]s?|interior|por\s+dentro|de\s+dentro|painel|bancos?|porta-malas?|bagageiro|porta\s+malas?|motor|de\s+lado|por\s+tr[aá]s|tras[ei]ra|de\s+frente|frente|farol|far[oó]is|rod[ao]s?|pneus?|c[aâ]mbio|cambio|volante|teto|capo|cap[oô])\b/i.test(mensagemLower);
+
   const clientePediuFoto =
     (temIntencaoFoto || mensagemSoFoto || gatilhosFoto.some((g) => mensagemLower.includes(g)) ||
-      (msgConfirmacao && (clientePediuFotoAntes || agenteMencionouFoto)) || continuacaoFoto) &&
+      (msgConfirmacao && (clientePediuFotoAntes || agenteMencionouFoto)) || continuacaoFoto ||
+      // Cliente pediu parte específica E agente mencionou foto recentemente → envia foto
+      (pedindoParteCarro && agenteMencionouFoto)) &&
     !exclusoesFoto.some((e) => mensagemLower.includes(e));
 
   let fotoEnviada = false;
@@ -1964,7 +1973,7 @@ Responda apenas com o JSON, sem markdown.`;
     }
 
     // Detecta se cliente está pedindo MAIS fotos (continuação) ou de PARTE específica do carro.
-    const pedindoMaisFotos = /\b(mais\s+fotos?|outras?\s+fotos?|tem\s+mais|fotos?\s+(?:por\s+)?dentro|interior|por\s+dentro|painel|bagageiro|porta-malas|motor|de\s+lado|por\s+tr[aá]s|tras[ei]ra|de\s+frente)\b/i.test(mensagemLower);
+    const pedindoMaisFotos = /\b(mais\s+fotos?|outras?\s+fotos?|tem\s+mais|fotos?\s+(?:por\s+)?dentro|intern[ao]s?|interior|por\s+dentro|de\s+dentro|painel|bancos?|bagageiro|porta-malas|porta\s+malas|motor|de\s+lado|por\s+tr[aá]s|tras[ei]ra|de\s+frente|farol|far[oó]is|rod[ao]s?)\b/i.test(mensagemLower);
 
     // Detecta se cliente pediu TODAS — quer ver tudo de uma vez sem limite
     const pedindoTodasFotos = /\b(todas?\s+(?:as\s+)?fotos?|manda\s+todas?|pode\s+mandar\s+todas?|quero\s+(?:ver\s+)?todas?|quero\s+ver\s+tudo|ver\s+tudo|me\s+manda\s+todas?)\b/i.test(mensagemLower);
