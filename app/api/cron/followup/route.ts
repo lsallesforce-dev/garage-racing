@@ -596,7 +596,11 @@ export async function GET(req: NextRequest) {
       const sendText = (to: string, text: string) =>
         sendAvisaMessage(to, text, avisaCreds);
 
-      // ── 8. Dados do veículo (se houver) ────────────────────────────────────
+      // ── 8. Dados do veículo ────────────────────────────────────────────────
+      // Sem veiculo_id não há como gerar follow-up contextual — o Gemini inventa
+      // informações sobre um carro genérico, o que confunde o cliente.
+      if (!lead.veiculo_id) { ignorar("sem_veiculo_identificado"); continue; }
+
       let carro    = "veículo de interesse";
       let preco    = "";
       let disponivel = false;
