@@ -176,6 +176,7 @@ export interface WhatsAppJobPayload {
     body:        string | null;
     source_type: string | null;
     ad_id:       string | null;
+    thumbnail?:  string | null; // base64 JPEG da imagem do anúncio (via Baileys externalAdReply)
   } | null;
 }
 
@@ -1562,6 +1563,35 @@ Responda apenas com o JSON, sem markdown.`;
       if (!veiculoPrincipal) {
         console.warn(`⚠️ [Ad fallback] Nenhum veículo encontrado para headline: "${adTextRaw}" — palavras: [${adWords.join(", ")}]`);
       }
+    }
+  }
+
+  // ── 6e. Gemini Vision — lê imagem do anúncio quando todos os outros steps falharam ──
+  if (!veiculoPrincipal && !adVeiculoId && adReferral?.thumbnail) {
+    try {
+      const visionResult = await geminiFlashSales.generateContent([
+        { inlineData: { mimeType: "image/jpeg", data: adReferral.thumbnail } },
+        { text: "Você está vendo a imagem de um anúncio de veículo. Extraia APENAS o nome do veículo (marca e modelo). Responda SOMENTE com a marca e modelo, ex: 'Honda Civic' ou 'Volkswagen Gol'. Se não conseguir identificar, responda 'null'." },
+      ]);
+      const extracted = visionResult.response.text().trim().replace(/['"]/g, "");
+      if (extracted && extracted.toLowerCase() !== "null") {
+        const adVehicle = await findVehicleForMedia(extracted, tenantUserId);
+        if (adVehicle) {
+          veiculoPrincipal = adVehicle;
+          adVeiculoNome = `${adVehicle.marca} ${adVehicle.modelo}`;
+          await supabaseAdmin.from("leads").update({ veiculo_id: adVehicle.id }).eq("id", lead.id);
+          (lead as any).veiculo_id = adVehicle.id;
+          userMessage = userMessage.replace(
+            /(\[(?:Lead veio do anúncio|Contexto do link):[^\]]+\])/,
+            `$1 [Veículo identificado pela imagem: ${adVeiculoNome}]`
+          );
+          console.log(`🔍 [Gemini Vision] Veículo identificado na imagem: ${adVeiculoNome}`);
+        } else {
+          console.warn(`⚠️ [Gemini Vision] "${extracted}" não encontrado no estoque`);
+        }
+      }
+    } catch (e: any) {
+      console.warn(`⚠️ [Gemini Vision] Falha ao ler imagem do anúncio: ${e.message?.slice(0, 100)}`);
     }
   }
 
