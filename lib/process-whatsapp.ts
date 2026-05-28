@@ -930,20 +930,26 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   // Isso garante que o carro certo é identificado mesmo com headline genérico.
   // Prioridade 2: injeta o headline na mensagem como fallback textual.
   let adVeiculoId: string | null = null;
+  let adVeiculoNome: string | null = null;
   if (adReferral?.ad_id) {
     const { data: campanha } = await supabaseAdmin
       .from("meta_campanhas")
-      .select("veiculo_id")
+      .select("veiculo_id, veiculos(marca, modelo)")
       .eq("ad_id", adReferral.ad_id)
       .eq("user_id", tenantUserId)
       .maybeSingle();
     if (campanha?.veiculo_id) {
       adVeiculoId = campanha.veiculo_id;
-      console.log(`📢 [Ad referral] veiculo_id resolvido via ad_id=${adReferral.ad_id}: ${adVeiculoId}`);
+      const v = (campanha as any).veiculos;
+      if (v?.marca && v?.modelo) adVeiculoNome = `${v.marca} ${v.modelo}`;
+      console.log(`📢 [Ad referral] veiculo_id resolvido via ad_id=${adReferral.ad_id}: ${adVeiculoId} (${adVeiculoNome ?? "nome não resolvido"})`);
     }
   }
   if (adReferral?.headline) {
-    const contextoAd = `[Lead veio do anúncio: "${adReferral.headline}"${adReferral.body ? ` — ${adReferral.body}` : ""}]`;
+    // Se o ad_id resolveu o veículo, inclui o nome identificado no contexto para que
+    // o Gemini não aplique a exceção de "anúncio genérico" quando o veículo já é conhecido.
+    const veiculoResolvido = adVeiculoNome ? ` [Veículo identificado pelo anúncio: ${adVeiculoNome}]` : "";
+    const contextoAd = `[Lead veio do anúncio: "${adReferral.headline}"${adReferral.body ? ` — ${adReferral.body}` : ""}]${veiculoResolvido}`;
     userMessage = `${contextoAd}\n${userMessage}`;
     if (!adVeiculoId) console.log(`📢 [Ad referral] headline injetado (ad_id sem campanha cadastrada): ${adReferral.headline}`);
   }
