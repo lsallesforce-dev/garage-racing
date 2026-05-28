@@ -1221,49 +1221,9 @@ Responda apenas com o JSON, sem markdown.`;
 
   const veiculoIdAnterior = lead?.veiculo_id ?? null;
 
-  // ── AUTO STAND-BY pra leads NOVOS sem anúncio (opt-in por tenant) ──
-  // Se config.ia_so_responde_anuncio = true E:
-  //   - Lead acabou de ser criado (zero msgs anteriores)
-  //   - NÃO veio de adReferral (anúncio CTWA)
-  // → Marca em_atendimento_humano = true e NÃO deixa IA responder.
-  //
-  // Cenário típico: Carmatti acabou de conectar Avisa, tem milhares de
-  // conversas antigas no WhatsApp. Sem essa proteção, qualquer cliente
-  // existente que mandar mensagem vira "lead novo" e IA responde do zero,
-  // confundindo cliente que já está em negociação humana há semanas.
-  if (lead?.id && (garageConfig as any)?.ia_so_responde_anuncio === true) {
-    const veioDeAnuncio = !!(adReferral?.headline && adReferral.headline.length > 3);
-    const { count: msgsAnteriores } = await supabaseAdmin
-      .from("mensagens")
-      .select("*", { count: "exact", head: true })
-      .eq("lead_id", lead.id);
-    const isLeadNovo = (msgsAnteriores ?? 0) === 0;
-
-    if (isLeadNovo && !veioDeAnuncio && !lead.em_atendimento_humano) {
-      await supabaseAdmin
-        .from("leads")
-        .update({
-          em_atendimento_humano: true,
-          instrucao_pendente: "Lead novo sem origem de anúncio — IA em stand-by automático. Revise e habilite IA se quiser que ela atenda.",
-        })
-        .eq("id", lead.id);
-      lead.em_atendimento_humano = true; // atualiza o objeto local pra próximo check entrar no stand-by
-      console.log(`🤖→👤 [auto-standby] Lead novo ${phone} sem anúncio → IA em stand-by (tenant ${tenantUserId})`);
-
-      // Alerta o gerente: tem um cliente novo que precisa atenção
-      const gerenteWa = garageConfig?.whatsapp?.replace(/\D/g, "");
-      if (gerenteWa) {
-        const gerenteNorm = gerenteWa.startsWith("55") ? gerenteWa : `55${gerenteWa}`;
-        const previewMsg = userMessage.replace(/^\[(?:Contexto do link|Lead veio do anúncio)[^\n]*\n?/m, "").slice(0, 120);
-        const alertBody = `👤 *Novo contato (sem anúncio)*\n\n📱 Número: +${phone}\n💬 "${previewMsg}"\n\n⚠️ IA em stand-by — assuma a conversa se preciso.`;
-        if (useAvisa) {
-          await sendAvisaMessage(gerenteNorm, alertBody, avisaCreds, { typing: false }).catch(() => {});
-        } else if (metaCreds.phoneNumberId && metaCreds.accessToken) {
-          await sendMetaMessage(gerenteNorm, alertBody, metaCreds).catch(() => {});
-        }
-      }
-    }
-  }
+  // ── AUTO STAND-BY removido ──
+  // A IA responde todos os leads que não estejam explicitamente em atendimento humano.
+  // O único gatilho para stand-by é o gerente assumir manualmente a conversa.
 
   if (lead && userMessage) {
     await supabaseAdmin.from("mensagens").insert({
