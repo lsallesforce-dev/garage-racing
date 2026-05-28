@@ -932,6 +932,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   let adVeiculoId: string | null = null;
   let adVeiculoNome: string | null = null;
   if (adReferral?.ad_id) {
+    // Prioridade 1a: busca na tabela meta_campanhas (anúncios criados dentro do AutoZap)
     const { data: campanha } = await supabaseAdmin
       .from("meta_campanhas")
       .select("veiculo_id, veiculos(marca, modelo)")
@@ -942,7 +943,50 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
       adVeiculoId = campanha.veiculo_id;
       const v = (campanha as any).veiculos;
       if (v?.marca && v?.modelo) adVeiculoNome = `${v.marca} ${v.modelo}`;
-      console.log(`📢 [Ad referral] veiculo_id resolvido via ad_id=${adReferral.ad_id}: ${adVeiculoId} (${adVeiculoNome ?? "nome não resolvido"})`);
+      console.log(`📢 [Ad referral] veiculo_id resolvido via meta_campanhas: ${adVeiculoId} (${adVeiculoNome ?? "nome não resolvido"})`);
+    }
+
+    // Prioridade 1b: anúncio criado fora do AutoZap — consulta criativo via Meta Graph API
+    // Usa o meta_ads_token do tenant para buscar o nome do anúncio e resolver o veículo.
+    if (!adVeiculoId) {
+      try {
+        const { data: cfgRow } = await supabaseAdmin
+          .from("config_garage")
+          .select("meta_ads_token")
+          .eq("user_id", tenantUserId)
+          .order("created_at", { ascending: false })
+          .limit(1);
+        const adsToken = cfgRow?.[0]?.meta_ads_token;
+        if (adsToken) {
+          const metaRes = await fetch(
+            `https://graph.facebook.com/v21.0/${adReferral.ad_id}?fields=name,adcreatives%7Btitle%2Cbody%7D&access_token=${adsToken}`
+          );
+          const metaData = await metaRes.json();
+          if (!metaData.error) {
+            // Tenta resolver pelo nome do anúncio, depois pelo título do criativo
+            const adName: string =
+              metaData.name ||
+              metaData.adcreatives?.data?.[0]?.title ||
+              metaData.adcreatives?.data?.[0]?.body ||
+              "";
+            if (adName) {
+              console.log(`📢 [Ad referral] nome do criativo via Meta API: "${adName}"`);
+              const adVehicle = await findVehicleForMedia(adName, tenantUserId);
+              if (adVehicle) {
+                adVeiculoId = adVehicle.id;
+                adVeiculoNome = `${adVehicle.marca} ${adVehicle.modelo}`;
+                console.log(`📢 [Ad referral] veiculo_id resolvido via Meta API: ${adVeiculoId} (${adVeiculoNome})`);
+              } else {
+                console.log(`📢 [Ad referral] Meta API retornou nome "${adName}" mas nenhum veículo encontrado no estoque`);
+              }
+            }
+          } else {
+            console.warn(`⚠️ [Ad referral] Meta API erro para ad_id=${adReferral.ad_id}: ${metaData.error?.message}`);
+          }
+        }
+      } catch (e: any) {
+        console.warn(`⚠️ [Ad referral] Falha ao consultar Meta API: ${e.message?.slice(0, 100)}`);
+      }
     }
   }
   if (adReferral?.headline) {

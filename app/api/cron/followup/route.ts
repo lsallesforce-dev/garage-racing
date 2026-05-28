@@ -597,9 +597,33 @@ export async function GET(req: NextRequest) {
         sendAvisaMessage(to, text, avisaCreds);
 
       // ── 8. Dados do veículo ────────────────────────────────────────────────
-      // Sem veiculo_id não há como gerar follow-up contextual — o Gemini inventa
-      // informações sobre um carro genérico, o que confunde o cliente.
-      if (!lead.veiculo_id) { ignorar("sem_veiculo_identificado"); continue; }
+      if (!lead.veiculo_id) {
+        // Sem veículo identificado: envia pergunta neutra uma única vez para o cliente
+        // revelar qual carro viu no anúncio. O agente identifica na próxima resposta.
+        const { data: dupCheck } = await supabaseAdmin
+          .from("leads")
+          .select("followup_count")
+          .eq("id", lead.id)
+          .single();
+        if ((dupCheck?.followup_count ?? 0) >= MAX_FOLLOWUPS) { ignorar("race_condition"); continue; }
+
+        const msgQualCarro = `Vi que você veio do nosso anúncio! Qual veículo você tinha visto?`;
+        try {
+          await sendText(lead.wa_id, msgQualCarro);
+          await supabaseAdmin.from("mensagens").insert({
+            lead_id: lead.id, remetente: "agente", content: msgQualCarro,
+          });
+          await supabaseAdmin.from("leads").update({
+            followup_count: (followupCount ?? 0) + 1,
+            ultimo_followup: new Date().toISOString(),
+          }).eq("id", lead.id);
+          enviados++;
+          console.log(`❓ [followup/qual-carro] ${lead.wa_id} — sem veiculo_id, perguntou qual carro`);
+        } catch (e: any) {
+          console.warn(`⚠️ [followup/qual-carro] Erro ao enviar: ${e.message?.slice(0, 100)}`);
+        }
+        continue;
+      }
 
       let carro    = "veículo de interesse";
       let preco    = "";
