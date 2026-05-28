@@ -349,7 +349,17 @@ export async function POST(req: NextRequest) {
         baseUrl: garageConfig.avisa_base_url,
         token: garageConfig.avisa_token,
       });
-      if (realPhone) phone = realPhone;
+      if (realPhone) {
+        phone = realPhone;
+        isLid = false;
+      }
+    }
+
+    // LID não resolvido → não há como enviar resposta. Salva o lead/mensagem no DB
+    // via processamento mas sinaliza para pular Gemini e envio. Quando o cliente
+    // mandar a próxima mensagem com número real, a migração LID→número liga o lead.
+    if (isLid) {
+      console.warn(`⚠️ [LID não resolvido] ${phone} — processando sem envio de resposta`);
     }
 
     // ── Deduplicação Redis (SET NX EX — atômico, cross-instância) ──────────────
@@ -407,6 +417,7 @@ export async function POST(req: NextRequest) {
         tenantUserId: tenantUserId!,
         garageConfig,
         ...(adReferral ? { adReferral } : {}),
+        ...(isLid ? { skipSend: true } : {}),
       };
 
       try {

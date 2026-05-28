@@ -170,6 +170,7 @@ export interface WhatsAppJobPayload {
   messageId?: string | null;
   tenantUserId: string;
   garageConfig: GarageConfig | null;
+  skipSend?: boolean;     // true quando wa_id é LID não resolvido — salva no DB mas não envia resposta
   adReferral?: {           // Click-to-WhatsApp: contexto do anúncio Meta Ads
     headline:    string | null;
     body:        string | null;
@@ -794,7 +795,7 @@ function fixHistoryLoops(historico: any[], context: string): any[] {
 // ─── Processamento Principal ──────────────────────────────────────────────────
 
 export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<void> {
-  const { phone, rawMessage, audioUrl, audioMediaKey, audioMediaId, tenantUserId, garageConfig, adReferral } = job;
+  const { phone, rawMessage, audioUrl, audioMediaKey, audioMediaId, tenantUserId, garageConfig, adReferral, skipSend } = job;
 
   // Credenciais Meta exclusivas do tenant — sem fallback global
   const metaCreds = {
@@ -2209,6 +2210,13 @@ Responda apenas com o JSON, sem markdown.`;
   }
 
   // ── 12. Gemini — Geração de Resposta ────────────────────────────────────────
+  // LID não resolvido: salva lead/mensagem no DB (feito acima) mas não gera
+  // resposta nem envia — número real ainda não está disponível.
+  if (skipSend) {
+    console.log(`⏸ [LID skip] ${phone} — lead salvo, aguardando número real para responder`);
+    return;
+  }
+
   const nomeCliente = lead?.nome || null;
   let aiResponse = "";
   let resumo = "";
