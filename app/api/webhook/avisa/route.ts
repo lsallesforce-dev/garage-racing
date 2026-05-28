@@ -37,7 +37,7 @@ function extractFields(payload: any): {
   audioMediaKey?: string;
   imageThumbnail?: string;  // base64 JPEG thumbnail da foto enviada pelo cliente
   messageId?: string | null;
-  adReferral?: { headline: string | null; body: string | null; source_type: string | null; ad_id: string | null } | null;
+  adReferral?: { headline: string | null; body: string | null; source_type: string | null; ad_id: string | null; thumbnail?: string | null } | null;
 } {
   console.log("📨 AVISA WEBHOOK PAYLOAD:", JSON.stringify(payload, null, 2));
 
@@ -62,7 +62,7 @@ function extractFields(payload: any): {
   let audioMediaKey: string | undefined;
   let imageThumbnail: string | undefined;
   let messageId: string | null = null;
-  let adReferral: { headline: string | null; body: string | null; source_type: string | null; ad_id: string | null } | null = null;
+  let adReferral: { headline: string | null; body: string | null; source_type: string | null; ad_id: string | null; thumbnail?: string | null } | null = null;
 
   // ── Detecção de ligação perdida (todos os formatos) ──────────────────────────
   // Baileys: type="Call" com event.from ou event.Info.Sender
@@ -149,8 +149,9 @@ function extractFields(payload: any): {
         body:        adReply.body     ?? null,
         source_type: adReply.sourceType ?? null,
         ad_id:       adReply.sourceID ?? null,
+        thumbnail:   adReply.thumbnail ?? null,
       };
-      console.log(`📢 [Ad referral Baileys] ad_id=${adReferral.ad_id} headline="${adReferral.headline?.slice(0, 60)}"`);
+      console.log(`📢 [Ad referral Baileys] ad_id=${adReferral.ad_id} headline="${adReferral.headline?.slice(0, 60)}" thumbnail=${adReferral.thumbnail ? "sim" : "não"}`);
     }
   }
   // Formato Avisa/Z-API simplificado
