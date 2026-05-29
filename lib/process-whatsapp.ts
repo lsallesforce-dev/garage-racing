@@ -1555,6 +1555,7 @@ Responda apenas com o JSON, sem markdown.`;
     const adWords: string[] = adTextNorm
       .replace(/[.,!?()\[\]{}"'`\-\/]/g, " ")
       .split(/\s+/)
+      .map((w: string) => w.replace(/[^a-z0-9]/g, "")) // sanitiza p/ interpolação no filtro .or() (anti-injeção PostgREST)
       .filter((w: string) => w.length >= 3)
       .filter((w: string) => !GENERIC_AD_WORDS.has(w))
       .filter((w: string) => !/^\d+$/.test(w) || (w.length === 4 && parseInt(w) >= 1990 && parseInt(w) <= 2035)); // s\u00f3 anos v\u00e1lidos

@@ -145,6 +145,15 @@ function normalizeStr(s: string): string {
     .toLowerCase();
 }
 
+// ─── Sanitização de token para filtro PostgREST ──────────────────────────────
+// Os tokens vêm da mensagem do cliente e são interpolados em filtros `.or()`
+// (ex: `modelo.ilike.%${t}%`). Caracteres como vírgula, parênteses e dois-pontos
+// têm significado sintático no PostgREST e poderiam injetar/quebrar o filtro.
+// Mantém apenas letras, números, espaço e hífen (chars legítimos de nomes de carro).
+function sanitizeFilterToken(t: string): string {
+  return t.replace(/[^a-z0-9 -]/gi, "").trim();
+}
+
 // ─── Extração de Tokens ───────────────────────────────────────────────────────
 function extractVehicleTokens(message: string): string[] {
   const normalized = normalizeStr(message)
@@ -165,7 +174,10 @@ function extractVehicleTokens(message: string): string[] {
     if (comHifen !== token) expanded.push(comHifen);
   }
 
-  return [...new Set(expanded)];
+  // Sanitiza cada token antes de sair (defesa contra injeção no filtro .or())
+  return [...new Set(expanded)]
+    .map(sanitizeFilterToken)
+    .filter((t) => t.length >= 2);
 }
 
 // ─── Busca Textual com Scoring ────────────────────────────────────────────────
