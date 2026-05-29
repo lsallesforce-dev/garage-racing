@@ -177,6 +177,7 @@ export interface WhatsAppJobPayload {
     source_type: string | null;
     ad_id:       string | null;
     thumbnail?:  string | null; // base64 JPEG da imagem do anúncio (via Baileys externalAdReply)
+    image_url?:  string | null; // URL da imagem do anúncio em alta resolução (originalImageURL/thumbnailURL)
   } | null;
 }
 
@@ -992,16 +993,51 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
     }
   }
 
-  // ── Prioridade 1c: Gemini Vision — LÊ A IMAGEM DO ANÚNCIO (thumbnail CTWA) ──
+  // ── Prioridade 1c: Gemini Vision — LÊ A IMAGEM DO ANÚNCIO (CTWA) ──
   // O anúncio "Converse conosco" tem headline genérico, mas a IMAGEM mostra o
   // veículo com texto sobreposto (ex: "HONDA CIVIC LXL 2011 R$ 63.900").
   // A imagem é a fonte MAIS confiável de qual carro o cliente viu — por isso
   // roda AGORA, antes de qualquer fallback textual (6b/6c/6d) ou busca híbrida.
-  // Só roda quando ainda não resolveu por meta_campanhas/Graph API (1a/1b) e há thumbnail.
-  if (!adVeiculoId && adReferral?.thumbnail) {
+  // Só roda quando ainda não resolveu por meta_campanhas/Graph API (1a/1b).
+  //
+  // IMPORTANTE: prefere a imagem em ALTA RESOLUÇÃO (image_url = originalImageURL).
+  // O thumbnail base64 do Baileys tem ~306px — texto fica ilegível pro OCR.
+  // A imagem original do Facebook é grande e o Gemini lê o texto sobreposto.
+  if (!adVeiculoId && (adReferral?.image_url || adReferral?.thumbnail)) {
     try {
+      // Monta a imagem: tenta baixar a alta-res; se falhar, usa o thumbnail base64.
+      let imgBase64: string | null = null;
+      let imgMime = "image/jpeg";
+      if (adReferral.image_url) {
+        try {
+          const u = new URL(adReferral.image_url);
+          // SSRF guard: só hosts do Facebook/CDN (a URL vem do payload da Meta)
+          const hostOk = /(^|\.)facebook\.com$/.test(u.hostname) || /(^|\.)fbcdn\.net$/.test(u.hostname);
+          if (u.protocol === "https:" && hostOk) {
+            const imgRes = await fetch(adReferral.image_url);
+            if (imgRes.ok) {
+              const buf = Buffer.from(await imgRes.arrayBuffer());
+              imgBase64 = buf.toString("base64");
+              imgMime = imgRes.headers.get("content-type")?.split(";")[0] || "image/jpeg";
+              console.log(`🔍 [Gemini Vision] Imagem alta-res baixada (${Math.round(buf.length / 1024)}KB, ${imgMime})`);
+            } else {
+              console.warn(`⚠️ [Gemini Vision] Falha ao baixar imagem alta-res: HTTP ${imgRes.status}`);
+            }
+          }
+        } catch (fe: any) {
+          console.warn(`⚠️ [Gemini Vision] Erro baixando imagem alta-res: ${fe.message?.slice(0, 80)}`);
+        }
+      }
+      if (!imgBase64 && adReferral.thumbnail) {
+        imgBase64 = adReferral.thumbnail;
+        console.log(`🔍 [Gemini Vision] Usando thumbnail base64 (fallback, baixa resolução)`);
+      }
+
+      if (!imgBase64) {
+        console.warn(`⚠️ [Gemini Vision] Nenhuma imagem disponível (image_url e thumbnail ausentes)`);
+      } else {
       const visionResult = await geminiFlashSales.generateContent([
-        { inlineData: { mimeType: "image/jpeg", data: adReferral.thumbnail } },
+        { inlineData: { mimeType: imgMime, data: imgBase64 } },
         { text: "Esta é a imagem de um anúncio de veículo de uma revenda. Leia o texto sobreposto na imagem e extraia o nome do veículo: marca, modelo e versão (se houver). Responda APENAS com marca + modelo + versão em uma única linha, SEM preço, SEM ano, SEM km. Exemplos de resposta válida: 'Honda Civic LXL', 'Chevrolet S10 LTZ', 'Volkswagen Gol'. Se a imagem não tiver um veículo identificável, responda exatamente 'null'." },
       ]);
       const extracted = visionResult.response.text().trim().replace(/['"]/g, "");
@@ -1026,6 +1062,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
           console.warn(`⚠️ [Gemini Vision] "${extracted}" não encontrado no estoque`);
         }
       }
+      } // fecha else (imgBase64 disponível)
     } catch (e: any) {
       console.warn(`⚠️ [Gemini Vision] Falha ao ler imagem do anúncio: ${e.message?.slice(0, 100)}`);
     }
