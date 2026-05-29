@@ -36,6 +36,7 @@ export async function POST(req: NextRequest) {
         lead_id,
         content: message,
         remetente: "agente",
+        enviado_por_humano: true, // enviado pelo vendedor via painel (não é a IA)
       }),
       supabaseAdmin
         .from("leads")

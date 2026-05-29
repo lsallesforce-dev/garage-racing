@@ -14,6 +14,7 @@ type UltimaMensagem = {
   content: string;
   created_at: string;
   remetente: "usuario" | "agente";
+  enviado_por_humano?: boolean;
 };
 
 type Lead = {
@@ -36,6 +37,7 @@ type Mensagem = {
   created_at: string;
   media_url?: string | null;
   media_tipo?: "foto" | "video" | null;
+  enviado_por_humano?: boolean;
 };
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; dot: string }> = {
@@ -72,7 +74,7 @@ function formatTime(dateStr: string) {
 
 function previewMensagem(msg: UltimaMensagem | null | undefined): string {
   if (!msg) return "Aguardando mensagens...";
-  const prefix = msg.remetente === "agente" ? "IA: " : "";
+  const prefix = msg.remetente === "agente" ? (msg.enviado_por_humano ? "Vendedor: " : "IA: ") : "";
   const text = msg.content.replace(/\n/g, " ").trim();
   return prefix + (text.length > 55 ? text.slice(0, 55) + "…" : text);
 }
@@ -113,7 +115,7 @@ function CentralChatInner() {
     const leadIds = leadsData.map((l) => l.id);
     const { data: msgsData } = await supabase
       .from("mensagens")
-      .select("lead_id, content, created_at, remetente")
+      .select("lead_id, content, created_at, remetente, enviado_por_humano")
       .in("lead_id", leadIds)
       .order("created_at", { ascending: false })
       .limit(leadIds.length);
@@ -228,7 +230,7 @@ function CentralChatInner() {
           });
           setLeads((prev) => prev.map((l) =>
             l.id === leadId
-              ? { ...l, ultimaMensagem: { content: newMsg.content, created_at: newMsg.created_at, remetente: newMsg.remetente } }
+              ? { ...l, ultimaMensagem: { content: newMsg.content, created_at: newMsg.created_at, remetente: newMsg.remetente, enviado_por_humano: newMsg.enviado_por_humano } }
               : l
           ));
         }
@@ -671,7 +673,7 @@ function CentralChatInner() {
                     )}
                     <div className="flex items-center gap-1.5 px-1">
                       <span className="text-[8px] text-gray-400 font-bold uppercase tracking-wider">
-                        {isAgente ? "IA" : (selectedLead.nome || "Cliente")}
+                        {isAgente ? (msg.enviado_por_humano ? "Vendedor" : "IA") : (selectedLead.nome || "Cliente")}
                       </span>
                       <span className="text-[8px] text-gray-300">
                         {new Date(msg.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
