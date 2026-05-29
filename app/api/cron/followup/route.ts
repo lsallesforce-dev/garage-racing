@@ -47,9 +47,10 @@ function isAuthorized(req: NextRequest): boolean {
 
   // CRON_SECRET não configurado:
   // – em dev: libera tudo
-  // – em produção: aceita apenas chamadas do próprio Vercel Cron (User-Agent vercel-cron/1.0)
+  // – em produção: NEGA (fail-closed). NÃO confia no User-Agent "vercel-cron/1.0"
+  //   porque qualquer um pode forjar esse header e disparar o cron.
   if (process.env.NODE_ENV !== "production") return true;
-  return req.headers.get("user-agent") === "vercel-cron/1.0";
+  return false;
 }
 
 // ─── Timing de follow-up (fixo para todos os status) ─────────────────────────

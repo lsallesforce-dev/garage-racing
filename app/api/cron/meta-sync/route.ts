@@ -28,7 +28,7 @@ function isAuthorized(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET;
   if (secret) return req.headers.get("authorization") === `Bearer ${secret}`;
   if (process.env.NODE_ENV !== "production") return true;
-  return req.headers.get("user-agent") === "vercel-cron/1.0";
+  return false; // produção sem CRON_SECRET → nega (user-agent é forjável)
 }
 
 export async function GET(req: NextRequest) {
