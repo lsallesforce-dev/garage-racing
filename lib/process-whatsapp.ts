@@ -991,6 +991,46 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
       }
     }
   }
+
+  // ── Prioridade 1c: Gemini Vision — LÊ A IMAGEM DO ANÚNCIO (thumbnail CTWA) ──
+  // O anúncio "Converse conosco" tem headline genérico, mas a IMAGEM mostra o
+  // veículo com texto sobreposto (ex: "HONDA CIVIC LXL 2011 R$ 63.900").
+  // A imagem é a fonte MAIS confiável de qual carro o cliente viu — por isso
+  // roda AGORA, antes de qualquer fallback textual (6b/6c/6d) ou busca híbrida.
+  // Só roda quando ainda não resolveu por meta_campanhas/Graph API (1a/1b) e há thumbnail.
+  if (!adVeiculoId && adReferral?.thumbnail) {
+    try {
+      const visionResult = await geminiFlashSales.generateContent([
+        { inlineData: { mimeType: "image/jpeg", data: adReferral.thumbnail } },
+        { text: "Esta é a imagem de um anúncio de veículo de uma revenda. Leia o texto sobreposto na imagem e extraia o nome do veículo: marca, modelo e versão (se houver). Responda APENAS com marca + modelo + versão em uma única linha, SEM preço, SEM ano, SEM km. Exemplos de resposta válida: 'Honda Civic LXL', 'Chevrolet S10 LTZ', 'Volkswagen Gol'. Se a imagem não tiver um veículo identificável, responda exatamente 'null'." },
+      ]);
+      const extracted = visionResult.response.text().trim().replace(/['"]/g, "");
+      console.log(`🔍 [Gemini Vision] Texto lido da imagem do anúncio: "${extracted}"`);
+      if (extracted && extracted.toLowerCase() !== "null") {
+        const adVehicle = await findVehicleForMedia(extracted, tenantUserId);
+        if (adVehicle) {
+          // Validação: o MODELO extraído da imagem deve bater com o modelo do veículo
+          // encontrado. Impede que "Honda Civic" resolva para "Honda Fit" por match só de marca.
+          const norm = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+          const extractedNorm = norm(extracted);
+          const modeloWords = norm(adVehicle.modelo ?? "").split(/\s+/).filter(w => w.length >= 3);
+          const modeloMatch = modeloWords.some(w => extractedNorm.includes(w));
+          if (modeloMatch) {
+            adVeiculoId = adVehicle.id;
+            adVeiculoNome = `${adVehicle.marca} ${adVehicle.modelo}`;
+            console.log(`🔍 [Gemini Vision] Veículo identificado na imagem: ${adVeiculoNome} (${adVehicle.id})`);
+          } else {
+            console.warn(`⚠️ [Gemini Vision] Match rejeitado: imagem diz "${extracted}" mas estoque retornou "${adVehicle.marca} ${adVehicle.modelo}" (modelo não bate) — deixa o agente perguntar`);
+          }
+        } else {
+          console.warn(`⚠️ [Gemini Vision] "${extracted}" não encontrado no estoque`);
+        }
+      }
+    } catch (e: any) {
+      console.warn(`⚠️ [Gemini Vision] Falha ao ler imagem do anúncio: ${e.message?.slice(0, 100)}`);
+    }
+  }
+
   if (adReferral?.headline) {
     // Se o ad_id resolveu o veículo, inclui o nome identificado no contexto para que
     // o Gemini não aplique a exceção de "anúncio genérico" quando o veículo já é conhecido.
@@ -1523,35 +1563,6 @@ Responda apenas com o JSON, sem markdown.`;
       if (!veiculoPrincipal) {
         console.warn(`⚠️ [Ad fallback] Nenhum veículo encontrado para headline: "${adTextRaw}" — palavras: [${adWords.join(", ")}]`);
       }
-    }
-  }
-
-  // ── 6e. Gemini Vision — lê imagem do anúncio quando todos os outros steps falharam ──
-  if (!veiculoPrincipal && !adVeiculoId && adReferral?.thumbnail) {
-    try {
-      const visionResult = await geminiFlashSales.generateContent([
-        { inlineData: { mimeType: "image/jpeg", data: adReferral.thumbnail } },
-        { text: "Você está vendo a imagem de um anúncio de veículo. Extraia APENAS o nome do veículo (marca e modelo). Responda SOMENTE com a marca e modelo, ex: 'Honda Civic' ou 'Volkswagen Gol'. Se não conseguir identificar, responda 'null'." },
-      ]);
-      const extracted = visionResult.response.text().trim().replace(/['"]/g, "");
-      if (extracted && extracted.toLowerCase() !== "null") {
-        const adVehicle = await findVehicleForMedia(extracted, tenantUserId);
-        if (adVehicle) {
-          veiculoPrincipal = adVehicle;
-          adVeiculoNome = `${adVehicle.marca} ${adVehicle.modelo}`;
-          await supabaseAdmin.from("leads").update({ veiculo_id: adVehicle.id }).eq("id", lead.id);
-          (lead as any).veiculo_id = adVehicle.id;
-          userMessage = userMessage.replace(
-            /(\[(?:Lead veio do anúncio|Contexto do link):[^\]]+\])/,
-            `$1 [Veículo identificado pela imagem: ${adVeiculoNome}]`
-          );
-          console.log(`🔍 [Gemini Vision] Veículo identificado na imagem: ${adVeiculoNome}`);
-        } else {
-          console.warn(`⚠️ [Gemini Vision] "${extracted}" não encontrado no estoque`);
-        }
-      }
-    } catch (e: any) {
-      console.warn(`⚠️ [Gemini Vision] Falha ao ler imagem do anúncio: ${e.message?.slice(0, 100)}`);
     }
   }
 
