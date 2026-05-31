@@ -94,9 +94,9 @@ export async function GET(req: NextRequest) {
       .eq("user_id", userId)
       .eq("em_atendimento_humano", true),
 
-    // Origens dos leads (últimos 6 meses)
+    // Origens dos leads (últimos 6 meses) — com etapa/status/valor para medir conversão por canal
     supabaseAdmin.from("leads")
-      .select("origem")
+      .select("origem, etapa_funil, status, veiculos(preco_sugerido)")
       .eq("user_id", userId)
       .gte("created_at", limite6m.toISOString()),
 
@@ -176,27 +176,54 @@ export async function GET(req: NextRequest) {
     };
   });
 
-  // ── Origem dos leads ─────────────────────────────────────────────────────────
+  // ── Origem dos leads (volume + conversão + valor por canal) ───────────────────
   const ORIGEM_LABELS: Record<string, string> = {
     meta_ads:      "Meta Ads",
     olx:           "OLX",
     webmotors:     "Webmotors",
     icarros:       "iCarros",
     napista:       "Na Pista",
-    manual:        "Manual",
+    manual:        "Cadastro Manual",
     site:          "Site / Vitrine",
     link_whatsapp: "Link WhatsApp",
-    whatsapp:      "Origem não identificada",
+    whatsapp:      "WhatsApp Direto",
   };
 
-  const origemContagem: Record<string, number> = {};
-  for (const row of origensRaw ?? []) {
+  type OrigemAgg = { count: number; quentes: number; agendados: number; vendas: number; valorVendido: number };
+  const origemMap: Record<string, OrigemAgg> = {};
+  for (const row of (origensRaw ?? []) as any[]) {
     const origem = (row.origem as string) || "whatsapp";
-    origemContagem[origem] = (origemContagem[origem] || 0) + 1;
+    const agg = (origemMap[origem] ??= { count: 0, quentes: 0, agendados: 0, vendas: 0, valorVendido: 0 });
+    agg.count++;
+    const etapa = row.etapa_funil as string;
+    if (row.status === "QUENTE") agg.quentes++;
+    if (etapa === "AGENDADO") agg.agendados++;
+    if (etapa === "VENDIDO") {
+      agg.vendas++;
+      const v = Array.isArray(row.veiculos) ? row.veiculos[0] : row.veiculos;
+      agg.valorVendido += Number(v?.preco_sugerido) || 0;
+    }
   }
-  const origens = Object.entries(origemContagem)
-    .map(([key, count]) => ({ key, label: ORIGEM_LABELS[key] ?? key, count }))
+  const origens = Object.entries(origemMap)
+    .map(([key, a]) => ({
+      key,
+      label: ORIGEM_LABELS[key] ?? key,
+      count: a.count,
+      quentes: a.quentes,
+      agendados: a.agendados,
+      vendas: a.vendas,
+      valorVendido: a.valorVendido,
+      conversao: a.count > 0 ? Math.round((a.vendas / a.count) * 100) : 0,
+    }))
     .sort((a, b) => b.count - a.count);
+
+  // Resumo geral pro cabeçalho do card (a história de ROI em 1 linha)
+  const origemResumo = {
+    totalLeads:   origens.reduce((s, o) => s + o.count, 0),
+    totalVendas:  origens.reduce((s, o) => s + o.vendas, 0),
+    totalQuentes: origens.reduce((s, o) => s + o.quentes, 0),
+    canais:       origens.length,
+  };
 
   // ── Top Veículos por leads ───────────────────────────────────────────────────
   const veiculoContagem: Record<string, { marca: string; modelo: string; ano: string | null; count: number }> = {};
@@ -247,5 +274,6 @@ export async function GET(req: NextRequest) {
     leads: leadsFormatados,
     topVeiculos,
     origens,
+    origemResumo,
   });
 }

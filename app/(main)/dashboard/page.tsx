@@ -45,6 +45,18 @@ type OrigemItem = {
   key: string;
   label: string;
   count: number;
+  quentes: number;
+  agendados: number;
+  vendas: number;
+  valorVendido: number;
+  conversao: number;
+};
+
+type OrigemResumo = {
+  totalLeads: number;
+  totalVendas: number;
+  totalQuentes: number;
+  canais: number;
 };
 
 type FunilData = {
@@ -68,6 +80,7 @@ type FunilData = {
   leads: LeadItem[];
   topVeiculos: TopVeiculo[];
   origens: OrigemItem[];
+  origemResumo: OrigemResumo;
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -129,7 +142,7 @@ const ORIGEM_CONFIG: Record<string, { emoji: string; bar: string; bg: string; co
   site:          { emoji: "🌐", bar: "bg-teal-500",    bg: "bg-teal-50",    color: "text-teal-600"   },
   link_whatsapp: { emoji: "🔗", bar: "bg-emerald-500", bg: "bg-emerald-50", color: "text-emerald-600"},
   manual:        { emoji: "✍️", bar: "bg-gray-400",    bg: "bg-gray-50",    color: "text-gray-500"   },
-  whatsapp:      { emoji: "❓", bar: "bg-gray-300",    bg: "bg-gray-50",    color: "text-gray-400"   },
+  whatsapp:      { emoji: "💬", bar: "bg-green-500",   bg: "bg-green-50",   color: "text-green-600"  },
 };
 
 const ETAPA_CONFIG: Record<Etapa, { color: string; bg: string; bar: string; dot: string }> = {
@@ -473,30 +486,41 @@ export default function Dashboard() {
                 );
               })()}
 
-              {/* Origem dos Leads */}
+              {/* Origem dos Leads — ROI por canal */}
               {data.origens.length > 0 && (() => {
-                const totalOrigens = data.origens.reduce((s, o) => s + o.count, 0);
+                const totalOrigens = data.origemResumo?.totalLeads || data.origens.reduce((s, o) => s + o.count, 0);
                 const maxOri = data.origens[0]?.count || 1;
+                const totalVendas = data.origemResumo?.totalVendas ?? 0;
+                const totalQuentes = data.origemResumo?.totalQuentes ?? 0;
+                const convGeral = totalOrigens > 0 ? Math.round((totalVendas / totalOrigens) * 100) : 0;
                 return (
                   <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-6">
-                    <div className="flex items-center justify-between mb-5">
-                      <div>
-                        <h3 className="text-[11px] font-black uppercase tracking-widest text-gray-400">Origem dos Leads</h3>
-                        <p className="text-[9px] text-gray-300 font-bold uppercase tracking-widest mt-0.5">Últimos 6 meses · {totalOrigens} leads</p>
-                      </div>
+                    <div className="flex items-center justify-between mb-1">
+                      <h3 className="text-[11px] font-black uppercase tracking-widest text-gray-400">Origem dos Leads</h3>
                       <span className="text-[9px] font-black bg-gray-100 text-gray-400 px-2.5 py-1 rounded-full">
-                        {data.origens.length} canais
+                        {data.origens.length} {data.origens.length === 1 ? "canal" : "canais"}
                       </span>
                     </div>
+                    {/* Resumo de ROI em uma linha */}
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-5">
+                      <span className="text-[9px] text-gray-300 font-bold uppercase tracking-widest">Últimos 6 meses</span>
+                      <span className="text-[9px] font-black text-gray-400">{totalOrigens} leads</span>
+                      {totalQuentes > 0 && <span className="text-[9px] font-black text-red-500">🔥 {totalQuentes} quentes</span>}
+                      {totalVendas > 0 && <span className="text-[9px] font-black text-emerald-600">🛒 {totalVendas} vendas · {convGeral}% conv.</span>}
+                    </div>
 
-                    <div className="flex flex-col gap-3">
-                      {data.origens.map((o, i) => {
+                    <div className="flex flex-col gap-4">
+                      {data.origens.map((o) => {
                         const cfg = ORIGEM_CONFIG[o.key] ?? ORIGEM_CONFIG["manual"];
                         const pct = Math.round((o.count / maxOri) * 100);
                         const pctTotal = Math.round((o.count / totalOrigens) * 100);
+                        const chips: { t: string; cls: string }[] = [];
+                        if (o.quentes > 0)   chips.push({ t: `🔥 ${o.quentes} quente${o.quentes > 1 ? "s" : ""}`, cls: "text-red-500" });
+                        if (o.agendados > 0) chips.push({ t: `📅 ${o.agendados} visita${o.agendados > 1 ? "s" : ""}`, cls: "text-amber-600" });
+                        if (o.vendas > 0)    chips.push({ t: `🛒 ${o.vendas} venda${o.vendas > 1 ? "s" : ""} · ${o.conversao}% conv.`, cls: "text-emerald-600" });
                         return (
-                          <div key={o.key} className="flex items-center gap-3">
-                            <span className="text-base w-5 shrink-0 text-center">{cfg.emoji}</span>
+                          <div key={o.key} className="flex items-start gap-3">
+                            <span className="text-base w-5 shrink-0 text-center mt-0.5">{cfg.emoji}</span>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center justify-between mb-1 gap-2">
                                 <span className={`text-[11px] font-black uppercase tracking-tight ${cfg.color}`}>
@@ -515,6 +539,13 @@ export default function Dashboard() {
                                   style={{ width: `${pct}%` }}
                                 />
                               </div>
+                              {chips.length > 0 && (
+                                <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 mt-1.5">
+                                  {chips.map((c, idx) => (
+                                    <span key={idx} className={`text-[9px] font-black ${c.cls}`}>{c.t}</span>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           </div>
                         );
