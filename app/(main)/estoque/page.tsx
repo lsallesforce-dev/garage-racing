@@ -12,6 +12,13 @@ export default function ListaEstoque() {
   const [loading, setLoading] = useState(true);
   const [confirmandoId, setConfirmandoId] = useState<string | null>(null);
 
+  // Filtros
+  const [filtroMarca, setFiltroMarca] = useState("");
+  const [filtroModelo, setFiltroModelo] = useState("");
+  const [filtroAno, setFiltroAno] = useState("");
+  const [filtroValorMin, setFiltroValorMin] = useState("");
+  const [filtroValorMax, setFiltroValorMax] = useState("");
+
   // Repasse state
   const [repasseCarroId, setRepasseCarroId] = useState<string | null>(null);
   const [repasseTexto, setRepasseTexto] = useState<string>("");
@@ -105,6 +112,22 @@ export default function ListaEstoque() {
     setTimeout(() => setCopiado(false), 2000);
   };
 
+  // Listas únicas para os dropdowns
+  const marcasUnicas = [...new Set(carros.map(c => c.marca).filter(Boolean))].sort();
+  const anosUnicos = [...new Set(carros.map(c => c.ano_modelo || c.ano_fabricacao).filter(Boolean))].sort((a, b) => b - a);
+
+  // Carros filtrados
+  const carrosFiltrados = carros.filter(c => {
+    if (filtroMarca && c.marca?.toLowerCase() !== filtroMarca.toLowerCase()) return false;
+    if (filtroModelo && !`${c.marca} ${c.modelo} ${c.versao}`.toLowerCase().includes(filtroModelo.toLowerCase())) return false;
+    if (filtroAno && String(c.ano_modelo || c.ano_fabricacao) !== filtroAno) return false;
+    if (filtroValorMin && (c.preco_sugerido || 0) < Number(filtroValorMin)) return false;
+    if (filtroValorMax && (c.preco_sugerido || 0) > Number(filtroValorMax)) return false;
+    return true;
+  });
+
+  const temFiltro = filtroMarca || filtroModelo || filtroAno || filtroValorMin || filtroValorMax;
+
   return (
     <div className="p-4 md:p-10 bg-[#f4f4f2] min-h-screen font-sans overflow-y-auto w-full">
       <div className="max-w-6xl mx-auto">
@@ -145,9 +168,88 @@ export default function ListaEstoque() {
           </div>
         </div>
 
+        {/* ── Filtros ── */}
+        <div className="bg-white rounded-2xl md:rounded-3xl p-4 md:p-5 border border-gray-100 shadow-sm mb-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {/* Marca */}
+            <div className="flex flex-col gap-1">
+              <label className="text-[9px] font-black uppercase tracking-widest text-gray-400">Marca</label>
+              <select
+                value={filtroMarca}
+                onChange={e => setFiltroMarca(e.target.value)}
+                className="bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5 text-xs font-bold text-gray-700 focus:outline-none focus:border-red-300 focus:ring-1 focus:ring-red-100 transition-all"
+              >
+                <option value="">Todas</option>
+                {marcasUnicas.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+
+            {/* Modelo */}
+            <div className="flex flex-col gap-1">
+              <label className="text-[9px] font-black uppercase tracking-widest text-gray-400">Modelo</label>
+              <input
+                type="text"
+                value={filtroModelo}
+                onChange={e => setFiltroModelo(e.target.value)}
+                placeholder="Ex: Onix, T-Cross..."
+                className="bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5 text-xs font-bold text-gray-700 placeholder-gray-300 focus:outline-none focus:border-red-300 focus:ring-1 focus:ring-red-100 transition-all"
+              />
+            </div>
+
+            {/* Ano */}
+            <div className="flex flex-col gap-1">
+              <label className="text-[9px] font-black uppercase tracking-widest text-gray-400">Ano</label>
+              <select
+                value={filtroAno}
+                onChange={e => setFiltroAno(e.target.value)}
+                className="bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5 text-xs font-bold text-gray-700 focus:outline-none focus:border-red-300 focus:ring-1 focus:ring-red-100 transition-all"
+              >
+                <option value="">Todos</option>
+                {anosUnicos.map(a => <option key={a} value={String(a)}>{a}</option>)}
+              </select>
+            </div>
+
+            {/* Valor */}
+            <div className="flex flex-col gap-1">
+              <label className="text-[9px] font-black uppercase tracking-widest text-gray-400">Valor (R$)</label>
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  value={filtroValorMin}
+                  onChange={e => setFiltroValorMin(e.target.value)}
+                  placeholder="Mín"
+                  className="w-1/2 bg-gray-50 border border-gray-100 rounded-xl px-2 py-2.5 text-xs font-bold text-gray-700 placeholder-gray-300 focus:outline-none focus:border-red-300 focus:ring-1 focus:ring-red-100 transition-all"
+                />
+                <input
+                  type="number"
+                  value={filtroValorMax}
+                  onChange={e => setFiltroValorMax(e.target.value)}
+                  placeholder="Máx"
+                  className="w-1/2 bg-gray-50 border border-gray-100 rounded-xl px-2 py-2.5 text-xs font-bold text-gray-700 placeholder-gray-300 focus:outline-none focus:border-red-300 focus:ring-1 focus:ring-red-100 transition-all"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Resultado + limpar */}
+          {temFiltro && (
+            <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-50">
+              <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">
+                {carrosFiltrados.length} resultado{carrosFiltrados.length !== 1 ? "s" : ""}
+              </span>
+              <button
+                onClick={() => { setFiltroMarca(""); setFiltroModelo(""); setFiltroAno(""); setFiltroValorMin(""); setFiltroValorMax(""); }}
+                className="text-[10px] font-black uppercase tracking-widest text-red-500 hover:text-red-700 transition-colors flex items-center gap-1"
+              >
+                <X size={12} /> Limpar filtros
+              </button>
+            </div>
+          )}
+        </div>
+
         <div className="grid gap-4">
             {!loading ? (
-                carros.length > 0 ? carros.map((carro) => (
+                carrosFiltrados.length > 0 ? carrosFiltrados.map((carro) => (
                 <div key={carro.id} className="bg-white p-4 md:p-6 rounded-[2rem] md:rounded-[2.5rem] border border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shadow-sm hover:shadow-xl transition-all group">
                     <div className="flex items-center gap-4">
                     <div className="w-24 h-16 md:w-32 md:h-20 flex-shrink-0 bg-gray-100 rounded-2xl overflow-hidden relative">
@@ -215,7 +317,9 @@ export default function ListaEstoque() {
                     </div>
                 </div>
                 )) : (
-                    <div className="py-32 text-center bg-white rounded-[3rem] border-2 border-dashed border-gray-100 italic font-black uppercase text-gray-300 tracking-widest text-xs">O estoque está vazio. Comece a acelerar!</div>
+                    <div className="py-32 text-center bg-white rounded-[3rem] border-2 border-dashed border-gray-100 italic font-black uppercase text-gray-300 tracking-widest text-xs">
+                      {temFiltro ? "Nenhum veículo encontrado com esses filtros." : "O estoque está vazio. Comece a acelerar!"}
+                    </div>
                 )
             ) : (
                 <div className="py-32 text-center flex flex-col items-center">
