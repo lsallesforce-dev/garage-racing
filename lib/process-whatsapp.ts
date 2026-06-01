@@ -345,8 +345,8 @@ Siga estritamente este comportamento para as seguintes situações:
    ⚠️ "QUERO VER" = VISITA PRESENCIAL: Se o cliente disser "quero ver esse carro", "quero ir ver", "quero visitar", "vou aí", "posso ir lá" — interprete como intenção de visita à loja. Responda com o endereço e convide para visita. NUNCA interprete isso como pedido de foto ou vídeo.
    ⚠️ PEDIDO DE ENDEREÇO PARA VISITA: Se o cliente disser "me passa o endereço", "qual o endereço", "vou aí hoje/amanhã/à tarde", "vou ir ver ele" — dê o endereço DIRETAMENTE e confirme a visita com naturalidade. Ex: "Nosso endereço é [ENDEREÇO]. Te aguardo aqui!" ou "Fica em [ENDEREÇO]. Pode vir tranquilo!". PROIBIDO condicionar a visita a "verificar disponibilidade" — o carro está no seu contexto, está disponível.
 5. CARRO NA TROCA — DUAS SITUAÇÕES DISTINTAS:
-   a) PERGUNTA SIMPLES sobre se aceita troca ("aceita troca?", "vocês fazem troca?", "tem troca?", "trocam?"): responda APENAS confirmando que sim, COM NATURALIDADE, sem assumir que o cliente tem carro. Ex: "Aceitamos sim! Quando você quiser trocar, é só nos passar os dados do seu carro pra avaliação." ⚠️ NÃO use precisa_instrucao — cliente apenas perguntou, não declarou ter carro.
-   b) INTENÇÃO REAL de trocar ("tenho um HRV 2020 pra dar", "quero trocar meu carro X", "vou dar meu Y na troca", "tenho um carro pra entrada", cliente forneceu modelo/ano específico do próprio veículo): aí SIM use precisa_instrucao com "Cliente quer dar carro na troca — modelo: [X]" e explique que a avaliação é presencial. NUNCA invente que o cliente disse que tem carro se ele só perguntou se aceita.
+   a) PERGUNTA SIMPLES sobre se aceita troca ("aceita troca?", "vocês fazem troca?", "tem troca?", "trocam?"): confirme que sim e CONVIDE A ENVIAR FOTOS para uma pré-avaliação. Ex: "Aceitamos sim! A avaliação final é presencial, mas se quiser já adiantar, é só me mandar fotos do seu carro pra uma pré-avaliação." ⚠️ NÃO use precisa_instrucao.
+   b) INTENÇÃO REAL de trocar ("tenho um HRV 2020 pra dar", "quero trocar meu carro X", "vou dar meu Y na troca", cliente forneceu o próprio veículo): confirme que aceita e PEÇA FOTOS do carro pra uma pré-avaliação. Ex: "Aceitamos seu [carro] na troca! A avaliação final é presencial. Pode me enviar fotos dele pra uma pré-avaliação?" NÃO precisa de precisa_instrucao — quando o cliente ENVIAR as fotos, o sistema já encaminha automaticamente pro setor de avaliação e avisa o time.
 6. VALOR DA TROCA: Nunca estime o valor do carro do cliente. Oriente que só é possível após avaliação do nosso avaliador presencial.
 7. FINANCIAMENTO: Se o cliente perguntar sobre financiamento, parcelas ou entrada, responda APENAS com uma mensagem curta confirmando que financia e que vai passar para o especialista cuidar — ex: "Sim, trabalhamos com financiamento! Já vou chamar nosso especialista para te atender 😊". NUNCA calcule parcelas, NUNCA cite valores de prestação, NUNCA faça simulações. O gerente assume a conversa em seguida.
 8. NEGOCIAÇÃO E DESCONTO: Você não tem autorização para dar descontos finais pelo WhatsApp. Jogue para a gerência de forma natural ("Deixa eu ver o que consigo com meu gerente"). Não convide o cliente para a loja em TODAS as respostas — isso cansa e afasta.
@@ -474,7 +474,7 @@ REGRAS DO precisa_instrucao:
 - Use quando o cliente pedir um dado que NÃO está na ficha do veículo (ex: laudo de vistoria, cor dos bancos, número de donos, histórico de revisões, detalhes mecânicos específicos)
 - Use quando não conseguir atender o pedido do cliente (ex: foto ou vídeo não disponível, documento não cadastrado)
 - NUNCA use para preço, km, cor, motor, ano — esses dados estão na ficha
-- NUNCA use quando o cliente enviar fotos do próprio veículo para avaliação de troca — isso é rotina, responda pedindo visita presencial e ofereça agendamento
+- Quando o cliente enviar fotos do próprio veículo, o sistema JÁ encaminha automaticamente pro setor de avaliação e avisa o time — você não precisa responder a fotos do cliente
 - NUNCA use quando o cliente enviar áudio — transcreva e responda normalmente
 - NUNCA invente ou assuma a resposta — prefira sinalizar a dúvida
 - Quando usar: escreva uma frase objetiva descrevendo o que o cliente quer. Ex: "Cliente perguntou se o Gol 2022 tem laudo de vistoria cautelar"
@@ -1851,6 +1851,37 @@ Responda apenas com o JSON, sem markdown.`;
     return new Response("ok — conversa encerrada pelo cliente", { status: 200 });
   }
 
+  // ── 10c. Cliente enviou FOTOS → pré-avaliação de troca ───────────────────────
+  // Quando o cliente manda fotos do carro dele, a avaliação é com humano. Em vez de
+  // deixar o Gemini responder (e pedir "qual dia"), damos um retorno fixo de que já
+  // encaminhamos pro setor de avaliação, avisamos o gerente/avaliador e colocamos
+  // em stand-by. O debounce de 45s garante 1 resposta + 1 alerta por sessão de fotos.
+  if (lead?.id && job.imageThumbnail) {
+    const respFoto = "Recebi suas fotos! 📸 Já passei para o nosso setor de avaliação — em breve a gente te retorna com a análise. 😊";
+    await sendText(phone, respFoto);
+    await supabaseAdmin.from("mensagens").insert({
+      lead_id: lead.id, content: respFoto, remetente: "agente",
+    });
+
+    await supabaseAdmin.from("leads").update({
+      em_atendimento_humano: true,
+      instrucao_pendente: "Cliente enviou fotos do veículo para pré-avaliação de troca.",
+    }).eq("id", lead.id);
+    await setTrocaStandby(tenantUserId, lead.id);
+
+    if (gerentePhone) {
+      const veiculoLabelFoto = veiculoPrincipal ? `\n🚗 Interesse: ${veiculoPrincipal.marca} ${veiculoPrincipal.modelo}` : "";
+      await sendAlertComLink(gerentePhone,
+        `📸 *Fotos para avaliação*\n\n👤 ${lead.nome || phone}\n📱 Número: +${phone}${veiculoLabelFoto}\n\n👉 Cliente enviou fotos do carro para pré-avaliação de troca. Assuma para avaliar.`,
+        phone
+      ).catch(() => {});
+    }
+
+    console.log(`📸 [Pré-avaliação] ${phone} — fotos recebidas, gerente notificado, IA em stand-by`);
+    if (lead?.id) await releaseLeadLock(tenantUserId, lead.id).catch(() => {});
+    return;
+  }
+
   // ── 11. Enviar Foto ─────────────────────────────────────────────────────────
   // Detecção robusta de pedido de foto:
   // 1. Verbo de intenção (radicais cobrem conjugações: manda/mandar/mandou, envia/enviar/enviou…)
@@ -2860,27 +2891,11 @@ Retorne JSON estrito:
   }
   console.log(`✅ Mensagem processada para ${phone} | temperatura: ${temperatura}`);
 
-  // ── 15b. Troca de veículo — ativa stand-by e notifica gerente imediatamente ──
-  // Detecta se a mensagem do cliente menciona troca. Se sim: marca o lead com
-  // em_atendimento_humano=true (stand-by) e envia briefing ao gerente.
-  // Na próxima mensagem do cliente, o step 4 responde "Já passei para o gerente"
-  // em vez de ficar mudo — assim o cliente não fica sem resposta.
-  const TROCA_KEYWORDS = /\b(na troca|na\s+troca|dar.*troca|troca.*carro|carro.*troca|parte de pagamento|quero trocar|quero dar|dar o meu carro|avaliar meu carro|meu carro na)\b/i;
-  if (lead?.id && TROCA_KEYWORDS.test(mensagemClientePura)) {
-    await setTrocaStandby(tenantUserId, lead.id);
-    await supabaseAdmin.from("leads").update({ em_atendimento_humano: true }).eq("id", lead.id);
-    const gerenteWa = garageConfig?.whatsapp ?? null;
-    if (gerenteWa && !alertaGerenteJaEnviado) {
-      const normWa = (n: string) => { const d = n.replace(/\D/g, ""); return d.startsWith("55") ? d : `55${d}`; };
-      const nomeLead = (lead as any).nome || `Lead ${phone.slice(-4)}`;
-      const veiculoLabel = veiculoPrincipal ? `\n🚗 Interesse: ${veiculoPrincipal.marca} ${veiculoPrincipal.modelo}` : "";
-      await sendAlertComLink(normWa(gerenteWa),
-        `🔄 *Troca de Veículo*\n\n👤 Cliente: ${nomeLead}\n📱 Número: +${phone}${veiculoLabel}\n\n💬 "${rawMessage.slice(0, 200)}"\n\n👉 Assuma a conversa para negociar a troca.`,
-        phone
-      ).catch(() => {});
-    }
-    console.log(`🔄 [Troca] Stand-by ativado para lead ${lead.id} — gerente notificado`);
-  }
+  // ── 15b. Troca de veículo — REMOVIDO ──
+  // O handoff de troca agora acontece quando o cliente ENVIA FOTOS (interceptor 10c),
+  // não na menção da palavra "troca". Assim a IA fica ativa para pedir e receber as
+  // fotos; só aí avisa o gerente e entra em stand-by ("já passei pro setor de avaliação").
+  // Isso evita que a palavra "troca" trave o lead antes das fotos chegarem.
 
   // ── 15c. Financiamento — passa para atendimento humano imediatamente ──────────
   // Detecta perguntas sobre financiamento/parcelas. O agente já respondeu com
