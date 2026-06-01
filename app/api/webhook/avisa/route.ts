@@ -360,11 +360,14 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // LID não resolvido → não há como enviar resposta. Salva o lead/mensagem no DB
-    // via processamento mas sinaliza para pular Gemini e envio. Quando o cliente
-    // mandar a próxima mensagem com número real, a migração LID→número liga o lead.
+    // LID não resolvido: converter LID→número é IMPOSSÍVEL (privacidade do WhatsApp,
+    // limitação da plataforma, não da Avisa). MAS dá pra responder DIRETO no @lid —
+    // buildTarget() em lib/avisa.ts envia para "{lid}@lid" e o WhatsApp roteia a
+    // resposta de volta na mesma conversa do anúncio. Por isso NÃO pulamos mais o
+    // envio: a IA responde no próprio @lid. (Se a próxima mensagem trouxer o número
+    // real no SenderAlt, a migração LID→número religa o lead normalmente.)
     if (isLid) {
-      console.warn(`⚠️ [LID não resolvido] ${phone} — processando sem envio de resposta`);
+      console.warn(`📍 [LID] ${phone} sem número real — IA responde direto no @lid`);
     }
 
     // ── Deduplicação Redis (SET NX EX — atômico, cross-instância) ──────────────
@@ -422,7 +425,6 @@ export async function POST(req: NextRequest) {
         tenantUserId: tenantUserId!,
         garageConfig,
         ...(adReferral ? { adReferral } : {}),
-        ...(isLid ? { skipSend: true } : {}),
       };
 
       try {
