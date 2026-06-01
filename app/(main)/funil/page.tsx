@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
-import { Phone, Car, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Loader2, Tag, X } from "lucide-react";
+import { Phone, Car, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Loader2, Tag, X, MoreVertical, Pencil, StickyNote, Trash2, Check } from "lucide-react";
 
 type Etapa = "NOVO" | "INTERESSADO" | "AGENDADO" | "VENDIDO" | "PERDIDO";
 type Etiqueta = "EM_NEGOCIACAO" | "PROPOSTA_ENVIADA" | "EM_APROVACAO" | "VISITA_CONFIRMADA";
@@ -15,6 +15,7 @@ interface Lead {
   etapa_funil: Etapa;
   status: string;
   resumo_negociacao: string | null;
+  nota: string | null;
   created_at: string;
   etiqueta: Etiqueta | null;
   veiculos: { marca: string; modelo: string; ano: string | null } | null;
@@ -49,6 +50,13 @@ export default function FunilPage() {
   const [movendo, setMovendo] = useState<string | null>(null);
   const [etiquetaOpen, setEtiquetaOpen] = useState<string | null>(null);
   const etiquetaRef = useRef<HTMLDivElement | null>(null);
+  const [menuOpen, setMenuOpen] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const [editandoNome, setEditandoNome] = useState<string | null>(null);
+  const [nomeTemp, setNomeTemp] = useState("");
+  const [notaOpen, setNotaOpen] = useState<string | null>(null);
+  const [notaTemp, setNotaTemp] = useState("");
+  const [confirmExcluir, setConfirmExcluir] = useState<string | null>(null);
   const LIMIT = 200;
 
   const carregar = useCallback(async () => {
@@ -58,7 +66,7 @@ export default function FunilPage() {
 
     const { data, count } = await supabase
       .from("leads")
-      .select("id, nome, wa_id, etapa_funil, status, resumo_negociacao, created_at, etiqueta, veiculos(marca, modelo, ano)", { count: "exact" })
+      .select("id, nome, wa_id, etapa_funil, status, resumo_negociacao, nota, created_at, etiqueta, veiculos(marca, modelo, ano)", { count: "exact" })
       .eq("user_id", user.id)
       .order("updated_at", { ascending: false })
       .limit(LIMIT);
@@ -107,11 +115,49 @@ export default function FunilPage() {
     await supabase.from("leads").update({ etiqueta }).eq("id", leadId);
   }
 
+  function abrirEditarNome(lead: Lead) {
+    setMenuOpen(null);
+    setNomeTemp(lead.nome || "");
+    setEditandoNome(lead.id);
+  }
+
+  async function salvarNome(leadId: string) {
+    const nome = nomeTemp.trim();
+    setEditandoNome(null);
+    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, nome: nome || null } : l));
+    await supabase.from("leads").update({ nome: nome || null }).eq("id", leadId);
+  }
+
+  function abrirNota(lead: Lead) {
+    setMenuOpen(null);
+    setNotaTemp(lead.nota || "");
+    setNotaOpen(lead.id);
+  }
+
+  async function salvarNota(leadId: string) {
+    const nota = notaTemp.trim();
+    setNotaOpen(null);
+    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, nota: nota || null } : l));
+    await supabase.from("leads").update({ nota: nota || null }).eq("id", leadId);
+  }
+
+  async function excluirLead(leadId: string) {
+    setConfirmExcluir(null);
+    setMenuOpen(null);
+    setLeads(prev => prev.filter(l => l.id !== leadId));
+    setTotalLeads(prev => Math.max(0, prev - 1));
+    // mensagens são removidas em cascata pela FK mensagens_lead_id_fkey ON DELETE CASCADE
+    await supabase.from("leads").delete().eq("id", leadId);
+  }
+
   // Fecha dropdown ao clicar fora
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (etiquetaRef.current && !etiquetaRef.current.contains(e.target as Node)) {
         setEtiquetaOpen(null);
+      }
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(null);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -180,11 +226,60 @@ export default function FunilPage() {
 
                     return (
                       <div key={lead.id} className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm hover:shadow-md transition-all group">
-                        <div className="flex items-start justify-between mb-3">
-                          <p className="text-sm font-black uppercase tracking-tight text-gray-900 leading-tight">
-                            {lead.nome || "Lead Anônimo"}
-                          </p>
-                          <span className="text-[10px] text-gray-300 font-bold shrink-0 ml-2">{fmtData(lead.created_at)}</span>
+                        <div className="flex items-start justify-between mb-3 gap-2">
+                          <div className="min-w-0 flex-1">
+                            {editandoNome === lead.id ? (
+                              <div className="flex items-center gap-1">
+                                <input
+                                  autoFocus
+                                  value={nomeTemp}
+                                  onChange={e => setNomeTemp(e.target.value)}
+                                  onKeyDown={e => { if (e.key === "Enter") salvarNome(lead.id); if (e.key === "Escape") setEditandoNome(null); }}
+                                  placeholder="Nome do lead"
+                                  className="w-full text-sm font-black uppercase tracking-tight text-gray-900 bg-transparent border-b border-red-300 focus:outline-none"
+                                />
+                                <button onClick={() => salvarNome(lead.id)} className="text-green-600 hover:text-green-700 shrink-0"><Check size={14} /></button>
+                                <button onClick={() => setEditandoNome(null)} className="text-gray-300 hover:text-gray-500 shrink-0"><X size={14} /></button>
+                              </div>
+                            ) : (
+                              <p className="text-sm font-black uppercase tracking-tight text-gray-900 leading-tight truncate">
+                                {lead.nome || "Lead Anônimo"}
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <span className="text-[10px] text-gray-300 font-bold">{fmtData(lead.created_at)}</span>
+                            <div className="relative" ref={menuOpen === lead.id ? menuRef : null}>
+                              <button onClick={() => setMenuOpen(menuOpen === lead.id ? null : lead.id)}
+                                className="text-gray-300 hover:text-gray-600 transition p-0.5" title="Opções">
+                                <MoreVertical size={14} />
+                              </button>
+                              {menuOpen === lead.id && (
+                                <div className="absolute right-0 top-full mt-1 z-50 bg-white border border-gray-100 rounded-xl shadow-xl p-1 min-w-[170px]">
+                                  <button onClick={() => abrirEditarNome(lead)}
+                                    className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-[11px] font-bold text-gray-600 hover:bg-gray-50 transition">
+                                    <Pencil size={12} /> Editar nome
+                                  </button>
+                                  <button onClick={() => abrirNota(lead)}
+                                    className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-[11px] font-bold text-gray-600 hover:bg-gray-50 transition">
+                                    <StickyNote size={12} /> {lead.nota ? "Editar nota" : "Adicionar nota"}
+                                  </button>
+                                  {confirmExcluir === lead.id ? (
+                                    <div className="flex items-center gap-2 px-3 py-2">
+                                      <span className="text-[10px] font-black uppercase text-gray-500">Excluir?</span>
+                                      <button onClick={() => excluirLead(lead.id)} className="text-[10px] font-black uppercase text-red-600 hover:text-red-700">Sim</button>
+                                      <button onClick={() => setConfirmExcluir(null)} className="text-[10px] font-black uppercase text-gray-400 hover:text-gray-600">Não</button>
+                                    </div>
+                                  ) : (
+                                    <button onClick={() => setConfirmExcluir(lead.id)}
+                                      className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-[11px] font-bold text-red-500 hover:bg-red-50 transition">
+                                      <Trash2 size={12} /> Excluir card
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
                         </div>
 
                         {lead.veiculos && (
@@ -243,9 +338,16 @@ export default function FunilPage() {
                         </div>
 
                         {lead.resumo_negociacao && (
-                          <p className="text-[11px] text-gray-400 line-clamp-2 mb-4 italic leading-relaxed">
+                          <p className="text-[11px] text-gray-400 line-clamp-2 mb-3 italic leading-relaxed">
                             "{lead.resumo_negociacao}"
                           </p>
+                        )}
+
+                        {lead.nota && (
+                          <div className="flex items-start gap-1.5 mb-4 bg-amber-50 rounded-lg px-2.5 py-1.5">
+                            <StickyNote size={11} className="text-amber-500 shrink-0 mt-0.5" />
+                            <p className="text-[11px] text-amber-800 leading-relaxed line-clamp-3 whitespace-pre-wrap">{lead.nota}</p>
+                          </div>
                         )}
 
                         <div className="flex items-center justify-between">
@@ -313,6 +415,32 @@ export default function FunilPage() {
           })}
         </div>
       </div>
+
+      {/* Modal Nota */}
+      {notaOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setNotaOpen(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-black uppercase tracking-tight text-gray-900 flex items-center gap-2">
+                <StickyNote size={15} className="text-amber-500" /> Nota do lead
+              </h3>
+              <button onClick={() => setNotaOpen(null)} className="text-gray-300 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <textarea
+              autoFocus
+              value={notaTemp}
+              onChange={e => setNotaTemp(e.target.value)}
+              rows={5}
+              placeholder="Escreva uma nota sobre esse lead..."
+              className="w-full text-sm text-gray-800 bg-gray-50 rounded-xl p-3 border border-gray-100 resize-none focus:outline-none focus:border-amber-300 focus:ring-2 focus:ring-amber-100"
+            />
+            <div className="flex justify-end gap-2 mt-4">
+              <button onClick={() => setNotaOpen(null)} className="px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest text-gray-500 hover:bg-gray-100 transition">Cancelar</button>
+              <button onClick={() => notaOpen && salvarNota(notaOpen)} className="px-5 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest bg-amber-500 text-white hover:bg-amber-600 transition">Salvar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
