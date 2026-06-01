@@ -1346,10 +1346,15 @@ Responda apenas com o JSON, sem markdown.`;
   // ── 4. Stand-by: vendedor humano assumiu ────────────────────────────────────
   if (lead?.em_atendimento_humano) {
     console.log(`🔇 Stand-by para ${phone}. Mensagem salva, IA ignorada.`);
-    // Se o stand-by foi ativado por troca de veículo, avisa o cliente a cada mensagem
-    // em vez de ficar mudo — sem isso o cliente fica sem resposta esperando o gerente
+    // Se o stand-by foi ativado AUTOMATICAMENTE (troca de veículo OU financiamento),
+    // responde com uma rede de segurança em vez de silêncio total — senão o cliente
+    // fica falando sozinho esperando o gerente (ex: a IA disse "vem aqui na loja", o
+    // cliente perguntou "vocês são de onde?" e levou mudo). Inclui o endereço, que é
+    // justamente o que ele costuma querer nessa hora.
     if (lead?.id && await isTrocaStandby(tenantUserId, lead.id)) {
-      await sendText(phone, "Já repassei tudo para o gerente! Ele vai entrar em contato pra cuidar da avaliação do seu carro. 😊");
+      const endParts = [garageConfig?.endereco, garageConfig?.cidade].filter(Boolean).join(" - ");
+      const ondeFica = endParts ? ` Estamos em ${endParts}.` : "";
+      await sendText(phone, `Já passei seu atendimento pro nosso especialista, ele continua com você por aqui em instantes! 😊${ondeFica}`);
     }
     if (lead?.id) await releaseLeadLock(tenantUserId, lead.id).catch(() => {});
     return;
@@ -2886,6 +2891,7 @@ Retorne JSON estrito:
   const FINANCIAMENTO_KEYWORDS = /\b(financiamento|financiar|financiado|parcela[s]?|prestação|prestações|entrada.*mês|mês.*entrada|simulate?|simula[rç]|quanto fica por mês|cabe no bolso|valor.*mensal|mensal.*valor|banco.*financ|financ.*banco|cdc|consórcio|fgts|fundo.*garanti)\b/i;
   if (lead?.id && !lead.em_atendimento_humano && FINANCIAMENTO_KEYWORDS.test(mensagemClientePura)) {
     await supabaseAdmin.from("leads").update({ em_atendimento_humano: true }).eq("id", lead.id);
+    await setTrocaStandby(tenantUserId, lead.id); // marca handoff automático → cliente recebe rede de segurança (passo 4) em vez de silêncio
     const gerenteWaFin = garageConfig?.whatsapp ?? null;
     if (gerenteWaFin && !alertaGerenteJaEnviado) {
       const normWa = (n: string) => { const d = n.replace(/\D/g, ""); return d.startsWith("55") ? d : `55${d}`; };
