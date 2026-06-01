@@ -104,9 +104,13 @@ function extractFields(payload: any): {
     // Ignorar mensagens de Status/Story do WhatsApp
     if (info.Chat === "status@broadcast") return { phone: "", userMessage: "", fromMe: true };
     fromMe = info.IsFromMe ?? false;
-    // Número do CLIENTE = contraparte da conversa (info.Chat). Em fromMe, o Sender é o
-    // próprio número do agente/gerente, então só o Chat identifica o lead correto.
-    chatPhone = (info.Chat || "").replace(/@.*$/, "") || undefined;
+    // Número REAL do CLIENTE (contraparte). O Chat pode ser um LID que NÃO casa com o
+    // wa_id do lead (migrado p/ número real). O número real do cliente vem em:
+    //   • RecipientAlt → em mensagens fromMe (agente/gerente → cliente)
+    //   • SenderAlt    → em mensagens recebidas (cliente → agente)
+    // Preferimos o @s.whatsapp.net quando disponível; senão caímos no Chat.
+    const realCounterpart = [info.RecipientAlt, info.SenderAlt].find((j: string) => (j || "").endsWith("@s.whatsapp.net"));
+    chatPhone = ((realCounterpart || info.Chat || "").replace(/@.*$/, "")) || undefined;
 
     // Sender e SenderAlt podem ter o número real ou LID em qualquer ordem
     // Prioriza quem tiver @s.whatsapp.net (número real)
