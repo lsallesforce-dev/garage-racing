@@ -1,3 +1,5 @@
+import { markAgentEcho } from "@/lib/redis";
+
 function formatPhone(phone: string): string {
   // Remove sufixo de sessão multi-device do WhatsApp (ex: "5521999999:32" → "5521999999")
   const withoutDevice = phone.split(":")[0];
@@ -152,6 +154,10 @@ export async function sendAvisaMessage(phone: string, message: string, creds?: P
   } else {
     console.log(`📤 Avisa sendAlert → ${JSON.stringify(target)} (${message.length} chars, sem typing)`);
   }
+
+  // Marca o eco: quando esta mensagem voltar no webhook como fromMe, o handler
+  // reconhece que foi a IA (e não o gerente digitando) e NÃO trava o agente.
+  await markAgentEcho(phone, message);
 
   const payload = { ...target, message };
   return sendWithRetry(`${c.baseUrl}/actions/sendMessage`, payload, c.token);

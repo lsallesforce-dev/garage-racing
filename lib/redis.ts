@@ -279,6 +279,43 @@ export async function clearTrocaStandby(
   }
 }
 
+// ─── Eco do agente (detecção de takeover pelo gerente no mesmo WhatsApp) ──────
+// Como gerente e IA compartilham o número, toda mensagem que a IA envia volta no
+// webhook como fromMe (eco). Marcamos cada texto enviado pela IA; quando um fromMe
+// chega, se NÃO bate com um eco recente, foi o gerente que digitou → ele assumiu.
+function echoKey(phone: string, text: string): string {
+  const ph = (phone || "").replace(/\D/g, "");
+  const norm = (text || "").trim().toLowerCase().replace(/\s+/g, " ").slice(0, 200);
+  let h = 5381;
+  for (let i = 0; i < norm.length; i++) h = (((h << 5) + h) + norm.charCodeAt(i)) >>> 0; // djb2
+  return `agent_echo:${ph}:${h}`;
+}
+
+export async function markAgentEcho(phone: string, text: string): Promise<void> {
+  if (!phone || !text?.trim()) return;
+  try {
+    await getClient().set(echoKey(phone, text), 1, { ex: 300 }); // 5 min
+  } catch (e) {
+    console.warn("⚠️ [Redis] markAgentEcho falhou (non-fatal):", e);
+  }
+}
+
+// Retorna true se o texto bate com um eco recente da IA. NÃO deleta o marcador
+// (a Avisa pode reentregar o mesmo eco; deletar causaria falso-takeover no 2º eco).
+// O TTL de 5 min cuida da expiração. FAIL-CLOSED: em erro de Redis retorna true
+// (assume eco) — nunca tratar o eco da própria IA como "gerente assumiu", o que
+// travaria o agente sozinho.
+export async function isAgentEcho(phone: string, text: string): Promise<boolean> {
+  if (!phone || !text?.trim()) return false;
+  try {
+    const v = await getClient().get(echoKey(phone, text));
+    return v !== null;
+  } catch (e) {
+    console.warn("⚠️ [Redis] isAgentEcho falhou (fail-closed = assume eco):", e);
+    return true;
+  }
+}
+
 // ─── Lock por Lead (Anti-Processamento Concorrente) ───────────────────────────
 //
 // Garante que apenas uma instância da Vercel processa cada lead por vez.

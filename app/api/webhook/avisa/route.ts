@@ -14,7 +14,7 @@ import { after } from "next/server";
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { processWhatsAppMessage } from "@/lib/process-whatsapp";
-import { isDuplicateMessage, debounceClientImages, debounceFirstContact } from "@/lib/redis";
+import { isDuplicateMessage, debounceClientImages, debounceFirstContact, isAgentEcho } from "@/lib/redis";
 import { logWebhookError } from "@/lib/error-log";
 import { resolveAvisaLid } from "@/lib/avisa";
 
@@ -31,6 +31,7 @@ function extractFields(payload: any): {
   phone: string;
   isLid: boolean;
   lidPhone?: string;
+  chatPhone?: string;  // número do CLIENTE (info.Chat) — necessário em mensagens fromMe
   userMessage: string;
   fromMe: boolean;
   audioUrl?: string;
@@ -56,6 +57,7 @@ function extractFields(payload: any): {
   let phone = "";
   let isLid = false;
   let lidPhone: string | undefined;
+  let chatPhone: string | undefined;
   let userMessage = "";
   let fromMe = false;
   let audioUrl: string | undefined;
@@ -102,6 +104,9 @@ function extractFields(payload: any): {
     // Ignorar mensagens de Status/Story do WhatsApp
     if (info.Chat === "status@broadcast") return { phone: "", userMessage: "", fromMe: true };
     fromMe = info.IsFromMe ?? false;
+    // Número do CLIENTE = contraparte da conversa (info.Chat). Em fromMe, o Sender é o
+    // próprio número do agente/gerente, então só o Chat identifica o lead correto.
+    chatPhone = (info.Chat || "").replace(/@.*$/, "") || undefined;
 
     // Sender e SenderAlt podem ter o número real ou LID em qualquer ordem
     // Prioriza quem tiver @s.whatsapp.net (número real)
@@ -213,7 +218,7 @@ function extractFields(payload: any): {
     };
   }
 
-  return { phone, isLid, lidPhone, userMessage: userMessage?.trim() || "", fromMe, audioUrl, audioMediaKey, imageThumbnail, messageId, adReferral };
+  return { phone, isLid, lidPhone, chatPhone, userMessage: userMessage?.trim() || "", fromMe, audioUrl, audioMediaKey, imageThumbnail, messageId, adReferral };
 }
 
 // ─── Webhook Principal ────────────────────────────────────────────────────────
@@ -325,7 +330,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Validação Básica ──────────────────────────────────────────────────────
-    let { phone, isLid, lidPhone, userMessage: rawMessage, fromMe, audioUrl, audioMediaKey, imageThumbnail, messageId, adReferral } =
+    let { phone, isLid, lidPhone, chatPhone, userMessage: rawMessage, fromMe, audioUrl, audioMediaKey, imageThumbnail, messageId, adReferral } =
       extractFields(payload);
 
     // Migração de lead LID → número real (roda antes do fromMe para capturar receipts)
@@ -346,7 +351,28 @@ export async function POST(req: NextRequest) {
         });
     }
 
-    if (fromMe) return NextResponse.json({ status: "ignored_from_me" });
+    // ── Takeover do gerente pelo mesmo WhatsApp ───────────────────────────────
+    // Gerente e IA compartilham o número. Toda mensagem da IA volta como fromMe (eco).
+    // Se chega um fromMe de TEXTO que NÃO bate com um eco recente da IA, foi o gerente
+    // que respondeu direto pelo celular → ele assumiu a conversa → trava o agente.
+    if (fromMe) {
+      const txtFromMe = (rawMessage || "").trim();
+      const ehMidia = !txtFromMe || txtFromMe === "[Cliente enviou foto(s) do veículo]";
+      const cliente = (chatPhone || "").replace(/\D/g, "");
+      if (!ehMidia && cliente && tenantUserId && !(await isAgentEcho(cliente, txtFromMe))) {
+        const { data: travado } = await supabaseAdmin
+          .from("leads")
+          .update({ em_atendimento_humano: true, instrucao_pendente: "Gerente assumiu a conversa respondendo pelo WhatsApp." })
+          .eq("user_id", tenantUserId)
+          .eq("wa_id", cliente)
+          .eq("em_atendimento_humano", false)
+          .select("id");
+        if (travado && travado.length > 0) {
+          console.log(`🙋 [Takeover WhatsApp] Gerente respondeu ${cliente} pelo número do agente → IA travada nesse lead`);
+        }
+      }
+      return NextResponse.json({ status: "ignored_from_me" });
+    }
 
     // Tenta resolver LID para número real (mensagens vindas de anúncios CTWA)
     if (isLid && garageConfig?.avisa_base_url && garageConfig?.avisa_token) {
