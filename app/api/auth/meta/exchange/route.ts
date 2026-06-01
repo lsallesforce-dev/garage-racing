@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { requireAuth } from "@/lib/api-auth";
+import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
 
 export async function POST(req: NextRequest) {
-  const auth = await requireAuth(req);
-  if (auth instanceof NextResponse) return auth;
+  const { user, error: authError } = await requireAuth();
+  if (authError) return authError;
+  const userId = getEffectiveUserId(user!);
 
   try {
     const { code, redirectUri } = await req.json();
@@ -46,7 +47,7 @@ export async function POST(req: NextRequest) {
         meta_phone_id:     phoneNumberId,
         meta_waba_id:      wabaId,
       })
-      .eq("user_id", auth.userId);
+      .eq("user_id", userId);
 
     return NextResponse.json({
       access_token:    accessToken,

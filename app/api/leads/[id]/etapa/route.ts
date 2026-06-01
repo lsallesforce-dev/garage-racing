@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/api-auth";
+import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
 const ETAPAS_VALIDAS = ["NOVO", "INTERESSADO", "AGENDADO", "VENDIDO", "PERDIDO"];
@@ -8,8 +8,9 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireAuth(req);
-  if (auth instanceof NextResponse) return auth;
+  const { user, error: authError } = await requireAuth();
+  if (authError) return authError;
+  const userId = getEffectiveUserId(user!);
 
   const { id } = await params;
   const { etapa } = await req.json();
@@ -25,7 +26,7 @@ export async function PATCH(
     .eq("id", id)
     .single();
 
-  if (!lead || lead.user_id !== auth.id) {
+  if (!lead || lead.user_id !== userId) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 403 });
   }
 
