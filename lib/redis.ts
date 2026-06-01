@@ -195,8 +195,14 @@ export async function debounceClientImages(
 ): Promise<boolean> {
   try {
     const key = `imgdebounce:${tenantUserId}:${phone}`;
-    const result = await getClient().set(key, 1, { nx: true, ex: 10 });
-    return result !== null; // "OK" = primeira foto (processa), null = foto duplicada (ignora)
+    // Janela DESLIZANTE de 45s: o cliente costuma despejar fotos espaçadas
+    // (15-20s entre cada). Cada nova foto renova a janela, então só a PRIMEIRA
+    // da sessão é processada (1 resposta) e as demais são suprimidas — em vez de
+    // a IA responder "recebi as fotos" a cada foto.
+    const result = await getClient().set(key, 1, { nx: true, ex: 45 });
+    if (result !== null) return true;     // primeira foto da sessão → processa
+    await getClient().expire(key, 45);    // foto adicional → renova janela e suprime
+    return false;
   } catch (e) {
     console.warn("⚠️ [Redis] debounceClientImages falhou — imagem será processada (fail-open):", e);
     return true;
