@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
-import { Phone, Car, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Loader2, Tag, X, MoreVertical, Pencil, StickyNote, Trash2, Check } from "lucide-react";
+import { Phone, Car, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Loader2, Tag, X, Pencil, StickyNote, Trash2, Check } from "lucide-react";
 
 type Etapa = "NOVO" | "INTERESSADO" | "AGENDADO" | "VENDIDO" | "PERDIDO";
 type Etiqueta = "EM_NEGOCIACAO" | "PROPOSTA_ENVIADA" | "EM_APROVACAO" | "VISITA_CONFIRMADA";
@@ -251,8 +251,8 @@ export default function FunilPage() {
                             <span className="text-[10px] text-gray-300 font-bold">{fmtData(lead.created_at)}</span>
                             <div className="relative" ref={menuOpen === lead.id ? menuRef : null}>
                               <button onClick={() => setMenuOpen(menuOpen === lead.id ? null : lead.id)}
-                                className="text-gray-300 hover:text-gray-600 transition p-0.5" title="Opções">
-                                <MoreVertical size={14} />
+                                className="w-7 h-7 rounded-lg bg-gray-100 hover:bg-red-100 flex items-center justify-center text-gray-500 hover:text-red-600 transition" title="Opções do lead">
+                                <Pencil size={13} />
                               </button>
                               {menuOpen === lead.id && (
                                 <div className="absolute right-0 top-full mt-1 z-50 bg-white border border-gray-100 rounded-xl shadow-xl p-1 min-w-[170px]">
