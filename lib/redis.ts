@@ -266,6 +266,19 @@ export async function isTrocaStandby(
   }
 }
 
+// Limpa o flag de handoff após enviar a resposta de segurança UMA vez —
+// evita repetir a mesma mensagem a cada mensagem do cliente durante o stand-by.
+export async function clearTrocaStandby(
+  tenantUserId: string,
+  leadId: string
+): Promise<void> {
+  try {
+    await getClient().del(`troca_standby:${tenantUserId}:${leadId}`);
+  } catch (e) {
+    console.warn("⚠️ [Redis] clearTrocaStandby falhou (non-fatal):", e);
+  }
+}
+
 // ─── Lock por Lead (Anti-Processamento Concorrente) ───────────────────────────
 //
 // Garante que apenas uma instância da Vercel processa cada lead por vez.

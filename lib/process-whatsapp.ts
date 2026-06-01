@@ -9,7 +9,7 @@ import { sendMetaMessage, sendMetaImage, sendMetaVideo, sendMetaCtaButton, markM
 import { sendAvisaMessage, sendAvisaImage, sendAvisaVideo } from "@/lib/avisa";
 import { buscarDadosTransbordo, gerarRelatorioPista } from "@/lib/leads";
 import { hybridVehicleSearch, findVehicleForMedia } from "@/lib/hybrid-search";
-import { getCachedHistory, cacheHistory, invalidateHistory, appendHistory, circuitIsOpen, circuitRecordFailure, circuitRecordSuccess, acquireLeadLock, releaseLeadLock, setTrocaStandby, isTrocaStandby } from "@/lib/redis";
+import { getCachedHistory, cacheHistory, invalidateHistory, appendHistory, circuitIsOpen, circuitRecordFailure, circuitRecordSuccess, acquireLeadLock, releaseLeadLock, setTrocaStandby, isTrocaStandby, clearTrocaStandby } from "@/lib/redis";
 import { Vehicle } from "@/types/vehicle";
 
 type Temperatura = "FRIO" | "MORNO" | "QUENTE";
@@ -1346,15 +1346,13 @@ Responda apenas com o JSON, sem markdown.`;
   // ── 4. Stand-by: vendedor humano assumiu ────────────────────────────────────
   if (lead?.em_atendimento_humano) {
     console.log(`🔇 Stand-by para ${phone}. Mensagem salva, IA ignorada.`);
-    // Se o stand-by foi ativado AUTOMATICAMENTE (troca de veículo OU financiamento),
-    // responde com uma rede de segurança em vez de silêncio total — senão o cliente
-    // fica falando sozinho esperando o gerente (ex: a IA disse "vem aqui na loja", o
-    // cliente perguntou "vocês são de onde?" e levou mudo). Inclui o endereço, que é
-    // justamente o que ele costuma querer nessa hora.
+    // Se o stand-by foi ativado AUTOMATICAMENTE (troca ou financiamento), manda UMA
+    // ÚNICA resposta de segurança (curta) em vez de silêncio — e limpa o flag em
+    // seguida, pra NÃO repetir a mesma mensagem a cada mensagem do cliente. Depois
+    // disso fica em silêncio (o humano/especialista assume).
     if (lead?.id && await isTrocaStandby(tenantUserId, lead.id)) {
-      const endParts = [garageConfig?.endereco, garageConfig?.cidade].filter(Boolean).join(" - ");
-      const ondeFica = endParts ? ` Estamos em ${endParts}.` : "";
-      await sendText(phone, `Já passei seu atendimento pro nosso especialista, ele continua com você por aqui em instantes! 😊${ondeFica}`);
+      await sendText(phone, "Perfeito! Já passei seu atendimento pro nosso especialista — ele segue com você por aqui. 😊");
+      await clearTrocaStandby(tenantUserId, lead.id);
     }
     if (lead?.id) await releaseLeadLock(tenantUserId, lead.id).catch(() => {});
     return;
