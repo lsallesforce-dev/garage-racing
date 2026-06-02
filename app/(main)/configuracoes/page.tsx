@@ -489,6 +489,32 @@ export default function ConfiguracoesPage() {
     }
   };
 
+  const handleSaveWm = async () => {
+    setSavingWm(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Usuário não autenticado");
+      const { error } = await supabase
+        .from("config_garage")
+        .upsert(
+          {
+            ...(config.id ? { id: config.id } : {}),
+            user_id: user.id,
+            webmotors_usuario: config.webmotors_usuario || null,
+            webmotors_senha:   config.webmotors_senha   || null,
+          },
+          { onConflict: "user_id" }
+        );
+      if (error) throw error;
+      setSavedWm(true);
+      setTimeout(() => setSavedWm(false), 3000);
+    } catch (err: any) {
+      alert("Erro ao salvar: " + err.message);
+    } finally {
+      setSavingWm(false);
+    }
+  };
+
   const handleSaveWhatsapp = async () => {
     setSavingWa(true);
     try {
@@ -1641,9 +1667,21 @@ export default function ConfiguracoesPage() {
               </div>
             </div>
 
-            <p className="text-[9px] text-gray-400 italic">
-              As credenciais são salvas junto com as demais configurações ao clicar em <span className="font-bold">Salvar</span> no topo da página.
-            </p>
+            <button
+              onClick={handleSaveWm}
+              disabled={savingWm || savedWm}
+              className={`w-full py-2.5 rounded-2xl font-black uppercase text-[11px] tracking-widest transition-all flex items-center justify-center gap-2 ${
+                savedWm ? "bg-green-500 text-white" : "bg-red-600 text-white hover:bg-red-700"
+              }`}
+            >
+              {savingWm ? (
+                <><Loader2 size={15} className="animate-spin" /> Salvando...</>
+              ) : savedWm ? (
+                <><CheckCircle2 size={15} /> Salvo com sucesso!</>
+              ) : (
+                <><Save size={13} /> Salvar credenciais Webmotors</>
+              )}
+            </button>
 
             <div className="pt-2 border-t border-gray-100">
               <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">URL de Callback (copiar para a Webmotors)</p>
