@@ -1798,27 +1798,59 @@ Responda apenas com o JSON, sem markdown.`;
   }
 
 
-  // Pós-venda → stand-by automático
-  // Usa só o texto digitado pelo cliente — strip do contexto injetado ([Contexto do link:...], [Lead veio do anúncio:...])
-  // para evitar falsos positivos com specs do veículo (ex: "Câmbio Automático" na ficha)
+  // ── 10. PÓS-VENDA / GARANTIA → hard-stop + stand-by automático ───────────────
+  // Cliente que JÁ comprou e relata defeito não é venda — a IA NUNCA deve tentar
+  // vender nem pedir "modelo e ano". Encaminha pro humano e entra em stand-by.
+  // Usa só o texto digitado pelo cliente — strip do contexto injetado
+  // ([Contexto do link:...], [Lead veio do anúncio:...]) para evitar falsos
+  // positivos com specs do veículo (ex: "Câmbio Automático" na ficha).
   const textoClientePosvenda = userMessage.replace(/^\[(?:Contexto do link|Lead veio do anúncio)[^\n]*(?:\n(?!\[)[^\n]*)*\n?/m, "").trim().toLowerCase();
-  const gatilhosProblema = [
-    "deu problema", "quebrou", "garantia", "defeito", "barulho estranho",
-    "parou de funcionar", "não liga", "vazando", "batendo", "oficina",
-    "acidente", "recall", "motor travou", "câmbio com problema", "freio falhando",
+
+  // Gatilhos FORTES — defeito inequívoco. Disparam pós-venda sozinhos.
+  const gatilhosDefeito = [
+    "deu problema", "deu pane", "quebrou", "defeito", "parou de funcionar",
+    "não liga", "nao liga", "não pega", "nao pega", "não dá partida", "nao da partida",
+    "vazando", "vazamento", "motor travou", "travou o motor", "fundiu",
+    "câmbio com problema", "cambio com problema", "freio falhando", "freio não", "freio nao",
+    "acidente", "bati o carro", "recall", "superaquec", "fervendo", "fumaça", "fumaca",
+    "fazendo barulho", "fazendo um barulho", "um barulho", "barulho no motor",
+    "barulhão", "barulhao", "barulho estranho", "motor batendo", "batendo no motor",
   ];
-  const isPosvenda = gatilhosProblema.some((g) => textoClientePosvenda.includes(g));
+  const temDefeito = gatilhosDefeito.some((g) => textoClientePosvenda.includes(g));
+
+  // "garantia"/"oficina"/"concessionária" são ambíguos: pergunta de compra
+  // ("tem garantia de fábrica?") vs reclamação ("vou acionar a garantia").
+  // Só tratam como pós-venda com sinal de posse E sem cara de pergunta de compra.
+  const mencionaGarantia = /\b(garantia|oficina|concession[áa]ria)\b/.test(textoClientePosvenda);
+  const sinalPosse = /\b(meu|minha|comprei|compramos|peguei|pegamos|levei|levar|come[çc]ou|acontecendo|aconteceu|t[áa]\s|est[áa]\s)\b/.test(textoClientePosvenda);
+  const perguntaDeCompra = /\b(tem|tem de|possui|qual|quanto|quantos?|inclui|coberto|cobre|de f[áa]brica)\b/.test(textoClientePosvenda);
+  const garantiaPosvenda = mencionaGarantia && sinalPosse && !perguntaDeCompra;
+
+  const isPosvenda = temDefeito || garantiaPosvenda;
 
   if (isPosvenda && lead) {
+    console.log(`🔴 [Pós-venda] ${phone} — defeito/garantia detectado → IA em stand-by: "${textoClientePosvenda.slice(0, 80)}"`);
+
+    // Resposta acolhedora — NÃO vende, NÃO pede dados, encaminha pro humano
+    const respPosvenda = "Poxa, sinto muito pelo transtorno! 😟 Já estou passando seu caso para a nossa gerência, que vai te dar todo o suporte com isso. Em breve alguém da equipe fala com você por aqui, tá? 🙏";
+    await sendText(phone, respPosvenda);
+    await supabaseAdmin.from("mensagens").insert({
+      lead_id: lead.id, content: respPosvenda, remetente: "agente",
+    });
+
+    // Marca PROBLEMA + stand-by (impede o Gemini de rodar e sobrescrever pra QUENTE)
     await supabaseAdmin
       .from("leads")
-      .update({ status: "PROBLEMA" })
+      .update({ status: "PROBLEMA", em_atendimento_humano: true })
       .eq("id", lead.id);
 
     if (gerentePhone) {
-      const posvBody = `🔴 *ALERTA PÓS-VENDA!*\n\n👤 ${lead.nome || phone}\n📱 Número: +${phone}\n💬 "${userMessage.slice(0, 100)}"\n⚠️ Agente em stand-by automaticamente.`;
+      const posvBody = `🔴 *ALERTA PÓS-VENDA!*\n\n👤 ${lead.nome || phone}\n📱 Número: +${phone}\n💬 "${userMessage.slice(0, 120)}"\n⚠️ Cliente relatou problema/garantia. IA em stand-by — assuma o atendimento.`;
       await sendAlertComLink(gerentePhone, posvBody, phone).catch(() => {});
     }
+
+    if (lead?.id) await releaseLeadLock(tenantUserId, lead.id).catch(() => {});
+    return;
   }
 
   // ── 10b. Cliente já comprou/troquei/resolvi → stand-by automático ─────────
@@ -1848,7 +1880,7 @@ Responda apenas com o JSON, sem markdown.`;
     }
 
     if (lead?.id) await releaseLeadLock(tenantUserId, lead.id).catch(() => {});
-    return new Response("ok — conversa encerrada pelo cliente", { status: 200 });
+    return;
   }
 
   // ── 10c. Cliente enviou FOTOS → pré-avaliação de troca ───────────────────────
