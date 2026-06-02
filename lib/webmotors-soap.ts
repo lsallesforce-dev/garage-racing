@@ -35,10 +35,9 @@ async function getBearer(usuario: string, senha: string): Promise<string> {
   if (STATIC_BEARER) return STATIC_BEARER; // token de teste fixo (Postman)
   if (bearerCache && bearerCache.expiresAt > Date.now() + 30_000) return bearerCache.token;
 
+  // Sensedia: client_id vai só no header, body tem apenas grant_type + username + password
   const body = new URLSearchParams({
     grant_type: "password",
-    client_id: CLIENT_ID,
-    client_secret: CLIENT_SECRET,
     username: usuario,
     password: senha,
   });
