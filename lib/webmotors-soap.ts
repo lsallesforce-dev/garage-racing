@@ -35,6 +35,11 @@ async function getBearer(usuario: string, senha: string): Promise<string> {
   if (STATIC_BEARER) return STATIC_BEARER; // token de teste fixo (Postman)
   if (bearerCache && bearerCache.expiresAt > Date.now() + 30_000) return bearerCache.token;
 
+  // O gateway Sensedia exige o client_id da aplicação no header. Sem ele → 401.
+  if (!CLIENT_ID) {
+    throw new Error("WEBMOTORS_CLIENT_ID não configurado — pegue o client_id do app no portal Sensedia e configure nas env vars (Vercel).");
+  }
+
   // Sensedia: client_id vai só no header, body tem apenas grant_type + username + password
   const body = new URLSearchParams({
     grant_type: "password",
@@ -46,10 +51,15 @@ async function getBearer(usuario: string, senha: string): Promise<string> {
     headers: { "Content-Type": "application/x-www-form-urlencoded", client_id: CLIENT_ID },
     body: body.toString(),
   });
-  const data = await res.json().catch(() => ({}));
+  const raw = await res.text();
+  let data: any = {};
+  try { data = JSON.parse(raw); } catch {}
   const token = data.access_token ?? data.token ?? data.accessToken;
   if (!res.ok || !token) {
-    throw new Error(`Webmotors OAuth (bearer) falhou: ${data.error_description ?? data.error ?? res.status}`);
+    // Loga o corpo completo no servidor para diagnóstico (ex.: IP não liberado, client_id inválido)
+    console.error(`❌ [Webmotors] OAuth ${OAUTH_BASE}/oauth/v1/access-token → HTTP ${res.status}:`, raw.slice(0, 500));
+    const detalhe = data.error_description ?? data.error ?? data.message ?? raw.slice(0, 200) ?? res.status;
+    throw new Error(`Webmotors OAuth (bearer) falhou: HTTP ${res.status} — ${detalhe}`);
   }
   bearerCache = { token, expiresAt: Date.now() + (data.expires_in ?? 3600) * 1000 };
   return token as string;
