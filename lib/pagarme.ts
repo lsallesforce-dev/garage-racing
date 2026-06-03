@@ -107,13 +107,12 @@ export async function createBoletoOrder(params: {
   const data = await res.json();
   if (!res.ok) throw new Error(data.message ?? "Erro PagarMe Boleto");
   const tx = data.charges?.[0]?.last_transaction;
-  // Diagnóstico temporário — estrutura real do boleto retornado pelo PagarMe
-  console.log("[boleto-debug]", JSON.stringify({
-    order_status: data.status,
-    charge_status: data.charges?.[0]?.status,
-    tx_keys: tx ? Object.keys(tx) : null,
-    url: tx?.url, line: tx?.line, pdf: tx?.pdf, barcode: tx?.barcode,
-  }));
+  // Diagnóstico temporário — flags curtas (cabem no visualizador de logs)
+  console.log(`[boleto-dbg] st=${data.status}/${data.charges?.[0]?.status} url=${tx?.url?"S":"N"} pdf=${tx?.pdf?"S":"N"} line=${tx?.line?"S":"N"} bc=${tx?.barcode?"S":"N"}`);
+  console.log(`[boleto-dbg] keys=${tx ? Object.keys(tx).join(",") : "NOTX"}`);
+  if (data.charges?.[0]?.last_transaction?.gateway_response) {
+    console.log(`[boleto-dbg] gw=${JSON.stringify(data.charges[0].last_transaction.gateway_response).slice(0, 80)}`);
+  }
   return {
     order_id: data.id as string,
     boleto_url: tx?.url as string,
