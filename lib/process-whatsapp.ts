@@ -9,6 +9,7 @@ import { sendMetaMessage, sendMetaImage, sendMetaVideo, sendMetaCtaButton, markM
 import { sendAvisaMessage, sendAvisaImage, sendAvisaVideo } from "@/lib/avisa";
 import { gerarRelatorioPista } from "@/lib/leads";
 import { resolverVendedor } from "@/lib/lead-routing";
+import { transcreverAudioCliente } from "@/lib/transcribe";
 import { hybridVehicleSearch, findVehicleForMedia } from "@/lib/hybrid-search";
 import { getCachedHistory, cacheHistory, invalidateHistory, appendHistory, circuitIsOpen, circuitRecordFailure, circuitRecordSuccess, acquireLeadLock, releaseLeadLock, setTrocaStandby, isTrocaStandby, clearTrocaStandby } from "@/lib/redis";
 import { Vehicle } from "@/types/vehicle";
@@ -915,12 +916,9 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
           data: audioBuffer.toString("base64"),
           mimeType: "audio/ogg; codecs=opus",
         };
-        const tx = await geminiFlashSales.generateContent([
-          { inlineData: audioData },
-          "Transcreva exatamente o que o cliente disse neste áudio.",
-        ]);
-        userMessage = tx.response.text();
-        console.log(`🎤 Transcrição: "${userMessage.slice(0, 100)}"`);
+        // ASR dedicado da OpenAI (gpt-4o-transcribe/whisper) com fallback Gemini.
+        // Muito melhor que o Gemini sozinho em áudio de WhatsApp e PT-BR.
+        userMessage = await transcreverAudioCliente(audioBuffer, audioData.mimeType);
       }
     } catch (e) {
       console.warn("⚠️ Erro ao transcrever áudio:", e);
