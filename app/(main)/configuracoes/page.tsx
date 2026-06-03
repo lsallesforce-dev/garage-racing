@@ -534,6 +534,31 @@ export default function ConfiguracoesPage() {
           { onConflict: "user_id" }
         );
       if (error) throw error;
+
+      // Conecta o webhook da Avisa automaticamente quando há credenciais.
+      // Sem isso, a Avisa não repassa as mensagens recebidas ao AutoZap.
+      if (config.avisa_base_url && config.avisa_token) {
+        const res = await fetch("/api/configuracoes/avisa", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            avisa_base_url: config.avisa_base_url,
+            avisa_token: config.avisa_token,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Falha ao conectar o webhook da Avisa");
+        if (data.webhookToken) setWebhookToken(data.webhookToken);
+        if (data.webhookConfigured === false) {
+          // Credenciais salvas, mas a Avisa recusou o webhook (token inválido?)
+          alert(
+            "Token salvo, mas não consegui conectar o webhook na Avisa:\n" +
+            (data.webhookError || "verifique se o token está correto e a instância conectada.")
+          );
+          return; // não marca como sucesso pleno
+        }
+      }
+
       setSavedWa(true);
       setTimeout(() => setSavedWa(false), 3000);
     } catch (err: any) {

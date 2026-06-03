@@ -26,6 +26,36 @@ interface AvisaCreds {
   token: string;
 }
 
+// Registra/atualiza a URL de webhook na instância da Avisa.
+// CRÍTICO: sem isso, a Avisa recebe mensagens no WhatsApp mas NÃO as repassa ao
+// AutoZap — o agente fica "mudo" porque nada chega no webhook. Deve ser chamado
+// toda vez que o token/credenciais da Avisa forem salvos nas Configurações, para
+// que o setup seja self-service (sem intervenção manual via API).
+// Idempotente: pode ser chamado quantas vezes for preciso.
+export async function registrarWebhookAvisa(
+  baseUrl: string,
+  token: string,
+  webhookUrl: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${baseUrl.replace(/\/+$/, "")}/webhook`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ webhook: webhookUrl, subscribe: ["Message"] }),
+    });
+    const text = await res.text();
+    let data: any = {};
+    try { data = JSON.parse(text); } catch {}
+    if (!res.ok || data?.success === false) {
+      return { ok: false, error: data?.message ?? data?.error ?? `HTTP ${res.status}: ${text.slice(0, 150)}` };
+    }
+    console.log(`✅ [Avisa] Webhook registrado: ${webhookUrl}`);
+    return { ok: true };
+  } catch (err: any) {
+    return { ok: false, error: err?.message ?? "erro de rede ao registrar webhook" };
+  }
+}
+
 // Resolve um LID (@lid) para o número real via POST /user/parselid da Avisa.
 // Retorna o número real (ex: "5514997985754") ou null se não conseguir.
 export async function resolveAvisaLid(lid: string, creds: AvisaCreds): Promise<string | null> {
