@@ -3,13 +3,14 @@
 --
 -- Modo por tenant (config_garage.distribuicao_modo):
 --   'off'          → alertas vão só pro gerente
---   'especialista' → roteia pro vendedor_responsavel do carro; senão gerente (PADRÃO — preserva o comportamento que já existia)
---   'rodizio'      → fila sequencial entre vendedores ativos
---   'hibrido'      → especialista quando o carro tem; senão rodízio
+--   'especialista' → roteia pro vendedor_responsavel do carro; senão gerente
+--   'rodizio'      → fila sequencial entre vendedores ativos; senão gerente
+--   'hibrido'      → especialista quando o carro tem; senão rodízio; senão gerente (PADRÃO recomendado)
 --
+-- Em TODOS os modos, o gerente (config_garage.whatsapp) é a rede de segurança final.
 -- O roteamento dispara quando o lead vira QUENTE e grava leads.vendedor_id.
 
-ALTER TABLE config_garage ADD COLUMN IF NOT EXISTS distribuicao_modo text NOT NULL DEFAULT 'especialista';
+ALTER TABLE config_garage ADD COLUMN IF NOT EXISTS distribuicao_modo text NOT NULL DEFAULT 'hibrido';
 
 -- Cursor do rodízio: último vendedor que recebeu um lead (pra pegar o próximo da fila)
 ALTER TABLE config_garage ADD COLUMN IF NOT EXISTS rodizio_cursor_id uuid;

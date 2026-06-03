@@ -19,7 +19,7 @@ export default function VendedoresPage() {
   const [savingReset, setSavingReset] = useState(false);
 
   // Distribuição de leads
-  const [distribuicaoModo, setDistribuicaoModo] = useState<string>('especialista');
+  const [distribuicaoModo, setDistribuicaoModo] = useState<string>('hibrido');
   const [configId, setConfigId] = useState<string | null>(null);
   const [savingDist, setSavingDist] = useState(false);
   const [savedDist, setSavedDist] = useState(false);

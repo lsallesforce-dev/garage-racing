@@ -2878,7 +2878,7 @@ Retorne JSON estrito:
     if (topVeiculo?.id && gerenteWa) {
       // Resolve o vendedor de destino: especialista do carro > rodízio > gerente.
       // O modo de distribuição é por tenant (config_garage.distribuicao_modo).
-      let distribuicaoModo = "especialista";
+      let distribuicaoModo = "hibrido";
       const { data: cfgDist } = await supabaseAdmin
         .from("config_garage")
         .select("distribuicao_modo")
