@@ -7,7 +7,8 @@ import { geminiFlashSales, geminiFlashFallback } from "@/lib/gemini";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendMetaMessage, sendMetaImage, sendMetaVideo, sendMetaCtaButton, markMetaRead } from "@/lib/meta";
 import { sendAvisaMessage, sendAvisaImage, sendAvisaVideo } from "@/lib/avisa";
-import { buscarDadosTransbordo, gerarRelatorioPista } from "@/lib/leads";
+import { gerarRelatorioPista } from "@/lib/leads";
+import { resolverVendedor } from "@/lib/lead-routing";
 import { hybridVehicleSearch, findVehicleForMedia } from "@/lib/hybrid-search";
 import { getCachedHistory, cacheHistory, invalidateHistory, appendHistory, circuitIsOpen, circuitRecordFailure, circuitRecordSuccess, acquireLeadLock, releaseLeadLock, setTrocaStandby, isTrocaStandby, clearTrocaStandby } from "@/lib/redis";
 import { Vehicle } from "@/types/vehicle";
@@ -2875,14 +2876,36 @@ Retorne JSON estrito:
     const topVeiculo = veiculoPrincipal ?? topVeiculos[0];
     const gerenteWa = garageConfig?.whatsapp ?? null;
     if (topVeiculo?.id && gerenteWa) {
-      const transbordo = await buscarDadosTransbordo(topVeiculo.id);
+      // Resolve o vendedor de destino: especialista do carro > rodízio > gerente.
+      // O modo de distribuição é por tenant (config_garage.distribuicao_modo).
+      let distribuicaoModo = "especialista";
+      const { data: cfgDist } = await supabaseAdmin
+        .from("config_garage")
+        .select("distribuicao_modo")
+        .eq("user_id", tenantUserId)
+        .order("created_at", { ascending: false })
+        .limit(1);
+      if (cfgDist?.[0]?.distribuicao_modo) distribuicaoModo = cfgDist[0].distribuicao_modo;
+
+      const alvo = await resolverVendedor({
+        tenantUserId,
+        distribuicaoModo,
+        veiculoId: topVeiculo.id,
+      });
+
+      // Carimba o lead com o vendedor escolhido — passa a aparecer no painel dele.
+      // (Especialista assume mesmo que o lead já tivesse caído em outro vendedor.)
+      if (alvo?.id) {
+        await supabaseAdmin.from("leads").update({ vendedor_id: alvo.id }).eq("id", lead.id);
+        console.log(`👤 [Distribuição:${alvo.origem}] Lead ${lead.id} → ${alvo.nome ?? alvo.id}`);
+      }
+
       const normalizarWa = (n: string) => {
         const digits = n.replace(/\D/g, "");
         return digits.startsWith("55") ? digits : `55${digits}`;
       };
-      const destinoWa = normalizarWa(transbordo?.vendedor_wa ?? gerenteWa);
-      const nomeCarro =
-        transbordo?.carro ?? `${topVeiculo.marca} ${topVeiculo.modelo}`;
+      const destinoWa = normalizarWa(alvo?.whatsapp ?? gerenteWa);
+      const nomeCarro = `${topVeiculo.marca} ${topVeiculo.modelo}`;
       const historicoFormatado =
         historico
           .map(
