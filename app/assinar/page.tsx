@@ -11,6 +11,8 @@ import Image from "next/image";
 // ─── Preços ────────────────────────────────────────────────────────────────────
 
 const PLANOS: Record<string, { nome: string; mensal: number; anual12x: number; parcela12x: number; destaque?: string }> = {
+  // Plano oculto de teste (R$ 1) — acessível só via /assinar?plano=teste, não aparece nos botões
+  teste:   { nome: "Teste",    mensal: 1,     anual12x: 12,     parcela12x: 1 },
   starter: { nome: "Starter",  mensal: 1150,  anual12x: 12420,  parcela12x: 1035 },
   pro:     { nome: "Pro",      mensal: 1500,  anual12x: 16200,  parcela12x: 1350 },
   premium: { nome: "Premium",  mensal: 2135,  anual12x: 23220,  parcela12x: 1935, destaque: "50 NFs/mês incluídas" },

@@ -9,10 +9,14 @@ import {
 } from "@/lib/pagarme";
 
 // Preços em centavos
-const VALORES: Record<string, number> = { starter: 115000, pro: 150000, premium: 213500 };
+// "teste" (R$ 1,00) é um plano oculto para validar o fluxo de pagamento ponta a ponta
+// (checkout → PIX → webhook → ativa plano). Não aparece nos botões da tela de assinatura;
+// só é acessível via /assinar?plano=teste.
+const VALORES: Record<string, number> = { teste: 100, starter: 115000, pro: 150000, premium: 213500 };
 
 // R$ X por mês → desc string
 const DESCRICOES: Record<string, string> = {
+  teste: "AutoZap Teste",
   starter: "AutoZap Starter",
   pro: "AutoZap Pro",
   premium: "AutoZap Premium",
