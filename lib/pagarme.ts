@@ -46,6 +46,15 @@ function buildCustomer(c: PagarmeCustomer, withAddress = false) {
   return customer;
 }
 
+// PagarMe v5 exige `code` (identificador do item) em cada item do pedido.
+// Sem ele, a cobrança de boleto/cartão falha com "The item Code is required".
+function itemCode(description: string): string {
+  return (
+    description.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "plano"
+  );
+}
+
 // ─── PIX ──────────────────────────────────────────────────────────────────────
 
 export async function createPixOrder(params: {
@@ -57,7 +66,7 @@ export async function createPixOrder(params: {
     method: "POST",
     headers: authHeaders(),
     body: JSON.stringify({
-      items: [{ amount: params.amount, description: params.description, quantity: 1 }],
+      items: [{ code: itemCode(params.description), amount: params.amount, description: params.description, quantity: 1 }],
       customer: buildCustomer(params.customer),
       payments: [{ payment_method: "pix", pix: { expires_in: 3600 } }],
     }),
@@ -89,7 +98,7 @@ export async function createBoletoOrder(params: {
     method: "POST",
     headers: authHeaders(),
     body: JSON.stringify({
-      items: [{ amount: params.amount, description: params.description, quantity: 1 }],
+      items: [{ code: itemCode(params.description), amount: params.amount, description: params.description, quantity: 1 }],
       customer: buildCustomer(params.customer, true),
       payments: [
         {
@@ -107,12 +116,6 @@ export async function createBoletoOrder(params: {
   const data = await res.json();
   if (!res.ok) throw new Error(data.message ?? "Erro PagarMe Boleto");
   const tx = data.charges?.[0]?.last_transaction;
-  // Diagnóstico temporário — flags curtas (cabem no visualizador de logs)
-  console.log(`[boleto-dbg] st=${data.status}/${data.charges?.[0]?.status} url=${tx?.url?"S":"N"} pdf=${tx?.pdf?"S":"N"} line=${tx?.line?"S":"N"} bc=${tx?.barcode?"S":"N"}`);
-  console.log(`[boleto-dbg] keys=${tx ? Object.keys(tx).join(",") : "NOTX"}`);
-  if (data.charges?.[0]?.last_transaction?.gateway_response) {
-    console.log(`[boleto-dbg] gw=${JSON.stringify(data.charges[0].last_transaction.gateway_response).slice(0, 80)}`);
-  }
   return {
     order_id: data.id as string,
     boleto_url: tx?.url as string,
@@ -134,7 +137,7 @@ export async function createCardCheckout(params: {
     method: "POST",
     headers: authHeaders(),
     body: JSON.stringify({
-      items: [{ amount: params.amount, description: params.description, quantity: 1 }],
+      items: [{ code: itemCode(params.description), amount: params.amount, description: params.description, quantity: 1 }],
       customer: buildCustomer(params.customer),
       payments: [
         {
