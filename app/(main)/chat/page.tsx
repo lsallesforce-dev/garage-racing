@@ -80,8 +80,10 @@ function previewMensagem(msg: UltimaMensagem | null | undefined): string {
 }
 
 function CentralChatInner() {
-  const { effectiveUserId } = useUserRole();
+  const { effectiveUserId, isVendedor } = useUserRole();
   const searchParams = useSearchParams();
+  const [meuVendedorId, setMeuVendedorId] = useState<string | null>(null);
+  const [vendedorResolvido, setVendedorResolvido] = useState(false);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [mensagens, setMensagens] = useState<Mensagem[]>([]);
@@ -98,13 +100,41 @@ function CentralChatInner() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const PAGE_SIZE = 60;
 
+  // Resolve o id do vendedor logado (na tabela vendedores) p/ filtrar só os leads dele
+  useEffect(() => {
+    if (!isVendedor) { setVendedorResolvido(true); return; }
+    let ativo = true;
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data } = await supabase
+          .from("vendedores")
+          .select("id")
+          .eq("auth_user_id", user.id)
+          .maybeSingle();
+        if (ativo) setMeuVendedorId(data?.id ?? null);
+      }
+      if (ativo) setVendedorResolvido(true);
+    })();
+    return () => { ativo = false; };
+  }, [isVendedor]);
+
   const carregarLeads = useCallback(async (pagina = 0, acumular = false) => {
     if (!effectiveUserId) return;
+    if (isVendedor && !vendedorResolvido) return; // espera resolver o vendedor antes de listar
 
-    const { data: leadsData, count } = await supabase
+    let query = supabase
       .from("leads")
       .select("*, veiculos(marca, modelo)", { count: "exact" })
-      .eq("user_id", effectiveUserId)
+      .eq("user_id", effectiveUserId);
+
+    // Vendedor vê só os leads atribuídos a ele; gerente/dono vê todos.
+    // Sem registro na tabela vendedores → nenhum lead (id impossível).
+    if (isVendedor) {
+      query = query.eq("vendedor_id", meuVendedorId ?? "00000000-0000-0000-0000-000000000000");
+    }
+
+    const { data: leadsData, count } = await query
       .order("updated_at", { ascending: false })
       .range(pagina * PAGE_SIZE, (pagina + 1) * PAGE_SIZE - 1);
 
@@ -137,7 +167,7 @@ function CentralChatInner() {
 
     setLeads(prev => acumular ? [...prev, ...novos] : novos);
     setPaginaLeads(pagina);
-  }, [effectiveUserId]);
+  }, [effectiveUserId, isVendedor, meuVendedorId, vendedorResolvido]);
 
   const carregarMais = async () => {
     setCarregandoMais(true);

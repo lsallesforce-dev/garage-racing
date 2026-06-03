@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
-import { UserPlus, MoreHorizontal, X, UserCircle, Upload, Zap, Phone, Edit, Trash2, KeyRound } from "lucide-react";
+import { UserPlus, MoreHorizontal, X, UserCircle, Upload, Zap, Phone, Edit, Trash2, KeyRound, Save, CheckCircle2, Loader2, Users, Target, Shuffle } from "lucide-react";
 
 export default function VendedoresPage() {
   const [vendedores, setVendedores] = useState<any[]>([]);
@@ -18,13 +18,53 @@ export default function VendedoresPage() {
   const [resetSenha, setResetSenha] = useState('');
   const [savingReset, setSavingReset] = useState(false);
 
+  // Distribuição de leads
+  const [distribuicaoModo, setDistribuicaoModo] = useState<string>('especialista');
+  const [configId, setConfigId] = useState<string | null>(null);
+  const [savingDist, setSavingDist] = useState(false);
+  const [savedDist, setSavedDist] = useState(false);
+
   const carregarEquipe = async () => {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setLoading(false); return; }
     const { data } = await supabase.from('vendedores').select('*').eq('user_id', user.id).order('nome');
     if (data) setVendedores(data);
+
+    // Carrega o modo de distribuição de leads do tenant
+    const { data: cfg } = await supabase
+      .from('config_garage')
+      .select('id, distribuicao_modo')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(1);
+    if (cfg?.[0]) {
+      setConfigId(cfg[0].id);
+      setDistribuicaoModo(cfg[0].distribuicao_modo ?? 'especialista');
+    }
     setLoading(false);
+  };
+
+  const salvarDistribuicao = async (modo: string) => {
+    setDistribuicaoModo(modo);
+    setSavingDist(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Não autenticado');
+      const { error } = await supabase
+        .from('config_garage')
+        .upsert(
+          { ...(configId ? { id: configId } : {}), user_id: user.id, distribuicao_modo: modo },
+          { onConflict: 'user_id' }
+        );
+      if (error) throw error;
+      setSavedDist(true);
+      setTimeout(() => setSavedDist(false), 2500);
+    } catch (e: any) {
+      alert('Erro ao salvar distribuição: ' + e.message);
+    } finally {
+      setSavingDist(false);
+    }
   };
 
   useEffect(() => { carregarEquipe(); }, []);
@@ -199,6 +239,56 @@ export default function VendedoresPage() {
             <UserPlus size={16} /> Cadastrar Vendedor
           </button>
         </header>
+
+        {/* 🎯 Distribuição automática de leads */}
+        <section className="mb-10 bg-white rounded-[2rem] border border-gray-100 shadow-sm p-8">
+          <div className="flex items-center gap-3 mb-1">
+            <div className="w-9 h-9 rounded-xl bg-red-50 flex items-center justify-center">
+              <Target size={16} className="text-red-600" />
+            </div>
+            <div>
+              <h2 className="text-[11px] font-black uppercase tracking-widest text-gray-900">Distribuição de Leads</h2>
+              <p className="text-[10px] text-gray-400">Pra quem o agente direciona o lead quando ele esquenta</p>
+            </div>
+            {savingDist ? (
+              <span className="ml-auto flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-gray-400"><Loader2 size={13} className="animate-spin" /> Salvando</span>
+            ) : savedDist ? (
+              <span className="ml-auto flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-green-600"><CheckCircle2 size={13} /> Salvo</span>
+            ) : null}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-5">
+            {[
+              { id: 'hibrido',      icon: Users,      titulo: 'Especialista + Rodízio', desc: 'Vai pro vendedor do carro; se o carro não tem responsável, entra no rodízio.', tag: 'Recomendado' },
+              { id: 'especialista', icon: Target,     titulo: 'Por especialista',       desc: 'Só o vendedor responsável pelo carro recebe. Sem responsável → gerente.' },
+              { id: 'rodizio',      icon: Shuffle,    titulo: 'Rodízio (fila)',         desc: '1º lead pro vendedor A, 2º pro B, e assim por diante — em ordem.' },
+              { id: 'off',          icon: UserCircle, titulo: 'Só gerente',             desc: 'Todos os alertas de lead quente vão direto pro gerente.' },
+            ].map((opt) => {
+              const ativo = distribuicaoModo === opt.id;
+              const Icon = opt.icon;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => salvarDistribuicao(opt.id)}
+                  disabled={savingDist}
+                  className={`text-left p-4 rounded-2xl border-2 transition-all disabled:opacity-60 ${ativo ? 'border-red-500 bg-red-50/50' : 'border-gray-200 hover:border-gray-300'}`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <Icon size={15} className={ativo ? 'text-red-600' : 'text-gray-400'} />
+                    <span className={`text-[11px] font-black uppercase tracking-wider ${ativo ? 'text-red-600' : 'text-gray-700'}`}>{opt.titulo}</span>
+                    {opt.tag && <span className="text-[8px] font-black uppercase tracking-widest bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">{opt.tag}</span>}
+                    {ativo && <CheckCircle2 size={14} className="ml-auto text-red-600 shrink-0" />}
+                  </div>
+                  <p className="text-[10px] text-gray-500 leading-relaxed">{opt.desc}</p>
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-[10px] text-gray-400 mt-4">
+            💡 O vendedor responsável é definido no cadastro de cada carro. O rodízio usa só vendedores <strong>Ativos</strong> com WhatsApp.
+          </p>
+        </section>
 
         {/* 🗂️ Grid de Cards com Foto e Ações CRUD */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
