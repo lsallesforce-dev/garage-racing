@@ -107,6 +107,13 @@ export async function createBoletoOrder(params: {
   const data = await res.json();
   if (!res.ok) throw new Error(data.message ?? "Erro PagarMe Boleto");
   const tx = data.charges?.[0]?.last_transaction;
+  // Diagnóstico temporário — estrutura real do boleto retornado pelo PagarMe
+  console.log("[boleto-debug]", JSON.stringify({
+    order_status: data.status,
+    charge_status: data.charges?.[0]?.status,
+    tx_keys: tx ? Object.keys(tx) : null,
+    url: tx?.url, line: tx?.line, pdf: tx?.pdf, barcode: tx?.barcode,
+  }));
   return {
     order_id: data.id as string,
     boleto_url: tx?.url as string,
