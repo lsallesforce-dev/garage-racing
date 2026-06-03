@@ -1,39 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import crypto from "crypto";
 import { Resend } from "resend";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { getOrderStatus } from "@/lib/pagarme";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-function verifySignature(body: string, header: string | null, secret: string): boolean {
-  if (!header) return false;
-  const expected = crypto.createHmac("sha256", secret).update(body).digest("hex");
-  // timingSafeEqual lança RangeError se os buffers tiverem tamanhos diferentes
-  if (expected.length !== header.length) return false;
-  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(header));
-}
-
 export async function POST(req: NextRequest) {
-  const secret = process.env.PAGARME_WEBHOOK_SECRET;
   const rawBody = await req.text();
-
-  if (!secret) {
-    console.error("🚨 PAGARME_WEBHOOK_SECRET não configurado — requisição rejeitada");
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  // Diagnóstico temporário — identifica o formato real enviado pelo PagarMe em produção
-  const sigHeaders = ["x-pagarme-signature", "x-hub-signature", "x-hub-signature-256"];
-  for (const h of sigHeaders) {
-    const v = req.headers.get(h);
-    if (v) console.log(`[pagarme/webhook] header ${h}: ${v.slice(0, 12)}... len=${v.length}`);
-  }
-
-  const sig = req.headers.get("x-pagarme-signature");
-  if (!verifySignature(rawBody, sig, secret)) {
-    console.warn("[pagarme/webhook] assinatura rejeitada — sig presente:", !!sig, "len esperado: 64");
-    return NextResponse.json({ error: "Assinatura inválida" }, { status: 401 });
-  }
 
   let payload: { type?: string; data?: { id?: string; status?: string } };
   try {
@@ -45,14 +18,31 @@ export async function POST(req: NextRequest) {
   const eventType = payload.type ?? "";
   const orderId = payload.data?.id;
 
-  // Eventos que indicam pagamento confirmado
-  const isPaid =
+  // Só tratamos eventos que sinalizam pagamento confirmado
+  const eventoDePagamento =
     eventType === "order.paid" ||
     eventType === "charge.paid" ||
-    (eventType === "order.payment_failed" ? false : payload.data?.status === "paid");
+    (eventType !== "order.payment_failed" && payload.data?.status === "paid");
 
-  if (!isPaid || !orderId) {
+  if (!eventoDePagamento || !orderId) {
     return NextResponse.json({ ok: true }); // ignora eventos não relevantes
+  }
+
+  // ── Segurança por confirmação na fonte ──────────────────────────────────────
+  // O PagarMe v5 não fornece assinatura HMAC confiável, então NÃO confiamos no
+  // payload do webhook. Confirmamos o status REAL do pedido direto na API do
+  // PagarMe (autenticado com a PAGARME_API_KEY). Um webhook forjado não ativa
+  // nada: só seguimos se o pedido existir na NOSSA conta e estiver de fato "paid".
+  let statusReal: string;
+  try {
+    statusReal = await getOrderStatus(orderId);
+  } catch (e) {
+    console.error(`[pagarme/webhook] falha ao confirmar order ${orderId} na API:`, e);
+    return NextResponse.json({ error: "erro ao confirmar pedido" }, { status: 502 });
+  }
+  if (statusReal !== "paid") {
+    console.warn(`[pagarme/webhook] order ${orderId}: status real "${statusReal}" ≠ paid — ignorado`);
+    return NextResponse.json({ ok: true });
   }
 
   // Busca o pagamento pelo order_id salvo em `notas`
