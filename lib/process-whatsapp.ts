@@ -2004,8 +2004,13 @@ Responda apenas com o JSON, sem markdown.`;
     /^(e\b|e\s+(a|o|da|do|de|dos|das|tem)\b)/i.test(userMessage.trim()) &&
     !gatilhosVideo.some(g => mensagemLower.includes(g));
 
-  // Detecta pedido de fotos de MÚLTIPLOS carros ("foto deles", "de ambos", "dos dois", "de cada um")
-  const pedindoFotosMultiplos = /\b(deles|delas|dos dois|das duas|de ambos|de todos|de cada|de cada um)\b/i.test(mensagemLower);
+  // Detecta pedido de fotos de MÚLTIPLOS carros ("dos dois", "de ambos", "de cada um").
+  // NÃO usar "deles"/"delas": na fala brasileira viram singular o tempo todo
+  // ("a cabine delas" = "a cabine dela") e causavam falso positivo — o sistema
+  // mandava a capa de 4 carros diferentes quando o cliente pedia fotos de UM só.
+  // Caso real (Carmatti/Waldemir): "ver como é a cabine delas" → enviou Strada +
+  // Saveiro + Palio + Voyage. Os gatilhos abaixo são inequívocos de plural.
+  const pedindoFotosMultiplos = /\b(dos dois|das duas|de ambos|de todos|de cada|de cada um|de todos eles|os dois|as duas)\b/i.test(mensagemLower);
 
   // Cliente pede PARTE ESPECÍFICA do carro (interna, externa, motor, painel, etc).
   // Inclui variações coloquiais: "interna" (cliente Gabriel disse), "interno",
