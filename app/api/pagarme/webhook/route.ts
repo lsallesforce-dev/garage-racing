@@ -21,8 +21,17 @@ export async function POST(req: NextRequest) {
     console.error("🚨 PAGARME_WEBHOOK_SECRET não configurado — requisição rejeitada");
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  // Diagnóstico temporário — identifica o formato real enviado pelo PagarMe em produção
+  const sigHeaders = ["x-pagarme-signature", "x-hub-signature", "x-hub-signature-256"];
+  for (const h of sigHeaders) {
+    const v = req.headers.get(h);
+    if (v) console.log(`[pagarme/webhook] header ${h}: ${v.slice(0, 12)}... len=${v.length}`);
+  }
+
   const sig = req.headers.get("x-pagarme-signature");
   if (!verifySignature(rawBody, sig, secret)) {
+    console.warn("[pagarme/webhook] assinatura rejeitada — sig presente:", !!sig, "len esperado: 64");
     return NextResponse.json({ error: "Assinatura inválida" }, { status: 401 });
   }
 
