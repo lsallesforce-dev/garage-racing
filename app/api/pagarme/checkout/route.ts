@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
       metodo,
       status: "pendente",
       vencimento,
-      notas: `pagarme:${result.order_id}`,
+      notas: `pagarme:${result.order_id}:${parcelamento}`,
     });
 
     return NextResponse.json(result);

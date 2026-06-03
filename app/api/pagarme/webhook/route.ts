@@ -8,6 +8,8 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 function verifySignature(body: string, header: string | null, secret: string): boolean {
   if (!header) return false;
   const expected = crypto.createHmac("sha256", secret).update(body).digest("hex");
+  // timingSafeEqual lança RangeError se os buffers tiverem tamanhos diferentes
+  if (expected.length !== header.length) return false;
   return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(header));
 }
 
@@ -47,13 +49,18 @@ export async function POST(req: NextRequest) {
   // Busca o pagamento pelo order_id salvo em `notas`
   const { data: pagamento } = await supabaseAdmin
     .from("pagamentos")
-    .select("id, user_id, plano, notas")
-    .like("notas", `pagarme:${orderId}`)
+    .select("id, user_id, plano, notas, valor, metodo, status")
+    .like("notas", `pagarme:${orderId}%`)
     .maybeSingle();
 
   if (!pagamento) {
     // Pode ter chegado antes do insert — loga e retorna 200 para o PagarMe não retentar
     console.warn("[pagarme/webhook] pedido não encontrado:", orderId);
+    return NextResponse.json({ ok: true });
+  }
+
+  // Idempotência: PagarMe pode reenviar o evento — ignora se já processado
+  if (pagamento.status === "pago") {
     return NextResponse.json({ ok: true });
   }
 
