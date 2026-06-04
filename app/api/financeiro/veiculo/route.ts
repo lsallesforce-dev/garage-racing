@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { requireVehicleOwner } from "@/lib/api-auth";
+import { requireVehicleOwner, isVendedor } from "@/lib/api-auth";
 
 const TABELAS_PERMITIDAS = new Set(["despesas_veiculo", "receitas_veiculo"]);
 
@@ -14,8 +14,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Campos obrigatórios ausentes" }, { status: 400 });
   }
 
-  const { error: authError } = await requireVehicleOwner(veiculo_id);
+  const { user, error: authError } = await requireVehicleOwner(veiculo_id);
   if (authError) return authError;
+  if (isVendedor(user!)) return NextResponse.json({ error: "Acesso restrito ao administrador" }, { status: 403 });
 
   const { data, error } = await supabaseAdmin
     .from(tabela)
@@ -44,8 +45,9 @@ export async function DELETE(req: NextRequest) {
 
   if (!item) return NextResponse.json({ error: "Item não encontrado" }, { status: 404 });
 
-  const { error: authError } = await requireVehicleOwner(item.veiculo_id);
+  const { user, error: authError } = await requireVehicleOwner(item.veiculo_id);
   if (authError) return authError;
+  if (isVendedor(user!)) return NextResponse.json({ error: "Acesso restrito ao administrador" }, { status: 403 });
 
   const { error } = await supabaseAdmin.from(tabela).delete().eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

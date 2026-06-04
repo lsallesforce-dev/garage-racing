@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
+import { requireOwner, getEffectiveUserId } from "@/lib/api-auth";
 
 // GET — lista todos os fechamentos do usuário
 export async function GET() {
-  const { user, error: authError } = await requireAuth();
+  const { user, error: authError } = await requireOwner();
   if (authError) return authError;
   const userId = getEffectiveUserId(user!);
 
@@ -20,7 +20,7 @@ export async function GET() {
 
 // POST — fecha um mês com snapshot dos dados
 export async function POST(req: NextRequest) {
-  const { user, error: authError } = await requireAuth();
+  const { user, error: authError } = await requireOwner();
   if (authError) return authError;
   const userId = getEffectiveUserId(user!);
 
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
 
 // DELETE — reabre um mês fechado
 export async function DELETE(req: NextRequest) {
-  const { user, error: authError } = await requireAuth();
+  const { user, error: authError } = await requireOwner();
   if (authError) return authError;
   const userId = getEffectiveUserId(user!);
 

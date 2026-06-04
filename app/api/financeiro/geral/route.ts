@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
+import { requireOwner, getEffectiveUserId } from "@/lib/api-auth";
 
 export async function POST(req: NextRequest) {
   const { tipo, descricao, valor, data } = await req.json();
@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Tipo inválido" }, { status: 400 });
   }
 
-  const { user, error: authError } = await requireAuth();
+  const { user, error: authError } = await requireOwner();
   if (authError) return authError;
 
   const effectiveUserId = getEffectiveUserId(user!);
@@ -31,7 +31,7 @@ export async function DELETE(req: NextRequest) {
   const { id } = await req.json();
   if (!id) return NextResponse.json({ error: "id obrigatório" }, { status: 400 });
 
-  const { user, error: authError } = await requireAuth();
+  const { user, error: authError } = await requireOwner();
   if (authError) return authError;
 
   const effectiveUserId = getEffectiveUserId(user!);

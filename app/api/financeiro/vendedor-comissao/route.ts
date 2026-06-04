@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
+import { requireOwner, getEffectiveUserId } from "@/lib/api-auth";
 
 export async function PATCH(req: NextRequest) {
   const { vendedorId, comissao_pct } = await req.json();
@@ -8,7 +8,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "vendedorId e comissao_pct obrigatórios" }, { status: 400 });
   }
 
-  const { user, error: authError } = await requireAuth();
+  const { user, error: authError } = await requireOwner();
   if (authError) return authError;
 
   const effectiveUserId = getEffectiveUserId(user!);

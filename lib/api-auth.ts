@@ -74,6 +74,33 @@ export function getEffectiveUserId(user: User): string {
   return ownerId ?? user.id;
 }
 
+/** Papel do usuário (dono por padrão). */
+export function getUserRole(user: User): string {
+  return user.app_metadata?.role ?? user.user_metadata?.role ?? "dono";
+}
+
+/** true se o usuário é vendedor (acesso restrito — não vê dados financeiros da loja). */
+export function isVendedor(user: User): boolean {
+  return getUserRole(user) === "vendedor";
+}
+
+/**
+ * Exige usuário autenticado que NÃO seja vendedor (rotas financeiras do dono/gerente).
+ * Vendedor recebe 403 — protege lucro, custo, margem e comissões da equipe.
+ * Uso: const { user, error } = await requireOwner(); if (error) return error;
+ */
+export async function requireOwner() {
+  const { user, error } = await requireAuth();
+  if (error) return { user: null, error };
+  if (isVendedor(user!)) {
+    return {
+      user: null,
+      error: NextResponse.json({ error: "Acesso restrito ao administrador" }, { status: 403 }),
+    };
+  }
+  return { user, error: null };
+}
+
 /**
  * Verifica se um veículo pertence ao user autenticado.
  * Retorna 401 sem auth, 403 se o veículo for de outro tenant.

@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
+import { requireOwner, getEffectiveUserId } from "@/lib/api-auth";
 
 export async function GET() {
-  const { user, error: authError } = await requireAuth();
+  const { user, error: authError } = await requireOwner();
   if (authError) return authError;
 
   const effectiveUserId = getEffectiveUserId(user!);

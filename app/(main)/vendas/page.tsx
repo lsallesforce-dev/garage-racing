@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback, useRef, forwardRef, useImperativeHandle } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
+import { useUserRole } from "@/components/SidebarWrapper";
 import {
   X, Plus, Trash2, DollarSign, TrendingUp, TrendingDown,
   Package, ChevronDown, Check, Loader2, Users, ReceiptText,
@@ -1272,7 +1274,15 @@ export default function VendasPage() {
   const [verGraficos,    setVerGraficos]    = useState(false);
   const [fechamentoDate, setFechamentoDate] = useState("");
 
+  // Vendedor não acessa o financeiro da loja — redireciona para a visão dele
+  const router = useRouter();
+  const { isVendedor } = useUserRole();
+  useEffect(() => {
+    if (isVendedor) router.replace("/minhas-vendas");
+  }, [isVendedor, router]);
+
   const carregar = useCallback(async () => {
+    if (isVendedor) return; // não busca dados financeiros para vendedor
     const res = await fetch("/api/financeiro/resumo");
     if (!res.ok) return;
     const { veiculos: lista, vendedores: vend, geral } = await res.json();
@@ -1282,7 +1292,7 @@ export default function VendasPage() {
     setItensGeral(geral);
     setLoading(false);
     setSelecionado((prev) => prev ? lista.find((v: { id: string }) => v.id === prev.id) ?? null : null);
-  }, []);
+  }, [isVendedor]);
 
   useEffect(() => { carregar(); }, [carregar]);
 
@@ -1334,6 +1344,9 @@ export default function VendasPage() {
   const lucroAnual = mesesComDados.filter((m) => m.startsWith(anoAtual)).reduce((s, m) => s + calcLucroMes(m), 0);
 
   const filtrados = filtro === "todos" ? veiculos : filtro === "estoque" ? estoque : vendidos;
+
+  // Vendedor é redirecionado para /minhas-vendas (useEffect acima) — nunca renderiza o financeiro da loja
+  if (isVendedor) return null;
 
   return (
     <div className="p-6 md:p-10 bg-[#f4f4f2] min-h-screen font-sans">
