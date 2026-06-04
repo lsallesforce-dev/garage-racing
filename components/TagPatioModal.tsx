@@ -200,6 +200,7 @@ function buildPrintHtml(
 
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8">
+<title>Tag Pátio — ${nomeModelo}</title>
 <style>
   @page { size:${pageSize}; margin:${pageMargin}; }
   body  { margin:0; font-family:Arial,sans-serif; }
