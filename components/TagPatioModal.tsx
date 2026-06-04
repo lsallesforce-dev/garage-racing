@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { X, Printer, Tag } from "lucide-react";
+import { X, Printer, Tag, Download, Loader2 } from "lucide-react";
 
 // ── Mapeamento: campos da tag → opcionais do sistema ──────────────────────────
 const TAG_ITENS = [
@@ -124,20 +124,31 @@ function Caixa({ checked, onChange }: { checked: boolean; onChange: () => void }
   );
 }
 
-// ── Geração do HTML para impressão ───────────────────────────────────────────
-// Layout fiel ao PDF de referência: logo topo → Modelo → tag → QR abaixo-direita
-function buildPrintHtml(
+// ── Nome completo do modelo (marca + modelo + versão + ano, sem duplicar versão) ─
+function nomeCompletoModelo(veiculo: any): string {
+  const marca  = String(veiculo.marca ?? "").trim();
+  const modelo = String(veiculo.modelo ?? "").trim();
+  const versao = String(veiculo.versao ?? "").trim();
+  const ano    = veiculo.ano_modelo ?? veiculo.ano ?? "";
+  // evita duplicação quando o modelo já contém a versão
+  // (ex.: modelo "T-Cross Sense 200 TSI..." + versao "Sense 200 TSI" sairia repetido)
+  const versaoRedundante = versao && modelo.toLowerCase().includes(versao.toLowerCase());
+  return [marca, modelo, versaoRedundante ? "" : versao, ano].filter(Boolean).join(" ");
+}
+
+// ── Geração do HTML da tag (layout único, reusado por impressão e PDF) ────────
+// Layout fiel ao PDF de referência: logo topo → Modelo → tag → QR abaixo-centralizado.
+// logoSrc/qrSrc já vêm resolvidos (URL pública ou data-URL) para reuso entre os fluxos.
+function buildTagInnerHtml(
   tag: TagData,
   veiculo: any,
-  logoUrl?: string,
-  vitrineUrl?: string,
-  orientacao: "retrato" | "paisagem" = "paisagem",
+  logoSrc: string | undefined,
+  qrSrc: string | undefined,
+  orientacao: "retrato" | "paisagem",
 ): string {
   const L = orientacao === "paisagem";
 
-  const pageSize   = L ? "A4 landscape" : "A4 portrait";
-  const pageMargin = L ? "10mm 18mm"    : "10mm 12mm";
-  const maxWidth   = L ? "261mm"        : "186mm";
+  const maxWidth  = L ? "261mm" : "186mm";
 
   // Retrato: o conteúdo ocupa toda a folha A4 (wrapper flex column + tag flex:1)
   const wrapExtra = L ? "" : "min-height:272mm;display:flex;flex-direction:column;";
@@ -174,40 +185,23 @@ function buildPrintHtml(
     + `<td style="vertical-align:top;width:50%;">${TAG_ITENS.slice(9, 18).map(row).join("")}</td>`;
 
   // Logo centralizado no topo
-  const logoBlock = logoUrl
-    ? `<img src="${logoUrl}" style="max-height:${L ? 80 : 120}px;max-width:${L ? 250 : 320}px;object-fit:contain;display:block;margin:0 auto;" />`
+  const logoBlock = logoSrc
+    ? `<img src="${logoSrc}" style="max-height:${L ? 80 : 120}px;max-width:${L ? 250 : 320}px;object-fit:contain;display:block;margin:0 auto;" />`
     : "";
 
-  // Modelo acima da tag — evita duplicação quando o modelo já contém a versão
-  // (ex.: modelo "T-Cross Sense 200 TSI 1.0 Flex 5p Aut." + versao "Sense 200 TSI..." sairia repetido)
-  const _marca  = String(veiculo.marca ?? "").trim();
-  const _modelo = String(veiculo.modelo ?? "").trim();
-  const _versao = String(veiculo.versao ?? "").trim();
-  const _ano    = veiculo.ano_modelo ?? veiculo.ano ?? "";
-  const versaoRedundante = _versao && _modelo.toLowerCase().includes(_versao.toLowerCase());
-  const nomeModelo = [_marca, _modelo, versaoRedundante ? "" : _versao, _ano]
-    .filter(Boolean).join(" ");
+  const nomeModelo = nomeCompletoModelo(veiculo);
 
   // QR code abaixo da tag — centralizado, maior no retrato
   const qrSize = L ? 110 : 160;
-  const qrBlock = vitrineUrl ? `
+  const qrBlock = qrSrc ? `
   <div style="display:flex;justify-content:center;margin-top:${L ? 14 : 18}px;">
     <div style="text-align:center;">
-      <img src="https://api.qrserver.com/v1/create-qr-code/?size=${qrSize * 2}x${qrSize * 2}&data=${encodeURIComponent(vitrineUrl)}" width="${qrSize}" height="${qrSize}" style="display:block;margin:0 auto;" />
+      <img src="${qrSrc}" width="${qrSize}" height="${qrSize}" style="display:block;margin:0 auto;" />
       <p style="margin:8px auto 0;font-size:${f.qrTxt}px;font-weight:700;color:#555;font-family:Arial,sans-serif;text-align:center;">Acesse nosso site para ver todos os nossos carros.</p>
     </div>
   </div>` : "";
 
-  return `<!DOCTYPE html><html lang="pt-BR"><head>
-<meta charset="UTF-8">
-<title>Tag Pátio — ${nomeModelo}</title>
-<style>
-  @page { size:${pageSize}; margin:${pageMargin}; }
-  body  { margin:0; font-family:Arial,sans-serif; }
-  @media print { body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } }
-</style>
-</head><body>
-<div style="width:100%;max-width:${maxWidth};margin:0 auto;font-family:Arial,sans-serif;${wrapExtra}">
+  return `<div style="width:100%;max-width:${maxWidth};margin:0 auto;font-family:Arial,sans-serif;${wrapExtra}">
 
   ${logoBlock ? `<!-- LOGO --><div style="text-align:center;margin-bottom:${L ? 10 : 8}px;">${logoBlock}</div>` : ""}
 
@@ -261,7 +255,40 @@ function buildPrintHtml(
 
   ${qrBlock}
 
-</div>
+</div>`;
+}
+
+// ── HTML completo para impressão via window.print (QR via api.qrserver.com) ───
+function buildPrintHtml(
+  tag: TagData,
+  veiculo: any,
+  logoUrl?: string,
+  vitrineUrl?: string,
+  orientacao: "retrato" | "paisagem" = "paisagem",
+): string {
+  const L = orientacao === "paisagem";
+  const pageSize   = L ? "A4 landscape" : "A4 portrait";
+  const pageMargin = L ? "10mm 18mm"    : "10mm 12mm";
+  const qrSize     = L ? 110 : 160;
+
+  // No fluxo de impressão o QR continua vindo do serviço externo: <img> cross-origin
+  // renderiza em tela sem problema (só o canvas do PDF exigiria CORS).
+  const qrSrc = vitrineUrl
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=${qrSize * 2}x${qrSize * 2}&data=${encodeURIComponent(vitrineUrl)}`
+    : undefined;
+
+  const inner = buildTagInnerHtml(tag, veiculo, logoUrl, qrSrc, orientacao);
+
+  return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8">
+<title>Tag Pátio — ${nomeCompletoModelo(veiculo)}</title>
+<style>
+  @page { size:${pageSize}; margin:${pageMargin}; }
+  body  { margin:0; font-family:Arial,sans-serif; }
+  @media print { body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } }
+</style>
+</head><body>
+${inner}
 <script>window.onload=function(){window.print();window.onafterprint=function(){window.close();};}</script>
 </body></html>`;
 }
@@ -270,6 +297,7 @@ function buildPrintHtml(
 export function TagPatioModal({ veiculo, onClose, logoUrl, vitrineUrl }: TagPatioModalProps) {
   const [tag, setTag] = useState<TagData>(() => buildInitialTag(veiculo));
   const [orientacao, setOrientacao] = useState<"retrato" | "paisagem">("retrato");
+  const [gerando, setGerando] = useState(false);
 
   const toggleItem = (key: string) =>
     setTag(p => ({ ...p, itens: { ...p.itens, [key]: !p.itens[key] } }));
@@ -287,6 +315,95 @@ export function TagPatioModal({ veiculo, onClose, logoUrl, vitrineUrl }: TagPati
     }
     win.document.write(html);
     win.document.close();
+  };
+
+  // Gera um PDF A4 limpo (sem o cabeçalho/rodapé que o navegador injeta no
+  // window.print) renderizando o MESMO layout da impressão num container offscreen
+  // → html2canvas → jsPDF. O QR é gerado localmente e o logo vira data-URL para
+  // evitar canvas "tainted" por imagem cross-origin. Deps carregadas sob demanda.
+  const handleBaixarPdf = async () => {
+    if (gerando) return;
+    setGerando(true);
+    let holder: HTMLDivElement | null = null;
+    try {
+      const [{ default: html2canvas }, { jsPDF }, QRCode] = await Promise.all([
+        import("html2canvas"),
+        import("jspdf"),
+        import("qrcode"),
+      ]);
+
+      // QR local — não depende de serviço externo na hora de gerar o PDF
+      let qrSrc: string | undefined;
+      if (vitrineUrl) {
+        qrSrc = await QRCode.toDataURL(vitrineUrl, { width: 600, margin: 1 });
+      }
+
+      // Logo → data-URL (evita tainting); cai pra URL crua se o fetch falhar
+      let logoSrc = logoUrl;
+      if (logoUrl) {
+        try {
+          const resp = await fetch(logoUrl, { mode: "cors" });
+          const blob = await resp.blob();
+          logoSrc = await new Promise<string>((resolve, reject) => {
+            const fr = new FileReader();
+            fr.onload = () => resolve(String(fr.result));
+            fr.onerror = () => reject(new Error("logo read failed"));
+            fr.readAsDataURL(blob);
+          });
+        } catch {
+          logoSrc = logoUrl; // html2canvas ainda tenta via useCORS
+        }
+      }
+
+      const L = orientacao === "paisagem";
+      const contentWmm = L ? 261 : 186; // área útil A4 menos as margens do layout
+
+      holder = document.createElement("div");
+      holder.style.position = "fixed";
+      holder.style.left = "-10000px";
+      holder.style.top = "0";
+      holder.style.width = `${contentWmm}mm`;
+      holder.style.background = "#ffffff";
+      holder.innerHTML = buildTagInnerHtml(tag, veiculo, logoSrc, qrSrc, orientacao);
+      document.body.appendChild(holder);
+
+      const canvas = await html2canvas(holder, {
+        scale: 3,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+        logging: false,
+      });
+
+      const doc = new jsPDF({ orientation: L ? "landscape" : "portrait", unit: "mm", format: "a4" });
+      const pageW = doc.internal.pageSize.getWidth();
+      const pageH = doc.internal.pageSize.getHeight();
+      const marginX = L ? 18 : 12;
+      const marginY = 10;
+      const availW = pageW - marginX * 2;
+      const availH = pageH - marginY * 2;
+
+      // encaixa a imagem na área útil preservando o aspect ratio
+      const ratio = canvas.height / canvas.width;
+      let imgW = availW;
+      let imgH = imgW * ratio;
+      if (imgH > availH) { imgH = availH; imgW = imgH / ratio; }
+      const x = (pageW - imgW) / 2;
+
+      doc.addImage(canvas.toDataURL("image/png"), "PNG", x, marginY, imgW, imgH);
+
+      const slug =
+        nomeCompletoModelo(veiculo)
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "") || "tag";
+      doc.save(`tag-${slug}.pdf`);
+    } catch (e) {
+      console.error("Erro ao gerar PDF da tag:", e);
+      alert("Não foi possível gerar o PDF. Tente novamente ou use Imprimir.");
+    } finally {
+      if (holder) document.body.removeChild(holder);
+      setGerando(false);
+    }
   };
 
   return (
@@ -451,9 +568,17 @@ export function TagPatioModal({ veiculo, onClose, logoUrl, vitrineUrl }: TagPati
           </button>
           <button
             onClick={handleImprimir}
-            className="px-6 py-2.5 bg-gray-900 hover:bg-red-600 text-white rounded-xl text-[11px] font-black uppercase tracking-widest transition-colors flex items-center gap-2"
+            className="px-5 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest text-gray-600 border border-gray-200 hover:bg-gray-100 transition-colors flex items-center gap-2"
           >
-            <Printer size={13} /> Imprimir Tag
+            <Printer size={13} /> Imprimir
+          </button>
+          <button
+            onClick={handleBaixarPdf}
+            disabled={gerando}
+            className="px-6 py-2.5 bg-gray-900 hover:bg-red-600 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl text-[11px] font-black uppercase tracking-widest transition-colors flex items-center gap-2"
+          >
+            {gerando ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+            {gerando ? "Gerando…" : "Baixar PDF"}
           </button>
         </div>
       </div>
