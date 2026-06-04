@@ -247,7 +247,7 @@ export function TagPatioModal({ veiculo, onClose, logoUrl, vitrineUrl }: TagPati
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-[2.5rem] w-full max-w-lg shadow-2xl flex flex-col max-h-[92vh]">
+      <div className="bg-white rounded-[2.5rem] w-full max-w-2xl shadow-2xl flex flex-col max-h-[92vh]">
 
         {/* Header */}
         <div className="flex items-center justify-between px-8 py-5 border-b border-gray-100">
@@ -281,12 +281,12 @@ export function TagPatioModal({ veiculo, onClose, logoUrl, vitrineUrl }: TagPati
                   className="flex-1 border-b-2 border-gray-200 focus:border-gray-900 outline-none text-sm font-bold text-gray-900 pb-0.5 bg-transparent transition-colors"
                 />
               </div>
-              <div className="flex items-center gap-2 flex-1">
+              <div className="flex items-center gap-2 flex-[2]">
                 <span className="text-[10px] font-black uppercase tracking-widest text-gray-800 shrink-0">MOTOR</span>
                 <input
                   value={tag.motor}
                   onChange={e => setTag(p => ({ ...p, motor: e.target.value }))}
-                  className="flex-1 border-b-2 border-gray-200 focus:border-gray-900 outline-none text-sm font-bold text-gray-900 pb-0.5 bg-transparent transition-colors"
+                  className="flex-1 min-w-0 border-b-2 border-gray-200 focus:border-gray-900 outline-none text-sm font-bold text-gray-900 pb-0.5 bg-transparent transition-colors"
                 />
               </div>
             </div>
