@@ -124,98 +124,116 @@ function Caixa({ checked, onChange }: { checked: boolean; onChange: () => void }
   );
 }
 
-// ── Geração do HTML para impressão — A4 retrato ───────────────────────────────
-function buildPrintHtml(tag: TagData, veiculo: any, logoUrl?: string, vitrineUrl?: string): string {
+// ── Geração do HTML para impressão ───────────────────────────────────────────
+function buildPrintHtml(
+  tag: TagData,
+  veiculo: any,
+  logoUrl?: string,
+  vitrineUrl?: string,
+  orientacao: "retrato" | "paisagem" = "paisagem",
+): string {
+  const isLandscape = orientacao === "paisagem";
+
+  // Dimensões úteis: retrato ≈ 182mm / paisagem ≈ 257mm
+  const maxWidth   = isLandscape ? "257mm" : "182mm";
+  const pageMargin = isLandscape ? "10mm 20mm" : "12mm 14mm";
+  const pageSize   = isLandscape ? "A4 landscape" : "A4 portrait";
+
+  // Escala de fontes
+  const f = { label: isLandscape ? 13 : 11, item: isLandscape ? 12 : 10, val: isLandscape ? 15 : 13 };
+
   const sq = (checked: boolean) =>
-    `<span style="display:inline-block;width:11px;height:11px;border:1.5px solid #1a237e;border-radius:2px;margin-right:4px;background:${checked ? "#1a237e" : "white"};vertical-align:middle;flex-shrink:0;"></span>`;
+    `<span style="display:inline-block;width:${isLandscape ? 13 : 11}px;height:${isLandscape ? 13 : 11}px;border:1.5px solid #1a237e;border-radius:2px;margin-right:5px;background:${checked ? "#1a237e" : "white"};vertical-align:middle;flex-shrink:0;"></span>`;
 
   const itemRow = (item: typeof TAG_ITENS[number]) =>
-    `<div style="display:flex;align-items:center;margin-bottom:6px;">${sq(tag.itens[item.key])}<span style="font-size:10px;font-weight:700;font-family:Arial,sans-serif;color:#111;">${item.label}</span></div>`;
+    `<div style="display:flex;align-items:center;margin-bottom:${isLandscape ? 8 : 6}px;">${sq(tag.itens[item.key])}<span style="font-size:${f.item}px;font-weight:700;font-family:Arial,sans-serif;color:#111;">${item.label}</span></div>`;
 
   const col1 = TAG_ITENS.slice(0, 6).map(itemRow).join("");
   const col2 = TAG_ITENS.slice(6, 12).map(itemRow).join("");
   const col3 = TAG_ITENS.slice(12, 18).map(itemRow).join("");
 
-  // QR code via qrserver.com (já usado no projeto para PIX)
-  const qrSize = 90;
-  const qrImg = vitrineUrl
+  const qrSize = isLandscape ? 100 : 80;
+  const qrImg  = vitrineUrl
     ? `<img src="https://api.qrserver.com/v1/create-qr-code/?size=${qrSize * 2}x${qrSize * 2}&data=${encodeURIComponent(vitrineUrl)}" width="${qrSize}" height="${qrSize}" style="display:block;" />`
     : "";
 
   const logoImg = logoUrl
-    ? `<img src="${logoUrl}" style="max-height:50px;max-width:140px;object-fit:contain;display:block;" />`
-    : `<span style="font-size:14px;font-weight:900;font-family:Arial,sans-serif;color:#111;">AutoZap</span>`;
+    ? `<img src="${logoUrl}" style="max-height:${isLandscape ? 55 : 45}px;max-width:${isLandscape ? 160 : 130}px;object-fit:contain;display:block;" />`
+    : `<span style="font-size:${f.label}px;font-weight:900;font-family:Arial,sans-serif;color:#111;">AutoZap</span>`;
+
+  const pad  = isLandscape ? "16px 20px" : "13px 15px";
+  const gap  = isLandscape ? "28px" : "22px";
+  const div  = isLandscape ? "10px" : "8px";
+  const mb   = isLandscape ? "14px" : "11px";
 
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8">
 <style>
-  @page { size: A4 portrait; margin: 12mm 14mm; }
-  body { margin:0; font-family:Arial,sans-serif; }
+  @page { size: ${pageSize}; margin: ${pageMargin}; }
+  body  { margin:0; font-family:Arial,sans-serif; }
   @media print { body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } }
 </style>
 </head><body>
-<div style="width:100%;max-width:182mm;margin:0 auto;font-family:Arial,sans-serif;">
+<div style="width:100%;max-width:${maxWidth};margin:0 auto;font-family:Arial,sans-serif;">
 
-  <!-- ══ TAG (seção branca com borda azul) ══ -->
-  <div style="border:2.5px solid #1a237e;border-radius:12px;padding:14px 16px;margin-bottom:12px;">
+  <!-- ══ TAG ══ -->
+  <div style="border:2.5px solid #1a237e;border-radius:12px;padding:${pad};margin-bottom:${mb};">
 
     <!-- ANO / MOTOR -->
-    <div style="display:flex;gap:24px;margin-bottom:10px;align-items:flex-end;">
-      <div style="display:flex;align-items:flex-end;gap:6px;">
-        <span style="font-size:12px;font-weight:900;text-transform:uppercase;white-space:nowrap;line-height:1;">ANO</span>
-        <div style="border-bottom:1.5px solid #111;min-width:80px;padding-bottom:1px;font-size:14px;font-weight:700;line-height:1.5;">&nbsp;${tag.ano}</div>
+    <div style="display:flex;gap:${gap};margin-bottom:${mb};align-items:flex-end;">
+      <div style="display:flex;align-items:flex-end;gap:7px;">
+        <span style="font-size:${f.label}px;font-weight:900;text-transform:uppercase;white-space:nowrap;line-height:1;">ANO</span>
+        <div style="border-bottom:1.5px solid #111;min-width:90px;padding-bottom:1px;font-size:${f.val}px;font-weight:700;line-height:1.5;">&nbsp;${tag.ano}</div>
       </div>
-      <div style="display:flex;align-items:flex-end;gap:6px;">
-        <span style="font-size:12px;font-weight:900;text-transform:uppercase;white-space:nowrap;line-height:1;">MOTOR</span>
-        <div style="border-bottom:1.5px solid #111;min-width:80px;padding-bottom:1px;font-size:14px;font-weight:700;line-height:1.5;">&nbsp;${tag.motor}</div>
+      <div style="display:flex;align-items:flex-end;gap:7px;flex:1;">
+        <span style="font-size:${f.label}px;font-weight:900;text-transform:uppercase;white-space:nowrap;line-height:1;">MOTOR</span>
+        <div style="border-bottom:1.5px solid #111;flex:1;padding-bottom:1px;font-size:${f.val}px;font-weight:700;line-height:1.5;">&nbsp;${tag.motor}</div>
       </div>
     </div>
 
     <!-- Combustível -->
-    <div style="display:flex;gap:16px;margin-bottom:10px;flex-wrap:wrap;align-items:center;">
-      ${sq(tag.combustivel.flex)}<span style="font-size:11px;font-weight:700;margin-right:12px;">FLEX</span>
-      ${sq(tag.combustivel.gasolina)}<span style="font-size:11px;font-weight:700;margin-right:12px;">GASOLINA</span>
-      ${sq(tag.combustivel.alcool)}<span style="font-size:11px;font-weight:700;margin-right:12px;">ÁLCOOL</span>
-      ${sq(tag.combustivel.diesel)}<span style="font-size:11px;font-weight:700;">DIESEL</span>
+    <div style="display:flex;gap:${isLandscape ? 22 : 16}px;margin-bottom:${mb};flex-wrap:wrap;align-items:center;">
+      ${sq(tag.combustivel.flex)}<span    style="font-size:${f.item}px;font-weight:700;margin-right:${isLandscape ? 18 : 12}px;">FLEX</span>
+      ${sq(tag.combustivel.gasolina)}<span style="font-size:${f.item}px;font-weight:700;margin-right:${isLandscape ? 18 : 12}px;">GASOLINA</span>
+      ${sq(tag.combustivel.alcool)}<span  style="font-size:${f.item}px;font-weight:700;margin-right:${isLandscape ? 18 : 12}px;">ÁLCOOL</span>
+      ${sq(tag.combustivel.diesel)}<span  style="font-size:${f.item}px;font-weight:700;">DIESEL</span>
     </div>
 
-    <div style="border-top:1.5px solid #1a237e;margin:8px 0;"></div>
+    <div style="border-top:1.5px solid #1a237e;margin:${div} 0;"></div>
 
     <!-- Opcionais 3 colunas -->
-    <table style="width:100%;border-collapse:collapse;margin-bottom:8px;">
+    <table style="width:100%;border-collapse:collapse;margin-bottom:${div};">
       <tr>
-        <td style="vertical-align:top;width:33%;padding-right:6px;">${col1}</td>
-        <td style="vertical-align:top;width:33%;padding-right:6px;">${col2}</td>
+        <td style="vertical-align:top;width:33%;padding-right:8px;">${col1}</td>
+        <td style="vertical-align:top;width:33%;padding-right:8px;">${col2}</td>
         <td style="vertical-align:top;width:34%;">${col3}</td>
       </tr>
     </table>
 
-    <div style="border-top:1.5px solid #1a237e;margin:8px 0;"></div>
+    <div style="border-top:1.5px solid #1a237e;margin:${div} 0;"></div>
 
     <!-- OBS / R$ -->
-    <div style="display:flex;gap:20px;align-items:flex-end;">
-      <div style="display:flex;align-items:flex-end;gap:6px;flex:1.5;">
-        <span style="font-size:12px;font-weight:900;white-space:nowrap;line-height:1;">OBS,</span>
-        <div style="border-bottom:1.5px solid #111;flex:1;padding-bottom:1px;font-size:12px;font-weight:600;line-height:1.5;">&nbsp;${tag.obs}</div>
+    <div style="display:flex;gap:${gap};align-items:flex-end;">
+      <div style="display:flex;align-items:flex-end;gap:7px;flex:1.5;">
+        <span style="font-size:${f.label}px;font-weight:900;white-space:nowrap;line-height:1;">OBS,</span>
+        <div style="border-bottom:1.5px solid #111;flex:1;padding-bottom:1px;font-size:${f.label}px;font-weight:600;line-height:1.5;">&nbsp;${tag.obs}</div>
       </div>
-      <div style="display:flex;align-items:flex-end;gap:6px;flex:1;">
-        <span style="font-size:14px;font-weight:900;white-space:nowrap;line-height:1;">R$</span>
-        <div style="border-bottom:1.5px solid #111;flex:1;padding-bottom:1px;font-size:14px;font-weight:700;line-height:1.5;">&nbsp;${tag.preco}</div>
+      <div style="display:flex;align-items:flex-end;gap:7px;flex:1;">
+        <span style="font-size:${f.val}px;font-weight:900;white-space:nowrap;line-height:1;">R$</span>
+        <div style="border-bottom:1.5px solid #111;flex:1;padding-bottom:1px;font-size:${f.val}px;font-weight:700;line-height:1.5;">&nbsp;${tag.preco}</div>
       </div>
     </div>
   </div>
 
-  <!-- ══ RODAPÉ DA LOJA (logo + QR code) ══ -->
-  <div style="background:#e8e8e6;border-radius:12px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:16px;">
-    <!-- Esquerda: logo + texto -->
+  <!-- ══ RODAPÉ DA LOJA ══ -->
+  <div style="background:#e8e8e6;border-radius:12px;padding:${pad};display:flex;align-items:center;justify-content:space-between;gap:16px;">
     <div style="display:flex;align-items:center;gap:14px;flex:1;">
       ${logoImg}
       ${vitrineUrl ? `<div>
-        <p style="margin:0 0 3px;font-size:9px;font-weight:700;color:#555;font-family:Arial,sans-serif;">aponte a câmera do celular para o QR Code</p>
-        <p style="margin:0;font-size:9px;font-weight:700;color:#555;font-family:Arial,sans-serif;">e veja este veículo na vitrine online</p>
+        <p style="margin:0 0 3px;font-size:${isLandscape ? 10 : 9}px;font-weight:700;color:#555;font-family:Arial,sans-serif;">aponte a câmera do celular para o QR Code</p>
+        <p style="margin:0;font-size:${isLandscape ? 10 : 9}px;font-weight:700;color:#555;font-family:Arial,sans-serif;">e veja este veículo na vitrine online</p>
       </div>` : ""}
     </div>
-    <!-- Direita: QR code -->
     ${qrImg}
   </div>
 
@@ -227,6 +245,7 @@ function buildPrintHtml(tag: TagData, veiculo: any, logoUrl?: string, vitrineUrl
 // ── Componente principal ──────────────────────────────────────────────────────
 export function TagPatioModal({ veiculo, onClose, logoUrl, vitrineUrl }: TagPatioModalProps) {
   const [tag, setTag] = useState<TagData>(() => buildInitialTag(veiculo));
+  const [orientacao, setOrientacao] = useState<"retrato" | "paisagem">("paisagem");
 
   const toggleItem = (key: string) =>
     setTag(p => ({ ...p, itens: { ...p.itens, [key]: !p.itens[key] } }));
@@ -235,8 +254,9 @@ export function TagPatioModal({ veiculo, onClose, logoUrl, vitrineUrl }: TagPati
     setTag(p => ({ ...p, combustivel: { ...p.combustivel, [key]: !p.combustivel[key] } }));
 
   const handleImprimir = () => {
-    const html = buildPrintHtml(tag, veiculo, logoUrl, vitrineUrl);
-    const win = window.open("", "_blank", "width=820,height=900");
+    const html = buildPrintHtml(tag, veiculo, logoUrl, vitrineUrl, orientacao);
+    const isLandscape = orientacao === "paisagem";
+    const win = window.open("", "_blank", isLandscape ? "width=1000,height=720" : "width=820,height=1060");
     if (!win) {
       alert("Permita pop-ups neste site para imprimir a tag.");
       return;
@@ -269,6 +289,26 @@ export function TagPatioModal({ veiculo, onClose, logoUrl, vitrineUrl }: TagPati
 
         {/* Corpo — preview editável */}
         <div className="overflow-y-auto flex-1 px-8 py-6">
+
+          {/* Toggle orientação */}
+          <div className="flex items-center gap-3 mb-5">
+            <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Orientação:</span>
+            <div className="flex gap-1.5">
+              {(["paisagem", "retrato"] as const).map(o => (
+                <button
+                  key={o}
+                  onClick={() => setOrientacao(o)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all
+                    ${orientacao === o
+                      ? "bg-gray-900 text-white"
+                      : "bg-gray-100 text-gray-500 hover:bg-gray-200"}`}
+                >
+                  {o === "paisagem" ? "↔ Paisagem" : "↕ Retrato"}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="border-2 border-blue-900 rounded-2xl p-5 space-y-4">
 
             {/* ANO + MOTOR */}
