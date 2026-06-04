@@ -42,6 +42,8 @@ interface TagData {
 export interface TagPatioModalProps {
   veiculo: any;
   onClose: () => void;
+  logoUrl?: string;
+  vitrineUrl?: string;
 }
 
 function buildInitialTag(veiculo: any): TagData {
@@ -99,81 +101,108 @@ function Caixa({ checked, onChange }: { checked: boolean; onChange: () => void }
   );
 }
 
-// ── Geração do HTML para impressão ───────────────────────────────────────────
-function buildPrintHtml(tag: TagData, veiculo: any): string {
+// ── Geração do HTML para impressão — A4 retrato ───────────────────────────────
+function buildPrintHtml(tag: TagData, veiculo: any, logoUrl?: string, vitrineUrl?: string): string {
   const sq = (checked: boolean) =>
-    `<span style="display:inline-block;width:10px;height:10px;border:1.5px solid #1a237e;border-radius:2px;margin-right:3px;background:${checked ? "#1a237e" : "white"};vertical-align:middle;flex-shrink:0;"></span>`;
+    `<span style="display:inline-block;width:11px;height:11px;border:1.5px solid #1a237e;border-radius:2px;margin-right:4px;background:${checked ? "#1a237e" : "white"};vertical-align:middle;flex-shrink:0;"></span>`;
 
   const itemRow = (item: typeof TAG_ITENS[number]) =>
-    `<div style="display:flex;align-items:center;margin-bottom:5px;">${sq(tag.itens[item.key])}<span style="font-size:9px;font-weight:700;font-family:Arial,sans-serif;color:#111;">${item.label}</span></div>`;
+    `<div style="display:flex;align-items:center;margin-bottom:6px;">${sq(tag.itens[item.key])}<span style="font-size:10px;font-weight:700;font-family:Arial,sans-serif;color:#111;">${item.label}</span></div>`;
 
   const col1 = TAG_ITENS.slice(0, 6).map(itemRow).join("");
   const col2 = TAG_ITENS.slice(6, 12).map(itemRow).join("");
   const col3 = TAG_ITENS.slice(12, 18).map(itemRow).join("");
 
-  const nomeRevenda = ""; // pode ser preenchido futuramente via config_garage
+  // QR code via qrserver.com (já usado no projeto para PIX)
+  const qrSize = 90;
+  const qrImg = vitrineUrl
+    ? `<img src="https://api.qrserver.com/v1/create-qr-code/?size=${qrSize * 2}x${qrSize * 2}&data=${encodeURIComponent(vitrineUrl)}" width="${qrSize}" height="${qrSize}" style="display:block;" />`
+    : "";
+
+  const logoImg = logoUrl
+    ? `<img src="${logoUrl}" style="max-height:50px;max-width:140px;object-fit:contain;display:block;" />`
+    : `<span style="font-size:14px;font-weight:900;font-family:Arial,sans-serif;color:#111;">AutoZap</span>`;
 
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8">
 <style>
-  @page { size: 148mm 105mm landscape; margin: 6mm; }
-  body { margin: 0; font-family: Arial, sans-serif; }
-  @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+  @page { size: A4 portrait; margin: 12mm 14mm; }
+  body { margin:0; font-family:Arial,sans-serif; }
+  @media print { body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } }
 </style>
 </head><body>
-<div style="border:2.5px solid #1a237e;border-radius:10px;padding:10px 12px;width:calc(100% - 4px);box-sizing:border-box;font-family:Arial,sans-serif;">
+<div style="width:100%;max-width:182mm;margin:0 auto;font-family:Arial,sans-serif;">
 
-  <!-- ANO / MOTOR -->
-  <div style="display:flex;gap:20px;margin-bottom:8px;align-items:flex-end;">
-    <div style="display:flex;align-items:flex-end;gap:5px;">
-      <span style="font-size:11px;font-weight:900;text-transform:uppercase;white-space:nowrap;line-height:1;">ANO</span>
-      <div style="border-bottom:1.5px solid #111;min-width:70px;padding-bottom:1px;font-size:13px;font-weight:700;line-height:1.4;">&nbsp;${tag.ano}</div>
+  <!-- ══ TAG (seção branca com borda azul) ══ -->
+  <div style="border:2.5px solid #1a237e;border-radius:12px;padding:14px 16px;margin-bottom:12px;">
+
+    <!-- ANO / MOTOR -->
+    <div style="display:flex;gap:24px;margin-bottom:10px;align-items:flex-end;">
+      <div style="display:flex;align-items:flex-end;gap:6px;">
+        <span style="font-size:12px;font-weight:900;text-transform:uppercase;white-space:nowrap;line-height:1;">ANO</span>
+        <div style="border-bottom:1.5px solid #111;min-width:80px;padding-bottom:1px;font-size:14px;font-weight:700;line-height:1.5;">&nbsp;${tag.ano}</div>
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:6px;">
+        <span style="font-size:12px;font-weight:900;text-transform:uppercase;white-space:nowrap;line-height:1;">MOTOR</span>
+        <div style="border-bottom:1.5px solid #111;min-width:80px;padding-bottom:1px;font-size:14px;font-weight:700;line-height:1.5;">&nbsp;${tag.motor}</div>
+      </div>
     </div>
-    <div style="display:flex;align-items:flex-end;gap:5px;">
-      <span style="font-size:11px;font-weight:900;text-transform:uppercase;white-space:nowrap;line-height:1;">MOTOR</span>
-      <div style="border-bottom:1.5px solid #111;min-width:70px;padding-bottom:1px;font-size:13px;font-weight:700;line-height:1.4;">&nbsp;${tag.motor}</div>
+
+    <!-- Combustível -->
+    <div style="display:flex;gap:16px;margin-bottom:10px;flex-wrap:wrap;align-items:center;">
+      ${sq(tag.combustivel.flex)}<span style="font-size:11px;font-weight:700;margin-right:12px;">FLEX</span>
+      ${sq(tag.combustivel.gasolina)}<span style="font-size:11px;font-weight:700;margin-right:12px;">GASOLINA</span>
+      ${sq(tag.combustivel.alcool)}<span style="font-size:11px;font-weight:700;margin-right:12px;">ÁLCOOL</span>
+      ${sq(tag.combustivel.diesel)}<span style="font-size:11px;font-weight:700;">DIESEL</span>
+    </div>
+
+    <div style="border-top:1.5px solid #1a237e;margin:8px 0;"></div>
+
+    <!-- Opcionais 3 colunas -->
+    <table style="width:100%;border-collapse:collapse;margin-bottom:8px;">
+      <tr>
+        <td style="vertical-align:top;width:33%;padding-right:6px;">${col1}</td>
+        <td style="vertical-align:top;width:33%;padding-right:6px;">${col2}</td>
+        <td style="vertical-align:top;width:34%;">${col3}</td>
+      </tr>
+    </table>
+
+    <div style="border-top:1.5px solid #1a237e;margin:8px 0;"></div>
+
+    <!-- OBS / R$ -->
+    <div style="display:flex;gap:20px;align-items:flex-end;">
+      <div style="display:flex;align-items:flex-end;gap:6px;flex:1.5;">
+        <span style="font-size:12px;font-weight:900;white-space:nowrap;line-height:1;">OBS,</span>
+        <div style="border-bottom:1.5px solid #111;flex:1;padding-bottom:1px;font-size:12px;font-weight:600;line-height:1.5;">&nbsp;${tag.obs}</div>
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:6px;flex:1;">
+        <span style="font-size:14px;font-weight:900;white-space:nowrap;line-height:1;">R$</span>
+        <div style="border-bottom:1.5px solid #111;flex:1;padding-bottom:1px;font-size:14px;font-weight:700;line-height:1.5;">&nbsp;${tag.preco}</div>
+      </div>
     </div>
   </div>
 
-  <!-- Combustível -->
-  <div style="display:flex;gap:14px;margin-bottom:8px;flex-wrap:wrap;align-items:center;">
-    ${sq(tag.combustivel.flex)}<span style="font-size:10px;font-weight:700;margin-right:10px;">FLEX</span>
-    ${sq(tag.combustivel.gasolina)}<span style="font-size:10px;font-weight:700;margin-right:10px;">GASOLINA</span>
-    ${sq(tag.combustivel.alcool)}<span style="font-size:10px;font-weight:700;margin-right:10px;">ÁLCOOL</span>
-    ${sq(tag.combustivel.diesel)}<span style="font-size:10px;font-weight:700;">DIESEL</span>
+  <!-- ══ RODAPÉ DA LOJA (logo + QR code) ══ -->
+  <div style="background:#e8e8e6;border-radius:12px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:16px;">
+    <!-- Esquerda: logo + texto -->
+    <div style="display:flex;align-items:center;gap:14px;flex:1;">
+      ${logoImg}
+      ${vitrineUrl ? `<div>
+        <p style="margin:0 0 3px;font-size:9px;font-weight:700;color:#555;font-family:Arial,sans-serif;">aponte a câmera do celular para o QR Code</p>
+        <p style="margin:0;font-size:9px;font-weight:700;color:#555;font-family:Arial,sans-serif;">e veja este veículo na vitrine online</p>
+      </div>` : ""}
+    </div>
+    <!-- Direita: QR code -->
+    ${qrImg}
   </div>
 
-  <div style="border-top:1.5px solid #1a237e;margin:6px 0;"></div>
-
-  <!-- Opcionais 3 colunas -->
-  <table style="width:100%;border-collapse:collapse;margin-bottom:6px;">
-    <tr>
-      <td style="vertical-align:top;width:33%;padding-right:4px;">${col1}</td>
-      <td style="vertical-align:top;width:33%;padding-right:4px;">${col2}</td>
-      <td style="vertical-align:top;width:34%;">${col3}</td>
-    </tr>
-  </table>
-
-  <div style="border-top:1.5px solid #1a237e;margin:6px 0;"></div>
-
-  <!-- OBS / R$ -->
-  <div style="display:flex;gap:20px;align-items:flex-end;">
-    <div style="display:flex;align-items:flex-end;gap:5px;flex:1.5;">
-      <span style="font-size:11px;font-weight:900;white-space:nowrap;line-height:1;">OBS,</span>
-      <div style="border-bottom:1.5px solid #111;flex:1;padding-bottom:1px;font-size:11px;font-weight:600;line-height:1.4;">&nbsp;${tag.obs}</div>
-    </div>
-    <div style="display:flex;align-items:flex-end;gap:5px;flex:1;">
-      <span style="font-size:13px;font-weight:900;white-space:nowrap;line-height:1;">R$</span>
-      <div style="border-bottom:1.5px solid #111;flex:1;padding-bottom:1px;font-size:13px;font-weight:700;line-height:1.4;">&nbsp;${tag.preco}</div>
-    </div>
-  </div>
 </div>
 <script>window.onload=function(){window.print();window.onafterprint=function(){window.close();};}</script>
 </body></html>`;
 }
 
 // ── Componente principal ──────────────────────────────────────────────────────
-export function TagPatioModal({ veiculo, onClose }: TagPatioModalProps) {
+export function TagPatioModal({ veiculo, onClose, logoUrl, vitrineUrl }: TagPatioModalProps) {
   const [tag, setTag] = useState<TagData>(() => buildInitialTag(veiculo));
 
   const toggleItem = (key: string) =>
@@ -183,8 +212,8 @@ export function TagPatioModal({ veiculo, onClose }: TagPatioModalProps) {
     setTag(p => ({ ...p, combustivel: { ...p.combustivel, [key]: !p.combustivel[key] } }));
 
   const handleImprimir = () => {
-    const html = buildPrintHtml(tag, veiculo);
-    const win = window.open("", "_blank", "width=680,height=520");
+    const html = buildPrintHtml(tag, veiculo, logoUrl, vitrineUrl);
+    const win = window.open("", "_blank", "width=820,height=900");
     if (!win) {
       alert("Permita pop-ups neste site para imprimir a tag.");
       return;
@@ -309,6 +338,31 @@ export function TagPatioModal({ veiculo, onClose }: TagPatioModalProps) {
           <p className="mt-3 text-[10px] text-gray-400 font-bold text-center uppercase tracking-widest">
             Clique em qualquer campo para editar antes de imprimir
           </p>
+
+          {/* Preview do rodapé — logo + QR code */}
+          {(logoUrl || vitrineUrl) && (
+            <div className="mt-4 bg-gray-100 rounded-2xl p-4 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                {logoUrl && (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img src={logoUrl} alt="Logo" className="h-10 max-w-[100px] object-contain flex-shrink-0" />
+                )}
+                {vitrineUrl && (
+                  <p className="text-[9px] text-gray-500 font-bold leading-snug">
+                    aponte a câmera para o QR Code<br />e veja na vitrine online
+                  </p>
+                )}
+              </div>
+              {vitrineUrl && (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(vitrineUrl)}`}
+                  alt="QR Code vitrine"
+                  className="w-14 h-14 flex-shrink-0"
+                />
+              )}
+            </div>
+          )}
         </div>
 
         {/* Footer */}

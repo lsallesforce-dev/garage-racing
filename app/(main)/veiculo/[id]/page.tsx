@@ -920,6 +920,7 @@ export default function DetalheVeiculo() {
   // Tag Pátio
   const [showTagPatio, setShowTagPatio] = useState(false);
   const [showSalvoPopup, setShowSalvoPopup] = useState(false);
+  const [vitrineSite, setVitrineSite] = useState("");
 
   // ── Carrega veículo ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -965,11 +966,12 @@ export default function DetalheVeiculo() {
       if (!user) return;
       supabase
         .from("config_garage")
-        .select("logo_url, nf_habilitado, plano, plano_ativo, plano_vence_em")
+        .select("logo_url, nf_habilitado, plano, plano_ativo, plano_vence_em, vitrine_slug")
         .eq("user_id", user.id)
         .single()
         .then(({ data }) => {
           if (data?.logo_url) setLogoUrl(data.logo_url);
+          if (data?.vitrine_slug) setVitrineSite(data.vitrine_slug);
           const agora = new Date();
           const premium = data?.plano === "premium" && data?.plano_ativo && data?.plano_vence_em && new Date(data.plano_vence_em) > agora;
           if (premium && data?.nf_habilitado) setNfHabilitado(true);
@@ -2299,7 +2301,12 @@ export default function DetalheVeiculo() {
 
       {/* Modal Tag Pátio */}
       {showTagPatio && veiculo && (
-        <TagPatioModal veiculo={veiculo} onClose={() => setShowTagPatio(false)} />
+        <TagPatioModal
+          veiculo={veiculo}
+          onClose={() => setShowTagPatio(false)}
+          logoUrl={logoUrl ?? undefined}
+          vitrineUrl={vitrineSite ? `https://autozap.digital/vitrine/${vitrineSite}/${veiculo.id}` : undefined}
+        />
       )}
 
       {/* Popup pós-salvar — pergunta se quer gerar a tag */}
