@@ -8,10 +8,11 @@ import {
   ArrowLeft, Save, Edit2, X, Check, Video, Plus,
   ChevronDown, ChevronUp, Instagram, Download, Loader2,
   ScanLine, FileCheck, Upload, AlertCircle, Trash2,
-  FileText, Eye, EyeOff,
+  FileText, Eye, EyeOff, Tag, Printer,
 } from "lucide-react";
 import { GenerateMarketingVideoButton } from "@/components/GenerateMarketingVideoButton";
 import PublicarMetaButton from "@/components/PublicarMetaButton";
+import { TagPatioModal } from "@/components/TagPatioModal";
 import { toVideoUrl } from "@/lib/r2-url";
 import Link from "next/link";
 
@@ -916,6 +917,10 @@ export default function DetalheVeiculo() {
   const [showNFModal, setShowNFModal] = useState(false);
   const [nfHabilitado, setNfHabilitado] = useState(false);
 
+  // Tag Pátio
+  const [showTagPatio, setShowTagPatio] = useState(false);
+  const [showSalvoPopup, setShowSalvoPopup] = useState(false);
+
   // ── Carrega veículo ──────────────────────────────────────────────────────
   useEffect(() => {
     if (!id) return;
@@ -1090,7 +1095,7 @@ export default function DetalheVeiculo() {
         de_repasse: veiculo.de_repasse,
         valor_fipe: veiculo.valor_fipe || null,
       });
-      alert("Dados atualizados! 🚀");
+      setShowSalvoPopup(true);
     } catch {}
     setIsSaving(false);
   };
@@ -2196,6 +2201,23 @@ export default function DetalheVeiculo() {
               }}
             />
 
+            {/* ── Tag Pátio ── */}
+            <button
+              onClick={() => setShowTagPatio(true)}
+              className="w-full flex items-center gap-4 bg-white rounded-[2.5rem] border border-gray-100 shadow-sm px-8 py-5 hover:border-gray-300 hover:shadow-md transition-all group"
+            >
+              <div className="w-10 h-10 rounded-2xl bg-gray-900 group-hover:bg-red-600 flex items-center justify-center transition-colors flex-shrink-0">
+                <Tag size={18} className="text-white" />
+              </div>
+              <div className="text-left flex-1">
+                <p className="text-sm font-black uppercase italic tracking-tight text-gray-900">Gerar Tag Pátio</p>
+                <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mt-0.5">
+                  Plaquinha obrigatória para o veículo
+                </p>
+              </div>
+              <Printer size={15} className="text-gray-300 group-hover:text-red-400 transition-colors" />
+            </button>
+
             {/* ── NF-e (só VENDIDO + premium habilitado) ── */}
             {nfHabilitado && veiculo.status_venda === "VENDIDO" && (
               <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm p-8">
@@ -2273,6 +2295,48 @@ export default function DetalheVeiculo() {
             await patch({ opcionais: lista });
           }}
         />
+      )}
+
+      {/* Modal Tag Pátio */}
+      {showTagPatio && veiculo && (
+        <TagPatioModal veiculo={veiculo} onClose={() => setShowTagPatio(false)} />
+      )}
+
+      {/* Popup pós-salvar — pergunta se quer gerar a tag */}
+      {showSalvoPopup && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 sm:p-0">
+          <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setShowSalvoPopup(false)} />
+          <div className="relative bg-white rounded-[2.5rem] shadow-2xl p-8 w-full max-w-sm mx-auto">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-2xl bg-green-500 flex items-center justify-center flex-shrink-0">
+                <Check size={18} className="text-white" />
+              </div>
+              <div>
+                <p className="text-sm font-black uppercase italic tracking-tight text-gray-900">Dados salvos!</p>
+                <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mt-0.5">
+                  Deseja gerar a Tag Pátio agora?
+                </p>
+              </div>
+            </div>
+            <p className="text-xs text-gray-500 leading-relaxed mb-6">
+              A plaquinha obrigatória do veículo será preenchida automaticamente com os dados salvos.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowSalvoPopup(false)}
+                className="flex-1 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest text-gray-500 hover:bg-gray-100 transition-colors border border-gray-200"
+              >
+                Agora não
+              </button>
+              <button
+                onClick={() => { setShowSalvoPopup(false); setShowTagPatio(true); }}
+                className="flex-1 py-3 bg-gray-900 hover:bg-red-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest transition-colors flex items-center justify-center gap-2"
+              >
+                <Tag size={13} /> Gerar Tag
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </main>
   );
