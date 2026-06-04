@@ -125,6 +125,7 @@ function Caixa({ checked, onChange }: { checked: boolean; onChange: () => void }
 }
 
 // ── Geração do HTML para impressão ───────────────────────────────────────────
+// Layout fiel ao PDF de referência: logo topo → Modelo → tag → QR abaixo-direita
 function buildPrintHtml(
   tag: TagData,
   veiculo: any,
@@ -132,110 +133,122 @@ function buildPrintHtml(
   vitrineUrl?: string,
   orientacao: "retrato" | "paisagem" = "paisagem",
 ): string {
-  const isLandscape = orientacao === "paisagem";
+  const L = orientacao === "paisagem";
 
-  // Dimensões úteis: retrato ≈ 182mm / paisagem ≈ 257mm
-  const maxWidth   = isLandscape ? "257mm" : "182mm";
-  const pageMargin = isLandscape ? "10mm 20mm" : "12mm 14mm";
-  const pageSize   = isLandscape ? "A4 landscape" : "A4 portrait";
+  const pageSize   = L ? "A4 landscape" : "A4 portrait";
+  const pageMargin = L ? "10mm 18mm"    : "11mm 13mm";
+  const maxWidth   = L ? "261mm"        : "184mm";
 
-  // Escala de fontes
-  const f = { label: isLandscape ? 13 : 11, item: isLandscape ? 12 : 10, val: isLandscape ? 15 : 13 };
+  // Fontes maiores para facilitar leitura dos lojistas
+  const f = {
+    modelo: L ? 15 : 13,   // "Modelo:" acima da tag
+    label:  L ? 15 : 14,   // ANO, MOTOR, OBS, R$ — labels
+    val:    L ? 22 : 18,   // valores (ano, motor, R$)
+    fuel:   L ? 15 : 14,   // FLEX / GASOLINA / ÁLCOOL / DIESEL
+    item:   L ? 14 : 13,   // AR COND., B.COURO etc.
+    qrTxt:  L ? 11 : 10,   // texto sob o QR
+  };
+  const cb  = L ? 15 : 14;      // checkbox px
+  const imb = L ? 10 : 9;       // item margin-bottom
+  const pad = L ? "16px 20px" : "13px 16px";
+  const gap = L ? "30px"      : "24px";
+  const dv  = L ? "10px"      : "8px";
+  const mb  = L ? "14px"      : "12px";
 
-  const sq = (checked: boolean) =>
-    `<span style="display:inline-block;width:${isLandscape ? 13 : 11}px;height:${isLandscape ? 13 : 11}px;border:1.5px solid #1a237e;border-radius:2px;margin-right:5px;background:${checked ? "#1a237e" : "white"};vertical-align:middle;flex-shrink:0;"></span>`;
+  const sq = (on: boolean) =>
+    `<span style="display:inline-block;width:${cb}px;height:${cb}px;border:2px solid #1a237e;border-radius:3px;margin-right:5px;background:${on ? "#1a237e" : "white"};vertical-align:middle;flex-shrink:0;"></span>`;
 
-  const itemRow = (item: typeof TAG_ITENS[number]) =>
-    `<div style="display:flex;align-items:center;margin-bottom:${isLandscape ? 8 : 6}px;">${sq(tag.itens[item.key])}<span style="font-size:${f.item}px;font-weight:700;font-family:Arial,sans-serif;color:#111;">${item.label}</span></div>`;
+  const row = (item: typeof TAG_ITENS[number]) =>
+    `<div style="display:flex;align-items:center;margin-bottom:${imb}px;">${sq(tag.itens[item.key])}<span style="font-size:${f.item}px;font-weight:700;font-family:Arial,sans-serif;color:#111;">${item.label}</span></div>`;
 
-  const col1 = TAG_ITENS.slice(0, 6).map(itemRow).join("");
-  const col2 = TAG_ITENS.slice(6, 12).map(itemRow).join("");
-  const col3 = TAG_ITENS.slice(12, 18).map(itemRow).join("");
+  const col1 = TAG_ITENS.slice(0, 6).map(row).join("");
+  const col2 = TAG_ITENS.slice(6, 12).map(row).join("");
+  const col3 = TAG_ITENS.slice(12, 18).map(row).join("");
 
-  const qrSize = isLandscape ? 100 : 80;
-  const qrImg  = vitrineUrl
-    ? `<img src="https://api.qrserver.com/v1/create-qr-code/?size=${qrSize * 2}x${qrSize * 2}&data=${encodeURIComponent(vitrineUrl)}" width="${qrSize}" height="${qrSize}" style="display:block;" />`
+  // Logo centralizado no topo
+  const logoBlock = logoUrl
+    ? `<img src="${logoUrl}" style="max-height:${L ? 65 : 60}px;max-width:${L ? 200 : 170}px;object-fit:contain;display:block;margin:0 auto;" />`
     : "";
 
-  const logoImg = logoUrl
-    ? `<img src="${logoUrl}" style="max-height:${isLandscape ? 55 : 45}px;max-width:${isLandscape ? 160 : 130}px;object-fit:contain;display:block;" />`
-    : `<span style="font-size:${f.label}px;font-weight:900;font-family:Arial,sans-serif;color:#111;">AutoZap</span>`;
+  // Modelo completo acima da tag
+  const nomeModelo = [veiculo.marca, veiculo.modelo, veiculo.versao, veiculo.ano_modelo ?? veiculo.ano]
+    .filter(Boolean).join(" ");
 
-  const pad  = isLandscape ? "16px 20px" : "13px 15px";
-  const gap  = isLandscape ? "28px" : "22px";
-  const div  = isLandscape ? "10px" : "8px";
-  const mb   = isLandscape ? "14px" : "11px";
+  // QR code abaixo da tag, à direita — como no PDF de referência
+  const qrSize = L ? 110 : 95;
+  const qrBlock = vitrineUrl ? `
+  <div style="display:flex;justify-content:flex-end;margin-top:${L ? 14 : 10}px;">
+    <div style="text-align:center;">
+      <img src="https://api.qrserver.com/v1/create-qr-code/?size=${qrSize * 2}x${qrSize * 2}&data=${encodeURIComponent(vitrineUrl)}" width="${qrSize}" height="${qrSize}" style="display:block;" />
+      <p style="margin:4px 0 0;font-size:${f.qrTxt}px;font-weight:700;color:#555;font-family:Arial,sans-serif;">Acesse nosso site para ver todos os nossos carros.</p>
+    </div>
+  </div>` : "";
 
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8">
 <style>
-  @page { size: ${pageSize}; margin: ${pageMargin}; }
+  @page { size:${pageSize}; margin:${pageMargin}; }
   body  { margin:0; font-family:Arial,sans-serif; }
   @media print { body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } }
 </style>
 </head><body>
 <div style="width:100%;max-width:${maxWidth};margin:0 auto;font-family:Arial,sans-serif;">
 
+  ${logoBlock ? `<!-- LOGO --><div style="text-align:center;margin-bottom:${L ? 10 : 8}px;">${logoBlock}</div>` : ""}
+
+  <!-- MODELO -->
+  <p style="text-align:center;font-size:${f.modelo}px;font-weight:700;color:#333;margin:0 0 ${mb};font-family:Arial,sans-serif;">Modelo: ${nomeModelo}</p>
+
   <!-- ══ TAG ══ -->
-  <div style="border:2.5px solid #1a237e;border-radius:12px;padding:${pad};margin-bottom:${mb};">
+  <div style="border:2.5px solid #1a237e;border-radius:12px;padding:${pad};">
 
     <!-- ANO / MOTOR -->
     <div style="display:flex;gap:${gap};margin-bottom:${mb};align-items:flex-end;">
-      <div style="display:flex;align-items:flex-end;gap:7px;">
+      <div style="display:flex;align-items:flex-end;gap:8px;">
         <span style="font-size:${f.label}px;font-weight:900;text-transform:uppercase;white-space:nowrap;line-height:1;">ANO</span>
-        <div style="border-bottom:1.5px solid #111;min-width:90px;padding-bottom:1px;font-size:${f.val}px;font-weight:700;line-height:1.5;">&nbsp;${tag.ano}</div>
+        <div style="border-bottom:1.5px solid #111;min-width:${L ? 100 : 80}px;padding-bottom:2px;font-size:${f.val}px;font-weight:700;line-height:1.4;">&nbsp;${tag.ano}</div>
       </div>
-      <div style="display:flex;align-items:flex-end;gap:7px;flex:1;">
+      <div style="display:flex;align-items:flex-end;gap:8px;flex:1;">
         <span style="font-size:${f.label}px;font-weight:900;text-transform:uppercase;white-space:nowrap;line-height:1;">MOTOR</span>
-        <div style="border-bottom:1.5px solid #111;flex:1;padding-bottom:1px;font-size:${f.val}px;font-weight:700;line-height:1.5;">&nbsp;${tag.motor}</div>
+        <div style="border-bottom:1.5px solid #111;flex:1;padding-bottom:2px;font-size:${f.val}px;font-weight:700;line-height:1.4;">&nbsp;${tag.motor}</div>
       </div>
     </div>
 
     <!-- Combustível -->
-    <div style="display:flex;gap:${isLandscape ? 22 : 16}px;margin-bottom:${mb};flex-wrap:wrap;align-items:center;">
-      ${sq(tag.combustivel.flex)}<span    style="font-size:${f.item}px;font-weight:700;margin-right:${isLandscape ? 18 : 12}px;">FLEX</span>
-      ${sq(tag.combustivel.gasolina)}<span style="font-size:${f.item}px;font-weight:700;margin-right:${isLandscape ? 18 : 12}px;">GASOLINA</span>
-      ${sq(tag.combustivel.alcool)}<span  style="font-size:${f.item}px;font-weight:700;margin-right:${isLandscape ? 18 : 12}px;">ÁLCOOL</span>
-      ${sq(tag.combustivel.diesel)}<span  style="font-size:${f.item}px;font-weight:700;">DIESEL</span>
+    <div style="display:flex;gap:${L ? 22 : 16}px;margin-bottom:${mb};flex-wrap:wrap;align-items:center;">
+      ${sq(tag.combustivel.flex)}<span    style="font-size:${f.fuel}px;font-weight:700;margin-right:${L ? 18 : 12}px;">FLEX</span>
+      ${sq(tag.combustivel.gasolina)}<span style="font-size:${f.fuel}px;font-weight:700;margin-right:${L ? 18 : 12}px;">GASOLINA</span>
+      ${sq(tag.combustivel.alcool)}<span  style="font-size:${f.fuel}px;font-weight:700;margin-right:${L ? 18 : 12}px;">ÁLCOOL</span>
+      ${sq(tag.combustivel.diesel)}<span  style="font-size:${f.fuel}px;font-weight:700;">DIESEL</span>
     </div>
 
-    <div style="border-top:1.5px solid #1a237e;margin:${div} 0;"></div>
+    <div style="border-top:1.5px solid #1a237e;margin:${dv} 0;"></div>
 
     <!-- Opcionais 3 colunas -->
-    <table style="width:100%;border-collapse:collapse;margin-bottom:${div};">
+    <table style="width:100%;border-collapse:collapse;margin-bottom:${dv};">
       <tr>
-        <td style="vertical-align:top;width:33%;padding-right:8px;">${col1}</td>
-        <td style="vertical-align:top;width:33%;padding-right:8px;">${col2}</td>
+        <td style="vertical-align:top;width:33%;padding-right:10px;">${col1}</td>
+        <td style="vertical-align:top;width:33%;padding-right:10px;">${col2}</td>
         <td style="vertical-align:top;width:34%;">${col3}</td>
       </tr>
     </table>
 
-    <div style="border-top:1.5px solid #1a237e;margin:${div} 0;"></div>
+    <div style="border-top:1.5px solid #1a237e;margin:${dv} 0;"></div>
 
     <!-- OBS / R$ -->
     <div style="display:flex;gap:${gap};align-items:flex-end;">
-      <div style="display:flex;align-items:flex-end;gap:7px;flex:1.5;">
+      <div style="display:flex;align-items:flex-end;gap:8px;flex:1.5;">
         <span style="font-size:${f.label}px;font-weight:900;white-space:nowrap;line-height:1;">OBS,</span>
-        <div style="border-bottom:1.5px solid #111;flex:1;padding-bottom:1px;font-size:${f.label}px;font-weight:600;line-height:1.5;">&nbsp;${tag.obs}</div>
+        <div style="border-bottom:1.5px solid #111;flex:1;padding-bottom:2px;font-size:${f.label}px;font-weight:600;line-height:1.4;">&nbsp;${tag.obs}</div>
       </div>
-      <div style="display:flex;align-items:flex-end;gap:7px;flex:1;">
+      <div style="display:flex;align-items:flex-end;gap:8px;flex:1;">
         <span style="font-size:${f.val}px;font-weight:900;white-space:nowrap;line-height:1;">R$</span>
-        <div style="border-bottom:1.5px solid #111;flex:1;padding-bottom:1px;font-size:${f.val}px;font-weight:700;line-height:1.5;">&nbsp;${tag.preco}</div>
+        <div style="border-bottom:1.5px solid #111;flex:1;padding-bottom:2px;font-size:${f.val}px;font-weight:700;line-height:1.4;">&nbsp;${tag.preco}</div>
       </div>
     </div>
   </div>
 
-  <!-- ══ RODAPÉ DA LOJA ══ -->
-  <div style="background:#e8e8e6;border-radius:12px;padding:${pad};display:flex;align-items:center;justify-content:space-between;gap:16px;">
-    <div style="display:flex;align-items:center;gap:14px;flex:1;">
-      ${logoImg}
-      ${vitrineUrl ? `<div>
-        <p style="margin:0 0 3px;font-size:${isLandscape ? 10 : 9}px;font-weight:700;color:#555;font-family:Arial,sans-serif;">aponte a câmera do celular para o QR Code</p>
-        <p style="margin:0;font-size:${isLandscape ? 10 : 9}px;font-weight:700;color:#555;font-family:Arial,sans-serif;">e veja este veículo na vitrine online</p>
-      </div>` : ""}
-    </div>
-    ${qrImg}
-  </div>
+  ${qrBlock}
 
 </div>
 <script>window.onload=function(){window.print();window.onafterprint=function(){window.close();};}</script>
@@ -402,27 +415,27 @@ export function TagPatioModal({ veiculo, onClose, logoUrl, vitrineUrl }: TagPati
             Clique em qualquer campo para editar antes de imprimir
           </p>
 
-          {/* Preview do rodapé — logo + QR code */}
+          {/* Preview: logo topo + QR abaixo-direita */}
           {(logoUrl || vitrineUrl) && (
-            <div className="mt-4 bg-gray-100 rounded-2xl p-4 flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3 flex-1 min-w-0">
-                {logoUrl && (
-                  /* eslint-disable-next-line @next/next/no-img-element */
-                  <img src={logoUrl} alt="Logo" className="h-10 max-w-[100px] object-contain flex-shrink-0" />
-                )}
-                {vitrineUrl && (
-                  <p className="text-[9px] text-gray-500 font-bold leading-snug">
-                    aponte a câmera para o QR Code<br />e veja na vitrine online
-                  </p>
-                )}
-              </div>
+            <div className="mt-4 space-y-2">
+              {logoUrl && (
+                <div className="flex justify-center">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={logoUrl} alt="Logo" className="h-10 max-w-[160px] object-contain" />
+                </div>
+              )}
               {vitrineUrl && (
-                /* eslint-disable-next-line @next/next/no-img-element */
-                <img
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(vitrineUrl)}`}
-                  alt="QR Code vitrine"
-                  className="w-14 h-14 flex-shrink-0"
-                />
+                <div className="flex justify-end items-center gap-2">
+                  <p className="text-[9px] text-gray-400 font-bold text-right leading-snug">
+                    Acesse nosso site para<br />ver todos os nossos carros.
+                  </p>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(vitrineUrl)}`}
+                    alt="QR Code vitrine"
+                    className="w-12 h-12 flex-shrink-0"
+                  />
+                </div>
               )}
             </div>
           )}
