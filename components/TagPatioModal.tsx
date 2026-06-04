@@ -46,6 +46,29 @@ export interface TagPatioModalProps {
   vitrineUrl?: string;
 }
 
+// Extrai um resumo curto do motor — ex: "2.0 i-VTEC 155cv"
+function resumirMotor(motor: string): string {
+  if (!motor) return "";
+
+  // Potência: primeiro número antes de "cv" ou "hp" em toda a string
+  const cvMatch = motor.match(/(\d+)\s*(?:cv|hp)/i);
+  const cv = cvMatch ? `${cvMatch[1]}cv` : "";
+
+  // Usa apenas o primeiro segmento (antes da primeira vírgula)
+  const seg = motor.split(",")[0].trim();
+
+  // Remove palavras de combustível e sufixos genéricos
+  const limpo = seg
+    .replace(/\b(flex(one|fuel)?|gasolina|diesel|gnv|elétrico|híbrido|hibrido|etanol|álcool|alcool|bioflex)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // Remove potência duplicada que já pode estar no segmento
+  const semCv = limpo.replace(/\d+\s*(?:cv|hp)\b/gi, "").replace(/\s+/g, " ").trim();
+
+  return [semCv, cv].filter(Boolean).join(" ");
+}
+
 function buildInitialTag(veiculo: any): TagData {
   const opcionais: string[] = veiculo.opcionais ?? [];
 
@@ -71,7 +94,7 @@ function buildInitialTag(veiculo: any): TagData {
 
   return {
     ano: String(veiculo.ano_modelo ?? veiculo.ano ?? ""),
-    motor: veiculo.motor ?? "",
+    motor: resumirMotor(veiculo.motor ?? ""),
     combustivel: {
       flex:     comb.includes("flex"),
       gasolina: comb.includes("gasolina"),
