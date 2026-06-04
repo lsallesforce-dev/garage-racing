@@ -139,21 +139,21 @@ function buildPrintHtml(
   const pageMargin = L ? "10mm 18mm"    : "11mm 13mm";
   const maxWidth   = L ? "261mm"        : "184mm";
 
-  // Fontes maiores para facilitar leitura dos lojistas
+  // Retrato usa 2 colunas (mais espaço por coluna) → fontes maiores, melhor leitura no pátio
   const f = {
-    modelo: L ? 15 : 13,   // "Modelo:" acima da tag
-    label:  L ? 15 : 14,   // ANO, MOTOR, OBS, R$ — labels
-    val:    L ? 22 : 18,   // valores (ano, motor, R$)
-    fuel:   L ? 15 : 14,   // FLEX / GASOLINA / ÁLCOOL / DIESEL
-    item:   L ? 14 : 13,   // AR COND., B.COURO etc.
-    qrTxt:  L ? 11 : 10,   // texto sob o QR
+    modelo: L ? 15 : 17,   // "Modelo:" acima da tag
+    label:  L ? 15 : 18,   // ANO, MOTOR, OBS, R$ — labels
+    val:    L ? 22 : 25,   // valores (ano, motor, R$)
+    fuel:   L ? 15 : 18,   // FLEX / GASOLINA / ÁLCOOL / DIESEL
+    item:   L ? 14 : 18,   // AR COND., B.COURO etc.
+    qrTxt:  L ? 11 : 12,   // texto sob o QR
   };
-  const cb  = L ? 15 : 14;      // checkbox px
-  const imb = L ? 10 : 9;       // item margin-bottom
-  const pad = L ? "16px 20px" : "13px 16px";
-  const gap = L ? "30px"      : "24px";
-  const dv  = L ? "10px"      : "8px";
-  const mb  = L ? "14px"      : "12px";
+  const cb  = L ? 15 : 18;      // checkbox px
+  const imb = L ? 10 : 14;      // item margin-bottom
+  const pad = L ? "16px 20px" : "20px 22px";
+  const gap = L ? "30px"      : "28px";
+  const dv  = L ? "10px"      : "13px";
+  const mb  = L ? "14px"      : "16px";
 
   const sq = (on: boolean) =>
     `<span style="display:inline-block;width:${cb}px;height:${cb}px;border:2px solid #1a237e;border-radius:3px;margin-right:5px;background:${on ? "#1a237e" : "white"};vertical-align:middle;flex-shrink:0;"></span>`;
@@ -161,9 +161,13 @@ function buildPrintHtml(
   const row = (item: typeof TAG_ITENS[number]) =>
     `<div style="display:flex;align-items:center;margin-bottom:${imb}px;">${sq(tag.itens[item.key])}<span style="font-size:${f.item}px;font-weight:700;font-family:Arial,sans-serif;color:#111;">${item.label}</span></div>`;
 
-  const col1 = TAG_ITENS.slice(0, 6).map(row).join("");
-  const col2 = TAG_ITENS.slice(6, 12).map(row).join("");
-  const col3 = TAG_ITENS.slice(12, 18).map(row).join("");
+  // Retrato: 2 colunas (9 itens cada). Paisagem: 3 colunas (6 cada).
+  const colunasHtml = L
+    ? `<td style="vertical-align:top;width:33%;padding-right:10px;">${TAG_ITENS.slice(0, 6).map(row).join("")}</td>`
+    + `<td style="vertical-align:top;width:33%;padding-right:10px;">${TAG_ITENS.slice(6, 12).map(row).join("")}</td>`
+    + `<td style="vertical-align:top;width:34%;">${TAG_ITENS.slice(12, 18).map(row).join("")}</td>`
+    : `<td style="vertical-align:top;width:50%;padding-right:20px;">${TAG_ITENS.slice(0, 9).map(row).join("")}</td>`
+    + `<td style="vertical-align:top;width:50%;">${TAG_ITENS.slice(9, 18).map(row).join("")}</td>`;
 
   // Logo centralizado no topo
   const logoBlock = logoUrl
@@ -226,11 +230,7 @@ function buildPrintHtml(
 
     <!-- Opcionais 3 colunas -->
     <table style="width:100%;border-collapse:collapse;margin-bottom:${dv};">
-      <tr>
-        <td style="vertical-align:top;width:33%;padding-right:10px;">${col1}</td>
-        <td style="vertical-align:top;width:33%;padding-right:10px;">${col2}</td>
-        <td style="vertical-align:top;width:34%;">${col3}</td>
-      </tr>
+      <tr>${colunasHtml}</tr>
     </table>
 
     <div style="border-top:1.5px solid #1a237e;margin:${dv} 0;"></div>
@@ -258,7 +258,7 @@ function buildPrintHtml(
 // ── Componente principal ──────────────────────────────────────────────────────
 export function TagPatioModal({ veiculo, onClose, logoUrl, vitrineUrl }: TagPatioModalProps) {
   const [tag, setTag] = useState<TagData>(() => buildInitialTag(veiculo));
-  const [orientacao, setOrientacao] = useState<"retrato" | "paisagem">("paisagem");
+  const [orientacao, setOrientacao] = useState<"retrato" | "paisagem">("retrato");
 
   const toggleItem = (key: string) =>
     setTag(p => ({ ...p, itens: { ...p.itens, [key]: !p.itens[key] } }));
@@ -358,32 +358,21 @@ export function TagPatioModal({ veiculo, onClose, logoUrl, vitrineUrl }: TagPati
 
             <div className="border-t border-gray-200" />
 
-            {/* Opcionais — 3 colunas */}
-            <div className="grid grid-cols-3 gap-x-3 gap-y-0">
-              <div className="space-y-2">
-                {TAG_ITENS.slice(0, 6).map(item => (
-                  <label key={item.key} className="flex items-center gap-1.5 cursor-pointer select-none">
-                    <Caixa checked={!!tag.itens[item.key]} onChange={() => toggleItem(item.key)} />
-                    <span className="text-[9px] font-black uppercase tracking-wide text-gray-700 leading-tight">{item.label}</span>
-                  </label>
-                ))}
-              </div>
-              <div className="space-y-2">
-                {TAG_ITENS.slice(6, 12).map(item => (
-                  <label key={item.key} className="flex items-center gap-1.5 cursor-pointer select-none">
-                    <Caixa checked={!!tag.itens[item.key]} onChange={() => toggleItem(item.key)} />
-                    <span className="text-[9px] font-black uppercase tracking-wide text-gray-700 leading-tight">{item.label}</span>
-                  </label>
-                ))}
-              </div>
-              <div className="space-y-2">
-                {TAG_ITENS.slice(12, 18).map(item => (
-                  <label key={item.key} className="flex items-center gap-1.5 cursor-pointer select-none">
-                    <Caixa checked={!!tag.itens[item.key]} onChange={() => toggleItem(item.key)} />
-                    <span className="text-[9px] font-black uppercase tracking-wide text-gray-700 leading-tight">{item.label}</span>
-                  </label>
-                ))}
-              </div>
+            {/* Opcionais — 2 colunas (retrato) ou 3 (paisagem), espelhando a impressão */}
+            <div className={`grid gap-x-4 gap-y-0 ${orientacao === "retrato" ? "grid-cols-2" : "grid-cols-3"}`}>
+              {(orientacao === "retrato"
+                ? [TAG_ITENS.slice(0, 9), TAG_ITENS.slice(9, 18)]
+                : [TAG_ITENS.slice(0, 6), TAG_ITENS.slice(6, 12), TAG_ITENS.slice(12, 18)]
+              ).map((coluna, ci) => (
+                <div key={ci} className="space-y-2">
+                  {coluna.map(item => (
+                    <label key={item.key} className="flex items-center gap-1.5 cursor-pointer select-none">
+                      <Caixa checked={!!tag.itens[item.key]} onChange={() => toggleItem(item.key)} />
+                      <span className={`font-black uppercase tracking-wide text-gray-700 leading-tight ${orientacao === "retrato" ? "text-[11px]" : "text-[9px]"}`}>{item.label}</span>
+                    </label>
+                  ))}
+                </div>
+              ))}
             </div>
 
             <div className="border-t border-gray-200" />
