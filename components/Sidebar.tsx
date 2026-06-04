@@ -24,6 +24,7 @@ const todasPaginas = [
   { id: "dashboard",     icon: LayoutDashboard, label: "Pátio Digital",      href: "/dashboard" },
   { id: "estoque",       icon: Car,             label: "Estoque Inteligente", href: "/estoque" },
   { id: "chat",          icon: MessageSquare,   label: "Central de Chat",     href: "/chat" },
+  { id: "minhas-vendas", icon: DollarSign,      label: "Minhas Vendas",       href: "/minhas-vendas" },
   { id: "financeiro",    icon: DollarSign,      label: "Vendas / Financeiro", href: "/vendas" },
   { id: "clientes",      icon: Contact,         label: "Clientes",            href: "/clientes" },
   { id: "contratos",     icon: FileSignature,   label: "Contratos",           href: "/contratos" },
@@ -32,7 +33,7 @@ const todasPaginas = [
   { id: "configuracoes", icon: Settings,        label: "Configurações",       href: "/configuracoes" },
 ];
 
-const DEFAULT_VENDEDOR_PAGINAS = ["estoque", "chat", "agenda", "clientes", "contratos"];
+const DEFAULT_VENDEDOR_PAGINAS = ["estoque", "chat", "minhas-vendas", "agenda", "clientes", "contratos"];
 
 interface SidebarProps {
   onClose?: () => void;
@@ -66,9 +67,11 @@ export const Sidebar = ({
     router.refresh();
   }
 
+  const vendedorPaginas = paginasPermitidas ?? DEFAULT_VENDEDOR_PAGINAS;
   const menuItems = isVendedor
     ? [
-        ...todasPaginas.filter(p => (paginasPermitidas ?? DEFAULT_VENDEDOR_PAGINAS).includes(p.id)),
+        // "minhas-vendas" sempre presente — é a visão principal do vendedor
+        ...todasPaginas.filter(p => p.id === "minhas-vendas" || vendedorPaginas.includes(p.id)),
         { id: "minha-conta", icon: UserCircle, label: "Minha Conta", href: "/minha-conta" },
       ]
     : adminMenuItems;
