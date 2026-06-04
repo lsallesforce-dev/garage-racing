@@ -136,8 +136,12 @@ function buildPrintHtml(
   const L = orientacao === "paisagem";
 
   const pageSize   = L ? "A4 landscape" : "A4 portrait";
-  const pageMargin = L ? "10mm 18mm"    : "11mm 13mm";
-  const maxWidth   = L ? "261mm"        : "184mm";
+  const pageMargin = L ? "10mm 18mm"    : "10mm 12mm";
+  const maxWidth   = L ? "261mm"        : "186mm";
+
+  // Retrato: o conteúdo ocupa toda a folha A4 (wrapper flex column + tag flex:1)
+  const wrapExtra = L ? "" : "min-height:272mm;display:flex;flex-direction:column;";
+  const tagExtra  = L ? "" : "flex:1;display:flex;flex-direction:column;justify-content:space-between;";
 
   // Retrato usa 2 colunas (mais espaço por coluna) → fontes maiores, melhor leitura no pátio
   const f = {
@@ -171,20 +175,26 @@ function buildPrintHtml(
 
   // Logo centralizado no topo
   const logoBlock = logoUrl
-    ? `<img src="${logoUrl}" style="max-height:${L ? 65 : 60}px;max-width:${L ? 200 : 170}px;object-fit:contain;display:block;margin:0 auto;" />`
+    ? `<img src="${logoUrl}" style="max-height:${L ? 80 : 120}px;max-width:${L ? 250 : 320}px;object-fit:contain;display:block;margin:0 auto;" />`
     : "";
 
-  // Modelo completo acima da tag
-  const nomeModelo = [veiculo.marca, veiculo.modelo, veiculo.versao, veiculo.ano_modelo ?? veiculo.ano]
+  // Modelo acima da tag — evita duplicação quando o modelo já contém a versão
+  // (ex.: modelo "T-Cross Sense 200 TSI 1.0 Flex 5p Aut." + versao "Sense 200 TSI..." sairia repetido)
+  const _marca  = String(veiculo.marca ?? "").trim();
+  const _modelo = String(veiculo.modelo ?? "").trim();
+  const _versao = String(veiculo.versao ?? "").trim();
+  const _ano    = veiculo.ano_modelo ?? veiculo.ano ?? "";
+  const versaoRedundante = _versao && _modelo.toLowerCase().includes(_versao.toLowerCase());
+  const nomeModelo = [_marca, _modelo, versaoRedundante ? "" : _versao, _ano]
     .filter(Boolean).join(" ");
 
-  // QR code abaixo da tag, à direita — como no PDF de referência
-  const qrSize = L ? 110 : 95;
+  // QR code abaixo da tag — centralizado, maior no retrato
+  const qrSize = L ? 110 : 160;
   const qrBlock = vitrineUrl ? `
-  <div style="display:flex;justify-content:flex-end;margin-top:${L ? 14 : 10}px;">
+  <div style="display:flex;justify-content:center;margin-top:${L ? 14 : 18}px;">
     <div style="text-align:center;">
-      <img src="https://api.qrserver.com/v1/create-qr-code/?size=${qrSize * 2}x${qrSize * 2}&data=${encodeURIComponent(vitrineUrl)}" width="${qrSize}" height="${qrSize}" style="display:block;" />
-      <p style="margin:4px 0 0;font-size:${f.qrTxt}px;font-weight:700;color:#555;font-family:Arial,sans-serif;">Acesse nosso site para ver todos os nossos carros.</p>
+      <img src="https://api.qrserver.com/v1/create-qr-code/?size=${qrSize * 2}x${qrSize * 2}&data=${encodeURIComponent(vitrineUrl)}" width="${qrSize}" height="${qrSize}" style="display:block;margin:0 auto;" />
+      <p style="margin:8px auto 0;font-size:${f.qrTxt}px;font-weight:700;color:#555;font-family:Arial,sans-serif;text-align:center;">Acesse nosso site para ver todos os nossos carros.</p>
     </div>
   </div>` : "";
 
@@ -196,7 +206,7 @@ function buildPrintHtml(
   @media print { body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } }
 </style>
 </head><body>
-<div style="width:100%;max-width:${maxWidth};margin:0 auto;font-family:Arial,sans-serif;">
+<div style="width:100%;max-width:${maxWidth};margin:0 auto;font-family:Arial,sans-serif;${wrapExtra}">
 
   ${logoBlock ? `<!-- LOGO --><div style="text-align:center;margin-bottom:${L ? 10 : 8}px;">${logoBlock}</div>` : ""}
 
@@ -204,7 +214,7 @@ function buildPrintHtml(
   <p style="text-align:center;font-size:${f.modelo}px;font-weight:700;color:#333;margin:0 0 ${mb};font-family:Arial,sans-serif;">Modelo: ${nomeModelo}</p>
 
   <!-- ══ TAG ══ -->
-  <div style="border:2.5px solid #1a237e;border-radius:12px;padding:${pad};">
+  <div style="border:2.5px solid #1a237e;border-radius:12px;padding:${pad};${tagExtra}">
 
     <!-- ANO / MOTOR -->
     <div style="display:flex;gap:${gap};margin-bottom:${mb};align-items:flex-end;">
