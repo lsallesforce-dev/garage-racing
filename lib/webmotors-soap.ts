@@ -21,6 +21,13 @@
 // URLs oficiais do manual:
 //   homolog → https://hportal.webmotors.com.br/IntegracaoRevendedor
 //   prod    → https://integracao.webmotors.com.br
+//
+//   WEBMOTORS_PROXY_URL → (opcional) proxy HTTP de IP estático por onde SÓ as chamadas Webmotors
+//                         saem, pra liberar esse IP no allowlist da Webmotors (o CloudFront deles
+//                         bloqueia IPs de nuvem/serverless). Ex.: http://user:senha@IP:8888.
+//                         Sem a env = chamada direta (comportamento atual).
+
+import { ProxyAgent, fetch as proxiedFetch } from "undici";
 
 const IS_PROD = process.env.WEBMOTORS_ENV === "producao";
 const DEFAULT_SOAP_BASE = IS_PROD
@@ -41,6 +48,11 @@ const SOAP_BASE = (
     : DEFAULT_SOAP_BASE
 ).replace(/\/+$/, "");
 const STATIC_BEARER = process.env.WEBMOTORS_BEARER ?? "";
+
+// Proxy de IP fixo (opcional). Roteia SÓ as chamadas Webmotors — o resto do app continua
+// saindo direto pela Vercel. Criado uma vez no load do módulo.
+const PROXY_URL = (process.env.WEBMOTORS_PROXY_URL || "").trim();
+const proxyDispatcher = PROXY_URL ? new ProxyAgent(PROXY_URL) : undefined;
 
 const NS = "www.webmotors.com.br/wsEstoqueRevendedorWebMotors";
 const NS_LOGIN = "www.webmotors.com.br/wsLoginSistemaRevendedor";
@@ -89,10 +101,11 @@ async function soapCall(service: string, bearer: string, envelope: string): Prom
   const headers: Record<string, string> = { "Content-Type": "text/xml" };
   // Authorization só entra se houver bearer de gateway — a auth real é o Hash no corpo SOAP.
   if (bearer) headers.Authorization = `bearer ${bearer}`;
-  const res = await fetch(`${SOAP_BASE}/${service}.asmx?wsdl=`, {
+  const res = await proxiedFetch(`${SOAP_BASE}/${service}.asmx?wsdl=`, {
     method: "POST",
     headers,
     body: envelope,
+    dispatcher: proxyDispatcher, // undefined = saída direta; setado = via IP fixo do proxy
   });
   const xml = await res.text();
   if (!res.ok) {
