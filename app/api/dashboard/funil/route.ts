@@ -134,12 +134,13 @@ export async function GET(req: NextRequest) {
       .eq("user_id", userId)
       .eq("status", "QUENTE"),
 
-    // Leads parados: em atendimento humano há mais de 48h (não vendidos/perdidos)
+    // Leads parados: em standby há >48h, não vendidos/perdidos, NÃO de whatsapp direto
     supabaseAdmin.from("leads")
       .select("*", { count: "exact", head: true })
       .eq("user_id", userId)
       .eq("em_atendimento_humano", true)
       .not("etapa_funil", "in", '("VENDIDO","PERDIDO")')
+      .not("origem", "eq", "whatsapp")
       .lt("updated_at", limite48h.toISOString()),
   ]);
 

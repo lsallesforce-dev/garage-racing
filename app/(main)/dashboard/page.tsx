@@ -89,11 +89,10 @@ type FunilData = {
 // Cron roda 6x/dia: 11,13,15,17,19,21h UTC = 8,10,12,14,16,18h BRT
 const CRON_HORAS_BRT = [8, 10, 12, 14, 16, 18];
 
-async function devolverParaIA(): Promise<number> {
+async function devolverParaIA(): Promise<{ queued: number; duracao_minutos: number }> {
   const res = await fetch("/api/leads/devolver-ia", { method: "POST" });
   if (!res.ok) throw new Error("Erro ao devolver leads");
-  const json = await res.json();
-  return json.restored as number;
+  return res.json();
 }
 
 function proximoReengajamento(): string {
@@ -454,8 +453,12 @@ export default function Dashboard() {
                       onClick={async () => {
                         setDevolvendoIA(true);
                         try {
-                          const restored = await devolverParaIA();
-                          alert(`✅ ${restored} lead${restored !== 1 ? "s" : ""} devolvido${restored !== 1 ? "s" : ""} para a IA.`);
+                          const { queued, duracao_minutos } = await devolverParaIA();
+                          if (queued === 0) {
+                            alert("Nenhum lead elegível encontrado.");
+                          } else {
+                            alert(`✅ ${queued} follow-up${queued !== 1 ? "s" : ""} agendado${queued !== 1 ? "s" : ""}.\nDisparo espaçado em ~${duracao_minutos} minutos para evitar bloqueio.`);
+                          }
                           carregar();
                         } catch {
                           alert("Erro ao devolver leads. Tente novamente.");
