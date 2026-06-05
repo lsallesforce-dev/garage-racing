@@ -1,4 +1,5 @@
 import { sendMetaMessage } from "@/lib/meta";
+import { sendAvisaMessage } from "@/lib/avisa";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireLeadOwner, getEffectiveUserId } from "@/lib/api-auth";
 import { NextRequest, NextResponse } from "next/server";
@@ -17,19 +18,36 @@ export async function POST(req: NextRequest) {
 
     const effectiveUserId = getEffectiveUserId(user!);
 
-    // Busca credenciais Meta do tenant
-    const { data: cfg } = await supabaseAdmin
+    // Busca credenciais do tenant — Avisa tem prioridade sobre Meta
+    const { data: rows } = await supabaseAdmin
       .from("config_garage")
-      .select("meta_phone_id, meta_access_token")
+      .select("avisa_base_url, avisa_token, meta_phone_id, meta_access_token")
       .eq("user_id", effectiveUserId)
-      .single();
+      .order("created_at", { ascending: false })
+      .limit(1);
 
-    const metaCreds = {
-      phoneNumberId: cfg?.meta_phone_id ?? "",
-      accessToken: cfg?.meta_access_token || process.env.META_ACCESS_TOKEN || "",
-    };
+    const cfg = rows?.[0];
 
-    await sendMetaMessage(phone, message, metaCreds);
+    const useAvisa = !!(cfg?.avisa_base_url && cfg?.avisa_token);
+    const useMeta  = !useAvisa && !!(cfg?.meta_phone_id && cfg?.meta_access_token);
+
+    if (!useAvisa && !useMeta) {
+      console.warn(`⚠️ [chat/send] Nenhum canal configurado para tenant ${effectiveUserId}`);
+      return NextResponse.json({ success: false, error: "Nenhum canal de envio configurado (Avisa ou Meta)" }, { status: 400 });
+    }
+
+    // Envia pelo canal correto do tenant
+    if (useAvisa) {
+      await sendAvisaMessage(phone, message, {
+        baseUrl: cfg!.avisa_base_url,
+        token:   cfg!.avisa_token,
+      });
+    } else {
+      await sendMetaMessage(phone, message, {
+        phoneNumberId: cfg!.meta_phone_id ?? "",
+        accessToken:   cfg!.meta_access_token ?? process.env.META_ACCESS_TOKEN ?? "",
+      });
+    }
 
     await Promise.all([
       supabaseAdmin.from("mensagens").insert({
@@ -40,7 +58,7 @@ export async function POST(req: NextRequest) {
       }),
       supabaseAdmin
         .from("leads")
-        .update({ em_atendimento_humano: true })
+        .update({ em_atendimento_humano: true, updated_at: new Date().toISOString() })
         .eq("id", lead_id),
     ]);
 
