@@ -196,6 +196,7 @@ export async function GET(req: NextRequest) {
     manual:        "Cadastro Manual",
     site:          "Site / Vitrine",
     link_whatsapp: "Link WhatsApp",
+    ligacao:       "Ligação",
     whatsapp:      "WhatsApp Direto",
   };
 

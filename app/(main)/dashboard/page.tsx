@@ -149,6 +149,7 @@ const ORIGEM_CONFIG: Record<string, { emoji: string; bar: string; bg: string; co
   site:          { emoji: "🌐", bar: "bg-teal-500",    bg: "bg-teal-50",    color: "text-teal-600"   },
   link_whatsapp: { emoji: "🔗", bar: "bg-emerald-500", bg: "bg-emerald-50", color: "text-emerald-600"},
   manual:        { emoji: "✍️", bar: "bg-gray-400",    bg: "bg-gray-50",    color: "text-gray-500"   },
+  ligacao:       { emoji: "📞", bar: "bg-amber-500",   bg: "bg-amber-50",   color: "text-amber-600"  },
   whatsapp:      { emoji: "💬", bar: "bg-green-500",   bg: "bg-green-50",   color: "text-green-600"  },
 };
 

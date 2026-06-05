@@ -49,21 +49,24 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; dot: string 
   FRIO:     { label: "Frio",      color: "text-blue-600 bg-blue-50 border-blue-100",       dot: "bg-blue-400"  },
 };
 
-// De onde o lead veio (campo `origem` do lead). Símbolo + descrição curta + cor.
+// De onde o lead veio (campo `origem`). Mantém os MESMOS símbolos/labels/cores do card
+// "Origem dos Leads" do dashboard — ver app/(main)/dashboard/page.tsx (ORIGEM_CONFIG) e
+// app/api/dashboard/funil/route.ts (ORIGEM_LABELS). Alterou um, alinhe o outro.
 const ORIGEM_CONFIG: Record<string, { label: string; emoji: string; color: string }> = {
-  meta_ads:      { label: "Meta Ads",  emoji: "📣", color: "bg-blue-50 text-blue-600 border-blue-200" },
-  whatsapp:      { label: "WhatsApp",  emoji: "💬", color: "bg-green-50 text-green-600 border-green-200" },
-  webmotors:     { label: "Webmotors", emoji: "🚗", color: "bg-red-50 text-red-600 border-red-200" },
-  olx:           { label: "OLX",       emoji: "🟣", color: "bg-purple-50 text-purple-600 border-purple-200" },
-  icarros:       { label: "iCarros",   emoji: "🚙", color: "bg-orange-50 text-orange-600 border-orange-200" },
-  napista:       { label: "Na Pista",  emoji: "🏁", color: "bg-gray-100 text-gray-600 border-gray-200" },
-  site:          { label: "Vitrine",   emoji: "🌐", color: "bg-indigo-50 text-indigo-600 border-indigo-200" },
-  link_whatsapp: { label: "Link",      emoji: "🔗", color: "bg-teal-50 text-teal-600 border-teal-200" },
-  ligacao:       { label: "Ligação",   emoji: "📞", color: "bg-amber-50 text-amber-600 border-amber-200" },
+  whatsapp:      { label: "WhatsApp Direto", emoji: "💬", color: "bg-green-50 text-green-600 border-green-200"       },
+  meta_ads:      { label: "Meta Ads",        emoji: "📘", color: "bg-blue-50 text-blue-600 border-blue-200"          },
+  olx:           { label: "OLX",             emoji: "🟠", color: "bg-orange-50 text-orange-600 border-orange-200"    },
+  webmotors:     { label: "Webmotors",       emoji: "🔴", color: "bg-red-50 text-red-600 border-red-200"            },
+  icarros:       { label: "iCarros",         emoji: "🚗", color: "bg-purple-50 text-purple-600 border-purple-200"   },
+  napista:       { label: "Na Pista",        emoji: "🏁", color: "bg-green-50 text-green-600 border-green-200"       },
+  site:          { label: "Site / Vitrine",  emoji: "🌐", color: "bg-teal-50 text-teal-600 border-teal-200"         },
+  link_whatsapp: { label: "Link WhatsApp",   emoji: "🔗", color: "bg-emerald-50 text-emerald-600 border-emerald-200"},
+  manual:        { label: "Cadastro Manual", emoji: "✍️", color: "bg-gray-50 text-gray-500 border-gray-200"         },
+  ligacao:       { label: "Ligação",         emoji: "📞", color: "bg-amber-50 text-amber-600 border-amber-200"      },
 };
 function origemCfg(origem: string | null | undefined) {
-  if (!origem) return { label: "Direto", emoji: "📥", color: "bg-gray-50 text-gray-500 border-gray-200" };
-  return ORIGEM_CONFIG[origem] ?? { label: origem, emoji: "📥", color: "bg-gray-50 text-gray-500 border-gray-200" };
+  const key = origem || "whatsapp"; // sem origem = WhatsApp Direto (igual ao dashboard)
+  return ORIGEM_CONFIG[key] ?? { label: key, emoji: "📥", color: "bg-gray-50 text-gray-500 border-gray-200" };
 }
 
 const FILTROS = ["Todos", "QUENTE", "MORNO", "FRIO", "HUMANO", "PROBLEMA"] as const;
