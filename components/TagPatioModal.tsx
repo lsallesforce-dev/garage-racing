@@ -127,6 +127,23 @@ function Caixa({ checked, onChange }: { checked: boolean; onChange: () => void }
 }
 
 // ── Nome completo do modelo (marca + modelo + versão + ano, sem duplicar versão) ─
+
+// Verifica se a versão já está contida no modelo — por substring exato OU por
+// sobreposição de tokens (≥60% das palavras ≥3 chars da versão aparecem no modelo).
+// Necessário porque o banco armazena variações abreviadas:
+//   modelo  = "HR-V LX 1.8 Flexone 16V 5p Aut."
+//   versao  = "LX 1.8 Flexone Automática"  → 3/4 tokens batem → redundante
+function versaoERedundante(modelo: string, versao: string): boolean {
+  if (!versao) return false;
+  const mLow = modelo.toLowerCase();
+  const vLow = versao.toLowerCase();
+  if (mLow.includes(vLow)) return true;
+  const tokens = vLow.split(/\s+/).filter(w => w.length >= 3);
+  if (tokens.length === 0) return true;
+  const hits = tokens.filter(w => mLow.includes(w)).length;
+  return hits / tokens.length >= 0.6;
+}
+
 function nomeCompletoModelo(veiculo: any): string {
   // Limpa marca: "VW - VolksWagen" → "VolksWagen", "GM - Chevrolet" → "Chevrolet"
   const marcaRaw = String(veiculo.marca ?? "").trim();
@@ -142,8 +159,7 @@ function nomeCompletoModelo(veiculo: any): string {
 
   const versao = String(veiculo.versao ?? "").trim();
   const ano    = veiculo.ano_modelo ?? veiculo.ano ?? "";
-  const versaoRedundante = versao && modelo.toLowerCase().includes(versao.toLowerCase());
-  return [marca, modelo, versaoRedundante ? "" : versao, ano].filter(Boolean).join(" ");
+  return [marca, modelo, versaoERedundante(modelo, versao) ? "" : versao, ano].filter(Boolean).join(" ");
 }
 
 // ── Geração do HTML da tag (layout único, reusado por impressão e PDF) ────────
