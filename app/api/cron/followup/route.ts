@@ -343,6 +343,7 @@ export async function GET(req: NextRequest) {
     `)
     .in("status", ["FRIO", "MORNO", "QUENTE"])
     .eq("em_atendimento_humano", false)
+    .is("instrucao_pendente", null)   // não fazer follow-up se o gerente tem pergunta aberta
     .lt("followup_count", MAX_FOLLOWUPS)
     .or(`ultimo_followup.is.null,ultimo_followup.lt.${limite24h}`)
     .limit(100);

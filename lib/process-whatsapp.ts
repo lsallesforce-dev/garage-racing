@@ -2041,7 +2041,9 @@ Responda apenas com o JSON, sem markdown.`;
 
   const clientePediuFoto =
     (temIntencaoFoto || mensagemSoFoto || gatilhosFoto.some((g) => mensagemLower.includes(g)) ||
-      (msgConfirmacao && (clientePediuFotoAntes || agenteMencionouFoto)) || continuacaoFoto ||
+      // Não ativar por confirmação vaga ("Ok/Sim") se há instrucao_pendente: o "Ok" pode
+      // ser apenas um acuse de "entendi, vou aguardar" e não consentimento para mídia.
+      (msgConfirmacao && (clientePediuFotoAntes || agenteMencionouFoto) && !lead?.instrucao_pendente) || continuacaoFoto ||
       // Cliente pediu parte específica E agente mencionou foto recentemente → envia foto
       (pedindoParteCarro && agenteMencionouFoto)) &&
     !exclusoesFoto.some((e) => mensagemLower.includes(e));
@@ -2264,7 +2266,8 @@ Responda apenas com o JSON, sem markdown.`;
   // ── 11b. Enviar Vídeo ───────────────────────────────────────────────────────
   const clientePediuVideo =
     gatilhosVideo.some((g) => mensagemLower.includes(g)) ||
-    (msgConfirmacao && (clientePediuVideoAntes || agenteMencionouVideo) && !clientePediuFoto);
+    // Mesmo guard de foto: não disparar por "Ok/Sim" se há instrucao_pendente ativa.
+    (msgConfirmacao && (clientePediuVideoAntes || agenteMencionouVideo) && !clientePediuFoto && !lead?.instrucao_pendente);
 
   let videoEnviado = false;
 
