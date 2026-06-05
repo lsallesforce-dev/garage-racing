@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendMetaMessage } from "@/lib/meta";
+import { sendAvisaMessage } from "@/lib/avisa";
 import { cronGuard } from "@/lib/redis";
 
 export const maxDuration = 300;
@@ -39,12 +40,12 @@ export async function GET(req: NextRequest) {
   inicioSemana.setDate(agora.getDate() - 7);
   inicioSemana.setHours(0, 0, 0, 0);
 
-  // Busca todos os tenants com WhatsApp e credenciais Meta configuradas
+  // Busca todos os tenants com WhatsApp e pelo menos um canal configurado (Avisa ou Meta)
   const { data: tenants, error } = await supabaseAdmin
     .from("config_garage")
-    .select("user_id, nome_empresa, nome_fantasia, nome_agente, whatsapp, meta_phone_id, meta_access_token")
+    .select("user_id, nome_empresa, nome_fantasia, nome_agente, whatsapp, avisa_base_url, avisa_token, meta_phone_id, meta_access_token")
     .not("whatsapp", "is", null)
-    .not("meta_phone_id", "is", null);
+    .or("avisa_base_url.not.is.null,meta_phone_id.not.is.null");
 
   if (error || !tenants?.length) {
     return NextResponse.json({ ok: true, enviados: 0 });
@@ -65,7 +66,7 @@ export async function GET(req: NextRequest) {
         pulados++;
         continue;
       }
-      const metaCreds = { phoneNumberId: t.meta_phone_id, accessToken: t.meta_access_token };
+      const useAvisa = !!(t.avisa_base_url && t.avisa_token);
 
       const [
         { count: leadsNovos },
@@ -122,7 +123,11 @@ export async function GET(req: NextRequest) {
         topInfo +
         `\n\n_Relatório gerado automaticamente pelo AutoZap_ ✅`;
 
-      await sendMetaMessage(t.whatsapp, mensagem, metaCreds);
+      if (useAvisa) {
+        await sendAvisaMessage(t.whatsapp, mensagem, { baseUrl: t.avisa_base_url, token: t.avisa_token });
+      } else {
+        await sendMetaMessage(t.whatsapp, mensagem, { phoneNumberId: t.meta_phone_id, accessToken: t.meta_access_token });
+      }
       enviados++;
 
       // Pausa entre envios

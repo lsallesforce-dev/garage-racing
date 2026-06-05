@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendMetaMessage } from "@/lib/meta";
+import { sendAvisaMessage } from "@/lib/avisa";
 import { buscarLeadsOrfaos } from "@/lib/leads";
 import { requireVehicleOwner } from "@/lib/api-auth";
 import { NextRequest, NextResponse } from "next/server";
@@ -75,22 +76,27 @@ export async function POST(req: NextRequest) {
     // 4. Buscar leads órfãos (interessados que não compraram)
     const leads = await buscarLeadsOrfaos(id);
 
-    // Credenciais Meta do tenant
-    const { data: cfg } = await supabaseAdmin
+    // Credenciais do tenant — Avisa tem prioridade sobre Meta
+    const { data: rows } = await supabaseAdmin
       .from("config_garage")
-      .select("meta_phone_id, meta_access_token")
+      .select("avisa_base_url, avisa_token, meta_phone_id, meta_access_token")
       .eq("user_id", veiculo.user_id)
-      .single();
-    const metaCreds = {
-      phoneNumberId: cfg?.meta_phone_id ?? "",
-      accessToken: cfg?.meta_access_token || process.env.META_ACCESS_TOKEN || "",
-    };
+      .order("created_at", { ascending: false })
+      .limit(1);
+    const cfg = rows?.[0];
+    const useAvisa = !!(cfg?.avisa_base_url && cfg?.avisa_token);
 
-    // 3. Notificar cada lead via Meta
+    // 3. Notificar cada lead pelo canal correto
     const nomeCarro = `${veiculo.marca} ${veiculo.modelo}`;
     const notificationPromises = leads.map((lead: any) => {
-      const message = `Olá ${lead.nome || "Cliente"}! Passando para avisar que a ${nomeCarro} que você estava de olho acabou de ser vendida. Mas não se preocupe, o Lucas (IA) já está buscando outras opções parecidas para você no nosso estoque!`;
-      return sendMetaMessage(lead.wa_id, message, metaCreds);
+      const message = `Olá ${lead.nome || "Cliente"}! Passando para avisar que a ${nomeCarro} que você estava de olho acabou de ser vendida. Mas não se preocupe, a IA já está buscando outras opções parecidas para você no nosso estoque!`;
+      if (useAvisa) {
+        return sendAvisaMessage(lead.wa_id, message, { baseUrl: cfg!.avisa_base_url, token: cfg!.avisa_token });
+      }
+      return sendMetaMessage(lead.wa_id, message, {
+        phoneNumberId: cfg?.meta_phone_id ?? "",
+        accessToken: cfg?.meta_access_token || process.env.META_ACCESS_TOKEN || "",
+      });
     });
 
     // Executa as notificações em paralelo

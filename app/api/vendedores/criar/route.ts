@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendMetaMessage } from "@/lib/meta";
+import { sendAvisaMessage } from "@/lib/avisa";
 
 export async function POST(req: NextRequest) {
   // Verify caller is authenticated admin
@@ -90,14 +91,11 @@ export async function POST(req: NextRequest) {
   if (vendedor.whatsapp) {
     const { data: garageConfig } = await supabaseAdmin
       .from("config_garage")
-      .select("nome_empresa, nome_fantasia, meta_phone_id, meta_access_token")
+      .select("nome_empresa, nome_fantasia, avisa_base_url, avisa_token, meta_phone_id, meta_access_token")
       .eq("user_id", user.id)
       .maybeSingle();
 
-    const metaCreds = {
-      phoneNumberId: garageConfig?.meta_phone_id ?? "",
-      accessToken: garageConfig?.meta_access_token || process.env.META_ACCESS_TOKEN || "",
-    };
+    const useAvisa = !!(garageConfig?.avisa_base_url && garageConfig?.avisa_token);
 
     const nomeLoja = garageConfig?.nome_fantasia || garageConfig?.nome_empresa || "AutoZap";
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://autozap.digital";
@@ -122,9 +120,15 @@ export async function POST(req: NextRequest) {
       ? `Olá, ${vendedor.nome}! 👋\n\nSeu acesso ao painel *${nomeLoja}* foi criado.\n\n📧 *Email:* ${email}\n🔗 *Clique para acessar (válido por 24h):*\n${acessoUrl}\n\nVocê terá acesso ao Estoque Inteligente e à Central de Chat.`
       : `Olá, ${vendedor.nome}! A sua senha foi redefinida.\n\n📧 *Email:* ${email}\n🔗 *Clique para acessar (válido por 24h):*\n${acessoUrl}`;
 
-    await sendMetaMessage(vendedor.whatsapp, msg, metaCreds).catch((e) =>
-      console.warn("Meta: falha ao notificar vendedor:", e)
-    );
+    if (useAvisa) {
+      await sendAvisaMessage(vendedor.whatsapp, msg, { baseUrl: garageConfig!.avisa_base_url, token: garageConfig!.avisa_token })
+        .catch((e) => console.warn("Avisa: falha ao notificar vendedor:", e));
+    } else {
+      await sendMetaMessage(vendedor.whatsapp, msg, {
+        phoneNumberId: garageConfig?.meta_phone_id ?? "",
+        accessToken: garageConfig?.meta_access_token || process.env.META_ACCESS_TOKEN || "",
+      }).catch((e) => console.warn("Meta: falha ao notificar vendedor:", e));
+    }
   }
 
   return NextResponse.json({ ok: true, authUserId: newAuthUserId });
