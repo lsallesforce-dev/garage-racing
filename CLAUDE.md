@@ -11,6 +11,9 @@
 - OpenAI TTS + Whisper (voiceover e timestamps)
 - FFmpeg (dois binários — ver seção abaixo)
 
+## Bibliotecas browser-only no Next 16 + Turbopack (jspdf, html2canvas, qrcode)
+Libs que só rodam no navegador **devem** ser carregadas em componente client via `next/dynamic` com `{ ssr: false }`. Mesmo com `"use client"` + `import()` dinâmico dentro de handler, o Next ainda bundla o componente no passo de **Client Component SSR**, onde o `jspdf` resolve pro build Node (`jspdf.node.min.js` → `fflate/lib/node.cjs`, `new Worker(...{ eval: true })`) que o Turbopack não consegue bundlar → o build quebra com `Module not found: Can't resolve <dynamic>` (produção não cai: a Vercel mantém o último build bom). Carregar o componente com `ssr: false` remove essas deps do grafo de SSR. Ex.: `components/TagPatioModal.tsx` é importado via `dynamic(() => import("@/components/TagPatioModal").then(m => m.TagPatioModal), { ssr: false })` em `app/(main)/veiculo/[id]/page.tsx`.
+
 ## Modelos Gemini — regras obrigatórias
 - **Modelo principal:** `gemini-2.5-flash` com `{ apiVersion: "v1beta" }`
 - **`gemini-2.0-flash-lite` está DESCONTINUADO** — retorna 404. Nunca usar.
