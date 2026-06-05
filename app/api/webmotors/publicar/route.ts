@@ -3,7 +3,7 @@
 //
 // Fluxo:
 //   1. Busca veículo + config do tenant (incluindo cnpj)
-//   2. Bearer do gateway → HashAutenticacao via SOAP
+//   2. HashAutenticacao via SOAP (CNPJ + e-mail + senha) — sem OAuth
 //   3. Carrega tabelas de domínio em paralelo (Marca, Cores, Combustível, Câmbio, Modalidade)
 //   4. Resolve códigos (Marca → Modelo → Versão) via matchItem
 //   5. IncluirCarro (novo) ou AlterarCarro (já publicado)
@@ -72,7 +72,8 @@ export async function POST(req: NextRequest) {
   let hash: string;
   try {
     bearer = await getBearer(cfg.webmotors_usuario, cfg.webmotors_senha);
-    hash = await autenticar(cfg.cnpj.replace(/\D/g, ""), cfg.webmotors_usuario, cfg.webmotors_senha, bearer);
+    // CNPJ enviado como armazenado (o manual/collection usa o formato com máscara, ex. 12.319.744/0001-52)
+    hash = await autenticar(cfg.cnpj.trim(), cfg.webmotors_usuario, cfg.webmotors_senha, bearer);
   } catch (e: any) {
     console.error("❌ Webmotors auth SOAP:", e.message);
     return NextResponse.json({ error: `Falha na autenticação Webmotors: ${e.message}` }, { status: 502 });

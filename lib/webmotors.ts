@@ -1,7 +1,9 @@
 // lib/webmotors.ts
 // Webmotors API (Sensedia) — autenticação OAuth 2.0 e busca de leads
 
-const IS_HOMOLOG = process.env.WEBMOTORS_ENV === "homolog";
+// "producao" usa a base de produção; qualquer outro valor (inclusive vazio) = homologação.
+// Mesma convenção de lib/webmotors-soap.ts para evitar ambientes divergentes entre leads e estoque.
+const IS_HOMOLOG = process.env.WEBMOTORS_ENV !== "producao";
 const BASE_URL   = IS_HOMOLOG
   ? "https://hlg-webmotors.sensedia.com"
   : "https://api-webmotors.sensedia.com";

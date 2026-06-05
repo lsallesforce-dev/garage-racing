@@ -11,58 +11,35 @@
 //
 // Toda chamada vai com header Authorization: bearer <gateway token> + Content-Type text/xml.
 //
-// ⚠️ Config necessária (env):
-//   WEBMOTORS_SOAP_URL  → base das URLs .asmx (o {{url}} do Postman de homologação)
-//   WEBMOTORS_BEARER    → token do gateway ({{bearer}} do Postman). Opcional: se ausente,
-//                         tenta OAuth password (WEBMOTORS_CLIENT_ID/SECRET + usuário/senha).
+// ⚠️ Config (env) — conforme Manual Integração Revendedor (seção 2.3 "Links de Acesso"):
+//   WEBMOTORS_ENV       → "producao" usa a base de produção; qualquer outro valor = homologação.
+//   WEBMOTORS_SOAP_URL  → (opcional) sobrescreve a base das URLs .asmx. Ausente → default do ambiente.
+//   WEBMOTORS_BEARER    → (opcional) header de gateway ({{bearer}} do Postman). A WS Integração
+//                         Revendedor autentica por Hash (CNPJ+email+senha), NÃO por OAuth. O header
+//                         Authorization só é enviado se esta env existir.
+//
+// URLs oficiais do manual:
+//   homolog → https://hportal.webmotors.com.br/IntegracaoRevendedor
+//   prod    → https://integracao.webmotors.com.br
 
-const SOAP_BASE = (process.env.WEBMOTORS_SOAP_URL ?? "").replace(/\/+$/, "");
+const IS_PROD = process.env.WEBMOTORS_ENV === "producao";
+const DEFAULT_SOAP_BASE = IS_PROD
+  ? "https://integracao.webmotors.com.br"
+  : "https://hportal.webmotors.com.br/IntegracaoRevendedor";
+const SOAP_BASE = (process.env.WEBMOTORS_SOAP_URL || DEFAULT_SOAP_BASE).replace(/\/+$/, "");
 const STATIC_BEARER = process.env.WEBMOTORS_BEARER ?? "";
-const CLIENT_ID = process.env.WEBMOTORS_CLIENT_ID ?? "";
-const CLIENT_SECRET = process.env.WEBMOTORS_CLIENT_SECRET ?? "";
-const OAUTH_BASE =
-  process.env.WEBMOTORS_ENV === "producao"
-    ? "https://api-webmotors.sensedia.com"
-    : "https://hlg-webmotors.sensedia.com";
 
 const NS = "www.webmotors.com.br/wsEstoqueRevendedorWebMotors";
 const NS_LOGIN = "www.webmotors.com.br/wsLoginSistemaRevendedor";
 
-// ─── Bearer do gateway ───────────────────────────────────────────────────────
-let bearerCache: { token: string; expiresAt: number } | null = null;
-
-async function getBearer(usuario: string, senha: string): Promise<string> {
-  if (STATIC_BEARER) return STATIC_BEARER; // token de teste fixo (Postman)
-  if (bearerCache && bearerCache.expiresAt > Date.now() + 30_000) return bearerCache.token;
-
-  // O gateway Sensedia exige o client_id da aplicação no header. Sem ele → 401.
-  if (!CLIENT_ID) {
-    throw new Error("WEBMOTORS_CLIENT_ID não configurado — pegue o client_id do app no portal Sensedia e configure nas env vars (Vercel).");
-  }
-
-  // Sensedia: client_id vai só no header, body tem apenas grant_type + username + password
-  const body = new URLSearchParams({
-    grant_type: "password",
-    username: usuario,
-    password: senha,
-  });
-  const res = await fetch(`${OAUTH_BASE}/oauth/v1/access-token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded", client_id: CLIENT_ID },
-    body: body.toString(),
-  });
-  const raw = await res.text();
-  let data: any = {};
-  try { data = JSON.parse(raw); } catch {}
-  const token = data.access_token ?? data.token ?? data.accessToken;
-  if (!res.ok || !token) {
-    // Loga o corpo completo no servidor para diagnóstico (ex.: IP não liberado, client_id inválido)
-    console.error(`❌ [Webmotors] OAuth ${OAUTH_BASE}/oauth/v1/access-token → HTTP ${res.status}:`, raw.slice(0, 500));
-    const detalhe = data.error_description ?? data.error ?? data.message ?? raw.slice(0, 200) ?? res.status;
-    throw new Error(`Webmotors OAuth (bearer) falhou: HTTP ${res.status} — ${detalhe}`);
-  }
-  bearerCache = { token, expiresAt: Date.now() + (data.expires_in ?? 3600) * 1000 };
-  return token as string;
+// ─── Bearer (opcional) ───────────────────────────────────────────────────────
+// A WS Integração Revendedor NÃO usa OAuth: a autenticação real é o Hash retornado por
+// `autenticar` (CNPJ+email+senha) — ver Manual, seção 2. O {{bearer}} do Postman é apenas
+// um header de gateway opcional; em homologação (liberada por IP) normalmente não é exigido.
+// Retorna só o token estático de WEBMOTORS_BEARER, se houver; caso contrário, string vazia
+// (e o header Authorization é omitido em soapCall).
+async function getBearer(_usuario?: string, _senha?: string): Promise<string> {
+  return STATIC_BEARER;
 }
 
 // ─── Helpers de XML (sem dependência externa) ────────────────────────────────
@@ -96,12 +73,12 @@ function isSucesso(xml: string): boolean {
 // ─── Chamada SOAP genérica ───────────────────────────────────────────────────
 async function soapCall(service: string, bearer: string, envelope: string): Promise<string> {
   if (!SOAP_BASE) throw new Error("WEBMOTORS_SOAP_URL não configurado");
+  const headers: Record<string, string> = { "Content-Type": "text/xml" };
+  // Authorization só entra se houver bearer de gateway — a auth real é o Hash no corpo SOAP.
+  if (bearer) headers.Authorization = `bearer ${bearer}`;
   const res = await fetch(`${SOAP_BASE}/${service}.asmx?wsdl=`, {
     method: "POST",
-    headers: {
-      Authorization: `bearer ${bearer}`,
-      "Content-Type": "text/xml",
-    },
+    headers,
     body: envelope,
   });
   const xml = await res.text();
