@@ -1,5 +1,10 @@
 // lib/webmotors.ts
 // Webmotors API (Sensedia) — autenticação OAuth 2.0 e busca de leads
+//
+// As chamadas saem pelo MESMO proxy de IP fixo do estoque quando WEBMOTORS_PROXY_URL
+// estiver setado (a API Sensedia também pode exigir IP liberado). Sem a env = saída direta.
+
+import { ProxyAgent, fetch as proxiedFetch } from "undici";
 
 // "producao" usa a base de produção; qualquer outro valor (inclusive vazio) = homologação.
 // Mesma convenção de lib/webmotors-soap.ts para evitar ambientes divergentes entre leads e estoque.
@@ -10,6 +15,10 @@ const BASE_URL   = IS_HOMOLOG
 
 const CLIENT_ID     = process.env.WEBMOTORS_CLIENT_ID     ?? "";
 const CLIENT_SECRET = process.env.WEBMOTORS_CLIENT_SECRET ?? "";
+
+// Mesmo proxy de IP fixo do estoque (opcional). Sem a env, saída direta.
+const PROXY_URL = (process.env.WEBMOTORS_PROXY_URL || "").trim();
+const proxyDispatcher = PROXY_URL ? new ProxyAgent(PROXY_URL) : undefined;
 
 // ─── Token cache em memória (por tenant) ─────────────────────────────────────
 // Evita bater no OAuth a cada webhook — reutiliza enquanto não expirar
@@ -36,13 +45,14 @@ export async function getAccessToken(usuario: string, senha: string): Promise<st
     password:      senha,
   });
 
-  const res = await fetch(`${BASE_URL}/oauth/v1/access-token`, {
+  const res = await proxiedFetch(`${BASE_URL}/oauth/v1/access-token`, {
     method:  "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body:    params.toString(),
+    dispatcher: proxyDispatcher,
   });
 
-  const data = await res.json();
+  const data = await res.json() as any;
   if (!res.ok || !data.access_token) {
     throw new Error(`Webmotors OAuth falhou: ${data.error_description ?? JSON.stringify(data)}`);
   }
@@ -67,11 +77,12 @@ export interface WebmotorsLead {
 // ─── Buscar dados completos do lead ──────────────────────────────────────────
 
 export async function buscarLead(idLead: string, token: string): Promise<WebmotorsLead> {
-  const res = await fetch(`${BASE_URL}/leads/v1/${idLead}`, {
+  const res = await proxiedFetch(`${BASE_URL}/leads/v1/${idLead}`, {
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
+    dispatcher: proxyDispatcher,
   });
 
   if (!res.ok) {
@@ -79,7 +90,7 @@ export async function buscarLead(idLead: string, token: string): Promise<Webmoto
     throw new Error(`Webmotors GET lead ${idLead}: ${res.status} ${body}`);
   }
 
-  const d = await res.json();
+  const d = await res.json() as any;
 
   // Normaliza telefone para 55XXXXXXXXXXX
   const telRaw  = d.Telefone ?? d.telefone ?? d.Celular ?? d.celular ?? null;
