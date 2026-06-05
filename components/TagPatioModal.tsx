@@ -46,27 +46,29 @@ export interface TagPatioModalProps {
   vitrineUrl?: string;
 }
 
-// Extrai um resumo curto do motor — ex: "2.0 i-VTEC 155cv"
+// Extrai um resumo curto do motor — ex: "1.0 76cv", "2.0 155cv"
 function resumirMotor(motor: string): string {
   if (!motor) return "";
 
-  // Potência: primeiro número antes de "cv" ou "hp" em toda a string
-  const cvMatch = motor.match(/(\d+)\s*(?:cv|hp)/i);
+  // Cavalaria: primeiro número antes de "cv" ou "hp"
+  const cvMatch = motor.match(/\b(\d+)\s*(?:cv|hp)\b/i);
   const cv = cvMatch ? `${cvMatch[1]}cv` : "";
 
-  // Usa apenas o primeiro segmento (antes da primeira vírgula)
-  const seg = motor.split(",")[0].trim();
+  // Cilindrada: primeiro padrão X.X (ex: 1.0, 2.0, 1.6, 3.5)
+  const cilMatch = motor.match(/\b(\d+[,.]\d+)\b/);
+  const cil = cilMatch ? cilMatch[1].replace(",", ".") : "";
 
-  // Remove palavras de combustível e sufixos genéricos
-  const limpo = seg
-    .replace(/\b(flex(one|fuel)?|gasolina|diesel|gnv|elétrico|híbrido|hibrido|etanol|álcool|alcool|bioflex)\b/gi, "")
-    .replace(/\s+/g, " ")
-    .trim();
+  // Formato limpo: "1.0 76cv" — usado quando temos os dois dados
+  if (cil && cv) return `${cil} ${cv}`;
+  if (cil) return cil;
 
-  // Remove potência duplicada que já pode estar no segmento
-  const semCv = limpo.replace(/\d+\s*(?:cv|hp)\b/gi, "").replace(/\s+/g, " ").trim();
-
-  return [semCv, cv].filter(Boolean).join(" ");
+  // Fallback: remove lixo verboso e retorna os primeiros tokens úteis + cv
+  const clean = motor
+    .replace(/\([^)]*\)/g, "")
+    .replace(/\b(Motor|Total|de|em|válvulas?|valvulas?|High|Torque|Voyage|novo|antigo)\b/gi, "")
+    .replace(/\s+/g, " ").trim()
+    .split(" ").filter(Boolean).slice(0, 3).join(" ");
+  return [clean, cv].filter(Boolean).join(" ").trim();
 }
 
 function buildInitialTag(veiculo: any): TagData {
@@ -126,12 +128,20 @@ function Caixa({ checked, onChange }: { checked: boolean; onChange: () => void }
 
 // ── Nome completo do modelo (marca + modelo + versão + ano, sem duplicar versão) ─
 function nomeCompletoModelo(veiculo: any): string {
-  const marca  = String(veiculo.marca ?? "").trim();
-  const modelo = String(veiculo.modelo ?? "").trim();
+  // Limpa marca: "VW - VolksWagen" → "VolksWagen", "GM - Chevrolet" → "Chevrolet"
+  const marcaRaw = String(veiculo.marca ?? "").trim();
+  const marca = marcaRaw.includes(" - ")
+    ? marcaRaw.split(" - ").slice(1).join(" - ").trim()
+    : marcaRaw;
+
+  // Limpa modelo: remove "(novo)", "(antigo)" e similares
+  const modeloRaw = String(veiculo.modelo ?? "").trim();
+  const modelo = modeloRaw
+    .replace(/\s*\((?:novo|antigo|old|new)\)\s*/gi, " ")
+    .replace(/\s+/g, " ").trim();
+
   const versao = String(veiculo.versao ?? "").trim();
   const ano    = veiculo.ano_modelo ?? veiculo.ano ?? "";
-  // evita duplicação quando o modelo já contém a versão
-  // (ex.: modelo "T-Cross Sense 200 TSI..." + versao "Sense 200 TSI" sairia repetido)
   const versaoRedundante = versao && modelo.toLowerCase().includes(versao.toLowerCase());
   return [marca, modelo, versaoRedundante ? "" : versao, ano].filter(Boolean).join(" ");
 }
