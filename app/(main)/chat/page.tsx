@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabase";
 import { useUserRole } from "@/components/SidebarWrapper";
 import {
   Send, MessageSquare, Phone, Bot, ArrowLeft,
-  Search, User, Zap, ChevronDown, Trash2, Kanban,
+  Search, User, Zap, ChevronDown, Trash2, Kanban, X,
 } from "lucide-react";
 
 type UltimaMensagem = {
@@ -114,6 +114,13 @@ function CentralChatInner() {
   const [topoFeedback, setTopoFeedback] = useState(false);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
   const [showChat, setShowChat] = useState(false);
+  const [imagemAmpliada, setImagemAmpliada] = useState<string | null>(null);
+  useEffect(() => {
+    if (!imagemAmpliada) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setImagemAmpliada(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [imagemAmpliada]);
   const [busca, setBusca] = useState("");
   const [filtro, setFiltro] = useState<Filtro>("Todos");
   const [paginaLeads, setPaginaLeads] = useState(0);
@@ -724,8 +731,9 @@ function CentralChatInner() {
                         <img
                           src={msg.media_url}
                           alt={isAgente ? (msg.content || "Foto do veículo") : "Foto enviada pelo cliente"}
-                          className="max-w-[260px] max-h-[300px] object-cover rounded-2xl shadow-md"
+                          className="max-w-[260px] max-h-[300px] object-cover rounded-2xl shadow-md cursor-zoom-in hover:opacity-95 transition-opacity"
                           loading="lazy"
+                          onClick={() => setImagemAmpliada(msg.media_url!)}
                         />
                         {!isAgente && (
                           <span className="text-[10px] text-gray-400 px-1">📷 Foto do cliente</span>
@@ -822,6 +830,30 @@ function CentralChatInner() {
           <p className="text-[10px] font-bold uppercase tracking-widest text-gray-300">
             Escolha uma conversa na barra lateral para ver o histórico.
           </p>
+        </div>
+      )}
+
+      {/* Lightbox — foto ampliada (clique fora ou Esc para fechar) */}
+      {imagemAmpliada && (
+        <div
+          className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setImagemAmpliada(null)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <button
+            onClick={() => setImagemAmpliada(null)}
+            className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white grid place-items-center transition-colors"
+            aria-label="Fechar"
+          >
+            <X size={20} />
+          </button>
+          <img
+            src={imagemAmpliada}
+            alt="Foto ampliada"
+            className="max-w-full max-h-full object-contain rounded-2xl shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
         </div>
       )}
     </div>
