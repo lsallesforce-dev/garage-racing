@@ -134,6 +134,14 @@ function CentralChatInner() {
       query = query.eq("vendedor_id", meuVendedorId ?? "00000000-0000-0000-0000-000000000000");
     }
 
+    // Filtro server-side: sem isso os leads em HUMANO ficam enterrados após a pág 1
+    // (leads antigos com updated_at velho nunca aparecem no filtro client-side).
+    if (filtro === "HUMANO") {
+      query = query.eq("em_atendimento_humano", true);
+    } else if (filtro !== "Todos") {
+      query = query.eq("status", filtro);
+    }
+
     const { data: leadsData, count } = await query
       .order("updated_at", { ascending: false })
       .range(pagina * PAGE_SIZE, (pagina + 1) * PAGE_SIZE - 1);
@@ -167,7 +175,7 @@ function CentralChatInner() {
 
     setLeads(prev => acumular ? [...prev, ...novos] : novos);
     setPaginaLeads(pagina);
-  }, [effectiveUserId, isVendedor, meuVendedorId, vendedorResolvido]);
+  }, [effectiveUserId, isVendedor, meuVendedorId, vendedorResolvido, filtro]);
 
   const carregarMais = async () => {
     setCarregandoMais(true);
@@ -420,7 +428,7 @@ function CentralChatInner() {
               return (
                 <button
                   key={f}
-                  onClick={() => setFiltro(f)}
+                  onClick={() => { setFiltro(f); setPaginaLeads(0); }}
                   className={`flex-shrink-0 px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all ${
                     filtro === f ? colors.active : colors.inactive
                   }`}
