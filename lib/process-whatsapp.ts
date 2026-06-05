@@ -1234,7 +1234,10 @@ Responda apenas com o JSON, sem markdown.`;
   // do agente — NÃO em mensagens iniciais repetidas (cliente clicando no anúncio várias
   // vezes) nem em eventos não-mensagem. Isso impede o ciclo de follow-up de reiniciar
   // sozinho e causar spam.
-  const upsertData: Record<string, any> = { wa_id: phone, user_id: tenantUserId };
+  // updated_at explícito garante que o lead sobe ao topo da lista do chat
+  // a cada mensagem recebida — sem isso, leads em stand-by ficam enterrados
+  // com updated_at antigo e somem além da página 1.
+  const upsertData: Record<string, any> = { wa_id: phone, user_id: tenantUserId, updated_at: new Date().toISOString() };
 
   // Zera followup_count somente se a última msg do histórico foi do AGENTE
   // (= cliente realmente respondendo, não primeira interação)
