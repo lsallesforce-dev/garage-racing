@@ -26,7 +26,20 @@ const IS_PROD = process.env.WEBMOTORS_ENV === "producao";
 const DEFAULT_SOAP_BASE = IS_PROD
   ? "https://integracao.webmotors.com.br"
   : "https://hportal.webmotors.com.br/IntegracaoRevendedor";
-const SOAP_BASE = (process.env.WEBMOTORS_SOAP_URL || DEFAULT_SOAP_BASE).replace(/\/+$/, "");
+// Override por env, MAS ignora valores legados que apontam pro gateway Sensedia (API errada
+// p/ o SOAP de estoque). Assim um WEBMOTORS_SOAP_URL antigo no Vercel não volta a quebrar a
+// publicação — o default oficial do manual prevalece.
+const SOAP_URL_OVERRIDE = (process.env.WEBMOTORS_SOAP_URL || "").trim();
+if (SOAP_URL_OVERRIDE && /sensedia\.com/i.test(SOAP_URL_OVERRIDE)) {
+  console.warn(
+    `⚠️ [Webmotors] WEBMOTORS_SOAP_URL legado ("${SOAP_URL_OVERRIDE}") ignorado — usando ${DEFAULT_SOAP_BASE}. Remova essa env var no Vercel.`
+  );
+}
+const SOAP_BASE = (
+  SOAP_URL_OVERRIDE && !/sensedia\.com/i.test(SOAP_URL_OVERRIDE)
+    ? SOAP_URL_OVERRIDE
+    : DEFAULT_SOAP_BASE
+).replace(/\/+$/, "");
 const STATIC_BEARER = process.env.WEBMOTORS_BEARER ?? "";
 
 const NS = "www.webmotors.com.br/wsEstoqueRevendedorWebMotors";
