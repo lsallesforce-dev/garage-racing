@@ -12,9 +12,17 @@ import {
 } from "lucide-react";
 import { GenerateMarketingVideoButton } from "@/components/GenerateMarketingVideoButton";
 import PublicarMetaButton from "@/components/PublicarMetaButton";
-import { TagPatioModal } from "@/components/TagPatioModal";
+import dynamic from "next/dynamic";
 import { toVideoUrl } from "@/lib/r2-url";
 import Link from "next/link";
+
+// TagPatioModal usa jspdf/html2canvas (browser-only). Carregado client-side com
+// ssr:false para não entrar no grafo de SSR — lá o jspdf resolve pro build Node
+// (jspdf.node.min.js → fflate worker) que o Turbopack não consegue bundlar.
+const TagPatioModal = dynamic(
+  () => import("@/components/TagPatioModal").then((m) => m.TagPatioModal),
+  { ssr: false },
+);
 
 // ─── Opcionais: lista mestre por categoria ────────────────────────────────────
 export const OPCIONAIS_CATEGORIAS: { categoria: string; itens: string[] }[] = [
