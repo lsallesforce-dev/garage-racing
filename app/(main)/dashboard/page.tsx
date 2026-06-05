@@ -75,6 +75,7 @@ type FunilData = {
     msgsIAMes: number;
     followupsEnviados: number;
     leadsQuente: number;
+    leadsSemAtendimento: number;
   };
   etapas: EtapaInfo[];
   leads: LeadItem[];
@@ -87,6 +88,13 @@ type FunilData = {
 
 // Cron roda 6x/dia: 11,13,15,17,19,21h UTC = 8,10,12,14,16,18h BRT
 const CRON_HORAS_BRT = [8, 10, 12, 14, 16, 18];
+
+async function devolverParaIA(): Promise<number> {
+  const res = await fetch("/api/leads/devolver-ia", { method: "POST" });
+  if (!res.ok) throw new Error("Erro ao devolver leads");
+  const json = await res.json();
+  return json.restored as number;
+}
 
 function proximoReengajamento(): string {
   const agora = new Date();
@@ -167,6 +175,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [etapaFiltro, setEtapaFiltro] = useState<Etapa | null>(null);
   const [expandVeiculos, setExpandVeiculos] = useState(false);
+  const [devolvendoIA, setDevolvendoIA] = useState(false);
   const [nomeEmpresa, setNomeEmpresa] = useState("");
   const [diasTrial, setDiasTrial] = useState<number | null>(null);
   const [planoId, setPlanoId] = useState("pro");
@@ -337,7 +346,7 @@ export default function Dashboard() {
             </div>
 
             {/* KPIs de Atividade */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
 
               {/* Leads — Hoje / Semana / Mês */}
               <div className="bg-white p-4 md:p-5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all">
@@ -420,6 +429,48 @@ export default function Dashboard() {
                   </div>
                 )}
               </div>
+
+              {/* Sem Atendimento */}
+              <div className={`p-4 md:p-5 rounded-2xl border-2 transition-all ${
+                data.kpis.leadsSemAtendimento > 0
+                  ? "bg-orange-50 border-orange-200"
+                  : "bg-white border-gray-100"
+              }`}>
+                <div className="flex items-start justify-between mb-3">
+                  <p className={`text-[9px] font-black uppercase tracking-widest ${
+                    data.kpis.leadsSemAtendimento > 0 ? "text-orange-500" : "text-gray-400"
+                  }`}>Sem Atendimento</p>
+                </div>
+                <h4 className={`text-3xl font-black italic tracking-tighter ${
+                  data.kpis.leadsSemAtendimento > 0 ? "text-orange-600" : "text-gray-700"
+                }`}>{data.kpis.leadsSemAtendimento}</h4>
+                <p className={`text-[9px] font-bold uppercase mt-1 ${
+                  data.kpis.leadsSemAtendimento > 0 ? "text-orange-500/70" : "text-gray-400"
+                }`}>IA muda há &gt; 48h</p>
+                {data.kpis.leadsSemAtendimento > 0 && (
+                  <div className="mt-2 pt-2 border-t border-orange-100">
+                    <button
+                      disabled={devolvendoIA}
+                      onClick={async () => {
+                        setDevolvendoIA(true);
+                        try {
+                          const restored = await devolverParaIA();
+                          alert(`✅ ${restored} lead${restored !== 1 ? "s" : ""} devolvido${restored !== 1 ? "s" : ""} para a IA.`);
+                          carregar();
+                        } catch {
+                          alert("Erro ao devolver leads. Tente novamente.");
+                        } finally {
+                          setDevolvendoIA(false);
+                        }
+                      }}
+                      className="w-full text-[9px] font-black uppercase tracking-widest text-orange-600 bg-orange-100 hover:bg-orange-200 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg px-2 py-1.5 transition-colors"
+                    >
+                      {devolvendoIA ? "Devolvendo…" : "🤖 Devolver pra IA"}
+                    </button>
+                  </div>
+                )}
+              </div>
+
             </div>
 
 

@@ -36,6 +36,7 @@ export async function GET(req: NextRequest) {
     { count: msgsIAMes },
     { count: followupsEnviados },
     { count: leadsQuente },
+    { count: leadsSemAtendimento },
   ] = await Promise.all([
     // Todos os leads dos últimos 6 meses com dados do veículo
     supabaseAdmin.from("leads")
@@ -132,6 +133,14 @@ export async function GET(req: NextRequest) {
       .select("*", { count: "exact", head: true })
       .eq("user_id", userId)
       .eq("status", "QUENTE"),
+
+    // Leads parados: em atendimento humano há mais de 48h (não vendidos/perdidos)
+    supabaseAdmin.from("leads")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("em_atendimento_humano", true)
+      .not("etapa_funil", "in", '("VENDIDO","PERDIDO")')
+      .lt("updated_at", limite48h.toISOString()),
   ]);
 
   const leads = todosLeads ?? [];
@@ -268,7 +277,8 @@ export async function GET(req: NextRequest) {
       msgsIASemana:       msgsIASemana       ?? 0,
       msgsIAMes:          msgsIAMes          ?? 0,
       followupsEnviados:  followupsEnviados  ?? 0,
-      leadsQuente:        leadsQuente        ?? 0,
+      leadsQuente:           leadsQuente           ?? 0,
+      leadsSemAtendimento:   leadsSemAtendimento   ?? 0,
     },
     etapas,
     leads: leadsFormatados,
