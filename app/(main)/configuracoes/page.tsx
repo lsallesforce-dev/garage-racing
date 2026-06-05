@@ -771,6 +771,25 @@ export default function ConfiguracoesPage() {
 
             <div className="flex flex-col gap-1.5">
               <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+                Nome da Vitrine <span className="text-gray-400 normal-case font-normal">(slug da URL pública)</span>
+              </label>
+              <div className="flex items-center bg-[#f5f5f3] border border-gray-200 rounded-xl overflow-hidden focus-within:border-red-500 focus-within:ring-1 focus-within:ring-red-500 transition">
+                <span className="px-3 text-xs text-gray-400 font-semibold whitespace-nowrap border-r border-gray-200 py-2.5">autozap.digital/vitrine/</span>
+                <input
+                  type="text"
+                  value={config.vitrine_slug ?? ""}
+                  onChange={e => setConfig(c => ({ ...c, vitrine_slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "") }))}
+                  placeholder="minha-loja"
+                  className="flex-1 bg-transparent px-3 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none"
+                />
+              </div>
+              <p className="text-[9px] text-gray-400 mt-0.5">
+                Usado no QR code da tag de pátio e na vitrine pública. Só letras minúsculas, números e hífens.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
                 Razão Social <span className="text-gray-400 normal-case font-normal">(para contratos)</span>
               </label>
               <input
