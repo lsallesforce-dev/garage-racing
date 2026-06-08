@@ -227,7 +227,7 @@ export async function coletarRevendas({
 
   const input = {
     searchStringsArray: queries,
-    language: "pt",
+    language: "pt-BR",
     maxCrawledPlacesPerSearch: maxPerSearch,
   };
 
