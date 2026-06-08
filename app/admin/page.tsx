@@ -6,8 +6,9 @@ import {
   XCircle, ExternalLink, Copy, Plus, X, Loader2, RefreshCw, Activity,
   Music, Upload, CheckCircle, DollarSign, Lock, Unlock, Eye, TrendingUp,
   Clock, AlertCircle, BarChart3, Shield, Settings, ChevronDown, ChevronUp,
-  Wallet, ArrowDownToLine, Hourglass, CreditCard,
+  Wallet, ArrowDownToLine, Hourglass, CreditCard, Target,
 } from "lucide-react";
+import VendasTab from "./VendasTab";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell,
@@ -15,7 +16,7 @@ import {
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
-type Tab = "overview" | "clientes" | "financeiro" | "sistema" | "pendentes";
+type Tab = "overview" | "clientes" | "financeiro" | "sistema" | "pendentes" | "vendas";
 type ServiceStatus = "ok" | "degraded" | "error" | "loading";
 type PlanoStatus = "trial" | "ativo" | "expirado";
 
@@ -551,6 +552,7 @@ export default function AdminPage() {
     { id: "overview",   label: "Visão Geral", icon: BarChart3                           },
     { id: "clientes",   label: "Clientes",    icon: Building2                           },
     { id: "financeiro", label: "Financeiro",  icon: DollarSign                          },
+    { id: "vendas",     label: "Vendas",      icon: Target                              },
     { id: "pendentes",  label: "Pendentes",   icon: Hourglass,  badge: pendentes.length },
     { id: "sistema",    label: "Sistema",     icon: Settings                            },
   ];
@@ -1345,6 +1347,11 @@ CREATE INDEX IF NOT EXISTS agenda_user_data ON agenda (user_id, data_hora);`}</p
             </div>
           </div>
         )}
+
+        {/* ══════════════════════════════════════════════════════════════════ */}
+        {/* ABA: VENDAS (Prospecção B2B)                                       */}
+        {/* ══════════════════════════════════════════════════════════════════ */}
+        {tab === "vendas" && <VendasTab secret={secret} />}
 
       </main>
     </div>
