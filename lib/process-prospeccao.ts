@@ -12,7 +12,7 @@
 // ou pedido de preço/negociação), faz HANDOFF para um humano.
 // =============================================================================
 
-import { geminiFlashSales, geminiFlashFallback } from "@/lib/gemini";
+import { geminiFlashSales, geminiFlashFallback, parseGeminiJson } from "@/lib/gemini";
 import type { Prospect, ProspectMensagem } from "@/lib/prospeccao-types";
 
 // Temperatura da conversa de prospecção (espelha o padrão FRIO/MORNO/QUENTE do B2C).
@@ -156,7 +156,7 @@ const FALLBACK: RespostaProspeccao = {
 
 // ─── Saneamento da saída do Gemini ───────────────────────────────────────────
 function parseResposta(jsonText: string): RespostaProspeccao {
-  const parsed = JSON.parse(jsonText);
+  const parsed = parseGeminiJson(jsonText);
 
   const temperatura: ProspeccaoTemperatura =
     typeof parsed.temperatura === "string" && VALID_TEMPERATURAS.includes(parsed.temperatura)

@@ -15,6 +15,39 @@ export const geminiFlashFallback = genAI.getGenerativeModel(
   { apiVersion: "v1beta" }
 );
 
+/**
+ * JSON.parse tolerante à saída do Gemini. O modelo às vezes deixa caracteres de controle
+ * CRUS (quebra de linha, tab) DENTRO das strings do JSON — ex: uma "resposta" com \n
+ * literal — e o JSON.parse padrão rejeita com "Bad control character in string literal".
+ * Aqui tentamos o parse normal e, se falhar, escapamos os control chars APENAS dentro de
+ * strings (a quebra vira \n escapado, preservando o texto/as bolhas) e tentamos de novo.
+ * Lança se ainda assim não for JSON válido — o chamador decide o fallback.
+ */
+export function parseGeminiJson(text: string): any {
+  try {
+    return JSON.parse(text);
+  } catch {
+    let out = "";
+    let inString = false;
+    let escaped = false;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (escaped) { out += ch; escaped = false; continue; }
+      if (ch === "\\") { out += ch; escaped = true; continue; }
+      if (ch === '"') { inString = !inString; out += ch; continue; }
+      if (inString && ch.charCodeAt(0) < 0x20) {
+        if (ch === "\n") out += "\\n";
+        else if (ch === "\r") out += "\\r";
+        else if (ch === "\t") out += "\\t";
+        else out += "\\u" + ch.charCodeAt(0).toString(16).padStart(4, "0");
+        continue;
+      }
+      out += ch;
+    }
+    return JSON.parse(out);
+  }
+}
+
 // Retorna o vetor de embedding ou null se indisponível.
 // null sinaliza explicitamente "busca semântica indisponível" — nunca retorna zeros
 // para não poluir o pgvector com vetores nulos que parecem válidos.

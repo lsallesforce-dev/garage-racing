@@ -3,7 +3,7 @@
 // Executado via after() no webhook — não bloqueia o 200 OK para a Meta
 
 import { createDecipheriv, hkdfSync } from "node:crypto";
-import { geminiFlashSales, geminiFlashFallback } from "@/lib/gemini";
+import { geminiFlashSales, geminiFlashFallback, parseGeminiJson } from "@/lib/gemini";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendMetaMessage, sendMetaImage, sendMetaVideo, sendMetaCtaButton, markMetaRead } from "@/lib/meta";
 import { sendAvisaMessage, sendAvisaImage, sendAvisaVideo } from "@/lib/avisa";
@@ -2435,7 +2435,7 @@ Responda apenas com o JSON, sem markdown.`;
       let jsonResponseText = "";
       try {
         jsonResponseText = result.response.text();
-        let parsed = JSON.parse(jsonResponseText);
+        let parsed = parseGeminiJson(jsonResponseText);
 
         // Retry 1x se o Gemini devolveu JSON sem texto em "resposta" (glitch ocasional de
         // formato — o modelo está vivo, só engasgou). Evita mandar mensagem de erro ao cliente.
@@ -2443,7 +2443,7 @@ Responda apenas com o JSON, sem markdown.`;
           console.warn("⚠️ Gemini retornou resposta vazia — re-gerando 1x");
           try {
             const retry = await geminiFlashSales.generateContent(chatRequest);
-            const retryParsed = JSON.parse(retry.response.text());
+            const retryParsed = parseGeminiJson(retry.response.text());
             if (retryParsed?.resposta && String(retryParsed.resposta).trim()) {
               parsed = retryParsed;
               console.log("✅ Retry trouxe resposta válida");
