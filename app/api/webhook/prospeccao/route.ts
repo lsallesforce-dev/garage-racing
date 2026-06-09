@@ -256,14 +256,21 @@ export async function POST(req: NextRequest) {
     patchBase.status = "respondeu";
   }
 
-  // ── Envia a resposta (graceful se credenciais ausentes) ─────────────────────
+  // ── Envia a resposta em BOLHAS (graceful se credenciais ausentes) ────────────
+  // Quebra por linha em branco e envia cada bloco como mensagem separada, igual
+  // gente digitando no Whats. sendAvisaMessage já aplica o delay humanizado.
+  const bolhas = r.resposta.split(/\n\s*\n/).map((b) => b.trim()).filter(Boolean).slice(0, 4);
+  const mensagensEnviar = bolhas.length ? bolhas : [r.resposta.trim()].filter(Boolean);
+
   const creds = autozapAvisaCreds();
   let enviada = false;
   if (!creds) {
     console.warn("⚠️ [prospeccao webhook] AUTOZAP_AVISA_* ausentes — resposta gerada mas NÃO enviada (graceful).");
   } else {
     try {
-      await sendAvisaMessage(waId, r.resposta, creds);
+      for (const bolha of mensagensEnviar) {
+        await sendAvisaMessage(waId, bolha, creds);
+      }
       enviada = true;
     } catch (err) {
       console.error("❌ [prospeccao webhook] Falha ao enviar resposta:", err);
@@ -271,13 +278,11 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Só salva a msg do agente se de fato enviou (evita histórico fantasma).
+  // Só salva as msgs do agente se de fato enviou (evita histórico fantasma).
   if (enviada) {
-    await supabaseAdmin.from("prospect_mensagens").insert({
-      prospect_id: prospect.id,
-      remetente: "agente",
-      content: r.resposta,
-    });
+    await supabaseAdmin.from("prospect_mensagens").insert(
+      mensagensEnviar.map((b) => ({ prospect_id: prospect.id, remetente: "agente", content: b }))
+    );
   }
 
   await supabaseAdmin.from("prospects").update(patchBase).eq("id", prospect.id);
