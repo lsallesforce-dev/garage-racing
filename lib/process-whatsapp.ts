@@ -2435,10 +2435,27 @@ Responda apenas com o JSON, sem markdown.`;
       let jsonResponseText = "";
       try {
         jsonResponseText = result.response.text();
-        const parsed = JSON.parse(jsonResponseText);
+        let parsed = JSON.parse(jsonResponseText);
+
+        // Retry 1x se o Gemini devolveu JSON sem texto em "resposta" (glitch ocasional de
+        // formato — o modelo está vivo, só engasgou). Evita mandar mensagem de erro ao cliente.
+        if (!parsed?.resposta || !String(parsed.resposta).trim()) {
+          console.warn("⚠️ Gemini retornou resposta vazia — re-gerando 1x");
+          try {
+            const retry = await geminiFlashSales.generateContent(chatRequest);
+            const retryParsed = JSON.parse(retry.response.text());
+            if (retryParsed?.resposta && String(retryParsed.resposta).trim()) {
+              parsed = retryParsed;
+              console.log("✅ Retry trouxe resposta válida");
+            }
+          } catch (e) {
+            console.warn("⚠️ Retry de resposta vazia falhou:", String(e).slice(0, 120));
+          }
+        }
+
         aiResponse =
           parsed.resposta ||
-          "Tivemos uma pequena instabilidade, mas já estamos de volta. Posso te ajudar com os carros do pátio?";
+          "Desculpa, pode repetir sua última mensagem? Quero te ajudar certinho.";
 
         // Strip emojis: o prompt proíbe mas o Gemini ignorava em ~22% das msgs.
         // Safety net pós-Gemini remove qualquer Extended_Pictographic (😊, 😉, 🚀, etc).
@@ -2543,14 +2560,14 @@ Responda apenas com o JSON, sem markdown.`;
         }
       } catch {
         console.error("❌ Falha ao parsear JSON do Gemini:", jsonResponseText);
-        aiResponse = "Olá! Tivemos uma pequena instabilidade aqui, mas já estou de volta.";
+        aiResponse = "Desculpa, pode repetir sua última mensagem? Quero te ajudar certinho.";
       }
     }
     } // fim do else do circuit breaker
   } catch (aiError) {
     console.error("❌ ERRO FATAL NO GEMINI:", aiError);
     aiResponse =
-      "Olá! Tivemos uma pequena instabilidade aqui, mas já estou de volta. Posso te ajudar com algum carro do nosso pátio? 🚗";
+      "Desculpa, pode repetir sua última mensagem? Quero te ajudar certinho.";
   }
 
   // ── 12-bis. BLINDAGEM: Gemini indisponível → handoff humano (não queima o lead) ──
