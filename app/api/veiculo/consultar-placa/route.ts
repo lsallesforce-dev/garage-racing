@@ -5,69 +5,70 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
+// A apibrasil INVERTE sem aviso qual "tipo" de consulta está habilitado no plano:
+//   • até 26/05/2026: só "fipe-chassi" funcionava
+//   • 27/05 → 08/06: só "fipe" (o "fipe-chassi" passou a dar erro)
+//   • 09/06: inverteu de novo — "fipe" começou a dar HTTP 500 (timeout interno deles, ~60s)
+//     e o "fipe-chassi" voltou a responder 200 com dados.
+// Para não quebrar a cada virada, tentamos os tipos EM ORDEM e usamos o primeiro que
+// trouxer dados válidos. O parser do POST normaliza as duas estruturas:
+//   "fipe-chassi" → data.resultados[] (camelCase) | "fipe" → data.data[] + data.veiculo
+const TIPOS_APIBRASIL = ["fipe-chassi", "fipe"];
+
 async function consultarApiBrasil(placa: string) {
-  // 27/05/2026: apibrasil descontinuou o tipo "fipe-chassi" sem aviso.
-  // Tipo "fipe" passou a ser o único habilitado no plano atual.
-  // Histórico do diagnóstico: /api/debug/placa-tipos confirmou que apenas
-  // "fipe" retorna 200 (último "fipe-chassi" OK foi 26/05 14:16 BRT).
-  const res = await fetch("https://gateway.apibrasil.io/api/v2/consulta/veiculos/credits", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.APIBRASIL_TOKEN}`,
-    },
-    body: JSON.stringify({ tipo: "fipe", placa, homolog: false }),
-  });
+  let lastStatus = 0;
+  let lastMsg = "";
 
-  if (!res.ok) {
-    const text = await res.text();
-
-    // Log em partes — Vercel UI trunca em ~50 chars por linha, então separamos em múltiplas
-    console.error(`[apibrasil-1] STATUS=${res.status} PLACA=${placa}`);
-    console.error(`[apibrasil-2-0to200] ${text.slice(0, 200)}`);
-    console.error(`[apibrasil-3-200to400] ${text.slice(200, 400)}`);
-    console.error(`[apibrasil-4-400to600] ${text.slice(400, 600)}`);
-    console.error(`[apibrasil-5-600to800] ${text.slice(600, 800)}`);
-    console.error(`[apibrasil-6-len] response total: ${text.length} chars`);
-
-    // Extrai mensagem amigável do JSON da apibrasil (em vez de mostrar payload cru)
-    let mensagemAmigavel = "";
-    let detectouCredito = false;
+  for (const tipo of TIPOS_APIBRASIL) {
+    let res: Response;
     try {
-      const parsed = JSON.parse(text);
-      // apibrasil costuma retornar message ou error.message no topo do JSON
-      const raw = String(parsed?.message ?? parsed?.error?.message ?? parsed?.error ?? "");
-      const upper = raw.toUpperCase();
-
-      // Detecta crédito/quota PRIMEIRO (antes de fornecedor) — apibrasil pode mascarar
-      // crédito esgotado como "sem resposta do fornecedor"
-      if (/CR[ÉE]DITO|CREDIT|QUOTA|LIMITE|SEM\s+SALDO|INSUFFICIENT/i.test(raw)) {
-        mensagemAmigavel = "Limite de consultas esgotado na apibrasil.io. Recarregue os créditos.";
-        detectouCredito = true;
-      } else if (/N[ÃA]O\s+FOI\s+POSS[ÍI]VEL\s+OBTER|FORNECEDOR/i.test(raw)) {
-        mensagemAmigavel = "Placa não encontrada ou fornecedor de dados indisponível. Verifique a placa ou tente novamente em alguns minutos.";
-      } else if (upper.includes("INVALID")) {
-        mensagemAmigavel = "Placa inválida. Confira o formato (ex: ABC1234 ou ABC1D23).";
-      } else if (raw) {
-        mensagemAmigavel = raw.slice(0, 150);
-      }
-
-      // Alerta visível no log se for crédito
-      if (detectouCredito) {
-        console.error(`💸 [apibrasil] CRÉDITOS ESGOTADOS — recarregar em https://apibrasil.io/dashboard`);
-      }
-    } catch {
-      mensagemAmigavel = text.slice(0, 150);
+      res = await fetch("https://gateway.apibrasil.io/api/v2/consulta/veiculos/credits", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.APIBRASIL_TOKEN}`,
+        },
+        body: JSON.stringify({ tipo, placa, homolog: false }),
+      });
+    } catch (e: any) {
+      lastMsg = e?.message ?? String(e);
+      console.warn(`[apibrasil] tipo=${tipo} fetch falhou: ${lastMsg.slice(0, 120)}`);
+      continue; // rede caiu — tenta o próximo tipo
     }
 
-    if (!mensagemAmigavel) {
-      mensagemAmigavel = `Falha na consulta (HTTP ${res.status}). Tente novamente ou cadastre manualmente.`;
+    const text = await res.text();
+    let parsed: any = null;
+    try { parsed = JSON.parse(text); } catch {}
+
+    // Sucesso real = 200 + sem flag de erro + algum bloco de dados presente
+    const temDados = !!(parsed?.data?.resultados?.length || parsed?.data?.data?.length || parsed?.data?.veiculo);
+    if (res.ok && parsed && !parsed.error && temDados) {
+      console.log(`[apibrasil] tipo=${tipo} OK (${placa})`);
+      return parsed;
     }
 
-    throw new Error(mensagemAmigavel);
+    lastStatus = res.status;
+    const rawMsg = String(parsed?.message ?? parsed?.error?.message ?? parsed?.error ?? text.slice(0, 200));
+    lastMsg = rawMsg;
+    console.error(`[apibrasil] tipo=${tipo} STATUS=${res.status} PLACA=${placa} MSG=${rawMsg.slice(0, 160)}`);
+
+    // Crédito esgotado é fatal para TODOS os tipos — aborta sem tentar o resto
+    if (/CR[ÉE]DITO|CREDIT|QUOTA|LIMITE|SEM\s+SALDO|INSUFFICIENT/i.test(rawMsg)) {
+      console.error("💸 [apibrasil] CRÉDITOS ESGOTADOS — recarregar em https://apibrasil.io/dashboard");
+      throw new Error("Limite de consultas esgotado na apibrasil.io. Recarregue os créditos.");
+    }
+    // Placa inválida também é fatal (formato errado não muda entre tipos)
+    if (res.status === 400 && /INVALID|inv[áa]lid/i.test(rawMsg)) {
+      throw new Error("Placa inválida. Confira o formato (ex: ABC1234 ou ABC1D23).");
+    }
+    // Demais erros (500/404/503): cai para o próximo tipo da lista
   }
 
-  return res.json();
+  // Nenhum tipo funcionou
+  if (lastStatus >= 500 || /INTERNAL_ERROR|Erro interno|FORNECEDOR|fornecedor/i.test(lastMsg)) {
+    throw new Error("A consulta de placa (serviço externo) está instável agora. Tente novamente em alguns minutos ou cadastre o veículo manualmente.");
+  }
+  throw new Error(lastMsg ? lastMsg.slice(0, 180) : `Falha na consulta de placa (HTTP ${lastStatus}). Tente novamente ou cadastre manualmente.`);
 }
 
 async function enriquecerComGemini(dadosPlaca: {
@@ -188,7 +189,7 @@ export async function POST(req: NextRequest) {
   // Dados extras do novo response (apibrasil tipo "fipe")
   const codigoFipe: string | null = fipeInfo.codigoFipe ?? fipeInfo.codigo_fipe ?? null;
   const ipvaValor: number | null = typeof fipeInfo?.ipva?.valor === "number" ? fipeInfo.ipva.valor : null;
-  const chassi: string | null = veiculoInfo.chassi ?? veiculoInfo.CHASSI ?? null;
+  const chassi: string | null = veiculoInfo.chassi ?? veiculoInfo.CHASSI ?? fipeInfo.chassi ?? fipeInfo.CHASSI ?? null;
   const cilindradas: number | null = veiculoInfo.cilindradas ? parseInt(String(veiculoInfo.cilindradas)) || null : null;
   const potenciaCv: number | null = typeof veiculoInfo.potencia === "number" ? veiculoInfo.potencia : null;
   const municipioOrigem: string | null = veiculoInfo.municipio ?? null;
