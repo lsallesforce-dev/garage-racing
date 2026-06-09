@@ -62,6 +62,33 @@ function normalizePhone(phone: string): string {
   return cleaned;
 }
 
+// ─── Quebra a resposta em BOLHAS curtas (no máx ~2 linhas cada) ───────────────
+// Não depende de o Gemini formatar: pica por linha em branco -> frase -> vírgula
+// e reagrupa em pedaços de no máximo MAX chars. Cada pedaço vira uma mensagem
+// separada no WhatsApp (igual gente digitando "manda um pedaço, manda outro").
+function quebrarEmBolhas(texto: string, MAX = 90): string[] {
+  const out: string[] = [];
+  const blocos = (texto || "").split(/\n\s*\n/).map((b) => b.trim()).filter(Boolean);
+  for (const bloco of blocos) {
+    // unidades = frases; frase longa demais é repartida por vírgula/ponto-e-vírgula
+    const unidades = bloco
+      .split(/(?<=[.!?])\s+/)
+      .flatMap((f) => (f.length <= MAX ? [f] : f.split(/(?<=[,;])\s+/)));
+    let atual = "";
+    for (const u of unidades) {
+      const cand = atual ? `${atual} ${u}` : u;
+      if (cand.length <= MAX) atual = cand;
+      else {
+        if (atual) out.push(atual.trim());
+        atual = u;
+      }
+    }
+    if (atual) out.push(atual.trim());
+  }
+  const limpo = out.map((b) => b.trim()).filter(Boolean);
+  return (limpo.length ? limpo : [(texto || "").trim()]).filter(Boolean).slice(0, 6);
+}
+
 // ─── Extração de campos do payload Avisa (subset do webhook existente) ────────
 function extractFields(payload: any): {
   phone: string;
@@ -256,11 +283,10 @@ export async function POST(req: NextRequest) {
     patchBase.status = "respondeu";
   }
 
-  // ── Envia a resposta em BOLHAS (graceful se credenciais ausentes) ────────────
-  // Quebra por linha em branco e envia cada bloco como mensagem separada, igual
-  // gente digitando no Whats. sendAvisaMessage já aplica o delay humanizado.
-  const bolhas = r.resposta.split(/\n\s*\n/).map((b) => b.trim()).filter(Boolean).slice(0, 4);
-  const mensagensEnviar = bolhas.length ? bolhas : [r.resposta.trim()].filter(Boolean);
+  // ── Envia a resposta em BOLHAS curtas (graceful se credenciais ausentes) ─────
+  // quebrarEmBolhas FORÇA mensagens de no máx ~2 linhas, mesmo se o Gemini mandar
+  // um bloco corrido. sendAvisaMessage já aplica o delay humanizado entre cada.
+  const mensagensEnviar = quebrarEmBolhas(r.resposta);
 
   const creds = autozapAvisaCreds();
   let enviada = false;
