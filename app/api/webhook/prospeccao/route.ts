@@ -247,7 +247,9 @@ export async function POST(req: NextRequest) {
     patchBase.opt_out = true;
   } else if (r.handoff) {
     patchBase.status = "handoff";
-    patchBase.em_atendimento_humano = true;
+    // NÃO seta em_atendimento_humano aqui: a IA continua respondendo o cliente
+    // até o HUMANO assumir de fato (via /api/admin/vendas/enviar, que marca o
+    // stand-by). Evita o "vácuo" em que o agente cala e ninguém responde.
   } else if (r.temperatura === "QUENTE") {
     patchBase.status = "quente";
   } else {
