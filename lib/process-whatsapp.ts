@@ -2356,6 +2356,7 @@ Responda apenas com o JSON, sem markdown.`;
 
   const nomeCliente = lead?.nome || null;
   let aiResponse = "";
+  let geminiIndisponivel = false; // blindagem: Gemini fora (circuit/cota) → handoff humano, não queima o lead
   let resumo = "";
   let temperatura: Temperatura = "FRIO";
   let alertaGerenteJaEnviado = false; // dedup: evita alerta duplicado (Gemini + keyword)
@@ -2402,8 +2403,8 @@ Responda apenas com o JSON, sem markdown.`;
     // Circuit breaker: se Gemini acumulou falhas recentes, responde imediatamente
     // sem nem tentar a chamada — poupa timeout e cota desperdiçada
     if (await circuitIsOpen("gemini")) {
-      console.warn("⚡ Circuit breaker ABERTO para Gemini — resposta de fallback sem chamar API");
-      aiResponse = "Oi! Estou com uma instabilidade técnica agora, mas já vou resolver. Me manda uma mensagem em alguns minutinhos? 🙏";
+      console.warn("⚡ Circuit breaker ABERTO para Gemini — handoff humano (sem chamar API)");
+      geminiIndisponivel = true;
     } else {
     let result;
     try {
@@ -2417,9 +2418,8 @@ Responda apenas com o JSON, sem markdown.`;
           await circuitRecordSuccess("gemini");
         } catch (fallbackError: any) {
           if (fallbackError?.status === 429) {
-            console.error("❌ Todos os modelos Gemini indisponíveis (spending cap)");
-            aiResponse =
-              "Oi! Estou com uma instabilidade técnica agora, mas já vou resolver. Me manda uma mensagem em alguns minutinhos? 🙏";
+            console.error("❌ Todos os modelos Gemini indisponíveis (spending cap) — handoff humano");
+            geminiIndisponivel = true;
           } else {
             await circuitRecordFailure("gemini");
             throw fallbackError;
@@ -2551,6 +2551,33 @@ Responda apenas com o JSON, sem markdown.`;
     console.error("❌ ERRO FATAL NO GEMINI:", aiError);
     aiResponse =
       "Olá! Tivemos uma pequena instabilidade aqui, mas já estou de volta. Posso te ajudar com algum carro do nosso pátio? 🚗";
+  }
+
+  // ── 12-bis. BLINDAGEM: Gemini indisponível → handoff humano (não queima o lead) ──
+  // Disparado quando o circuit breaker está aberto OU ambos os modelos Gemini caem em
+  // 429 (cota/billing). Em vez de mandar "instabilidade técnica" e abandonar o cliente,
+  // acolhe com uma mensagem neutra, coloca o lead em atendimento humano e alerta o
+  // gerente para assumir. O lead pago não se perde mesmo com a IA fora do ar.
+  if (geminiIndisponivel) {
+    const msgAcolhimento = "Oi! Recebi sua mensagem aqui 😊 Já passei pro nosso time — em instantes alguém te responde por aqui.";
+    await sendText(phone, msgAcolhimento).catch(() => {});
+    if (lead?.id) {
+      await supabaseAdmin.from("mensagens").insert({ lead_id: lead.id, content: msgAcolhimento, remetente: "agente" });
+      await supabaseAdmin.from("leads").update({ em_atendimento_humano: true }).eq("id", lead.id);
+      if (gerentePhone && !alertaGerenteJaEnviado) {
+        const nomeLeadGd = (lead as any).nome || `Lead ${phone.slice(-4)}`;
+        const veiculoLabelGd = veiculoPrincipal ? `\n🚗 Interesse: ${veiculoPrincipal.marca} ${veiculoPrincipal.modelo}` : "";
+        await sendAlertComLink(
+          gerentePhone,
+          `🤖 *Assistente fora do ar — assuma o lead*\n\n👤 Cliente: ${nomeLeadGd}\n📱 Número: +${phone}${veiculoLabelGd}\n\n💬 "${rawMessage.slice(0, 200)}"\n\n⚠️ A IA está indisponível (cota/instabilidade) e já avisou o cliente que alguém responde em seguida. Assuma a conversa para não perder o lead.`,
+          phone
+        ).catch(() => {});
+        alertaGerenteJaEnviado = true;
+      }
+      await releaseLeadLock(tenantUserId, lead.id).catch(() => {});
+    }
+    console.warn(`🛟 [Blindagem Gemini] Handoff humano para ${phone} — gerente notificado, lead em stand-by`);
+    return;
   }
 
   // ── 12b. GUARDA ANTI-MENTIRA DE ESTOQUE ─────────────────────────────────────
