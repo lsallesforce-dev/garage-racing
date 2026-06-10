@@ -634,13 +634,13 @@ function Campanha({ headers }: { headers: Record<string, string> }) {
     else alert("Erro ao salvar config.");
   }
 
-  async function importar() {
+  async function importar(reaproveitar = false) {
     setImportando(true);
     setImportResult(null);
     const qs = queries.split("\n").map(q => q.trim()).filter(Boolean);
     const res = await fetch("/api/admin/vendas/importar", {
       method: "POST", headers,
-      body: JSON.stringify({ queries: qs.length ? qs : undefined }),
+      body: JSON.stringify({ queries: qs.length ? qs : undefined, reaproveitar: reaproveitar || undefined }),
     });
     setImportando(false);
     if (res.ok) {
@@ -771,13 +771,18 @@ function Campanha({ headers }: { headers: Record<string, string> }) {
         <textarea rows={5} value={queries} onChange={e => setQueries(e.target.value)}
           placeholder={"revenda de carros em São Paulo SP\nloja de carros usados Campinas SP\nmultimarcas Belo Horizonte MG"}
           className={`${inputCls} resize-none font-mono text-[12px]`} />
-        <button onClick={importar} disabled={importando}
+        <button onClick={() => importar(false)} disabled={importando}
           className="w-full py-3 rounded-2xl font-black uppercase text-[11px] tracking-widest bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50 flex items-center justify-center gap-2">
           {importando ? <><Loader2 size={14} className="animate-spin" /> Importando...</> : <><Download size={14} /> Importar Revendas</>}
         </button>
+        <button onClick={() => importar(true)} disabled={importando}
+          title="Importa o resultado da última coleta paga na Apify, sem rodar busca nova"
+          className="w-full py-2.5 rounded-2xl font-black uppercase text-[10px] tracking-widest bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 transition disabled:opacity-50 flex items-center justify-center gap-2">
+          <RefreshCw size={12} /> Reaproveitar última coleta (sem gastar crédito)
+        </button>
         {importResult && (
-          <div className="rounded-2xl px-4 py-3 bg-green-50 border border-green-200">
-            <p className="text-green-700 text-[11px] font-black uppercase tracking-widest">{importResult}</p>
+          <div className={`rounded-2xl px-4 py-3 border ${importResult.startsWith("Erro") ? "bg-red-50 border-red-200" : "bg-green-50 border-green-200"}`}>
+            <p className={`text-[11px] font-black uppercase tracking-widest ${importResult.startsWith("Erro") ? "text-red-700" : "text-green-700"}`}>{importResult}</p>
           </div>
         )}
       </div>

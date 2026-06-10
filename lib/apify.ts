@@ -249,3 +249,30 @@ export async function coletarRevendas({
     .filter((it): it is Record<string, unknown> => !!it && typeof it === "object")
     .map(normalizarItem);
 }
+
+/**
+ * Busca os itens da ÚLTIMA execução bem-sucedida do actor SEM rodar coleta
+ * nova — a Apify guarda o dataset das runs por alguns dias. Serve para
+ * reimportar dados já pagos quando o salvamento falhou (zero crédito gasto).
+ */
+export async function buscarUltimaColeta(): Promise<RevendaColetada[]> {
+  const token = process.env.APIFY_TOKEN;
+  if (!token) throw new Error("APIFY_TOKEN não configurado");
+
+  const endpoint =
+    `https://api.apify.com/v2/acts/${APIFY_ACTOR}/runs/last/dataset/items` +
+    `?token=${encodeURIComponent(token)}&status=SUCCEEDED`;
+
+  const res = await fetch(endpoint);
+  if (!res.ok) {
+    const detalhe = await res.text().catch(() => "");
+    throw new Error(`Apify (última coleta) falhou (${res.status}): ${detalhe.slice(0, 500)}`);
+  }
+
+  const dataset = (await res.json()) as unknown;
+  if (!Array.isArray(dataset)) return [];
+
+  return dataset
+    .filter((it): it is Record<string, unknown> => !!it && typeof it === "object")
+    .map(normalizarItem);
+}

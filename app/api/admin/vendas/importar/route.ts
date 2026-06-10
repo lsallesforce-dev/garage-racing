@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireAdminSecret } from "@/lib/api-auth";
-import { coletarRevendas, type RevendaColetada } from "@/lib/apify";
+import { coletarRevendas, buscarUltimaColeta, type RevendaColetada } from "@/lib/apify";
 import { calcularScore } from "@/lib/prospeccao-scoring";
 
 // Buscas default caso o caller não envie `queries` (idealmente o caller manda).
@@ -30,6 +30,7 @@ export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as {
     queries?: string[];
     maxPerSearch?: number;
+    reaproveitar?: boolean; // true = importa o dataset da ÚLTIMA run paga, sem coleta nova
   };
 
   const queries =
@@ -45,10 +46,13 @@ export async function POST(req: NextRequest) {
       ? Math.floor(body.maxPerSearch)
       : 100;
 
-  // 1) Coleta na Apify
+  // 1) Coleta na Apify (ou reaproveita o dataset da última run, já pago)
   let revendas: RevendaColetada[];
   try {
-    revendas = await coletarRevendas({ queries, maxPerSearch });
+    revendas =
+      body.reaproveitar === true
+        ? await buscarUltimaColeta()
+        : await coletarRevendas({ queries, maxPerSearch });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Falha ao coletar na Apify";
     console.error("❌ [vendas/importar] coleta Apify falhou:", msg);
@@ -122,10 +126,11 @@ export async function POST(req: NextRequest) {
     };
 
     // Status: preserva o de quem já avançou na cadência; novos entram como 'novo'.
-    // (Se já existe e ainda está 'novo', reescrever 'novo' é inócuo.)
-    if (!jaExiste || statusAtual === "novo") {
-      row.status = "novo";
-    }
+    // Status SEMPRE presente no payload: o upsert do PostgREST é colunar — se
+    // outra row do lote tem `status` e esta não, vai NULL e estoura o NOT NULL
+    // do banco. Inserts entram como "novo"; quem já avançou no funil preserva
+    // o estágio atual (reescrever o mesmo valor é inócuo).
+    row.status = !jaExiste || statusAtual === "novo" ? "novo" : statusAtual;
 
     rows.push(row);
   }
