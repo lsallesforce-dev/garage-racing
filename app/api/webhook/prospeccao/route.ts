@@ -268,6 +268,16 @@ export async function POST(req: NextRequest) {
 
   const r = await gerarRespostaProspeccao({ prospect, mensagens });
 
+  // ── Blindagem: Gemini fora do ar → silêncio + alerta (nunca desculpa técnica) ─
+  // O prospect é um potencial assinante vendo a IA em ação; vendedor humano que
+  // demora é normal. Sem resposta salva, a conversa retoma sozinha na próxima
+  // mensagem dele (ou no follow-up do cron) quando o Gemini voltar.
+  if (r.gemini_fora) {
+    console.warn(`🛟 [Blindagem Gemini B2B] IA indisponível — silêncio para ${prospect.nome_empresa}; gerente alertado.`);
+    await alertarHandoff(prospect, "IA indisponível agora — responda você pelo Inbox de Vendas");
+    return NextResponse.json({ status: "gemini_fora_silencio" });
+  }
+
   // ── Define o novo status conforme a leitura do agente ───────────────────────
   if (r.opt_out) {
     patchBase.status = "opt_out";

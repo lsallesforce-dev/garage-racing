@@ -26,6 +26,8 @@ export interface RespostaProspeccao {
   handoff: boolean;
   motivo_handoff: string | null;
   opt_out: boolean;
+  /** true = os 2 modelos Gemini fora do ar — o caller NÃO deve responder o prospect (silêncio + alerta). */
+  gemini_fora?: boolean;
 }
 
 const VALID_TEMPERATURAS: ProspeccaoTemperatura[] = ["FRIO", "MORNO", "QUENTE"];
@@ -144,14 +146,30 @@ function buildHistorico(mensagens: ProspectMensagem[]): { role: "user" | "model"
   return mapped;
 }
 
-const FALLBACK: RespostaProspeccao = {
-  resposta:
-    "Opa, tive uma instabilidade técnica rapidinha aqui. Me dá um minutinho que já te respondo direitinho!",
+// Parse falhou 2x com o Gemini no ar: pede reenvio de um jeito 100% humano
+// ("mensagem cortada" acontece no WhatsApp). PROIBIDO mencionar "instabilidade"
+// ou termos técnicos: o prospect é um potencial assinante vendo a IA em ação,
+// e o Gemini copia frases do histórico e as repete depois.
+const FALLBACK_REENVIO: RespostaProspeccao = {
+  resposta: "Opa, acho que tua última mensagem não chegou inteira aqui. Pode mandar de novo?",
   temperatura: "FRIO",
   qualificado: false,
   handoff: false,
   motivo_handoff: null,
   opt_out: false,
+};
+
+// Gemini totalmente fora (cota/billing/erro nos 2 modelos): silêncio > desculpa
+// robótica — vendedor humano que demora a responder é normal. O webhook alerta o
+// gerente e a conversa retoma sozinha quando o Gemini voltar.
+const GEMINI_FORA: RespostaProspeccao = {
+  resposta: "",
+  temperatura: "FRIO",
+  qualificado: false,
+  handoff: false,
+  motivo_handoff: null,
+  opt_out: false,
+  gemini_fora: true,
 };
 
 // ─── Saneamento da saída do Gemini ───────────────────────────────────────────
@@ -166,10 +184,11 @@ function parseResposta(jsonText: string): RespostaProspeccao {
   const handoff = parsed.handoff === true;
   const opt_out = parsed.opt_out === true;
 
-  let resposta = typeof parsed.resposta === "string" ? parsed.resposta.trim() : "";
-  if (!resposta) resposta = FALLBACK.resposta;
+  // Resposta vazia NÃO vira fallback aqui — o caller re-gera 1x (mesma blindagem do B2C).
   // Normaliza espaços (mantém emojis — aqui, ao contrário do B2C, eles são permitidos com moderação).
-  resposta = resposta.replace(/\s{2,}/g, " ").trim();
+  const resposta = (typeof parsed.resposta === "string" ? parsed.resposta : "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 
   return {
     resposta,
@@ -214,30 +233,42 @@ export async function gerarRespostaProspeccao({
     generationConfig: { responseMimeType: "application/json" },
   };
 
-  let result;
-  try {
-    result = await geminiFlashSales.generateContent(chatRequest);
-  } catch (primaryError: any) {
-    if (primaryError?.status === 429) {
-      console.warn("⚠️ [prospeccao] gemini-2.5-flash atingiu spending cap, tentando fallback...");
-      try {
-        result = await geminiFlashFallback.generateContent(chatRequest);
-      } catch (fallbackError) {
-        console.error("❌ [prospeccao] Todos os modelos Gemini indisponíveis:", fallbackError);
-        return FALLBACK;
+  // Chama o Gemini (principal → fallback). null = os dois modelos fora do ar.
+  async function chamarGemini(): Promise<string | null> {
+    try {
+      const result = await geminiFlashSales.generateContent(chatRequest);
+      return result.response.text();
+    } catch (primaryError: any) {
+      if (primaryError?.status === 429) {
+        console.warn("⚠️ [prospeccao] gemini-2.5-flash atingiu spending cap, tentando fallback...");
+      } else {
+        console.error("❌ [prospeccao] Erro no modelo principal, tentando fallback:", primaryError);
       }
-    } else {
-      console.error("❌ [prospeccao] Erro ao gerar resposta:", primaryError);
-      return FALLBACK;
+      try {
+        const result = await geminiFlashFallback.generateContent(chatRequest);
+        return result.response.text();
+      } catch (fallbackError) {
+        console.error("🛟 [Blindagem Gemini B2B] Todos os modelos Gemini indisponíveis:", fallbackError);
+        return null;
+      }
     }
   }
 
-  try {
-    return parseResposta(result.response.text());
-  } catch (err) {
-    console.error("❌ [prospeccao] Falha ao parsear JSON do Gemini:", err);
-    return FALLBACK;
+  // Mesma blindagem do B2C: o Gemini às vezes devolve JSON quebrado (control char
+  // cru) ou válido porém sem "resposta" — re-gera 1x antes de desistir.
+  for (let tentativa = 1; tentativa <= 2; tentativa++) {
+    const texto = await chamarGemini();
+    if (texto === null) return GEMINI_FORA;
+    try {
+      const r = parseResposta(texto);
+      if (r.resposta) return r;
+      console.warn(`⚠️ [prospeccao] JSON veio sem "resposta" (tentativa ${tentativa}/2)`);
+    } catch (err) {
+      console.warn(`⚠️ [prospeccao] Falha ao parsear JSON do Gemini (tentativa ${tentativa}/2):`, err);
+    }
   }
+  console.error("❌ [prospeccao] Gemini sem resposta válida após 2 tentativas — pedindo reenvio ao prospect.");
+  return FALLBACK_REENVIO;
 }
 
 /**
