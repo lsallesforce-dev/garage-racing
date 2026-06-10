@@ -591,6 +591,7 @@ function Campanha({ headers }: { headers: Record<string, string> }) {
 
   // Importação
   const [queries, setQueries] = useState("");
+  const [maxPorBusca, setMaxPorBusca] = useState("");
   const [importando, setImportando] = useState(false);
   const [importResult, setImportResult] = useState<string | null>(null);
 
@@ -638,9 +639,14 @@ function Campanha({ headers }: { headers: Record<string, string> }) {
     setImportando(true);
     setImportResult(null);
     const qs = queries.split("\n").map(q => q.trim()).filter(Boolean);
+    const maxNum = parseInt(maxPorBusca, 10);
     const res = await fetch("/api/admin/vendas/importar", {
       method: "POST", headers,
-      body: JSON.stringify({ queries: qs.length ? qs : undefined, reaproveitar: reaproveitar || undefined }),
+      body: JSON.stringify({
+        queries: qs.length ? qs : undefined,
+        maxPerSearch: Number.isFinite(maxNum) && maxNum > 0 ? maxNum : undefined,
+        reaproveitar: reaproveitar || undefined,
+      }),
     });
     setImportando(false);
     if (res.ok) {
@@ -771,6 +777,15 @@ function Campanha({ headers }: { headers: Record<string, string> }) {
         <textarea rows={5} value={queries} onChange={e => setQueries(e.target.value)}
           placeholder={"revenda de carros em São Paulo SP\nloja de carros usados Campinas SP\nmultimarcas Belo Horizonte MG"}
           className={`${inputCls} resize-none font-mono text-[12px]`} />
+        <div className="flex items-center gap-3">
+          <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 whitespace-nowrap">
+            Máx. por busca
+          </label>
+          <input type="number" min={1} max={500} value={maxPorBusca}
+            onChange={e => setMaxPorBusca(e.target.value)} placeholder="100"
+            className={`${inputCls} w-28`} />
+          <span className="text-[10px] text-gray-400">A Apify cobra pelo que entrega — em cidade pequena a busca esgota antes do limite.</span>
+        </div>
         <button onClick={() => importar(false)} disabled={importando}
           className="w-full py-3 rounded-2xl font-black uppercase text-[11px] tracking-widest bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50 flex items-center justify-center gap-2">
           {importando ? <><Loader2 size={14} className="animate-spin" /> Importando...</> : <><Download size={14} /> Importar Revendas</>}
