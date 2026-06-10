@@ -645,9 +645,10 @@ function Campanha({ headers }: { headers: Record<string, string> }) {
     setImportando(false);
     if (res.ok) {
       const data = await res.json();
-      setImportResult(`${data.importados ?? 0} revenda(s) importada(s).`);
+      setImportResult(`${data.novos ?? 0} nova(s) · ${data.atualizados ?? 0} já existiam.`);
     } else {
-      setImportResult("Erro ao importar.");
+      const data = await res.json().catch(() => null);
+      setImportResult(`Erro ao importar${data?.error ? `: ${data.error}` : "."}`);
     }
   }
 

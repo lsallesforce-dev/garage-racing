@@ -13,6 +13,10 @@ import { calcularScore } from "@/lib/prospeccao-scoring";
 // Buscas default caso o caller não envie `queries` (idealmente o caller manda).
 const QUERIES_DEFAULT = ["revenda de carros", "seminovos", "veículos multimarcas"];
 
+// Coleta síncrona na Apify pode levar minutos com limite alto — sem isso a
+// function usa o default da plataforma e pode morrer no meio da coleta.
+export const maxDuration = 300;
+
 // POST { queries?: string[], maxPerSearch?: number }
 //   → { ok: true, importados, novos, atualizados }
 export async function POST(req: NextRequest) {
@@ -47,6 +51,7 @@ export async function POST(req: NextRequest) {
     revendas = await coletarRevendas({ queries, maxPerSearch });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Falha ao coletar na Apify";
+    console.error("❌ [vendas/importar] coleta Apify falhou:", msg);
     // APIFY_TOKEN ausente é tratado acima; aqui é falha da chamada → 502.
     const status = msg === "APIFY_TOKEN não configurado" ? 400 : 502;
     return NextResponse.json({ ok: false, error: msg }, { status });
@@ -125,13 +130,17 @@ export async function POST(req: NextRequest) {
     rows.push(row);
   }
 
-  // 4) Upsert com dedup por google_place_id
-  if (rows.length > 0) {
+  // 4) Upsert com dedup por google_place_id — em LOTES: upsert único de
+  // centenas de rows com `raw` jsonb grande estoura limite/timeout do Postgres.
+  const CHUNK = 50;
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const lote = rows.slice(i, i + CHUNK);
     const { error } = await supabaseAdmin
       .from("prospects")
-      .upsert(rows, { onConflict: "google_place_id" });
+      .upsert(lote, { onConflict: "google_place_id" });
 
     if (error) {
+      console.error(`❌ [vendas/importar] upsert falhou (lote ${i / CHUNK + 1}, ${lote.length} rows):`, error.message);
       return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
     }
   }
