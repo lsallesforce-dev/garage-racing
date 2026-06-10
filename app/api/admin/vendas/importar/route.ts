@@ -82,12 +82,15 @@ export async function POST(req: NextRequest) {
     if (vistos.has(placeId)) continue; // evita duplicata dentro do mesmo lote
     vistos.add(placeId);
 
-    const { score, motivo } = calcularScore(r);
+    const { score, motivo, sinais: sinaisScore } = calcularScore(r);
     const statusAtual = existentes.get(placeId);
     const jaExiste = statusAtual !== undefined;
 
     if (jaExiste) atualizados++;
     else novos++;
+
+    // Merge: sinais da Apify (análise de reviews) + sinais do scoring (whats_direto, etc.)
+    const sinaisMerged: Record<string, unknown> = { ...(r.sinais ?? {}), ...(sinaisScore ?? {}) };
 
     const row: Record<string, unknown> = {
       nome_empresa: r.nome_empresa,
@@ -102,7 +105,7 @@ export async function POST(req: NextRequest) {
       rating: r.rating,
       num_reviews: r.num_reviews,
       categoria: r.categoria,
-      sinais: r.sinais,
+      sinais: sinaisMerged,
       raw: r.raw,
       score,
       score_motivo: motivo,

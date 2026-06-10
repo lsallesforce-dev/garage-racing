@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   Loader2, RefreshCw, CheckCircle2, XCircle, Send, Bot, UserCheck,
   Download, Save, Inbox as InboxIcon, Users, ListChecks,
-  Megaphone, Activity, Ban, Search,
+  Megaphone, Activity, Ban, Search, Plus, X,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -108,6 +108,140 @@ export default function VendasTab({ secret }: { secret: string }) {
   );
 }
 
+// ─── Modal: Adicionar Prospect Manual ─────────────────────────────────────────
+
+interface AdicionarProspectModalProps {
+  headers: Record<string, string>;
+  onClose: () => void;
+  onSucesso: () => void;
+}
+
+function AdicionarProspectModal({ headers, onClose, onSucesso }: AdicionarProspectModalProps) {
+  const [nomeEmpresa, setNomeEmpresa] = useState("");
+  const [telefone, setTelefone]       = useState("");
+  const [cidade, setCidade]           = useState("");
+  const [estado, setEstado]           = useState("");
+  const [instagram, setInstagram]     = useState("");
+  const [site, setSite]               = useState("");
+  const [salvando, setSalvando]       = useState(false);
+  const [erro, setErro]               = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setErro(null);
+
+    if (!nomeEmpresa.trim()) { setErro("Nome da empresa é obrigatório."); return; }
+    if (!telefone.trim())    { setErro("Telefone/WhatsApp é obrigatório."); return; }
+
+    setSalvando(true);
+    try {
+      const res = await fetch("/api/admin/vendas/prospects", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          acao: "criar",
+          nome_empresa: nomeEmpresa.trim(),
+          telefone:     telefone.trim(),
+          cidade:       cidade.trim()    || undefined,
+          estado:       estado.trim()    || undefined,
+          instagram:    instagram.trim() || undefined,
+          site:         site.trim()      || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setErro(data.error ?? "Erro ao adicionar prospect.");
+      } else {
+        onSucesso();
+        onClose();
+      }
+    } catch {
+      setErro("Erro de rede. Tente novamente.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  const inputCls = "w-full bg-[#f5f5f3] border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition";
+  const labelCls = "text-[9px] font-black uppercase tracking-widest text-gray-400";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 flex flex-col gap-5">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-black uppercase tracking-widest text-gray-900">
+            Adicionar Prospect
+          </h2>
+          <button onClick={onClose} className="p-1.5 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition">
+            <X size={16} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          {/* Obrigatórios */}
+          <div className="flex flex-col gap-1">
+            <label className={labelCls}>Nome da Empresa *</label>
+            <input type="text" value={nomeEmpresa} onChange={e => setNomeEmpresa(e.target.value)}
+              placeholder="Ex: Multimarcas Centro SP" className={inputCls} />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className={labelCls}>Telefone / WhatsApp *</label>
+            <input type="tel" value={telefone} onChange={e => setTelefone(e.target.value)}
+              placeholder="Ex: 11987654321" className={inputCls} />
+            <p className="text-[9px] text-gray-400 mt-0.5">DDD + número (com ou sem formatação)</p>
+          </div>
+
+          {/* Opcionais */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <label className={labelCls}>Cidade</label>
+              <input type="text" value={cidade} onChange={e => setCidade(e.target.value)}
+                placeholder="São Paulo" className={inputCls} />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className={labelCls}>Estado</label>
+              <input type="text" value={estado} onChange={e => setEstado(e.target.value)}
+                placeholder="SP" maxLength={2} className={inputCls} />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className={labelCls}>Instagram (opcional)</label>
+            <input type="text" value={instagram} onChange={e => setInstagram(e.target.value)}
+              placeholder="@lojaxyz ou https://instagram.com/loja" className={inputCls} />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className={labelCls}>Site (opcional)</label>
+            <input type="url" value={site} onChange={e => setSite(e.target.value)}
+              placeholder="https://loja.com.br" className={inputCls} />
+          </div>
+
+          {/* Erro */}
+          {erro && (
+            <div className="rounded-xl px-4 py-3 bg-red-50 border border-red-200">
+              <p className="text-red-700 text-[11px] font-black uppercase tracking-widest">{erro}</p>
+            </div>
+          )}
+
+          {/* Ações */}
+          <div className="flex gap-3 pt-1">
+            <button type="button" onClick={onClose}
+              className="flex-1 py-3 rounded-2xl font-black uppercase text-[11px] tracking-widest bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 transition">
+              Cancelar
+            </button>
+            <button type="submit" disabled={salvando}
+              className="flex-1 py-3 rounded-2xl font-black uppercase text-[11px] tracking-widest bg-[#111827] text-white hover:bg-red-600 transition disabled:opacity-50 flex items-center justify-center gap-2">
+              {salvando
+                ? <><Loader2 size={13} className="animate-spin" /> Salvando...</>
+                : <><Plus size={13} /> Adicionar</>}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ─── 1. Pipeline ──────────────────────────────────────────────────────────────
 
 function Pipeline({ headers }: { headers: Record<string, string> }) {
@@ -115,6 +249,7 @@ function Pipeline({ headers }: { headers: Record<string, string> }) {
   const [loading, setLoading] = useState(false);
   const [filtro, setFiltro] = useState<ProspectStatus | "todos">("todos");
   const [busca, setBusca] = useState("");
+  const [modalAberto, setModalAberto] = useState(false);
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -158,11 +293,23 @@ function Pipeline({ headers }: { headers: Record<string, string> }) {
         </div>
         <div className="ml-auto flex items-center gap-3">
           <span className="text-xs text-gray-500 font-bold">{filtrados.length} prospect(s)</span>
+          <button onClick={() => setModalAberto(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-[#111827] text-white hover:bg-red-600 transition">
+            <Plus size={12} /> Adicionar Prospect
+          </button>
           <button onClick={carregar} className="p-2 text-gray-400 hover:text-gray-700 rounded-xl hover:bg-gray-100 transition">
             <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
           </button>
         </div>
       </div>
+
+      {modalAberto && (
+        <AdicionarProspectModal
+          headers={headers}
+          onClose={() => setModalAberto(false)}
+          onSucesso={carregar}
+        />
+      )}
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <table className="w-full text-left">

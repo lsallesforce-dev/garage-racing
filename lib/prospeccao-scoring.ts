@@ -7,9 +7,14 @@
 // a responder no WhatsApp — exatamente a dor que o AutoZap resolve.
 //
 // Heurística (cada item é somado; o total é "clampado" em [0, 100]):
-//   +30  tem telefone válido (sem telefone não dá pra prospectar via WhatsApp).
-//   +1   por review, até o teto de +25 — muitos reviews = loja ativa/movimentada,
-//        com fluxo de clientes (e portanto de mensagens) que justifica o AutoZap.
+//   +20  celular brasileiro (9º dígito — WhatsApp direto) como canal de abordagem.
+//   +10  telefone fixo válido mas SEM o 9º dígito (menos ideal para o WhatsApp).
+//    0   sem telefone algum → score mínimo (desqualificado: sem canal de abordagem).
+//   +25  num_reviews 300+ — revenda muito ativa, justifica automação de atendimento.
+//   +18  num_reviews 100-299.
+//   +10  num_reviews 20-99.
+//    +3  num_reviews 1-19 — fraco sinal de atividade.
+//    +5  imagesCount 10+ — muitas fotos = loja que investe na presença online.
 //   +25  reviews reclamam de demora no atendimento — lead de OURO: a dor está
 //        explícita e documentada publicamente.
 //   +10  tem site OU instagram — sinaliza que a revenda já investe em presença
@@ -22,8 +27,6 @@
 // =============================================================================
 
 import type { RevendaColetada } from "@/lib/apify";
-
-const REVIEWS_TETO = 25; // teto da parcela de pontos vinda de num_reviews
 
 // Marcas cujas concessionárias oficiais costumam ter CRM próprio (fora do ICP).
 const MARCAS_GRANDES = [
@@ -51,11 +54,32 @@ const MARCAS_GRANDES = [
 
 const PALAVRAS_CONCESSIONARIA = ["concession", "montadora", "autorizada"];
 
-/** Telefone é válido se tem ao menos 8 dígitos (DDD + número). */
-function telefoneValido(telefone: string | null | undefined): boolean {
-  if (!telefone) return false;
+/**
+ * Classifica o telefone para fins de abordagem via WhatsApp.
+ *
+ * Retorna:
+ *  "celular"  — número celular brasileiro com 9º dígito
+ *              (formato puro: DDD(2) + 9 + 8 dígitos = 11 dígitos locais;
+ *               ou com DDI 55: 13 dígitos totais)
+ *  "fixo"     — tem telefone mas não é celular (DDD + 8 dígitos = 10 locais)
+ *  "ausente"  — sem telefone ou menos de 8 dígitos
+ */
+function classificarTelefone(telefone: string | null | undefined): "celular" | "fixo" | "ausente" {
+  if (!telefone) return "ausente";
   const digitos = telefone.replace(/\D/g, "");
-  return digitos.length >= 8;
+  if (digitos.length < 8) return "ausente";
+
+  // Remove DDI 55 se presente para analisar só a parte local
+  let local = digitos;
+  if (local.startsWith("55") && (local.length === 12 || local.length === 13)) {
+    local = local.slice(2);
+  }
+
+  // Celular: DDD (2 dígitos) + 9 como primeiro dígito + 8 dígitos = 11 dígitos locais
+  if (local.length === 11 && local[2] === "9") return "celular";
+  // Fixo: DDD (2 dígitos) + 8 dígitos = 10 dígitos locais (ou qualquer fone válido sem o 9)
+  if (local.length >= 8) return "fixo";
+  return "ausente";
 }
 
 /**
@@ -76,54 +100,113 @@ function reclamaDemora(r: RevendaColetada): boolean {
 }
 
 /**
- * Calcula o score (0-100) de uma revenda e monta um motivo legível.
+ * Extrai imagesCount do raw do item Apify (campo varia entre versões do actor).
  */
-export function calcularScore(r: RevendaColetada): { score: number; motivo: string } {
+function extrairImagesCount(r: RevendaColetada): number {
+  if (!r.raw) return 0;
+  const v = r.raw["imageCount"] ?? r.raw["imagesCount"] ?? r.raw["photosCount"] ?? r.raw["totalImages"];
+  if (typeof v === "number" && Number.isFinite(v)) return Math.max(0, Math.floor(v));
+  if (typeof v === "string") {
+    const n = Number(v);
+    if (Number.isFinite(n)) return Math.max(0, Math.floor(n));
+  }
+  return 0;
+}
+
+/**
+ * Calcula o score (0-100) de uma revenda e monta um motivo legível.
+ *
+ * Escala resumida:
+ *   Telefone/WhatsApp  → +20 celular (whats_direto) | +10 fixo | 0 sem telefone
+ *   Tamanho (reviews)  → +25 (300+) | +18 (100-299) | +10 (20-99) | +3 (1-19)
+ *   Fotos do local     → +5 se 10+ imagens (sinal secundário de presença digital)
+ *   Dor explícita      → +25 reviews reclamam de demora
+ *   Presença digital   → +10 site ou instagram
+ *   Concessionária     → -20
+ */
+export function calcularScore(r: RevendaColetada): { score: number; motivo: string; sinais?: Record<string, unknown> } {
   let score = 0;
   const motivos: string[] = [];
+  const sinaisExtras: Record<string, unknown> = {};
 
-  // +30 — telefone válido
-  if (telefoneValido(r.telefone)) {
-    score += 30;
-    motivos.push("tem telefone");
+  // ── Telefone / WhatsApp direto ─────────────────────────────────────────────
+  const tipoFone = classificarTelefone(r.telefone);
+  if (tipoFone === "celular") {
+    score += 20;
+    motivos.push("celular c/ Whats");
+    sinaisExtras.whats_direto = true;
+  } else if (tipoFone === "fixo") {
+    score += 10;
+    motivos.push("tel fixo");
+    sinaisExtras.whats_direto = false;
   } else {
-    motivos.push("sem telefone");
+    // sem telefone — desqualificado (score fica 0 e motivo registra o porquê)
+    motivos.push("sem telefone — sem canal");
+    sinaisExtras.whats_direto = false;
+    // retorna imediatamente: não há canal de abordagem
+    return {
+      score: 0,
+      motivo: "Sem telefone — sem canal de abordagem via WhatsApp",
+      sinais: sinaisExtras,
+    };
   }
 
-  // + reviews escalonado (loja ativa/movimentada)
+  // ── Tamanho da empresa (proxies do Google Places) ──────────────────────────
   const numReviews = typeof r.num_reviews === "number" && Number.isFinite(r.num_reviews)
     ? Math.max(0, Math.floor(r.num_reviews))
     : 0;
-  if (numReviews > 0) {
-    const pontosReviews = Math.min(numReviews, REVIEWS_TETO);
-    score += pontosReviews;
-    motivos.push(`estoque ativo (${numReviews} reviews)`);
+
+  if (numReviews >= 300) {
+    score += 25;
+    motivos.push(`${numReviews} avaliações`);
+  } else if (numReviews >= 100) {
+    score += 18;
+    motivos.push(`${numReviews} avaliações`);
+  } else if (numReviews >= 20) {
+    score += 10;
+    motivos.push(`${numReviews} avaliações`);
+  } else if (numReviews >= 1) {
+    score += 3;
+    motivos.push(`${numReviews} avaliações`);
   }
 
-  // +25 — reviews reclamam de demora (lead de ouro)
+  // ── Fotos do local (sinal secundário de tamanho/atividade) ─────────────────
+  const imagesCount = extrairImagesCount(r);
+  if (imagesCount >= 10) {
+    score += 5;
+    motivos.push(`${imagesCount} fotos`);
+    sinaisExtras.images_count = imagesCount;
+  }
+
+  // ── Rating legível no motivo (não altera score — é informativo) ────────────
+  if (typeof r.rating === "number" && Number.isFinite(r.rating)) {
+    motivos.push(`${r.rating.toFixed(1)}★`);
+  }
+
+  // ── Dor explícita (lead de ouro) ───────────────────────────────────────────
   if (reclamaDemora(r)) {
     score += 25;
     motivos.push("reviews reclamam de demora");
   }
 
-  // +10 — presença digital (site ou instagram)
+  // ── Presença digital (site ou instagram) ──────────────────────────────────
   if ((r.site && r.site.trim() !== "") || (r.instagram && r.instagram.trim() !== "")) {
     score += 10;
-    motivos.push("tem presença digital");
+    motivos.push("presença digital");
   }
 
-  // -20 — concessionária de marca grande (provável CRM próprio)
+  // ── Concessionária de marca grande (provável CRM próprio) ─────────────────
   if (pareceConcessionariaGrande(r)) {
     score -= 20;
-    motivos.push("parece concessionária de marca (provável CRM próprio)");
+    motivos.push("concessionária de marca");
   }
 
   // Clamp em [0, 100]
   score = Math.max(0, Math.min(100, score));
 
   const motivo = motivos.length > 0
-    ? motivos.join(" + ").replace(/^./, (c) => c.toUpperCase())
+    ? motivos.join("; ").replace(/^./, (c) => c.toUpperCase())
     : "Sem sinais relevantes";
 
-  return { score, motivo };
+  return { score, motivo, sinais: sinaisExtras };
 }
