@@ -13,6 +13,17 @@ import { calcularScore } from "@/lib/prospeccao-scoring";
 // Buscas default caso o caller não envie `queries` (idealmente o caller manda).
 const QUERIES_DEFAULT = ["revenda de carros", "seminovos", "veículos multimarcas"];
 
+// wa_id = telefone normalizado (55 + DDD + número): é a chave que o webhook de
+// respostas usa pra achar o prospect — sem ela a resposta da revenda se perde.
+// (Espelha normalizarWaId de app/api/admin/vendas/prospects/route.ts.)
+function normalizarWaId(phone: string | null): string | null {
+  if (!phone) return null;
+  let cleaned = phone.split(":")[0].replace(/\D/g, "");
+  if (cleaned.startsWith("0")) cleaned = cleaned.slice(1);
+  if (cleaned.length === 10 || cleaned.length === 11) cleaned = "55" + cleaned;
+  return cleaned.length >= 8 ? cleaned : null;
+}
+
 // Coleta síncrona na Apify pode levar minutos com limite alto — sem isso a
 // function usa o default da plataforma e pode morrer no meio da coleta.
 export const maxDuration = 300;
@@ -107,6 +118,7 @@ export async function POST(req: NextRequest) {
     const row: Record<string, unknown> = {
       nome_empresa: r.nome_empresa,
       telefone: r.telefone,
+      wa_id: normalizarWaId(r.telefone),
       cidade: r.cidade,
       estado: r.estado,
       endereco: r.endereco,
