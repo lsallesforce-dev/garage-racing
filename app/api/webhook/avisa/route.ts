@@ -265,7 +265,7 @@ export async function POST(req: NextRequest) {
       bearerToken ||
       null;
 
-    const FIELDS = "user_id, nome_empresa, nome_fantasia, nome_agente, endereco, endereco_complemento, cidade, whatsapp, telefone_loja, vitrine_slug, webhook_token, avisa_base_url, avisa_token, tom_venda, instrucoes_adicionais, oferta_especial, horario_funcionamento, plano_ativo, trial_ends_at, plano_vence_em, ia_so_responde_anuncio";
+    const FIELDS = "user_id, nome_empresa, nome_fantasia, nome_agente, endereco, endereco_complemento, cidade, whatsapp, telefone_loja, vitrine_slug, webhook_token, avisa_base_url, avisa_token, tom_venda, instrucoes_adicionais, oferta_especial, horario_funcionamento, plano_ativo, trial_ends_at, plano_vence_em, ia_so_responde_anuncio, agente_pausado";
     let tenantUserId: string | null = null;
     let garageConfig: any = null;
 
@@ -330,6 +330,11 @@ export async function POST(req: NextRequest) {
       if (trialConfigurado && !trialValido && !planoValido) {
         console.warn(`⏸️ Tenant ${tenantUserId} com acesso expirado — mensagem ignorada.`);
         return NextResponse.json({ status: "subscription_expired" });
+      }
+
+      if (garageConfig.agente_pausado === true) {
+        console.log(`🔇 Tenant ${tenantUserId} com agente pausado — mensagem ignorada.`);
+        return NextResponse.json({ status: "agent_paused" });
       }
     }
 

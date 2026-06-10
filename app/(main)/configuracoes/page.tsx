@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Upload, CheckCircle2, Loader2, ImageIcon, Trash2, Sparkles, FileImage, Save, Copy, Eye, EyeOff, FileText, ShieldCheck } from "lucide-react";
+import { Upload, CheckCircle2, Loader2, ImageIcon, Trash2, Sparkles, FileImage, Save, Copy, Eye, EyeOff, FileText, ShieldCheck, PauseCircle, PlayCircle } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 declare global {
@@ -92,6 +92,8 @@ export default function ConfiguracoesPage() {
   const [showMetaToken, setShowMetaToken] = useState(false);
   const [savingWa, setSavingWa] = useState(false);
   const [savedWa, setSavedWa] = useState(false);
+  const [agentePausado, setAgentePausado] = useState(false);
+  const [togglingPausa, setTogglingPausa] = useState(false);
 
   // Facebook Ads — conectar página + ad account
   const [metaAdsLoading, setMetaAdsLoading] = useState(false);
@@ -334,6 +336,7 @@ export default function ConfiguracoesPage() {
             if (row.webhook_token) setWebhookToken(row.webhook_token);
             if (row.olx_access_token) setOlxConectado(true);
             if (row.plano) setPlano(row.plano);
+            setAgentePausado(row.agente_pausado ?? false);
             if (row.nf_habilitado !== undefined) {
               setNfConfig({
                 regime_tributario: row.nf_regime_tributario ?? 1,
@@ -710,6 +713,25 @@ export default function ConfiguracoesPage() {
       alert("Erro: " + err.message);
     } finally {
       setSavingNF(false);
+    }
+  };
+
+  const handleTogglePausa = async () => {
+    setTogglingPausa(true);
+    const novoValor = !agentePausado;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Não autenticado");
+      const { error } = await supabase
+        .from("config_garage")
+        .update({ agente_pausado: novoValor })
+        .eq("user_id", user.id);
+      if (error) throw error;
+      setAgentePausado(novoValor);
+    } catch (err: any) {
+      alert("Erro ao alterar pausa: " + err.message);
+    } finally {
+      setTogglingPausa(false);
     }
   };
 
@@ -1211,18 +1233,47 @@ export default function ConfiguracoesPage() {
         {activeTab === "whatsapp" && <>
 
         {/* ── Avisa API ── */}
-        <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-8">
+        <div className={`bg-white rounded-[2rem] border shadow-sm p-8 transition-colors ${agentePausado ? "border-amber-200" : "border-gray-100"}`}>
           <div className="flex items-center gap-3 mb-1">
             <div className="w-8 h-8 rounded-xl bg-green-50 flex items-center justify-center">
               <svg viewBox="0 0 24 24" className="w-4 h-4 fill-green-600">
                 <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
               </svg>
             </div>
-            <div>
+            <div className="flex-1">
               <h2 className="text-[11px] font-black uppercase tracking-widest text-gray-900">Avisa API</h2>
               <p className="text-[10px] text-gray-400">Conexão com WhatsApp via Baileys (sem Meta Cloud API)</p>
             </div>
+            {/* Toggle pausa do agente */}
+            <button
+              type="button"
+              onClick={handleTogglePausa}
+              disabled={togglingPausa}
+              title={agentePausado ? "Agente pausado — clique para reativar" : "Agente ativo — clique para pausar"}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                agentePausado
+                  ? "bg-amber-100 text-amber-700 hover:bg-amber-200 border border-amber-300"
+                  : "bg-gray-100 text-gray-500 hover:bg-gray-200 border border-gray-200"
+              }`}
+            >
+              {togglingPausa ? (
+                <Loader2 size={13} className="animate-spin" />
+              ) : agentePausado ? (
+                <><PauseCircle size={13} /> Pausado</>
+              ) : (
+                <><PlayCircle size={13} /> Ativo</>
+              )}
+            </button>
           </div>
+
+          {agentePausado && (
+            <div className="mt-3 mb-1 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-2xl flex items-center gap-2">
+              <PauseCircle size={14} className="text-amber-500 shrink-0" />
+              <p className="text-[10px] text-amber-700 font-semibold">
+                Agente pausado — mensagens recebidas não serão respondidas pela IA até você reativar.
+              </p>
+            </div>
+          )}
 
           <div className="mt-6 flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
