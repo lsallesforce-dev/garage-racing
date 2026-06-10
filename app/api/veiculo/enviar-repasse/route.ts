@@ -1,6 +1,7 @@
 // app/api/veiculo/enviar-repasse/route.ts
 //
-// Envia o anúncio de repasse via Meta WhatsApp para o número do gerente.
+// Envia o anúncio de repasse pro WhatsApp do gerente pelo canal do tenant:
+// Avisa (imagem + texto com link) ou Meta (template com botão CTA).
 // Uma única mensagem: foto (header) + texto (body) + botão CTA "Falar com Vendedor"
 // Limite Meta: body até 1024 chars. Se ultrapassar, envia texto separado + botão.
 
@@ -8,6 +9,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireVehicleOwner } from "@/lib/api-auth";
 import { sendMetaMessage, sendMetaCtaButton } from "@/lib/meta";
+import { sendAvisaMessage, sendAvisaImage } from "@/lib/avisa";
 
 export const maxDuration = 30;
 
@@ -30,28 +32,46 @@ export async function POST(req: NextRequest) {
 
   if (!carro) return NextResponse.json({ error: "Veículo não encontrado" }, { status: 404 });
 
-  const { data: cfg } = await supabaseAdmin
+  // config_garage pode ter múltiplas linhas por user_id — nunca usar .single()/.maybeSingle()
+  const { data: cfgRows } = await supabaseAdmin
     .from("config_garage")
-    .select("whatsapp, whatsapp_agente, meta_phone_id, meta_access_token")
+    .select("whatsapp, whatsapp_agente, meta_phone_id, meta_access_token, avisa_base_url, avisa_token")
     .eq("user_id", carro.user_id)
-    .maybeSingle();
+    .order("created_at", { ascending: false })
+    .limit(1);
+  const cfg = cfgRows?.[0] ?? null;
 
+  // Mesma regra de canal do resto do app: Avisa configurada vence; senão Meta.
+  const useAvisa = !!cfg?.avisa_base_url && !!cfg?.avisa_token;
   const resolvedToken = cfg?.meta_access_token || process.env.META_ACCESS_TOKEN || "";
-  if (!cfg?.meta_phone_id || !resolvedToken) {
-    console.warn(`⚠️ enviar-repasse: credenciais Meta ausentes para user_id=${carro.user_id}`);
-    return NextResponse.json({ error: "Credenciais Meta não configuradas" }, { status: 400 });
+  if (!useAvisa && (!cfg?.meta_phone_id || !resolvedToken)) {
+    console.warn(`⚠️ enviar-repasse: nenhum canal de WhatsApp configurado para user_id=${carro.user_id}`);
+    return NextResponse.json({ error: "Configure o WhatsApp (Avisa ou Meta) em Configurações" }, { status: 400 });
   }
 
-  const destino = cfg.whatsapp;
+  const destino = cfg?.whatsapp;
   if (!destino) {
     console.warn(`⚠️ enviar-repasse: whatsapp do gerente não configurado para user_id=${carro.user_id}`);
     return NextResponse.json({ error: "Número do gerente não configurado em Configurações" }, { status: 400 });
   }
 
-  const creds = { phoneNumberId: cfg.meta_phone_id, accessToken: resolvedToken };
-
-  const botPhone = (cfg.whatsapp_agente || cfg.whatsapp || "").replace(/\D/g, "");
+  const botPhone = (cfg?.whatsapp_agente || cfg?.whatsapp || "").replace(/\D/g, "");
   const ctaUrl = botPhone ? `https://wa.me/${botPhone}` : null;
+
+  // ── Canal Avisa: sem botão CTA — o link vai no corpo; capa via sendMedia ────
+  if (useAvisa) {
+    const avisaCreds = { baseUrl: cfg!.avisa_base_url as string, token: cfg!.avisa_token as string };
+    const textoComLink = ctaUrl ? `${texto}\n\n💬 Falar com vendedor: ${ctaUrl}` : texto;
+    if (capaUrl && String(capaUrl).startsWith("http")) {
+      await sendAvisaImage(destino, capaUrl, textoComLink, avisaCreds);
+    } else {
+      await sendAvisaMessage(destino, textoComLink, avisaCreds, { typing: false });
+    }
+    return NextResponse.json({ ok: true });
+  }
+
+  // ── Canal Meta (comportamento original) ─────────────────────────────────────
+  const creds = { phoneNumberId: cfg!.meta_phone_id, accessToken: resolvedToken };
 
   if (ctaUrl) {
     if (texto.length <= BODY_LIMIT) {
