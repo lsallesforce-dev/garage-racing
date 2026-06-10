@@ -69,10 +69,10 @@ function origemCfg(origem: string | null | undefined) {
   return ORIGEM_CONFIG[key] ?? { label: key, emoji: "📥", color: "bg-gray-50 text-gray-500 border-gray-200" };
 }
 
-const FILTROS = ["Todos", "QUENTE", "MORNO", "FRIO", "HUMANO", "PROBLEMA"] as const;
+const FILTROS = ["Todos", "QUENTE", "MORNO", "FRIO", "HUMANO", "SEM_ATENDIMENTO", "PROBLEMA"] as const;
 type Filtro = typeof FILTROS[number];
 const FILTRO_LABELS: Record<string, string> = {
-  Todos: "Todos", QUENTE: "Quente", MORNO: "Morno", FRIO: "Frio", HUMANO: "Humano", PROBLEMA: "Pós-venda",
+  Todos: "Todos", QUENTE: "Quente", MORNO: "Morno", FRIO: "Frio", HUMANO: "Humano", SEM_ATENDIMENTO: "Sem Atend.", PROBLEMA: "Pós-venda",
 };
 const FILTRO_COLORS: Record<string, { active: string; inactive: string }> = {
   Todos:    { active: "bg-gray-900 text-white",          inactive: "bg-gray-50 text-gray-400 hover:bg-gray-100" },
@@ -80,6 +80,7 @@ const FILTRO_COLORS: Record<string, { active: string; inactive: string }> = {
   MORNO:    { active: "bg-amber-400 text-white",         inactive: "bg-amber-50 text-amber-500 hover:bg-amber-100 border border-amber-100" },
   FRIO:     { active: "bg-blue-400 text-white",          inactive: "bg-blue-50 text-blue-500 hover:bg-blue-100 border border-blue-100" },
   HUMANO:   { active: "bg-green-600 text-white",         inactive: "bg-green-50 text-green-700 hover:bg-green-100 border border-green-200" },
+  SEM_ATENDIMENTO: { active: "bg-orange-500 text-white", inactive: "bg-orange-50 text-orange-600 hover:bg-orange-100 border border-orange-200" },
   PROBLEMA: { active: "bg-red-600 text-white",           inactive: "bg-red-50 text-red-700 hover:bg-red-100 border border-red-200" },
 };
 
@@ -129,6 +130,12 @@ function CentralChatInner() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const PAGE_SIZE = 60;
 
+  // Permite abrir o chat já filtrado via URL (ex.: ?filtro=SEM_ATENDIMENTO vindo do dashboard)
+  useEffect(() => {
+    const f = new URLSearchParams(window.location.search).get("filtro");
+    if (f && (FILTROS as readonly string[]).includes(f)) setFiltro(f as Filtro);
+  }, []);
+
   // Resolve o id do vendedor logado (na tabela vendedores) p/ filtrar só os leads dele
   useEffect(() => {
     if (!isVendedor) { setVendedorResolvido(true); return; }
@@ -167,6 +174,12 @@ function CentralChatInner() {
     // (leads antigos com updated_at velho nunca aparecem no filtro client-side).
     if (filtro === "HUMANO") {
       query = query.eq("em_atendimento_humano", true);
+    } else if (filtro === "SEM_ATENDIMENTO") {
+      // Mesma regra do card do dashboard: humano + anúncio + >48h + última msg do CLIENTE.
+      // A lógica de "última mensagem" mora na função SQL leads_sem_atendimento_ids.
+      const { data: saRows } = await supabase.rpc("leads_sem_atendimento_ids", { p_user_id: effectiveUserId });
+      const saIds = ((saRows ?? []) as { lead_id: string }[]).map((r) => r.lead_id);
+      query = query.in("id", saIds.length ? saIds : ["00000000-0000-0000-0000-000000000000"]);
     } else if (filtro !== "Todos") {
       query = query.eq("status", filtro);
     }
@@ -395,7 +408,7 @@ function CentralChatInner() {
   // Filtragem + ordenação por atividade mais recente
   const leadsFiltrados = leads
     .filter((l) => {
-      const matchFiltro = filtro === "Todos"
+      const matchFiltro = filtro === "Todos" || filtro === "SEM_ATENDIMENTO"
         || (filtro === "HUMANO" ? l.em_atendimento_humano === true : l.status === filtro);
       const termo = busca.toLowerCase();
       const matchBusca = !termo
@@ -420,7 +433,7 @@ function CentralChatInner() {
     <div className="flex h-[calc(100vh-48px)] md:h-screen overflow-hidden bg-[#f4f4f2]">
 
       {/* ── SIDEBAR ── */}
-      <div className={`${showChat ? "hidden md:flex" : "flex"} w-full md:w-80 flex-shrink-0 bg-white border-r border-gray-100 flex-col`}>
+      <div className={`${showChat ? "hidden md:flex" : "flex"} w-full md:w-96 flex-shrink-0 bg-white border-r border-gray-100 flex-col`}>
 
         {/* Cabeçalho sidebar */}
         <div className="px-4 py-3 border-b border-gray-100 flex-shrink-0 space-y-3">

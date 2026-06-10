@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
     { count: msgsIAMes },
     { count: followupsEnviados },
     { count: leadsQuente },
-    { count: leadsSemAtendimento },
+    { data: semAtendimentoRows },
   ] = await Promise.all([
     // Todos os leads dos últimos 6 meses com dados do veículo
     supabaseAdmin.from("leads")
@@ -134,16 +134,13 @@ export async function GET(req: NextRequest) {
       .eq("user_id", userId)
       .eq("status", "QUENTE"),
 
-    // Leads parados: em standby há >48h, não vendidos/perdidos, NÃO de whatsapp direto
-    supabaseAdmin.from("leads")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", userId)
-      .eq("em_atendimento_humano", true)
-      .not("etapa_funil", "in", '("VENDIDO","PERDIDO")')
-      .not("origem", "eq", "whatsapp")
-      .lt("updated_at", limite48h.toISOString()),
+    // Leads "sem atendimento" (justo): em humano + anúncio + >48h + ÚLTIMA msg do CLIENTE.
+    // Regra centralizada na função SQL leads_sem_atendimento_ids — a mesma usada no
+    // filtro "Sem Atendimento" do chat, pra dashboard e chat baterem sempre.
+    supabaseAdmin.rpc("leads_sem_atendimento_ids", { p_user_id: userId }),
   ]);
 
+  const leadsSemAtendimento = (semAtendimentoRows as { lead_id: string }[] | null)?.length ?? 0;
   const leads = todosLeads ?? [];
 
   // ── KPIs ─────────────────────────────────────────────────────────────────────

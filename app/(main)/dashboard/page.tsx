@@ -448,7 +448,13 @@ export default function Dashboard() {
                   data.kpis.leadsSemAtendimento > 0 ? "text-orange-500/70" : "text-gray-400"
                 }`}>IA muda há &gt; 48h</p>
                 {data.kpis.leadsSemAtendimento > 0 && (
-                  <div className="mt-2 pt-2 border-t border-orange-100">
+                  <div className="mt-2 pt-2 border-t border-orange-100 space-y-1.5">
+                    <a
+                      href="/chat?filtro=SEM_ATENDIMENTO"
+                      className="block text-center text-[9px] font-black uppercase tracking-widest text-orange-700 bg-orange-100 hover:bg-orange-200 rounded-lg px-2 py-1.5 transition-colors"
+                    >
+                      👁 Visualizar
+                    </a>
                     <button
                       disabled={devolvendoIA}
                       onClick={async () => {
