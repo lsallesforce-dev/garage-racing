@@ -135,6 +135,14 @@ export default function LoginPage() {
       return;
     }
 
+    // Aviso ao admin (autozap@autozap.digital) + confirmação de cadastro pra pessoa.
+    // Best-effort: não bloqueia nem falha o cadastro se o email não sair.
+    fetch("/api/email/novo-cadastro", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, nome_empresa: nomeEmpresa.trim(), whatsapp: whatsapp.trim() }),
+    }).catch(() => {});
+
     setSuccess("Cadastro enviado! Nossa equipe vai analisar e entrar em contato em breve.");
   }
 
