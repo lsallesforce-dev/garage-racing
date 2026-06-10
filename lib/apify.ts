@@ -212,7 +212,7 @@ function normalizarItem(item: Record<string, unknown>): RevendaColetada {
  */
 export async function coletarRevendas({
   queries,
-  maxPerSearch = 50,
+  maxPerSearch = 100,
 }: ColetarRevendasParams): Promise<RevendaColetada[]> {
   const token = process.env.APIFY_TOKEN;
   if (!token) throw new Error("APIFY_TOKEN não configurado");

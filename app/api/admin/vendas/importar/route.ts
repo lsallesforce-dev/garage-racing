@@ -33,10 +33,13 @@ export async function POST(req: NextRequest) {
       ? body.queries.filter((q) => typeof q === "string" && q.trim())
       : QUERIES_DEFAULT;
 
+  // 100 por busca: a coleta é síncrona (run-sync) e cobrada por lugar — com
+  // limite alto, mandar POUCAS queries por importação (1-2) pra não estourar
+  // o tempo da request nem o crédito da Apify.
   const maxPerSearch =
     typeof body.maxPerSearch === "number" && body.maxPerSearch > 0
       ? Math.floor(body.maxPerSearch)
-      : 50;
+      : 100;
 
   // 1) Coleta na Apify
   let revendas: RevendaColetada[];
