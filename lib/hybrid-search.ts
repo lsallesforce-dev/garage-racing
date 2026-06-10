@@ -369,13 +369,17 @@ async function semanticSearch(
     return [];
   }
 
-  const { data: matched } = await supabaseAdmin.rpc("match_veiculos", {
+  const { data: matched, error: rpcError } = await supabaseAdmin.rpc("match_veiculos", {
     query_embedding: queryEmbedding,
     match_threshold: threshold,
     match_count: count,
     filter_user_id: tenantUserId,
   });
 
+  if (rpcError) {
+    console.error("❌ semanticSearch: RPC match_veiculos falhou:", rpcError.message);
+    return [];
+  }
   if (!matched || (matched as any[]).length === 0) return [];
 
   const ids = (matched as any[]).map((v) => v.id);
