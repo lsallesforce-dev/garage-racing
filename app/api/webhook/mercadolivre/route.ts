@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getMLToken, mlHeaders, ML_API } from "@/lib/mercadolivre";
 import { sendMetaMessage, sendMetaCtaButton } from "@/lib/meta";
+import { sendAvisaMessage } from "@/lib/avisa";
 
 export const maxDuration = 60;
 
@@ -20,7 +21,7 @@ async function processNotification(body: any) {
   // Resolve tenant pelo ml_user_id salvo no OAuth
   const { data: cfgRows } = await supabaseAdmin
     .from("config_garage")
-    .select("user_id, nome_fantasia, nome_empresa, whatsapp, meta_phone_id, meta_access_token")
+    .select("user_id, nome_fantasia, nome_empresa, whatsapp, meta_phone_id, meta_access_token, avisa_base_url, avisa_token")
     .eq("ml_user_id", String(mlUserId))
     .limit(1);
 
@@ -101,17 +102,12 @@ async function processNotification(body: any) {
 
     console.log(`✅ ML pergunta ${qId} — ${nomeComprador} — ${veiculoNome} — tenant ${tenantId}`);
 
-    // Alerta o gerente via WhatsApp
+    // Alerta o gerente via WhatsApp — respeita o canal do tenant (Avisa ou Meta)
     const gerentePhone = cfg.whatsapp
       ? cfg.whatsapp.replace(/\D/g, "").replace(/^(?!55)/, "55")
       : null;
 
-    const metaCreds = {
-      phoneNumberId: cfg.meta_phone_id  ?? "",
-      accessToken:   cfg.meta_access_token ?? "",
-    };
-
-    if (gerentePhone && metaCreds.phoneNumberId && metaCreds.accessToken) {
+    if (gerentePhone) {
       const nomeEmpresa = cfg.nome_fantasia || cfg.nome_empresa || "AutoZap";
       const mlLink = `https://www.mercadolivre.com.br/perguntas-e-respostas/item/${itemId}`;
 
@@ -122,8 +118,20 @@ async function processNotification(body: any) {
         `💬 *Pergunta:* "${texto.slice(0, 300)}"\n\n` +
         `_Responda pelo painel do Mercado Livre_`;
 
-      sendMetaCtaButton(gerentePhone, alertBody, "Responder no ML", mlLink, metaCreds)
-        .catch(() => sendMetaMessage(gerentePhone, `${alertBody}\n\n${mlLink}`, metaCreds).catch(() => {}));
+      // Mesma regra do resto do app: Avisa configurada vence; senão Meta.
+      const useAvisa = !!cfg.avisa_base_url && !!cfg.avisa_token;
+
+      if (useAvisa) {
+        const avisaCreds = { baseUrl: cfg.avisa_base_url as string, token: cfg.avisa_token as string };
+        await sendAvisaMessage(gerentePhone, `${alertBody}\n\n${mlLink}`, avisaCreds, { typing: false })
+          .catch(err => console.error("❌ ML alert Avisa falhou:", err?.message ?? err));
+      } else if (cfg.meta_phone_id && cfg.meta_access_token) {
+        const metaCreds = { phoneNumberId: cfg.meta_phone_id, accessToken: cfg.meta_access_token };
+        sendMetaCtaButton(gerentePhone, alertBody, "Responder no ML", mlLink, metaCreds)
+          .catch(() => sendMetaMessage(gerentePhone, `${alertBody}\n\n${mlLink}`, metaCreds).catch(() => {}));
+      } else {
+        console.warn(`⚠️ ML alert: tenant ${tenantId} sem canal de WhatsApp configurado (nem Avisa nem Meta)`);
+      }
     }
   }
 }

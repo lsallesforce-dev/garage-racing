@@ -13,12 +13,16 @@ export async function GET(req: NextRequest) {
   const state    = searchParams.get("state");   // user_id do tenant
   const errParam = searchParams.get("error");
 
+  console.log(`📥 ML callback recebido — code=${code ? "sim" : "não"} state=${state ?? "vazio"} error=${errParam ?? "—"}`);
+
   if (errParam) {
     const desc = searchParams.get("error_description") ?? errParam;
+    console.error(`❌ ML callback: ML retornou erro="${errParam}" desc="${desc}"`);
     return NextResponse.redirect(`${APP_URL}/configuracoes?tab=portais&ml_error=${encodeURIComponent(desc)}`);
   }
 
   if (!code || !state) {
+    console.error(`❌ ML callback: parâmetros inválidos — code=${!!code} state=${!!state}`);
     return NextResponse.redirect(`${APP_URL}/configuracoes?tab=portais&ml_error=parametros_invalidos`);
   }
 
