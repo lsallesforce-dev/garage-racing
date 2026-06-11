@@ -363,21 +363,38 @@ export async function POST(req: NextRequest) {
     // ── Takeover do gerente pelo mesmo WhatsApp ───────────────────────────────
     // Gerente e IA compartilham o número. Toda mensagem da IA volta como fromMe (eco).
     // Se chega um fromMe de TEXTO que NÃO bate com um eco recente da IA, foi o gerente
-    // que respondeu direto pelo celular → ele assumiu a conversa → trava o agente.
+    // que respondeu direto pelo celular → salva no chat + trava o agente.
     if (fromMe) {
       const txtFromMe = (rawMessage || "").trim();
       const ehMidia = !txtFromMe || txtFromMe === "[Cliente enviou foto(s) do veículo]";
       const cliente = (chatPhone || "").replace(/\D/g, "");
-      if (!ehMidia && cliente && tenantUserId && !(await isAgentEcho(cliente, txtFromMe))) {
-        const { data: travado } = await supabaseAdmin
-          .from("leads")
-          .update({ em_atendimento_humano: true, instrucao_pendente: "Gerente assumiu a conversa respondendo pelo WhatsApp." })
-          .eq("user_id", tenantUserId)
-          .eq("wa_id", cliente)
-          .eq("em_atendimento_humano", false)
-          .select("id");
-        if (travado && travado.length > 0) {
-          console.log(`🙋 [Takeover WhatsApp] Gerente respondeu ${cliente} pelo número do agente → IA travada nesse lead`);
+      if (!ehMidia && cliente && tenantUserId) {
+        const ehEco = await isAgentEcho(cliente, txtFromMe);
+        if (!ehEco) {
+          // É o gerente respondendo pelo celular — busca o lead para salvar + travar
+          const { data: lead } = await supabaseAdmin
+            .from("leads")
+            .select("id, em_atendimento_humano")
+            .eq("user_id", tenantUserId)
+            .eq("wa_id", cliente)
+            .maybeSingle();
+          if (lead) {
+            // Salva a mensagem para aparecer no chat da plataforma
+            await supabaseAdmin.from("mensagens").insert({
+              lead_id: lead.id,
+              content: txtFromMe,
+              remetente: "agente",
+              enviado_por_humano: true,
+            });
+            // Pausa a IA se ainda não estava em atendimento humano
+            if (!lead.em_atendimento_humano) {
+              await supabaseAdmin
+                .from("leads")
+                .update({ em_atendimento_humano: true, instrucao_pendente: "Gerente assumiu a conversa respondendo pelo WhatsApp." })
+                .eq("id", lead.id);
+              console.log(`🙋 [Takeover WhatsApp] Gerente respondeu ${cliente} pelo número do agente → IA travada nesse lead`);
+            }
+          }
         }
       }
       return NextResponse.json({ status: "ignored_from_me" });
