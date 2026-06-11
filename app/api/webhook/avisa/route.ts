@@ -412,14 +412,14 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // LID não resolvido: converter LID→número é IMPOSSÍVEL (privacidade do WhatsApp,
-    // limitação da plataforma, não da Avisa). MAS dá pra responder DIRETO no @lid —
-    // buildTarget() em lib/avisa.ts envia para "{lid}@lid" e o WhatsApp roteia a
-    // resposta de volta na mesma conversa do anúncio. Por isso NÃO pulamos mais o
-    // envio: a IA responde no próprio @lid. (Se a próxima mensagem trouxer o número
-    // real no SenderAlt, a migração LID→número religa o lead normalmente.)
+    // LID não resolvido: tentar enviar para "{lid}@lid" é SILENCIOSAMENTE FALHO —
+    // o Baileys aceita a chamada mas perde o mapeamento LID→telefone após restart de
+    // sessão, então a mensagem some no vácuo sem erro visível. Solução: salvar o lead
+    // e a mensagem no DB (para aparecer no chat) mas NÃO gerar resposta da IA nem
+    // enviar. Quando o cliente mandar outra mensagem com o número real no SenderAlt,
+    // a migração LID→número religa o lead e a IA responde normalmente.
     if (isLid) {
-      console.warn(`📍 [LID] ${phone} sem número real — IA responde direto no @lid`);
+      console.warn(`📍 [LID] ${phone} sem número real — lead salvo no DB, skipSend ativo`);
     }
 
     // ── Deduplicação Redis (SET NX EX — atômico, cross-instância) ──────────────
@@ -476,6 +476,7 @@ export async function POST(req: NextRequest) {
         messageId,
         tenantUserId: tenantUserId!,
         garageConfig,
+        ...(isLid ? { skipSend: true } : {}),
         ...(adReferral ? { adReferral } : {}),
       };
 
