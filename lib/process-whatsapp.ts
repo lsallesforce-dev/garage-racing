@@ -2679,6 +2679,58 @@ Responda apenas com o JSON, sem markdown.`;
     }
   }
 
+  // ── 12b-2. GUARDA ANTI-CHUTE DE VEÍCULO ──────────────────────────────────────
+  // Problema real (Carmatti): lead chega SEM carro definido (whatsapp direto / anúncio
+  // sem contexto) e, pressionado por "qual o valor?", o agente APRESENTA um carro
+  // aleatório do índice de estoque ("O Voyage 1.0 está por R$ 33.900") que o cliente
+  // NUNCA pediu — e ainda deixa o lead vinculado a esse carro errado.
+  //
+  // Regra: se o lead não tinha carro (veiculoIdAnterior null) e a resposta oferece
+  // UM ÚNICO carro com preço que NÃO foi citado pelo cliente, troca por uma pergunta
+  // e desfaz a vinculação. (2+ carros citados = lista de opções → não bloqueia.)
+  if (!veiculoIdAnterior && /R\$\s*\d/.test(aiResponse)) {
+    try {
+      const { data: estoqueChute } = await supabaseAdmin
+        .from("veiculos")
+        .select("marca, modelo")
+        .eq("status_venda", "DISPONIVEL")
+        .eq("user_id", tenantUserId);
+
+      if (estoqueChute && estoqueChute.length > 0) {
+        const strip = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+        const respNorm = strip(aiResponse);
+        // Tudo que o CLIENTE escreveu (histórico + mensagem atual) — o que ele de fato pediu
+        const ditoPeloCliente = strip(
+          [
+            ...historico.filter((h: any) => h.role === "user").map((h: any) => h.parts?.[0]?.text ?? ""),
+            mensagemClientePura,
+          ].join(" ")
+        );
+
+        // Modelos do estoque citados NA RESPOSTA (1ª palavra significativa do modelo)
+        const citados = new Set<string>();
+        for (const v of estoqueChute as Array<{ marca: string | null; modelo: string | null }>) {
+          const tok = strip(v.modelo ?? "").split(/\s+/).find((w) => w.length >= 3) ?? "";
+          if (tok && respNorm.includes(tok)) citados.add(tok);
+        }
+
+        const lista = [...citados];
+        // Chute = exatamente 1 carro oferecido, e o cliente NUNCA o pediu
+        if (lista.length === 1 && !ditoPeloCliente.includes(lista[0])) {
+          console.warn(`🥅 [Guarda anti-chute] Lead sem carro definido recebeu oferta NÃO pedida do modelo "${lista[0]}". Resposta trocada por pergunta + vínculo desfeito.`);
+          aiResponse = "Pra eu te passar os detalhes certinhos, me conta: qual carro do nosso estoque você tá procurando?";
+          if (lead?.id) {
+            await supabaseAdmin.from("leads").update({ veiculo_id: null }).eq("id", lead.id);
+            veiculoPrincipal = null;
+          }
+        }
+      }
+    } catch (chuteErr) {
+      console.error("⚠️ Guarda anti-chute falhou:", chuteErr);
+      // Não bloqueia o fluxo — mantém aiResponse original
+    }
+  }
+
   // ── 12c. SAFETY NET DE MÍDIA — força envio se Gemini disse que mandou mas não mandou ──
   // Caso real (Denize, 26/05 22h): Cliente disse "Quero sim" depois do agente
   // perguntar "Quer ver as fotos?". O regex de confirmação não pegou "Quero sim"
