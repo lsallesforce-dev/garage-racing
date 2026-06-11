@@ -75,6 +75,7 @@ export default function ConfiguracoesPage() {
   const [isAdminSession, setIsAdminSession] = useState(false);
   const [webhookToken, setWebhookToken] = useState("");
   const [olxConectado, setOlxConectado] = useState(false);
+  const [mlConectado, setMlConectado]   = useState(false);
   const [currentUserId, setCurrentUserId] = useState("");
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -335,6 +336,7 @@ export default function ConfiguracoesPage() {
           if (row) {
             if (row.webhook_token) setWebhookToken(row.webhook_token);
             if (row.olx_access_token) setOlxConectado(true);
+            if (row.ml_access_token)  setMlConectado(true);
             if (row.plano) setPlano(row.plano);
             setAgentePausado(row.agente_pausado ?? false);
             if (row.nf_habilitado !== undefined) {
@@ -1795,6 +1797,76 @@ export default function ConfiguracoesPage() {
                   {copied === "wm-url" ? <CheckCircle2 size={14} /> : <Copy size={14} />}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Mercado Livre (OAuth) ─────────────────────────────────────────── */}
+        <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-yellow-100 flex items-center justify-center">
+                <span className="text-yellow-700 font-black text-sm">ML</span>
+              </div>
+              <div>
+                <p className="text-[11px] font-black uppercase tracking-widest text-gray-900">Mercado Livre</p>
+                <p className="text-[10px] text-gray-400">Publique anúncios de veículos no Mercado Livre Autos</p>
+              </div>
+            </div>
+            {mlConectado && (
+              <span className="flex items-center gap-1 px-2.5 py-1 bg-green-100 text-green-700 rounded-full text-[9px] font-black uppercase tracking-wider">
+                <CheckCircle2 size={10} /> Conectado
+              </span>
+            )}
+          </div>
+
+          {searchParams.get("ml_conectado") === "1" && (
+            <div className="mt-4 bg-green-50 border border-green-100 rounded-2xl px-4 py-3 text-[11px] text-green-700 font-bold">
+              ✅ Mercado Livre conectado com sucesso!
+            </div>
+          )}
+          {searchParams.get("ml_error") && (
+            <div className="mt-4 bg-red-50 border border-red-100 rounded-2xl px-4 py-3 text-[11px] text-red-600 font-bold">
+              ❌ Erro ao conectar: {searchParams.get("ml_error")}
+            </div>
+          )}
+
+          <div className="mt-5">
+            {mlConectado ? (
+              <div className="flex items-center justify-between bg-green-50 border border-green-100 rounded-2xl px-4 py-3">
+                <p className="text-[11px] text-green-700 font-bold">Conta ML vinculada — anúncios e alertas ativos.</p>
+                <a
+                  href="/api/oauth/mercadolivre/authorize"
+                  className="text-[10px] text-gray-400 hover:text-gray-600 underline underline-offset-2"
+                >
+                  Reconectar
+                </a>
+              </div>
+            ) : (
+              <a
+                href="/api/oauth/mercadolivre/authorize"
+                className="flex items-center justify-center gap-2 w-full py-3 bg-yellow-400 hover:bg-yellow-500 text-gray-900 rounded-2xl font-black text-[11px] uppercase tracking-widest transition-colors"
+              >
+                Conectar com Mercado Livre
+              </a>
+            )}
+          </div>
+
+          <div className="mt-4 pt-4 border-t border-gray-100">
+            <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">O que acontece quando chega uma pergunta</p>
+            <div className="space-y-1.5">
+              {[
+                "Pergunta registrada automaticamente no chat da revenda",
+                "Você recebe alerta no WhatsApp com o texto da pergunta",
+                "Responda pelo painel do Mercado Livre normalmente",
+              ].map((item, i) => (
+                <div key={i} className="flex items-start gap-2">
+                  <div className="w-4 h-4 rounded-full bg-yellow-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <span className="text-yellow-700 text-[9px] font-black">{i + 1}</span>
+                  </div>
+                  <p className="text-[11px] text-gray-600">{item}</p>
+                </div>
+              ))}
             </div>
           </div>
         </div>

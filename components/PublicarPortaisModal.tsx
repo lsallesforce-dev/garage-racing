@@ -13,15 +13,17 @@ interface Veiculo {
   preco_sugerido?: number;
   status_olx?: string;
   status_webmotors?: string;
+  status_ml?: string;
 }
 
 interface Props {
   veiculo: Veiculo;
   olxConectado: boolean;
   wmConfigurado: boolean;
+  mlConectado: boolean;
   isOpen: boolean;
   onClose: () => void;
-  onStatusChange?: (campo: "status_olx" | "status_webmotors", valor: string) => void;
+  onStatusChange?: (campo: "status_olx" | "status_webmotors" | "status_ml", valor: string) => void;
 }
 
 type PortalStatus = "idle" | "loading" | "ok" | "erro";
@@ -30,6 +32,7 @@ export default function PublicarPortaisModal({
   veiculo,
   olxConectado,
   wmConfigurado,
+  mlConectado,
   isOpen,
   onClose,
   onStatusChange,
@@ -39,8 +42,12 @@ export default function PublicarPortaisModal({
   const [wmStatus, setWmStatus]     = useState<PortalStatus>(
     veiculo.status_webmotors === "publicado" ? "ok" : "idle"
   );
+  const [mlStatus, setMlStatus]     = useState<PortalStatus>(
+    veiculo.status_ml === "publicado" ? "ok" : "idle"
+  );
   const [olxErro, setOlxErro]       = useState("");
   const [wmErro, setWmErro]         = useState("");
+  const [mlErro, setMlErro]         = useState("");
 
   if (!isOpen) return null;
 
@@ -83,6 +90,26 @@ export default function PublicarPortaisModal({
     } catch (e: any) {
       setWmErro(e.message);
       setWmStatus("erro");
+    }
+  }
+
+  async function publicarML() {
+    setMlStatus("loading");
+    setMlErro("");
+    try {
+      const res = await fetch("/api/mercadolivre/publicar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ veiculoId: veiculo.id }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Erro desconhecido");
+      onStatusChange?.("status_ml", "publicado");
+      onClose();
+      router.push("/marketing/anuncios");
+    } catch (e: any) {
+      setMlErro(e.message);
+      setMlStatus("erro");
     }
   }
 
@@ -175,6 +202,38 @@ export default function PublicarPortaisModal({
             </div>
             {wmErro && (
               <div className="px-3.5 pb-3 text-[9px] text-red-500 font-bold">{wmErro}</div>
+            )}
+          </div>
+
+          {/* Mercado Livre */}
+          <div className="rounded-2xl border border-gray-100 overflow-hidden">
+            <div className="flex items-center justify-between p-3.5">
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-lg bg-yellow-400 flex items-center justify-center">
+                  <span className="text-[8px] font-black text-white">ML</span>
+                </div>
+                <div>
+                  <p className="text-[11px] font-black uppercase text-yellow-700">Mercado Livre</p>
+                  {!mlConectado && (
+                    <p className="text-[9px] text-gray-400">Conecte a conta em Configurações</p>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={publicarML}
+                disabled={!mlConectado || mlStatus === "loading" || mlStatus === "ok"}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all disabled:opacity-40 disabled:cursor-not-allowed
+                  bg-yellow-400 hover:bg-yellow-500 text-white"
+              >
+                {mlStatus === "loading" && <Loader2 size={12} className="animate-spin" />}
+                {mlStatus === "ok"      && <CheckCircle2 size={12} />}
+                {mlStatus === "erro"    && <AlertCircle size={12} />}
+                {mlStatus === "idle"    && <Send size={12} />}
+                {mlStatus === "ok" ? "Publicado" : mlStatus === "loading" ? "Enviando…" : "Publicar"}
+              </button>
+            </div>
+            {mlErro && (
+              <div className="px-3.5 pb-3 text-[9px] text-red-500 font-bold">{mlErro}</div>
             )}
           </div>
 

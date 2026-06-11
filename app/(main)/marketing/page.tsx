@@ -45,6 +45,15 @@ function IconWebmotors({ className }: { className?: string }) {
   );
 }
 
+function IconML({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 40 40" className={className} fill="none">
+      <rect width="40" height="40" rx="8" fill="#FFE600" />
+      <text x="50%" y="55%" dominantBaseline="middle" textAnchor="middle" fill="#333" fontSize="11" fontWeight="900" fontFamily="Arial">ML</text>
+    </svg>
+  );
+}
+
 // ─── Botão de portal genérico (com bolinha verde quando ativo) ───────────────
 
 function PortalButton({ label, icon, active, disabled, hint, onClick }: {
@@ -97,7 +106,7 @@ function PortalButton({ label, icon, active, disabled, hint, onClick }: {
 
 // ─── Card de veículo (layout horizontal) ─────────────────────────────────────
 
-function VeiculoMarketingCard({ carro, wmConfigurado, olxConectado }: { carro: any; wmConfigurado: boolean; olxConectado: boolean }) {
+function VeiculoMarketingCard({ carro, wmConfigurado, olxConectado, mlConectado }: { carro: any; wmConfigurado: boolean; olxConectado: boolean; mlConectado: boolean }) {
   const [metaOpen, setMetaOpen]       = useState(false);
   const [portaisOpen, setPortaisOpen] = useState(false);
   const [carroLocal, setCarroLocal]   = useState(carro);
@@ -106,6 +115,7 @@ function VeiculoMarketingCard({ carro, wmConfigurado, olxConectado }: { carro: a
 
   const olxPublicado = carroLocal.status_olx === "publicado" || carroLocal.status_olx === "pendente";
   const wmPublicado  = carroLocal.status_webmotors === "publicado";
+  const mlPublicado  = carroLocal.status_ml === "publicado";
 
   return (
     <div className={`bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all ${vendido ? "opacity-50" : ""}`}>
@@ -170,6 +180,16 @@ function VeiculoMarketingCard({ carro, wmConfigurado, olxConectado }: { carro: a
             hint={!wmConfigurado ? "Configure Webmotors em Configurações." : undefined}
             onClick={wmConfigurado ? () => setPortaisOpen(true) : undefined}
           />
+
+          {/* Mercado Livre */}
+          <PortalButton
+            label="ML"
+            icon={<IconML className="w-5 h-5" />}
+            active={mlConectado && mlPublicado}
+            disabled={vendido}
+            hint={!mlConectado ? "Conecte sua conta ML em Configurações." : undefined}
+            onClick={mlConectado ? () => setPortaisOpen(true) : undefined}
+          />
         </div>
       </div>
 
@@ -186,12 +206,13 @@ function VeiculoMarketingCard({ carro, wmConfigurado, olxConectado }: { carro: a
         />
       )}
 
-      {/* Modal Portais (OLX + Webmotors) */}
+      {/* Modal Portais (OLX + Webmotors + ML) */}
       {portaisOpen && (
         <PublicarPortaisModal
           veiculo={carroLocal}
           olxConectado={olxConectado}
           wmConfigurado={wmConfigurado}
+          mlConectado={mlConectado}
           isOpen={portaisOpen}
           onClose={() => setPortaisOpen(false)}
           onStatusChange={(campo, valor) =>
@@ -245,16 +266,18 @@ function MarketingPageInner() {
   const [loading, setLoading] = useState(true);
   const [filtro, setFiltro] = useState<"todos" | "disponiveis">("disponiveis");
   const [wmConfigurado, setWmConfigurado] = useState(false);
-  const [olxConectado, setOlxConectado] = useState(false);
+  const [olxConectado, setOlxConectado]   = useState(false);
+  const [mlConectado, setMlConectado]     = useState(false);
 
   const fetchConfig = useCallback(async (userId: string) => {
     const { data } = await supabase
       .from("config_garage")
-      .select("webmotors_usuario, olx_access_token")
+      .select("webmotors_usuario, olx_access_token, ml_access_token")
       .eq("user_id", userId)
       .maybeSingle();
     setWmConfigurado(!!data?.webmotors_usuario);
     setOlxConectado(!!data?.olx_access_token);
+    setMlConectado(!!data?.ml_access_token);
   }, []);
 
   useEffect(() => {
@@ -263,19 +286,20 @@ function MarketingPageInner() {
     Promise.all([
       supabase
         .from("veiculos")
-        .select("id, marca, modelo, versao, ano, ano_modelo, preco_sugerido, capa_marketing_url, fotos, status_venda, status_olx, status_webmotors, olx_ad_id")
+        .select("id, marca, modelo, versao, ano, ano_modelo, preco_sugerido, capa_marketing_url, fotos, status_venda, status_olx, status_webmotors, olx_ad_id, status_ml, ml_item_id")
         .eq("user_id", effectiveUserId)
         .order("status_venda", { ascending: true })
         .order("created_at", { ascending: false }),
       supabase
         .from("config_garage")
-        .select("webmotors_usuario, olx_access_token")
+        .select("webmotors_usuario, olx_access_token, ml_access_token")
         .eq("user_id", effectiveUserId)
         .maybeSingle(),
     ]).then(([veiculos, config]) => {
       setCarros(veiculos.data ?? []);
       setWmConfigurado(!!config.data?.webmotors_usuario);
       setOlxConectado(!!config.data?.olx_access_token);
+      setMlConectado(!!config.data?.ml_access_token);
       setLoading(false);
     });
   }, [effectiveUserId]);
@@ -349,7 +373,7 @@ function MarketingPageInner() {
         ) : (
           <div className="flex flex-col gap-3">
             {carrosFiltrados.map((carro) => (
-              <VeiculoMarketingCard key={carro.id} carro={carro} wmConfigurado={wmConfigurado} olxConectado={olxConectado} />
+              <VeiculoMarketingCard key={carro.id} carro={carro} wmConfigurado={wmConfigurado} olxConectado={olxConectado} mlConectado={mlConectado} />
             ))}
           </div>
         )}
@@ -362,7 +386,6 @@ function MarketingPageInner() {
               { nome: "OLX", cor: "bg-purple-50 border-purple-100", corText: "text-purple-600", status: olxConectado ? "Conectado" : "Clique para conectar", icon: <IconOLX className="w-6 h-6" /> },
               { nome: "Webmotors", cor: "bg-red-50 border-red-100", corText: "text-red-600", status: wmConfigurado ? "Webhook ativo" : "Configure em Configurações", icon: <IconWebmotors className="w-6 h-6" /> },
               { nome: "iCarros", cor: "bg-orange-50 border-orange-100", corText: "text-orange-600", status: "Planejado", icon: <span className="text-[10px] font-black text-orange-600">iCarros</span> },
-              { nome: "Mercado Livre", cor: "bg-yellow-50 border-yellow-100", corText: "text-yellow-700", status: "Planejado", icon: <span className="text-[10px] font-black text-yellow-700">ML</span> },
             ].map((p) => (
               <div key={p.nome} className={`flex items-center gap-3 p-3 rounded-2xl border ${p.cor}`}>
                 <div className="w-8 h-8 flex items-center justify-center flex-shrink-0">{p.icon}</div>
