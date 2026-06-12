@@ -158,7 +158,9 @@ export function buildMLPayload(v: {
     available_quantity: 1,
     buying_mode:        "classified",
     condition:          "used",
-    listing_type_id:    "gold_special",
+    // Classificado de veículo usa "silver" — gold_special é tipo de MARKETPLACE
+    // (compra direta) e faz a validação de listing_types do ML quebrar (500 ZipException).
+    listing_type_id:    "silver",
     pictures:           fotos.map(src => ({ source: src })),
     attributes,
   };

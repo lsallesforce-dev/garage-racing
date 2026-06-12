@@ -82,11 +82,15 @@ export async function POST(req: NextRequest) {
   const respJson = await resp.json().catch(() => ({}));
 
   if (!resp.ok) {
+    // ML detalha campos inválidos/faltando num array "cause" — surfaça isso pra diagnóstico
+    const causas = Array.isArray(respJson?.cause)
+      ? respJson.cause.map((c: any) => c?.message ?? c?.code ?? JSON.stringify(c)).filter(Boolean).join(" | ")
+      : "";
     const msg = respJson?.error === "forbidden"
       ? "Conta ML não habilitada para anúncios de veículos. Verifique se a conta está completa e se aceitou os termos de Autos."
-      : `ML retornou ${resp.status}: ${respJson?.message ?? respJson?.error ?? ""}`;
-    console.error("❌ ML publicar falhou:", resp.status, respJson);
-    return NextResponse.json({ error: msg }, { status: resp.ok ? 200 : 502 });
+      : `ML retornou ${resp.status}: ${respJson?.message ?? respJson?.error ?? ""}${causas ? ` — ${causas}` : ""}`;
+    console.error("❌ ML publicar falhou:", resp.status, JSON.stringify(respJson));
+    return NextResponse.json({ error: msg }, { status: 502 });
   }
 
   const itemId: string = respJson.id;
@@ -122,7 +126,7 @@ export async function POST(req: NextRequest) {
       descricao,
       preco:        Number(v.preco_sugerido ?? 0),
       fotos:        (Array.isArray(v.fotos) ? v.fotos.filter(Boolean) : []).slice(0, 12),
-      snapshot:     { listing_type: "gold_special", category: "MLB1744" },
+      snapshot:     { listing_type: "silver", category: "MLB1744" },
       publicado_em:  now,
       atualizado_em: now,
     },
