@@ -68,7 +68,8 @@ export async function GET(req: NextRequest) {
     .select(
       `user_id, avisa_base_url, avisa_token,
        repasse_grupo_jid, repasse_auto_ativo,
-       repasse_intervalo_min, repasse_janela_inicio, repasse_janela_fim`,
+       repasse_intervalo_min, repasse_janela_inicio, repasse_janela_fim,
+       repasse_qtd_por_envio`,
     )
     .eq("repasse_auto_ativo", true)
     .not("repasse_grupo_jid", "is", null)
@@ -141,7 +142,8 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      // ── 4. Próximo carro do rodízio ───────────────────────────────────────
+      // ── 4. Próximos carros do rodízio (1–N por envio, conforme config) ─────
+      const qtdPorEnvio = Math.min(Math.max(cfg.repasse_qtd_por_envio ?? 1, 1), 5);
       const { data: carros } = await supabaseAdmin
         .from("veiculos")
         .select("id")
@@ -149,52 +151,55 @@ export async function GET(req: NextRequest) {
         .eq("status_venda", "DISPONIVEL")
         .gt("preco_sugerido", 0)
         .order("repasse_enviado_em", { ascending: true, nullsFirst: true })
-        .limit(1);
+        .limit(qtdPorEnvio);
 
-      const proximoCarro = carros?.[0] ?? null;
-
-      if (!proximoCarro) {
+      if (!carros || carros.length === 0) {
         console.log(`🚗 [repasse/${tenantId}] Sem carros disponíveis com preço — pulando`);
         continue;
       }
 
-      const veiculoId: string = proximoCarro.id;
-
-      // ── 5. Gerar conteúdo do repasse ──────────────────────────────────────
-      console.log(`🔄 [repasse/${tenantId}] Gerando repasse para veículo ${veiculoId}...`);
-
-      const resultado = await gerarRepasseCompleto(veiculoId, "repasse");
-
-      if (!resultado) {
-        console.warn(`⚠️ [repasse/${tenantId}] gerarRepasseCompleto retornou null para ${veiculoId} — pulando`);
-        continue;
-      }
-
-      const { texto, capaUrl } = resultado;
-
-      // ── 6. Enviar para o grupo via Avisa ──────────────────────────────────
       const grupoJid: string = cfg.repasse_grupo_jid as string;
       const avisaCreds = {
         baseUrl: cfg.avisa_base_url as string,
         token: cfg.avisa_token as string,
       };
 
-      if (capaUrl && String(capaUrl).startsWith("http")) {
-        await sendAvisaImage(grupoJid, capaUrl, texto, avisaCreds);
-      } else {
-        await sendAvisaMessage(grupoJid, texto, avisaCreds, { typing: false });
+      for (let i = 0; i < carros.length; i++) {
+        const veiculoId: string = carros[i].id;
+
+        // ── 5. Gerar conteúdo do repasse ────────────────────────────────────
+        console.log(`🔄 [repasse/${tenantId}] Gerando repasse ${i + 1}/${carros.length} para veículo ${veiculoId}...`);
+
+        const resultado = await gerarRepasseCompleto(veiculoId, "repasse");
+
+        if (!resultado) {
+          console.warn(`⚠️ [repasse/${tenantId}] gerarRepasseCompleto retornou null para ${veiculoId} — pulando carro`);
+          continue;
+        }
+
+        const { texto, capaUrl } = resultado;
+
+        // Pausa entre anúncios consecutivos — evita burst e mantém ordem no grupo
+        if (i > 0) await new Promise((r) => setTimeout(r, 4000));
+
+        // ── 6. Enviar para o grupo via Avisa ────────────────────────────────
+        if (capaUrl && String(capaUrl).startsWith("http")) {
+          await sendAvisaImage(grupoJid, capaUrl, texto, avisaCreds);
+        } else {
+          await sendAvisaMessage(grupoJid, texto, avisaCreds, { typing: false });
+        }
+
+        // ── 7. Atualiza repasse_enviado_em do carro (só após envio sem throw) ─
+        await supabaseAdmin
+          .from("veiculos")
+          .update({ repasse_enviado_em: agora.toISOString() })
+          .eq("id", veiculoId);
+
+        enviados++;
+        console.log(
+          `✅ [repasse/${tenantId}] Enviado veículo ${veiculoId} para grupo ${grupoJid}`,
+        );
       }
-
-      // ── 7. Atualiza repasse_enviado_em do carro (só após envio sem throw) ─
-      await supabaseAdmin
-        .from("veiculos")
-        .update({ repasse_enviado_em: agora.toISOString() })
-        .eq("id", veiculoId);
-
-      enviados++;
-      console.log(
-        `✅ [repasse/${tenantId}] Enviado veículo ${veiculoId} para grupo ${grupoJid}`,
-      );
     } catch (e) {
       // Erro em um tenant não derruba os outros
       console.error(`❌ [repasse/${tenantId}] Erro ao processar tenant:`, e);

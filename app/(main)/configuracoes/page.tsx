@@ -60,6 +60,7 @@ interface GarageConfig {
   repasse_grupo_jid?: string | null;
   repasse_auto_ativo?: boolean;
   repasse_intervalo_min?: number;
+  repasse_qtd_por_envio?: number;
   repasse_janela_inicio?: number;
   repasse_janela_fim?: number;
 }
@@ -140,6 +141,7 @@ export default function ConfiguracoesPage() {
     repasse_grupo_jid: null,
     repasse_auto_ativo: false,
     repasse_intervalo_min: 120,
+    repasse_qtd_por_envio: 1,
     repasse_janela_inicio: 8,
     repasse_janela_fim: 18,
   });
@@ -396,6 +398,7 @@ export default function ConfiguracoesPage() {
               repasse_grupo_jid:    row.repasse_grupo_jid    ?? null,
               repasse_auto_ativo:   row.repasse_auto_ativo   ?? false,
               repasse_intervalo_min: row.repasse_intervalo_min ?? 120,
+              repasse_qtd_por_envio: row.repasse_qtd_por_envio ?? 1,
               repasse_janela_inicio: row.repasse_janela_inicio ?? 8,
               repasse_janela_fim:    row.repasse_janela_fim    ?? 18,
             });
@@ -552,6 +555,7 @@ export default function ConfiguracoesPage() {
             meta_access_token: config.meta_access_token || null,
             repasse_auto_ativo:    config.repasse_auto_ativo    ?? false,
             repasse_intervalo_min: config.repasse_intervalo_min ?? 120,
+            repasse_qtd_por_envio: config.repasse_qtd_por_envio ?? 1,
             repasse_janela_inicio: config.repasse_janela_inicio ?? 8,
             repasse_janela_fim:    config.repasse_janela_fim    ?? 18,
           },
@@ -1547,21 +1551,39 @@ export default function ConfiguracoesPage() {
               </button>
             </div>
 
-            {/* Intervalo entre anúncios */}
-            <div className="flex flex-col gap-1.5">
-              <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
-                Intervalo entre anúncios
-              </label>
-              <select
-                value={config.repasse_intervalo_min ?? 120}
-                onChange={e => setConfig(c => ({ ...c, repasse_intervalo_min: Number(e.target.value) }))}
-                className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition"
-              >
-                <option value={60}>1 hora</option>
-                <option value={120}>2 horas</option>
-                <option value={180}>3 horas</option>
-                <option value={240}>4 horas</option>
-              </select>
+            {/* Intervalo entre anúncios + carros por envio */}
+            <div className="flex gap-3">
+              <div className="flex flex-col gap-1.5 flex-1">
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+                  Intervalo entre anúncios
+                </label>
+                <select
+                  value={config.repasse_intervalo_min ?? 120}
+                  onChange={e => setConfig(c => ({ ...c, repasse_intervalo_min: Number(e.target.value) }))}
+                  className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition"
+                >
+                  <option value={60}>1 hora</option>
+                  <option value={120}>2 horas</option>
+                  <option value={180}>3 horas</option>
+                  <option value={240}>4 horas</option>
+                </select>
+              </div>
+              <div className="flex flex-col gap-1.5 flex-1">
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+                  Carros por envio
+                </label>
+                <select
+                  value={config.repasse_qtd_por_envio ?? 1}
+                  onChange={e => setConfig(c => ({ ...c, repasse_qtd_por_envio: Number(e.target.value) }))}
+                  className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition"
+                >
+                  <option value={1}>1 carro</option>
+                  <option value={2}>2 carros</option>
+                  <option value={3}>3 carros</option>
+                  <option value={4}>4 carros</option>
+                  <option value={5}>5 carros</option>
+                </select>
+              </div>
             </div>
 
             {/* Janela de horário */}
@@ -1598,7 +1620,7 @@ export default function ConfiguracoesPage() {
 
             {/* Nota explicativa */}
             <p className="text-[10px] text-gray-400 italic">
-              Um carro disponível (com preço preenchido) é enviado por vez, em rodízio.
+              Apenas carros disponíveis com preço preenchido entram no rodízio — os há mais tempo sem anúncio vão primeiro.
             </p>
           </div>
         </div>
