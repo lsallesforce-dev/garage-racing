@@ -69,6 +69,15 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Insert (novo anúncio) ────────────────────────────────────────────────────
+  // ML exige preço mínimo de R$ 3.000 para a categoria de veículos (MLB1744).
+  const preco = Number(v.preco_sugerido ?? 0);
+  if (preco < 3000) {
+    return NextResponse.json(
+      { error: `Defina um preço de no mínimo R$ 3.000 no veículo antes de publicar no Mercado Livre (preço atual: R$ ${preco.toLocaleString("pt-BR")}).` },
+      { status: 400 }
+    );
+  }
+
   const { payload, titulo } = buildMLPayload(v, cfg.nf_cep);
 
   console.log(`📤 [ML publicar] ${veiculoId} — ${titulo}`);
