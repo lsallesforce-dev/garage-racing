@@ -7,6 +7,10 @@ import { ML_API, ML_REDIRECT_URI } from "@/lib/mercadolivre";
 
 const APP_URL = (process.env.NEXT_PUBLIC_APP_URL ?? "https://www.autozap.digital").replace(/\/+$/, "");
 
+// Node runtime explícito + janela maior: o fetch ao ML não pode ser abortado por timeout curto.
+export const runtime = "nodejs";
+export const maxDuration = 30;
+
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const code     = searchParams.get("code");
@@ -50,13 +54,18 @@ export async function GET(req: NextRequest) {
     if (!resp.ok) {
       const text = await resp.text();
       console.error("❌ ML token exchange falhou:", resp.status, text.slice(0, 300));
-      return NextResponse.redirect(`${APP_URL}/configuracoes?tab=portais&ml_error=token_exchange_falhou`);
+      // Extrai o código de erro do ML (invalid_client, invalid_grant, etc) e mostra na tela
+      let mlErr = `http_${resp.status}`;
+      try { const j = JSON.parse(text); mlErr = `${resp.status}:${j.error ?? j.message ?? "?"}`; } catch {}
+      return NextResponse.redirect(`${APP_URL}/configuracoes?tab=portais&ml_error=${encodeURIComponent(`ML rejeitou (${mlErr})`)}`);
     }
 
     tokenData = await resp.json();
   } catch (err: any) {
-    console.error("❌ ML token exchange erro:", err.message);
-    return NextResponse.redirect(`${APP_URL}/configuracoes?tab=portais&ml_error=erro_interno`);
+    // Mostra a exceção real na tela (ex: "fetch failed", timeout, DNS) em vez de "erro_interno"
+    const msg = `${err?.name ?? "Error"}: ${err?.message ?? String(err)}${err?.cause?.code ? ` (${err.cause.code})` : ""}`;
+    console.error("❌ ML token exchange erro:", msg);
+    return NextResponse.redirect(`${APP_URL}/configuracoes?tab=portais&ml_error=${encodeURIComponent(msg.slice(0, 200))}`);
   }
 
   const expiresAt = tokenData.expires_in
