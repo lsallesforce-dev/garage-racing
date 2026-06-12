@@ -3,7 +3,9 @@
 
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
-export const ML_API         = "https://api.mercadolivre.com";
+// ATENÇÃO: o host da API é mercadoLIBRE (com B — domínio global da empresa).
+// api.mercadolivre.com (com V) NÃO existe → DNS ENOTFOUND. Só o site/auth usam "livre".
+export const ML_API         = "https://api.mercadolibre.com";
 export const ML_AUTH_URL    = "https://auth.mercadolivre.com.br/authorization";
 const        ML_TOKEN_URL   = `${ML_API}/oauth/token`;
 
