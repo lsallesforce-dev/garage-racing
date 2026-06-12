@@ -60,6 +60,10 @@ export async function GET(req: NextRequest) {
     10,
   );
 
+  // Sábado tem janela de fim própria (lojas costumam fechar ao meio-dia)
+  const ehSabado =
+    agora.toLocaleString("en-US", { weekday: "short", timeZone: "America/Sao_Paulo" }) === "Sat";
+
   // ── 1. Busca tenants elegíveis ────────────────────────────────────────────
   // config_garage: repasse_auto_ativo=true, repasse_grupo_jid preenchido,
   //                avisa_base_url e avisa_token preenchidos
@@ -69,7 +73,7 @@ export async function GET(req: NextRequest) {
       `user_id, avisa_base_url, avisa_token,
        repasse_grupo_jid, repasse_auto_ativo,
        repasse_intervalo_min, repasse_janela_inicio, repasse_janela_fim,
-       repasse_qtd_por_envio`,
+       repasse_janela_fim_sabado, repasse_qtd_por_envio`,
     )
     .eq("repasse_auto_ativo", true)
     .not("repasse_grupo_jid", "is", null)
@@ -109,7 +113,9 @@ export async function GET(req: NextRequest) {
       // ── 2. Gate de janela horária ─────────────────────────────────────────
       const janelaBRT = horaBRT;
       const inicio: number = cfg.repasse_janela_inicio ?? 8;
-      const fim: number = cfg.repasse_janela_fim ?? 18;
+      const fim: number = ehSabado
+        ? (cfg.repasse_janela_fim_sabado ?? 12)
+        : (cfg.repasse_janela_fim ?? 18);
 
       if (janelaBRT < inicio || janelaBRT >= fim) {
         console.log(

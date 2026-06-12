@@ -108,8 +108,13 @@ function extractFields(payload: any): {
     // pegaria o número do remetente e perderia o JID do grupo). O handler só trata
     // o comando !grupo; todo o resto de grupo é ignorado.
     if ((info.Chat || "").endsWith("@g.us")) {
+      // Participante de grupo pode vir como LID em Sender e número real em SenderAlt
+      // (ou vice-versa), com sufixo de device (":12"). Limpa e entrega os dois
+      // candidatos para o handler comparar com o número do gerente.
+      const cleanJid = (j: string) => (j || "").replace(/@.*$/, "").split(":")[0];
       return {
-        phone: ((info.SenderAlt || info.Sender || "").replace(/@.*$/, "")),
+        phone: cleanJid(info.SenderAlt || info.Sender),
+        chatPhone: cleanJid(info.Sender),
         isLid: false,
         groupJid: info.Chat,
         userMessage: (msg?.conversation || msg?.extendedTextMessage?.text || "").trim(),
@@ -370,10 +375,17 @@ export async function POST(req: NextRequest) {
     // anúncios de repasse (config_garage.repasse_grupo_jid).
     if (groupJid) {
       const cmd = (rawMessage || "").trim().toLowerCase();
-      if (cmd === "!grupo") {
+      // Log de diagnóstico — sem ele, mensagens de grupo somem sem rastro
+      console.log(`👥 [Grupo] ${groupJid} ← ${phone}${fromMe ? " (fromMe)" : ""}: "${(rawMessage || "").slice(0, 60)}"`);
+      if (cmd.startsWith("!grupo")) {
         const gerente = (garageConfig?.whatsapp || "").replace(/\D/g, "");
-        const sender = (phone || "").replace(/\D/g, "");
-        const ehGerente = fromMe || (!!gerente && !!sender && (sender.endsWith(gerente) || gerente.endsWith(sender)));
+        // phone e chatPhone trazem os dois candidatos (Sender/SenderAlt) — em grupo
+        // o remetente pode vir como LID num campo e número real no outro.
+        const candidatos = [phone, chatPhone]
+          .map((s) => (s || "").replace(/\D/g, ""))
+          .filter((s) => s.length >= 8);
+        const ehGerente = fromMe || (!!gerente && candidatos.some((s) => s.endsWith(gerente) || gerente.endsWith(s)));
+        console.log(`👥 [Grupo] comando !grupo detectado | fromMe=${fromMe} candidatos=${candidatos.join(",")} gerente=${gerente} → ehGerente=${ehGerente}`);
         if (ehGerente && garageConfig?.avisa_base_url && garageConfig?.avisa_token) {
           await supabaseAdmin
             .from("config_garage")

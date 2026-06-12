@@ -63,6 +63,7 @@ interface GarageConfig {
   repasse_qtd_por_envio?: number;
   repasse_janela_inicio?: number;
   repasse_janela_fim?: number;
+  repasse_janela_fim_sabado?: number;
 }
 
 export default function ConfiguracoesPage() {
@@ -144,6 +145,7 @@ export default function ConfiguracoesPage() {
     repasse_qtd_por_envio: 1,
     repasse_janela_inicio: 8,
     repasse_janela_fim: 18,
+    repasse_janela_fim_sabado: 12,
   });
   const fileRef = useRef<HTMLInputElement>(null);
   const pfxRef = useRef<HTMLInputElement>(null);
@@ -401,6 +403,7 @@ export default function ConfiguracoesPage() {
               repasse_qtd_por_envio: row.repasse_qtd_por_envio ?? 1,
               repasse_janela_inicio: row.repasse_janela_inicio ?? 8,
               repasse_janela_fim:    row.repasse_janela_fim    ?? 18,
+              repasse_janela_fim_sabado: row.repasse_janela_fim_sabado ?? 12,
             });
             if (row.logo_url) {
               setCurrentLogo(row.logo_url);
@@ -558,6 +561,7 @@ export default function ConfiguracoesPage() {
             repasse_qtd_por_envio: config.repasse_qtd_por_envio ?? 1,
             repasse_janela_inicio: config.repasse_janela_inicio ?? 8,
             repasse_janela_fim:    config.repasse_janela_fim    ?? 18,
+            repasse_janela_fim_sabado: config.repasse_janela_fim_sabado ?? 12,
           },
           { onConflict: "user_id" }
         );
@@ -1562,6 +1566,9 @@ export default function ConfiguracoesPage() {
                   onChange={e => setConfig(c => ({ ...c, repasse_intervalo_min: Number(e.target.value) }))}
                   className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition"
                 >
+                  <option value={10}>10 minutos</option>
+                  <option value={15}>15 minutos</option>
+                  <option value={30}>30 minutos</option>
                   <option value={60}>1 hora</option>
                   <option value={120}>2 horas</option>
                   <option value={180}>3 horas</option>
@@ -1609,6 +1616,20 @@ export default function ConfiguracoesPage() {
                 <select
                   value={config.repasse_janela_fim ?? 18}
                   onChange={e => setConfig(c => ({ ...c, repasse_janela_fim: Number(e.target.value) }))}
+                  className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition"
+                >
+                  {Array.from({ length: 24 }, (_, i) => (
+                    <option key={i} value={i}>{String(i).padStart(2, "0")}h</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1.5 flex-1">
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+                  Fim <span className="text-gray-400 normal-case font-normal">(sábado)</span>
+                </label>
+                <select
+                  value={config.repasse_janela_fim_sabado ?? 12}
+                  onChange={e => setConfig(c => ({ ...c, repasse_janela_fim_sabado: Number(e.target.value) }))}
                   className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition"
                 >
                   {Array.from({ length: 24 }, (_, i) => (
