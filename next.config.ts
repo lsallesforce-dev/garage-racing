@@ -22,7 +22,7 @@ const securityHeaders = [
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
-      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.gemini.google.com https://generativelanguage.googleapis.com https://www.avisaapi.com.br https://graph.facebook.com https://*.r2.dev https://vercel.live",
+      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.gemini.google.com https://generativelanguage.googleapis.com https://www.avisaapi.com.br https://graph.facebook.com https://*.r2.dev https://*.r2.cloudflarestorage.com https://vercel.live",
       "media-src 'self' https: blob:",
       "frame-src 'self' https://www.facebook.com https://vercel.live",
       "frame-ancestors 'self' https://www.autozap.digital https://autozap.digital",
