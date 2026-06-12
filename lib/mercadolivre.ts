@@ -140,7 +140,8 @@ export function buildMLPayload(v: {
     { id: "BRAND",        value_name: v.marca   ?? "" },
     { id: "MODEL",        value_name: v.modelo  ?? "" },
     { id: "VEHICLE_YEAR", value_name: String(v.ano_modelo ?? v.ano ?? "") },
-    { id: "KILOMETERS",   value_name: String(v.quilometragem_estimada ?? 0) },
+    // KILOMETERS exige número + unidade ("250000 km") — só o número o ML rejeita.
+    { id: "KILOMETERS",   value_name: `${Number(v.quilometragem_estimada ?? 0)} km` },
     { id: "FUEL_TYPE",    value_name: mapAttr(FUEL_ML, v.combustivel ?? "", "Flex") },
     { id: "TRANSMISSION", value_name: mapAttr(TRANSMISSION_ML, v.cambio ?? "", "Manual") },
     { id: "DOORS",        value_name: "4" },
