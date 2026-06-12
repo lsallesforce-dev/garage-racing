@@ -58,6 +58,7 @@ interface GarageConfig {
   webmotors_senha?: string;
   nf_cep?: string;
   repasse_grupo_jid?: string | null;
+  repasse_grupo_nome?: string | null;
   repasse_auto_ativo?: boolean;
   repasse_intervalo_min?: number;
   repasse_qtd_por_envio?: number;
@@ -140,6 +141,7 @@ export default function ConfiguracoesPage() {
     oferta_especial: "",
     telefone_loja: "",
     repasse_grupo_jid: null,
+    repasse_grupo_nome: null,
     repasse_auto_ativo: false,
     repasse_intervalo_min: 120,
     repasse_qtd_por_envio: 1,
@@ -149,6 +151,59 @@ export default function ConfiguracoesPage() {
   });
   const fileRef = useRef<HTMLInputElement>(null);
   const pfxRef = useRef<HTMLInputElement>(null);
+  // Sincronização de grupos do Repasse (GET/POST /api/repasse/grupos)
+  const [gruposDisponiveis, setGruposDisponiveis] = useState<{ jid: string; name: string }[] | null>(null);
+  const [grupoSelecionado, setGrupoSelecionado] = useState<string>("");
+  const [sincronizandoGrupos, setSincronizandoGrupos] = useState(false);
+  const [vinculandoGrupo, setVinculandoGrupo] = useState(false);
+  const [erroGrupos, setErroGrupos] = useState<string>("");
+
+  const sincronizarGrupos = async () => {
+    setSincronizandoGrupos(true);
+    setErroGrupos("");
+    try {
+      const res = await fetch("/api/repasse/grupos");
+      const data = await res.json();
+      if (!res.ok) {
+        setErroGrupos(data.error || "Erro ao sincronizar grupos.");
+        setGruposDisponiveis(null);
+      } else {
+        setGruposDisponiveis(data.grupos ?? []);
+        if ((data.grupos ?? []).length === 0) {
+          setErroGrupos("Nenhum grupo encontrado. Adicione o número do agente a um grupo/comunidade primeiro.");
+        }
+      }
+    } catch {
+      setErroGrupos("Erro de rede ao sincronizar grupos.");
+    } finally {
+      setSincronizandoGrupos(false);
+    }
+  };
+
+  const vincularGrupo = async (jid: string | null) => {
+    setVinculandoGrupo(true);
+    setErroGrupos("");
+    try {
+      const nome = jid ? (gruposDisponiveis?.find(g => g.jid === jid)?.name ?? null) : null;
+      const res = await fetch("/api/repasse/grupos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ grupoJid: jid, grupoNome: nome }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setErroGrupos(data.error || "Erro ao vincular grupo.");
+      } else {
+        setConfig(c => ({ ...c, repasse_grupo_jid: jid, repasse_grupo_nome: nome }));
+        setGruposDisponiveis(null);
+        setGrupoSelecionado("");
+      }
+    } catch {
+      setErroGrupos("Erro de rede ao vincular grupo.");
+    } finally {
+      setVinculandoGrupo(false);
+    }
+  };
   const [plano, setPlano] = useState<string | null>(null);
   const [nfConfig, setNfConfig] = useState<NFConfig>({
     regime_tributario: 1,
@@ -398,6 +453,7 @@ export default function ConfiguracoesPage() {
               webmotors_senha:   row.webmotors_senha   ?? "",
               nf_cep:            row.nf_cep            ?? "",
               repasse_grupo_jid:    row.repasse_grupo_jid    ?? null,
+              repasse_grupo_nome:   row.repasse_grupo_nome   ?? null,
               repasse_auto_ativo:   row.repasse_auto_ativo   ?? false,
               repasse_intervalo_min: row.repasse_intervalo_min ?? 120,
               repasse_qtd_por_envio: row.repasse_qtd_por_envio ?? 1,
@@ -1500,19 +1556,24 @@ export default function ConfiguracoesPage() {
             Envia um carro disponível por vez, em rodízio, para um grupo/comunidade do WhatsApp.
           </p>
 
-          {/* Status do grupo vinculado */}
-          <div className="mb-5">
+          {/* Status do grupo vinculado + sincronização */}
+          <div className="mb-5 flex flex-col gap-3">
             {config.repasse_grupo_jid ? (
               <div className="flex items-center gap-2 px-4 py-3 bg-green-50 border border-green-200 rounded-2xl">
-                <span className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-green-700">
+                <span className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-green-700 shrink-0">
                   <CheckCircle2 size={13} className="text-green-500 shrink-0" />
-                  Comunidade vinculada
+                  Grupo vinculado
                 </span>
-                <code className="ml-2 text-[10px] text-green-600 break-all">
-                  {config.repasse_grupo_jid.length > 20
-                    ? config.repasse_grupo_jid.slice(0, 4) + "..." + config.repasse_grupo_jid.slice(-5)
-                    : config.repasse_grupo_jid}
-                </code>
+                <span className="ml-1 text-[11px] font-bold text-green-700 truncate">
+                  {config.repasse_grupo_nome || config.repasse_grupo_jid.slice(0, 10) + "..."}
+                </span>
+                <button
+                  onClick={() => vincularGrupo(null)}
+                  disabled={vinculandoGrupo}
+                  className="ml-auto text-[9px] font-black uppercase tracking-widest text-red-400 hover:text-red-600 transition shrink-0"
+                >
+                  Desvincular
+                </button>
               </div>
             ) : (
               <div className="flex items-start gap-2 px-4 py-3 bg-amber-50 border border-amber-200 rounded-2xl">
@@ -1520,11 +1581,45 @@ export default function ConfiguracoesPage() {
                   <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
                 </svg>
                 <p className="text-[10px] text-amber-700">
-                  Nenhuma comunidade vinculada. Adicione o número do agente à comunidade e envie{" "}
-                  <code className="bg-amber-100 px-1 rounded font-mono">!grupo</code>{" "}
-                  dentro dela para vincular automaticamente.
+                  Nenhum grupo vinculado. Adicione o número do agente ao grupo/comunidade e clique em{" "}
+                  <strong>Sincronizar grupos</strong> para escolher o destino dos anúncios.
                 </p>
               </div>
+            )}
+
+            {/* Sincronizar + escolher grupo */}
+            {gruposDisponiveis === null ? (
+              <button
+                onClick={sincronizarGrupos}
+                disabled={sincronizandoGrupos}
+                className="self-start px-4 py-2 rounded-xl bg-gray-900 text-white text-[10px] font-black uppercase tracking-widest hover:bg-green-600 transition disabled:opacity-50"
+              >
+                {sincronizandoGrupos ? "Sincronizando..." : "🔄 Sincronizar grupos"}
+              </button>
+            ) : gruposDisponiveis.length > 0 ? (
+              <div className="flex gap-2 items-center">
+                <select
+                  value={grupoSelecionado}
+                  onChange={e => setGrupoSelecionado(e.target.value)}
+                  className="flex-1 bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition"
+                >
+                  <option value="">Escolha o grupo...</option>
+                  {gruposDisponiveis.map(g => (
+                    <option key={g.jid} value={g.jid}>{g.name}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => vincularGrupo(grupoSelecionado)}
+                  disabled={!grupoSelecionado || vinculandoGrupo}
+                  className="px-4 py-2.5 rounded-xl bg-green-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-green-700 transition disabled:opacity-40 shrink-0"
+                >
+                  {vinculandoGrupo ? "Vinculando..." : "Vincular"}
+                </button>
+              </div>
+            ) : null}
+
+            {erroGrupos && (
+              <p className="text-[10px] text-red-500">{erroGrupos}</p>
             )}
           </div>
 

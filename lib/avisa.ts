@@ -83,6 +83,25 @@ export async function resolveAvisaLid(lid: string, creds: AvisaCreds): Promise<s
   return null;
 }
 
+// Lista os grupos/comunidades em que a instância está (GET /group/list).
+// Retorna [{ jid, name }] ou null se o endpoint falhar.
+export async function listAvisaGroups(creds: AvisaCreds): Promise<{ jid: string; name: string }[] | null> {
+  try {
+    const res = await fetch(`${creds.baseUrl.replace(/\/+$/, "")}/group/list`, {
+      headers: { Authorization: `Bearer ${creds.token}` },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const groups = data?.data?.data?.Groups ?? data?.data?.Groups ?? data?.Groups;
+    if (!Array.isArray(groups)) return null;
+    return groups
+      .filter((g: any) => typeof g?.JID === "string" && g.JID.endsWith("@g.us"))
+      .map((g: any) => ({ jid: g.JID as string, name: (g.Name as string) || g.JID }));
+  } catch {
+    return null;
+  }
+}
+
 function resolveCreds(creds?: Partial<AvisaCreds>): AvisaCreds | null {
   const baseUrl = creds?.baseUrl ?? "";
   const token = creds?.token ?? "";
