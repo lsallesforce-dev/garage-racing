@@ -17,6 +17,27 @@ const r2 = new S3Client({
   responseChecksumValidation: "WHEN_REQUIRED",
 });
 
+// Reforço além do requestChecksumCalculation: o AWS SDK v3 (>= 3.729) injeta um header de
+// checksum (CRC32) em PutObject por padrão. O Cloudflare R2 não suporta o flexible checksum,
+// então esse header entra nos SignedHeaders do presigned e o PUT direto do navegador falha
+// com "Failed to fetch". Removemos qualquer x-amz-checksum-* / x-amz-sdk-checksum-algorithm
+// ANTES da assinatura. É no-op se não existirem — zero risco para o resto.
+r2.middlewareStack.add(
+  (next: any) => async (args: any) => {
+    const headers = args?.request?.headers;
+    if (headers && typeof headers === "object") {
+      for (const key of Object.keys(headers)) {
+        const k = key.toLowerCase();
+        if (k.startsWith("x-amz-checksum-") || k === "x-amz-sdk-checksum-algorithm") {
+          delete headers[key];
+        }
+      }
+    }
+    return next(args);
+  },
+  { step: "build", name: "stripR2ChecksumHeaders", priority: "low" }
+);
+
 const BUCKET = "videos-estoque";
 const PUBLIC_URL = process.env.R2_PUBLIC_URL!;
 
