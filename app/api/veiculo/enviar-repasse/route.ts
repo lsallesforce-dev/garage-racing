@@ -62,7 +62,9 @@ export async function POST(req: NextRequest) {
   // Se repasse_grupo_jid estiver preenchido, envia para o grupo; caso contrário, para o gerente.
   if (useAvisa) {
     const avisaCreds = { baseUrl: cfg!.avisa_base_url as string, token: cfg!.avisa_token as string };
-    const textoComLink = ctaUrl ? `${texto}\n\n💬 Falar com vendedor: ${ctaUrl}` : texto;
+    // O texto gerado por gerarTextoRepasse já inclui o link "Falar com Vendedor" —
+    // só anexa aqui se o usuário tiver removido/editado o texto sem o link.
+    const textoComLink = ctaUrl && !texto.includes("wa.me/") ? `${texto}\n\n💬 Falar com vendedor: ${ctaUrl}` : texto;
     const destinoAvisa = (cfg?.repasse_grupo_jid as string | null | undefined) || destino;
     if (capaUrl && String(capaUrl).startsWith("http")) {
       await sendAvisaImage(destinoAvisa, capaUrl, textoComLink, avisaCreds);
