@@ -81,6 +81,9 @@ export const PhotoGallery = ({
   const [uploadingCount, setUploadingCount] = useState(0);
   const [watermarkEnabled, setWatermarkEnabled] = useState(true);
 
+  // Ref para acionar o input de arquivo ao clicar na área vazia
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   // Drag and drop state — reordering
   const dragIndex = useRef<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
@@ -287,6 +290,7 @@ export const PhotoGallery = ({
               </>
             )}
             <input
+              ref={fileInputRef}
               type="file"
               accept="image/*"
               multiple
@@ -299,7 +303,13 @@ export const PhotoGallery = ({
       </div>
 
       {/* Foto principal */}
-      <div className={`w-full h-80 rounded-2xl border-2 overflow-hidden mb-4 relative bg-[#d4d4d0] transition-all ${isDragOverExternal ? "border-red-500 bg-red-50/30" : "border-black/10"}`}>
+      <div className={`w-full h-80 rounded-2xl border-2 overflow-hidden mb-4 relative transition-all ${
+        isDragOverExternal
+          ? "border-red-500 bg-red-50/30"
+          : fotos.length === 0
+          ? "border-dashed border-gray-300 bg-[#d4d4d0]/60"
+          : "border-black/10 bg-[#d4d4d0]"
+      }`}>
         {isDragOverExternal && (
           <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-red-600/10 backdrop-blur-[2px] pointer-events-none">
             <ImagePlus size={32} className="text-red-600 mb-2" />
@@ -315,17 +325,20 @@ export const PhotoGallery = ({
             className="w-full h-full object-cover hover:scale-105 transition-transform duration-500 cursor-zoom-in"
           />
         ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center text-center p-8">
-            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4 text-gray-300">
-              <ImagePlus size={28} />
-            </div>
-            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">
-              Sem fotos no pátio
+          <button
+            type="button"
+            onClick={() => !isUploading && fileInputRef.current?.click()}
+            disabled={isUploading}
+            className="w-full h-full flex flex-col items-center justify-center text-center p-8 cursor-pointer disabled:cursor-not-allowed hover:bg-black/5 transition-colors"
+          >
+            <ImagePlus size={28} className="text-gray-400 mb-3" />
+            <p className="text-[11px] font-black text-gray-500 uppercase tracking-widest">
+              Arraste ou clique para enviar suas imagens
             </p>
-            <p className="text-[9px] text-gray-300 uppercase font-bold max-w-[160px]">
-              Clique em "Adicionar Fotos" para iniciar a vitrine
+            <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mt-1">
+              JPG, PNG — múltiplas fotos suportadas
             </p>
-          </div>
+          </button>
         )}
 
         {isUploading && (
