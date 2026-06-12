@@ -1307,6 +1307,33 @@ export default function DetalheVeiculo() {
     }
   };
 
+  // ── Normaliza valores dos selects (case-insensitive, ignora acentos) ─────
+  function normCombustivel(v: string | null | undefined): string {
+    if (!v) return "";
+    const map: Record<string, string> = {
+      flex: "Flex", flexone: "Flex", "flex one": "Flex",
+      gasolina: "Gasolina",
+      diesel: "Diesel",
+      eletrico: "Elétrico", elétrico: "Elétrico", "elétrico": "Elétrico",
+      hibrido: "Híbrido", híbrido: "Híbrido",
+      gnv: "GNV",
+      alcool: "Gasolina", álcool: "Gasolina", etanol: "Gasolina",
+    };
+    return map[v.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")] ?? v;
+  }
+
+  function normCambio(v: string | null | undefined): string {
+    if (!v) return "";
+    const map: Record<string, string> = {
+      manual: "Manual",
+      automatico: "Automático", automático: "Automático",
+      cvt: "CVT",
+      "semi-automatico": "Semi-automático", "semi-automático": "Semi-automático",
+      "semiautomatico": "Semi-automático",
+    };
+    return map[v.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")] ?? v;
+  }
+
   // ── Loading ──────────────────────────────────────────────────────────────
   if (!veiculo)
     return (
@@ -2069,7 +2096,7 @@ export default function DetalheVeiculo() {
                 <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
                   <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-2">Combustível</p>
                   <select
-                    value={veiculo.combustivel || ""}
+                    value={normCombustivel(veiculo.combustivel)}
                     onChange={(e) => setVeiculo({ ...veiculo, combustivel: e.target.value || null })}
                     className="w-full bg-transparent text-xs font-black text-gray-900 uppercase outline-none cursor-pointer"
                   >
@@ -2085,7 +2112,7 @@ export default function DetalheVeiculo() {
                 <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
                   <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-2">Câmbio</p>
                   <select
-                    value={veiculo.cambio || ""}
+                    value={normCambio(veiculo.cambio)}
                     onChange={(e) => setVeiculo({ ...veiculo, cambio: e.target.value || null })}
                     className="w-full bg-transparent text-xs font-black text-gray-900 uppercase outline-none cursor-pointer"
                   >

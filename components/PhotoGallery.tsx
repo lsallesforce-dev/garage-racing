@@ -81,9 +81,12 @@ export const PhotoGallery = ({
   const [uploadingCount, setUploadingCount] = useState(0);
   const [watermarkEnabled, setWatermarkEnabled] = useState(true);
 
-  // Drag and drop state
+  // Drag and drop state — reordering
   const dragIndex = useRef<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
+  // Drag and drop state — external files from OS
+  const [isDragOverExternal, setIsDragOverExternal] = useState(false);
 
   const isUploading = uploadingCount > 0;
 
@@ -181,8 +184,63 @@ export const PhotoGallery = ({
     setDragOverIndex(null);
   };
 
+  // ── Drop zone para arquivos externos (do SO) ──────────────────────────────
+
+  const handleExternalDragOver = (e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes("Files")) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOverExternal(true);
+  };
+
+  const handleExternalDragLeave = (e: React.DragEvent) => {
+    // Só desativa se o cursor saiu do container raiz
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+    setIsDragOverExternal(false);
+  };
+
+  const handleExternalDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOverExternal(false);
+    if (isUploading) return;
+
+    const files = Array.from(e.dataTransfer.files).filter((f) =>
+      f.type.startsWith("image/")
+    );
+    if (files.length === 0) return;
+
+    setUploadingCount(files.length);
+    const newUrls: string[] = [];
+    for (const file of files) {
+      try {
+        const url = await uploadSingleFile(file);
+        newUrls.push(url);
+        setUploadingCount((c) => c - 1);
+      } catch (err) {
+        console.error("Erro ao subir foto:", err);
+        setUploadingCount((c) => c - 1);
+      }
+    }
+
+    if (newUrls.length === 0) return;
+    const newPhotos = [...fotos, ...newUrls];
+    const { error } = await supabase
+      .from("veiculos")
+      .update({ fotos: newPhotos })
+      .eq("id", veiculoId);
+    if (error) { alert("Erro ao salvar fotos"); return; }
+    onPhotosUpdated(newPhotos);
+    if (!selectedPhoto) setSelectedPhoto(newUrls[0]);
+  };
+
   return (
-    <div className="bg-[#e2e2de] p-6 rounded-3xl border border-gray-200/50">
+    <div
+      className="bg-[#e2e2de] p-6 rounded-3xl border border-gray-200/50"
+      onDragOver={handleExternalDragOver}
+      onDragLeave={handleExternalDragLeave}
+      onDrop={handleExternalDrop}
+    >
       {/* Header */}
       <div className="flex justify-between items-center mb-4 gap-3 flex-wrap">
         <div>
@@ -241,7 +299,15 @@ export const PhotoGallery = ({
       </div>
 
       {/* Foto principal */}
-      <div className="w-full h-80 rounded-2xl border-2 border-black/10 overflow-hidden mb-4 relative bg-[#d4d4d0]">
+      <div className={`w-full h-80 rounded-2xl border-2 overflow-hidden mb-4 relative bg-[#d4d4d0] transition-all ${isDragOverExternal ? "border-red-500 bg-red-50/30" : "border-black/10"}`}>
+        {isDragOverExternal && (
+          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-red-600/10 backdrop-blur-[2px] pointer-events-none">
+            <ImagePlus size={32} className="text-red-600 mb-2" />
+            <p className="text-[11px] font-black text-red-600 uppercase tracking-widest">
+              Solte para adicionar
+            </p>
+          </div>
+        )}
         {fotos.length > 0 ? (
           <img
             src={selectedPhoto || fotos[0]}
