@@ -57,6 +57,11 @@ interface GarageConfig {
   webmotors_usuario?: string;
   webmotors_senha?: string;
   nf_cep?: string;
+  repasse_grupo_jid?: string | null;
+  repasse_auto_ativo?: boolean;
+  repasse_intervalo_min?: number;
+  repasse_janela_inicio?: number;
+  repasse_janela_fim?: number;
 }
 
 export default function ConfiguracoesPage() {
@@ -132,6 +137,11 @@ export default function ConfiguracoesPage() {
     horario_funcionamento: "",
     oferta_especial: "",
     telefone_loja: "",
+    repasse_grupo_jid: null,
+    repasse_auto_ativo: false,
+    repasse_intervalo_min: 120,
+    repasse_janela_inicio: 8,
+    repasse_janela_fim: 18,
   });
   const fileRef = useRef<HTMLInputElement>(null);
   const pfxRef = useRef<HTMLInputElement>(null);
@@ -383,6 +393,11 @@ export default function ConfiguracoesPage() {
               webmotors_usuario: row.webmotors_usuario ?? "",
               webmotors_senha:   row.webmotors_senha   ?? "",
               nf_cep:            row.nf_cep            ?? "",
+              repasse_grupo_jid:    row.repasse_grupo_jid    ?? null,
+              repasse_auto_ativo:   row.repasse_auto_ativo   ?? false,
+              repasse_intervalo_min: row.repasse_intervalo_min ?? 120,
+              repasse_janela_inicio: row.repasse_janela_inicio ?? 8,
+              repasse_janela_fim:    row.repasse_janela_fim    ?? 18,
             });
             if (row.logo_url) {
               setCurrentLogo(row.logo_url);
@@ -535,6 +550,10 @@ export default function ConfiguracoesPage() {
             avisa_token: config.avisa_token || null,
             meta_phone_id: config.meta_phone_id || null,
             meta_access_token: config.meta_access_token || null,
+            repasse_auto_ativo:    config.repasse_auto_ativo    ?? false,
+            repasse_intervalo_min: config.repasse_intervalo_min ?? 120,
+            repasse_janela_inicio: config.repasse_janela_inicio ?? 8,
+            repasse_janela_fim:    config.repasse_janela_fim    ?? 18,
           },
           { onConflict: "user_id" }
         );
@@ -1461,6 +1480,126 @@ export default function ConfiguracoesPage() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+
+        {/* ── Repasse Automático em Comunidade ── */}
+        <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-8">
+          <h2 className="text-[11px] font-black uppercase tracking-widest text-gray-400 mb-1">
+            Repasse Automático em Comunidade
+          </h2>
+          <p className="text-[11px] text-gray-500 mb-6">
+            Envia um carro disponível por vez, em rodízio, para um grupo/comunidade do WhatsApp.
+          </p>
+
+          {/* Status do grupo vinculado */}
+          <div className="mb-5">
+            {config.repasse_grupo_jid ? (
+              <div className="flex items-center gap-2 px-4 py-3 bg-green-50 border border-green-200 rounded-2xl">
+                <span className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-green-700">
+                  <CheckCircle2 size={13} className="text-green-500 shrink-0" />
+                  Comunidade vinculada
+                </span>
+                <code className="ml-2 text-[10px] text-green-600 break-all">
+                  {config.repasse_grupo_jid.length > 20
+                    ? config.repasse_grupo_jid.slice(0, 4) + "..." + config.repasse_grupo_jid.slice(-5)
+                    : config.repasse_grupo_jid}
+                </code>
+              </div>
+            ) : (
+              <div className="flex items-start gap-2 px-4 py-3 bg-amber-50 border border-amber-200 rounded-2xl">
+                <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-amber-500 shrink-0 mt-0.5">
+                  <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                </svg>
+                <p className="text-[10px] text-amber-700">
+                  Nenhuma comunidade vinculada. Adicione o número do agente à comunidade e envie{" "}
+                  <code className="bg-amber-100 px-1 rounded font-mono">!grupo</code>{" "}
+                  dentro dela para vincular automaticamente.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-5">
+            {/* Toggle envio automático */}
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-gray-700">Envio automático</p>
+                <p className="text-[9px] text-gray-400 mt-0.5">
+                  {!config.repasse_grupo_jid ? "Vincule uma comunidade para habilitar" : "Ativa o envio programado de anúncios"}
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={!config.repasse_grupo_jid}
+                onClick={() => setConfig(c => ({ ...c, repasse_auto_ativo: !c.repasse_auto_ativo }))}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
+                  config.repasse_auto_ativo && config.repasse_grupo_jid
+                    ? "bg-green-500"
+                    : "bg-gray-200"
+                } ${!config.repasse_grupo_jid ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                    config.repasse_auto_ativo && config.repasse_grupo_jid ? "translate-x-6" : "translate-x-1"
+                  }`}
+                />
+              </button>
+            </div>
+
+            {/* Intervalo entre anúncios */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+                Intervalo entre anúncios
+              </label>
+              <select
+                value={config.repasse_intervalo_min ?? 120}
+                onChange={e => setConfig(c => ({ ...c, repasse_intervalo_min: Number(e.target.value) }))}
+                className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition"
+              >
+                <option value={60}>1 hora</option>
+                <option value={120}>2 horas</option>
+                <option value={180}>3 horas</option>
+                <option value={240}>4 horas</option>
+              </select>
+            </div>
+
+            {/* Janela de horário */}
+            <div className="flex gap-3">
+              <div className="flex flex-col gap-1.5 flex-1">
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+                  Início <span className="text-gray-400 normal-case font-normal">(Horário de Brasília)</span>
+                </label>
+                <select
+                  value={config.repasse_janela_inicio ?? 8}
+                  onChange={e => setConfig(c => ({ ...c, repasse_janela_inicio: Number(e.target.value) }))}
+                  className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition"
+                >
+                  {Array.from({ length: 24 }, (_, i) => (
+                    <option key={i} value={i}>{String(i).padStart(2, "0")}h</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1.5 flex-1">
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+                  Fim <span className="text-gray-400 normal-case font-normal">(Horário de Brasília)</span>
+                </label>
+                <select
+                  value={config.repasse_janela_fim ?? 18}
+                  onChange={e => setConfig(c => ({ ...c, repasse_janela_fim: Number(e.target.value) }))}
+                  className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition"
+                >
+                  {Array.from({ length: 24 }, (_, i) => (
+                    <option key={i} value={i}>{String(i).padStart(2, "0")}h</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Nota explicativa */}
+            <p className="text-[10px] text-gray-400 italic">
+              Um carro disponível (com preço preenchido) é enviado por vez, em rodízio.
+            </p>
           </div>
         </div>
 

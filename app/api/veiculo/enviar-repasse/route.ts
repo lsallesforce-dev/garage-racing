@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
   // config_garage pode ter múltiplas linhas por user_id — nunca usar .single()/.maybeSingle()
   const { data: cfgRows } = await supabaseAdmin
     .from("config_garage")
-    .select("whatsapp, whatsapp_agente, meta_phone_id, meta_access_token, avisa_base_url, avisa_token")
+    .select("whatsapp, whatsapp_agente, meta_phone_id, meta_access_token, avisa_base_url, avisa_token, repasse_grupo_jid")
     .eq("user_id", carro.user_id)
     .order("created_at", { ascending: false })
     .limit(1);
@@ -59,13 +59,15 @@ export async function POST(req: NextRequest) {
   const ctaUrl = botPhone ? `https://wa.me/${botPhone}` : null;
 
   // ── Canal Avisa: sem botão CTA — o link vai no corpo; capa via sendMedia ────
+  // Se repasse_grupo_jid estiver preenchido, envia para o grupo; caso contrário, para o gerente.
   if (useAvisa) {
     const avisaCreds = { baseUrl: cfg!.avisa_base_url as string, token: cfg!.avisa_token as string };
     const textoComLink = ctaUrl ? `${texto}\n\n💬 Falar com vendedor: ${ctaUrl}` : texto;
+    const destinoAvisa = (cfg?.repasse_grupo_jid as string | null | undefined) || destino;
     if (capaUrl && String(capaUrl).startsWith("http")) {
-      await sendAvisaImage(destino, capaUrl, textoComLink, avisaCreds);
+      await sendAvisaImage(destinoAvisa, capaUrl, textoComLink, avisaCreds);
     } else {
-      await sendAvisaMessage(destino, textoComLink, avisaCreds, { typing: false });
+      await sendAvisaMessage(destinoAvisa, textoComLink, avisaCreds, { typing: false });
     }
     return NextResponse.json({ ok: true });
   }

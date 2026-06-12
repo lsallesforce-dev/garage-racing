@@ -29,7 +29,7 @@ export const maxDuration = 300;
 // ─── Extração de Campos do Payload ───────────────────────────────────────────
 function extractFields(payload: any): {
   phone: string;
-  isLid: boolean;
+  isLid?: boolean;
   lidPhone?: string;
   chatPhone?: string;  // número do CLIENTE (info.Chat) — necessário em mensagens fromMe
   groupJid?: string;   // JID do grupo ("...@g.us") — IA nunca responde em grupo; só o comando !grupo é tratado
