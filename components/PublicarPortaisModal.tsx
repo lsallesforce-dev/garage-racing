@@ -48,6 +48,8 @@ export default function PublicarPortaisModal({
   const [olxErro, setOlxErro]       = useState("");
   const [wmErro, setWmErro]         = useState("");
   const [mlErro, setMlErro]         = useState("");
+  const [mlAviso, setMlAviso]       = useState("");
+  const [mlLink, setMlLink]         = useState("");
 
   if (!isOpen) return null;
 
@@ -96,6 +98,8 @@ export default function PublicarPortaisModal({
   async function publicarML() {
     setMlStatus("loading");
     setMlErro("");
+    setMlAviso("");
+    setMlLink("");
     try {
       const res = await fetch("/api/mercadolivre/publicar", {
         method: "POST",
@@ -104,6 +108,16 @@ export default function PublicarPortaisModal({
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Erro desconhecido");
+
+      // Anúncio criado, mas o plano de classificado exige ativação/pagamento no ML.
+      if (json.payment_required) {
+        onStatusChange?.("status_ml", "aguardando_pagamento");
+        setMlStatus("ok");
+        setMlAviso(json.aviso ?? "Anúncio criado — finalize a ativação na sua conta do Mercado Livre.");
+        if (json.permalink) setMlLink(json.permalink);
+        return; // não redireciona — deixa o link visível pra finalizar
+      }
+
       onStatusChange?.("status_ml", "publicado");
       onClose();
       router.push("/marketing/anuncios");
@@ -234,6 +248,21 @@ export default function PublicarPortaisModal({
             </div>
             {mlErro && (
               <div className="px-3.5 pb-3 text-[9px] text-red-500 font-bold">{mlErro}</div>
+            )}
+            {mlAviso && (
+              <div className="px-3.5 pb-3 space-y-1.5">
+                <p className="text-[9px] text-amber-600 font-bold">{mlAviso}</p>
+                {mlLink && (
+                  <a
+                    href={mlLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-yellow-700 hover:text-yellow-800 underline underline-offset-2"
+                  >
+                    Abrir anúncio no Mercado Livre →
+                  </a>
+                )}
+              </div>
             )}
           </div>
 

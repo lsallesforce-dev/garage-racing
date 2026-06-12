@@ -90,8 +90,13 @@ export async function POST(req: NextRequest) {
 
   const respJson = await resp.json().catch(() => ({}));
 
-  if (!resp.ok) {
-    // ML detalha campos inválidos/faltando num array "cause" — surfaça isso pra diagnóstico
+  // ML cria o item mas classificado de veículo (silver) pode exigir pagamento:
+  // retorna 402 + status "payment_required" COM o id do item JÁ criado. Não é falha.
+  const itemId: string | undefined = respJson?.id;
+  const precisaPagamento = respJson?.status === "payment_required" || resp.status === 402;
+
+  if (!itemId) {
+    // Falha real — nenhum item foi criado. ML detalha em "cause".
     const causas = Array.isArray(respJson?.cause)
       ? respJson.cause.map((c: any) => c?.message ?? c?.code ?? JSON.stringify(c)).filter(Boolean).join(" | ")
       : "";
@@ -102,8 +107,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: msg }, { status: 502 });
   }
 
-  const itemId: string = respJson.id;
-  console.log(`✅ ML item criado: ${itemId}`);
+  console.log(`✅ ML item criado: ${itemId}${precisaPagamento ? " (aguardando pagamento)" : ""}`);
 
   // Adiciona descrição em chamada separada (ML exige isso para classified)
   const descricao = (v.relatorio_ia || v.detalhes_inspecao || titulo).slice(0, 50_000);
@@ -117,10 +121,12 @@ export async function POST(req: NextRequest) {
     console.warn("⚠️ ML descrição falhou (não crítico):", await descResp.text().catch(() => ""));
   }
 
+  const statusFinal = precisaPagamento ? "aguardando_pagamento" : "publicado";
+
   // Persiste no banco
   await supabaseAdmin
     .from("veiculos")
-    .update({ status_ml: "publicado", ml_item_id: itemId })
+    .update({ status_ml: statusFinal, ml_item_id: itemId })
     .eq("id", veiculoId);
 
   const now = new Date().toISOString();
@@ -130,7 +136,7 @@ export async function POST(req: NextRequest) {
       veiculo_id:   veiculoId,
       portal:       "mercadolivre",
       portal_ad_id: itemId,
-      status:       "publicado",
+      status:       statusFinal,
       titulo,
       descricao,
       preco:        Number(v.preco_sugerido ?? 0),
@@ -142,5 +148,16 @@ export async function POST(req: NextRequest) {
     { onConflict: "veiculo_id,portal", ignoreDuplicates: false }
   );
 
-  return NextResponse.json({ success: true, itemId });
+  const permalink: string | null = respJson?.permalink ?? null;
+  if (precisaPagamento) {
+    return NextResponse.json({
+      success: true,
+      itemId,
+      permalink,
+      payment_required: true,
+      aviso: "Anúncio criado no Mercado Livre, mas o plano de classificado de veículo exige ativação/pagamento. Abra o link do anúncio na sua conta ML para finalizar.",
+    });
+  }
+
+  return NextResponse.json({ success: true, itemId, permalink });
 }
