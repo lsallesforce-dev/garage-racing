@@ -16,7 +16,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { processWhatsAppMessage } from "@/lib/process-whatsapp";
 import { isDuplicateMessage, debounceClientImages, debounceFirstContact, isAgentEcho } from "@/lib/redis";
 import { logWebhookError } from "@/lib/error-log";
-import { resolveAvisaLid } from "@/lib/avisa";
+import { resolveAvisaLid, sendAvisaMessage } from "@/lib/avisa";
 
 // Vercel Pro: 300s | Hobby: 60s
 // O after() usa o mesmo budget de tempo — resposta vai em ~50ms, sobra tudo para a IA
@@ -32,6 +32,7 @@ function extractFields(payload: any): {
   isLid: boolean;
   lidPhone?: string;
   chatPhone?: string;  // número do CLIENTE (info.Chat) — necessário em mensagens fromMe
+  groupJid?: string;   // JID do grupo ("...@g.us") — IA nunca responde em grupo; só o comando !grupo é tratado
   userMessage: string;
   fromMe: boolean;
   audioUrl?: string;
@@ -103,6 +104,18 @@ function extractFields(payload: any): {
     if (parsedData.type !== "Message") return { phone: "", userMessage: "", fromMe: true };
     // Ignorar mensagens de Status/Story do WhatsApp
     if (info.Chat === "status@broadcast") return { phone: "", userMessage: "", fromMe: true };
+    // Mensagem de GRUPO/comunidade: captura ANTES da lógica de contraparte (que
+    // pegaria o número do remetente e perderia o JID do grupo). O handler só trata
+    // o comando !grupo; todo o resto de grupo é ignorado.
+    if ((info.Chat || "").endsWith("@g.us")) {
+      return {
+        phone: ((info.SenderAlt || info.Sender || "").replace(/@.*$/, "")),
+        isLid: false,
+        groupJid: info.Chat,
+        userMessage: (msg?.conversation || msg?.extendedTextMessage?.text || "").trim(),
+        fromMe: info.IsFromMe ?? false,
+      };
+    }
     fromMe = info.IsFromMe ?? false;
     // Número REAL do CLIENTE (contraparte). O Chat pode ser um LID que NÃO casa com o
     // wa_id do lead (migrado p/ número real). O número real do cliente vem em:
@@ -194,6 +207,15 @@ function extractFields(payload: any): {
   else if (parsedData?.data?.key?.remoteJid) {
     const key = parsedData.data.key;
     const msg = parsedData.data.message;
+    if ((key.remoteJid || "").endsWith("@g.us")) {
+      return {
+        phone: (key.participant || "").replace(/@.*$/, ""),
+        isLid: false,
+        groupJid: key.remoteJid,
+        userMessage: (msg?.conversation || msg?.extendedTextMessage?.text || "").trim(),
+        fromMe: key.fromMe || false,
+      };
+    }
     fromMe = key.fromMe || false;
     phone = (key.remoteJid || "").replace(/@.*$/, "");
     userMessage = msg?.conversation || msg?.extendedTextMessage?.text || "";
@@ -339,8 +361,36 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Validação Básica ──────────────────────────────────────────────────────
-    let { phone, isLid, lidPhone, chatPhone, userMessage: rawMessage, fromMe, audioUrl, audioMediaKey, imageThumbnail, messageId, adReferral } =
+    let { phone, isLid, lidPhone, chatPhone, groupJid, userMessage: rawMessage, fromMe, audioUrl, audioMediaKey, imageThumbnail, messageId, adReferral } =
       extractFields(payload);
+
+    // ── Grupos/Comunidades: a IA NUNCA responde em grupo ──────────────────────
+    // Única exceção: o comando "!grupo" enviado pelo gerente (fromMe, ou do número
+    // configurado em config_garage.whatsapp) vincula o grupo como destino dos
+    // anúncios de repasse (config_garage.repasse_grupo_jid).
+    if (groupJid) {
+      const cmd = (rawMessage || "").trim().toLowerCase();
+      if (cmd === "!grupo") {
+        const gerente = (garageConfig?.whatsapp || "").replace(/\D/g, "");
+        const sender = (phone || "").replace(/\D/g, "");
+        const ehGerente = fromMe || (!!gerente && !!sender && (sender.endsWith(gerente) || gerente.endsWith(sender)));
+        if (ehGerente && garageConfig?.avisa_base_url && garageConfig?.avisa_token) {
+          await supabaseAdmin
+            .from("config_garage")
+            .update({ repasse_grupo_jid: groupJid })
+            .eq("user_id", tenantUserId);
+          await sendAvisaMessage(
+            groupJid,
+            "✅ Grupo vinculado! Os anúncios de repasse serão enviados aqui.",
+            { baseUrl: garageConfig.avisa_base_url, token: garageConfig.avisa_token },
+            { typing: false }
+          );
+          console.log(`👥 [Repasse] Grupo ${groupJid} vinculado ao tenant ${tenantUserId}`);
+          return NextResponse.json({ status: "group_linked" });
+        }
+      }
+      return NextResponse.json({ status: "ignored_group" });
+    }
 
     // Migração de lead LID → número real (roda antes do fromMe para capturar receipts)
     // Quando Baileys entrega SenderAlt com número real junto ao LID, migramos o wa_id

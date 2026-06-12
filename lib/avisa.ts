@@ -142,6 +142,10 @@ function typingDelay(text: string): number {
 }
 
 function buildTarget(phone: string): { number: string } {
+  // JID completo já montado (grupo "@g.us", LID "@lid") — pass-through direto pro Baileys
+  if (phone.includes("@")) {
+    return { number: phone };
+  }
   // For LID contacts (Instagram CTWA), pass the full @lid JID so Baileys can route correctly.
   // Sending just the numeric part causes HTTP 500 because Baileys needs the JID suffix.
   if (isLidPhone(phone)) {
@@ -155,7 +159,9 @@ function buildTarget(phone: string): { number: string } {
 
 async function sendAvisaTyping(baseUrl: string, token: string, phone: string, action: "start" | "stop") {
   try {
-    const chat = isLidPhone(phone)
+    const chat = phone.includes("@")
+      ? phone
+      : isLidPhone(phone)
       ? `${phone.replace(/\D/g, "")}@lid`
       : `${formatPhone(phone)}@s.whatsapp.net`;
     await fetch(`${baseUrl}/chat/typing/${action}`, {
