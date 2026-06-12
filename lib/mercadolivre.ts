@@ -115,6 +115,17 @@ function mapAttr(map: Record<string, string>, value: string, fallback: string): 
   return map[norm(value)] ?? fallback;
 }
 
+// UF → nome do estado (ML exige location.state.name nominal, não a sigla)
+const UF_TO_ESTADO: Record<string, string> = {
+  AC: "Acre", AL: "Alagoas", AP: "Amapá", AM: "Amazonas", BA: "Bahia",
+  CE: "Ceará", DF: "Distrito Federal", ES: "Espírito Santo", GO: "Goiás",
+  MA: "Maranhão", MT: "Mato Grosso", MS: "Mato Grosso do Sul", MG: "Minas Gerais",
+  PA: "Pará", PB: "Paraíba", PR: "Paraná", PE: "Pernambuco", PI: "Piauí",
+  RJ: "Rio de Janeiro", RN: "Rio Grande do Norte", RS: "Rio Grande do Sul",
+  RO: "Rondônia", RR: "Roraima", SC: "Santa Catarina", SP: "São Paulo",
+  SE: "Sergipe", TO: "Tocantins",
+};
+
 /** Monta o payload de item para publicação no ML (categoria MLB1744 — Carros usados). */
 export function buildMLPayload(v: {
   marca?: string | null;
@@ -132,7 +143,7 @@ export function buildMLPayload(v: {
   relatorio_ia?: string | null;
   detalhes_inspecao?: string | null;
   pontos_fortes_venda?: unknown;
-}, zipCode?: string | null) {
+}, loc?: { zipCode?: string | null; city?: string | null; state?: string | null }) {
   const titulo = `${v.marca ?? ""} ${v.modelo ?? ""}${v.versao ? " " + v.versao : ""} ${v.ano_modelo ?? v.ano ?? ""}`.trim().slice(0, 60);
   const fotos  = (Array.isArray(v.fotos) ? v.fotos.filter(Boolean) : []).slice(0, 12);
 
@@ -148,7 +159,8 @@ export function buildMLPayload(v: {
   ].filter(a => a.value_name && a.value_name !== "0");
 
   if (v.cor)   attributes.push({ id: "COLOR",         value_name: v.cor });
-  if (v.versao) attributes.push({ id: "VERSION",       value_name: v.versao });
+  // TRIM (versão) é OBRIGATÓRIO no MLB1744 — não é "VERSION". Fallback p/ não vir vazio.
+  attributes.push({ id: "TRIM", value_name: v.versao || v.modelo || "Único" });
   if (v.placa) attributes.push({ id: "LICENSE_PLATE", value_name: v.placa.toUpperCase() });
 
   const payload: Record<string, unknown> = {
@@ -166,8 +178,20 @@ export function buildMLPayload(v: {
     attributes,
   };
 
+  const zipCode = loc?.zipCode;
   if (zipCode) {
     payload.seller_address = { zip_code: zipCode.replace(/\D/g, "") };
+  }
+
+  // location até nível de cidade — obrigatório p/ MLB1744 (ML rejeita só com CEP)
+  if (loc?.city || loc?.state || zipCode) {
+    const estadoNome = loc?.state ? (UF_TO_ESTADO[loc.state.toUpperCase()] ?? loc.state) : null;
+    payload.location = {
+      ...(zipCode ? { zip_code: zipCode.replace(/\D/g, "") } : {}),
+      ...(loc?.city ? { city: { name: loc.city } } : {}),
+      ...(estadoNome ? { state: { name: estadoNome } } : {}),
+      country: { id: "BR", name: "Brasil" },
+    };
   }
 
   return { payload, titulo };

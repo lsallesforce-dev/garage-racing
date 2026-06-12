@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
       .single(),
     supabaseAdmin
       .from("config_garage")
-      .select("ml_access_token, nf_cep")
+      .select("ml_access_token, nf_cep, cidade, estado")
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(1),
@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { payload, titulo } = buildMLPayload(v, cfg.nf_cep);
+  const { payload, titulo } = buildMLPayload(v, { zipCode: cfg.nf_cep, city: cfg.cidade, state: cfg.estado });
 
   console.log(`📤 [ML publicar] ${veiculoId} — ${titulo}`);
 
