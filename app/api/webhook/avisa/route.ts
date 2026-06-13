@@ -249,7 +249,18 @@ function extractFields(payload: any): {
     };
   }
 
-  return { phone, isLid, lidPhone, chatPhone, userMessage: userMessage?.trim() || "", fromMe, audioUrl, audioMediaKey, imageThumbnail, messageId, adReferral };
+  // Remove sufixo de device do WhatsApp multi-aparelho (":9", ":35", etc) de TODOS
+  // os números extraídos. Sem isso, "5517988351514:9" vira wa_id de um lead FANTASMA
+  // duplicado — o cliente fica dividido em duas conversas e a IA trata como desconhecido.
+  const stripDevice = (p?: string) => (p ? p.split(":")[0] : p);
+  return {
+    phone: stripDevice(phone) || "",
+    isLid,
+    lidPhone: stripDevice(lidPhone),
+    chatPhone: stripDevice(chatPhone),
+    userMessage: userMessage?.trim() || "",
+    fromMe, audioUrl, audioMediaKey, imageThumbnail, messageId, adReferral,
+  };
 }
 
 // ─── Webhook Principal ────────────────────────────────────────────────────────
