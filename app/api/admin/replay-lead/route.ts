@@ -13,7 +13,7 @@ import { requireAdminSecret } from "@/lib/api-auth";
 import { processWhatsAppMessage } from "@/lib/process-whatsapp";
 import type { GarageConfig } from "@/lib/process-whatsapp";
 
-const FIELDS = "user_id, nome_empresa, nome_fantasia, nome_agente, endereco, endereco_complemento, cidade, whatsapp, vitrine_slug, webhook_token, avisa_base_url, avisa_token, meta_phone_id, meta_access_token, tom_venda, instrucoes_adicionais, oferta_especial, horario_funcionamento, plano_ativo, trial_ends_at, plano_vence_em";
+const FIELDS = "user_id, nome_empresa, nome_fantasia, nome_agente, endereco, endereco_complemento, cidade, whatsapp, whatsapp_financeiro, whatsapp_posvenda, vitrine_slug, webhook_token, avisa_base_url, avisa_token, meta_phone_id, meta_access_token, tom_venda, instrucoes_adicionais, oferta_especial, horario_funcionamento, plano_ativo, trial_ends_at, plano_vence_em";
 
 export async function POST(req: NextRequest) {
   const authError = await requireAdminSecret(req);

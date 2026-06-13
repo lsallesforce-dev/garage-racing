@@ -148,6 +148,8 @@ export interface GarageConfig {
   endereco_complemento?: string;
   cidade?: string;
   whatsapp?: string;
+  whatsapp_financeiro?: string;
+  whatsapp_posvenda?: string;
   telefone_loja?: string;
   vitrine_slug?: string;
   webhook_token?: string;
@@ -1775,6 +1777,14 @@ Responda apenas com o JSON, sem markdown.`;
   const gerentePhone = _gerenteRaw
     ? _gerenteRaw.replace(/\D/g, "").replace(/^(?!55)/, "55")
     : undefined;
+  const _posvendaRaw = garageConfig?.whatsapp_posvenda || null;
+  const posvendaPhone = _posvendaRaw
+    ? _posvendaRaw.replace(/\D/g, "").replace(/^(?!55)/, "55")
+    : gerentePhone;
+  const _financeiroRaw = garageConfig?.whatsapp_financeiro || null;
+  const financeiroPhone = _financeiroRaw
+    ? _financeiroRaw.replace(/\D/g, "").replace(/^(?!55)/, "55")
+    : gerentePhone;
 
   // ── 9b. Recovery de contexto do anúncio via histórico ──────────────────────
   // Quando o lead veio de CTWA (LID) e a 1ª mensagem foi processada sem veiculo_id
@@ -1868,9 +1878,9 @@ Responda apenas com o JSON, sem markdown.`;
       .update({ status: "PROBLEMA", em_atendimento_humano: true })
       .eq("id", lead.id);
 
-    if (gerentePhone) {
+    if (posvendaPhone) {
       const posvBody = `🔴 *ALERTA PÓS-VENDA!*\n\n👤 ${lead.nome || phone}\n📱 Número: +${phone}\n💬 "${userMessage.slice(0, 120)}"\n⚠️ Cliente relatou problema/garantia. IA em stand-by — assuma o atendimento.`;
-      await sendAlertComLink(gerentePhone, posvBody, phone).catch(() => {});
+      await sendAlertComLink(posvendaPhone, posvBody, phone).catch(() => {});
     }
 
     if (lead?.id) await releaseLeadLock(tenantUserId, lead.id).catch(() => {});
@@ -1897,10 +1907,10 @@ Responda apenas com o JSON, sem markdown.`;
       followup_count: 2,
     }).eq("id", lead.id);
 
-    // Alerta gerente
-    if (gerentePhone) {
+    // Alerta gerente / pós-venda
+    if (posvendaPhone) {
       const alertBody = `📋 *CONVERSA ENCERRADA*\n\n👤 ${lead.nome || phone}\n📱 Número: +${phone}\n💬 "${textoClientePosvenda.slice(0, 100)}"\n⚠️ Cliente informou que já resolveu. Agente em stand-by.`;
-      await sendAlertComLink(gerentePhone, alertBody, phone).catch(() => {});
+      await sendAlertComLink(posvendaPhone, alertBody, phone).catch(() => {});
     }
 
     if (lead?.id) await releaseLeadLock(tenantUserId, lead.id).catch(() => {});
@@ -3087,7 +3097,7 @@ Retorne JSON estrito:
   if (lead?.id && !lead.em_atendimento_humano && FINANCIAMENTO_KEYWORDS.test(mensagemClientePura)) {
     await supabaseAdmin.from("leads").update({ em_atendimento_humano: true }).eq("id", lead.id);
     await setTrocaStandby(tenantUserId, lead.id); // marca handoff automático → cliente recebe rede de segurança (passo 4) em vez de silêncio
-    const gerenteWaFin = garageConfig?.whatsapp ?? null;
+    const gerenteWaFin = garageConfig?.whatsapp_financeiro ?? garageConfig?.whatsapp ?? null;
     if (gerenteWaFin && !alertaGerenteJaEnviado) {
       const normWa = (n: string) => { const d = n.replace(/\D/g, ""); return d.startsWith("55") ? d : `55${d}`; };
       const nomeLeadFin = (lead as any).nome || `Lead ${phone.slice(-4)}`;
