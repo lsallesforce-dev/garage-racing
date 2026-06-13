@@ -28,13 +28,16 @@ export async function POST(req: NextRequest) {
   // config_garage pode ter múltiplas linhas por user_id — nunca usar .single()/.maybeSingle()
   const { data: cfgRows } = await supabaseAdmin
     .from("config_garage")
-    .select("whatsapp_agente, whatsapp")
+    .select("whatsapp_agente, whatsapp, vitrine_slug")
     .eq("user_id", carro.user_id)
     .order("created_at", { ascending: false })
     .limit(1);
   const cfg = cfgRows?.[0] ?? null;
 
   const botPhone = cfg?.whatsapp_agente || cfg?.whatsapp || null;
+  const vitrineUrl = cfg?.vitrine_slug
+    ? `${process.env.NEXT_PUBLIC_APP_URL || "https://www.autozap.digital"}/vitrine/${cfg.vitrine_slug}`
+    : null;
 
   // Constrói versao rica: usa versao do banco se preenchida,
   // senão combina motor + combustivel + cambio para ter discriminadores técnicos na busca FIPE.
@@ -51,7 +54,7 @@ export async function POST(req: NextRequest) {
     buscarMediaWeb(carro.marca, carro.modelo, versaoRica, carro.ano_modelo),
   ]);
 
-  const texto = gerarTextoRepasse(carro, fipe, mediaWeb, botPhone, tipo);
+  const texto = gerarTextoRepasse(carro, fipe, mediaWeb, botPhone, tipo, vitrineUrl);
   const capaUrl = carro.capa_marketing_url || carro.fotos?.[0] || null;
 
   return NextResponse.json({ texto, capaUrl, fipe, mediaWeb, botPhone });
