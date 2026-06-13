@@ -42,6 +42,18 @@ export function formatarMoeda(valor: number): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(valor);
 }
 
+// FIPE do anúncio: prioridade é o valor EXATO salvo no cadastro pela placa
+// (apibrasil → veiculos.valor_fipe). Carro sem placa (cadastro por vídeo/manual)
+// cai na busca textual da parallelum por marca/modelo/versão.
+export async function resolverFipe(carro: any, versaoRica: string): Promise<string | null> {
+  const valorBanco = Number(carro?.valor_fipe);
+  if (Number.isFinite(valorBanco) && valorBanco > 0) {
+    console.log(`📈 [FIPE] Usando valor_fipe do cadastro (placa): ${valorBanco}`);
+    return formatarMoeda(valorBanco);
+  }
+  return buscarFipe(carro.marca, carro.modelo, versaoRica, carro.ano_modelo);
+}
+
 export function gerarTextoRepasse(
   carro: any,
   fipe: string | null,
@@ -148,9 +160,10 @@ export async function gerarRepasseCompleto(
     .join(" ")
     .trim();
 
-  // Busca FIPE e média web em paralelo; se mediaWeb falhar, texto é gerado sem ela
+  // FIPE (valor_fipe do cadastro > parallelum) e média web em paralelo;
+  // se mediaWeb falhar, texto é gerado sem ela
   const [fipe, mediaWeb] = await Promise.all([
-    buscarFipe(carro.marca, carro.modelo, versaoRica, carro.ano_modelo),
+    resolverFipe(carro, versaoRica),
     buscarMediaWeb(carro.marca, carro.modelo, versaoRica, carro.ano_modelo).catch((e) => {
       console.warn("⚠️ gerarRepasseCompleto: buscarMediaWeb falhou, continuando sem mediaWeb:", e);
       return null;

@@ -6,8 +6,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireVehicleOwner } from "@/lib/api-auth";
-import { buscarFipe } from "@/lib/fipe";
-import { buscarMediaWeb, gerarTextoRepasse } from "@/lib/repasse";
+import { buscarMediaWeb, gerarTextoRepasse, resolverFipe } from "@/lib/repasse";
 
 export const maxDuration = 60;
 
@@ -46,9 +45,9 @@ export async function POST(req: NextRequest) {
     carro.cambio,
   ].filter(Boolean).join(" ").trim();
 
-  // Busca em paralelo: FIPE oficial + média web via Gemini
+  // FIPE (valor_fipe do cadastro pela placa > parallelum) + média web via Gemini
   const [fipe, mediaWeb] = await Promise.all([
-    buscarFipe(carro.marca, carro.modelo, versaoRica, carro.ano_modelo),
+    resolverFipe(carro, versaoRica),
     buscarMediaWeb(carro.marca, carro.modelo, versaoRica, carro.ano_modelo),
   ]);
 
