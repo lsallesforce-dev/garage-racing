@@ -2742,6 +2742,26 @@ Responda apenas com o JSON, sem markdown.`;
     }
   }
 
+  // ── 12b. RE-CHECK DE TAKEOVER — anti-corrida "in-flight" ─────────────────────
+  // O stand-by (passo 4) foi avaliado no INÍCIO do processamento. Mas o pipeline
+  // (Gemini + esperas de lock) leva 10-20s. Se o gerente assumiu a conversa pelo
+  // celular NESSA JANELA, o flag em_atendimento_humano já está true agora — mas a
+  // IA chegaria aqui e enviaria mesmo assim, "atropelando" o gerente. Relê o flag
+  // fresco do banco e, se o humano assumiu, descarta a resposta (não salva, não
+  // envia, libera o lock e sai). Cobre o envio de texto E de foto/vídeo abaixo.
+  if (lead?.id) {
+    const { data: leadFresh } = await supabaseAdmin
+      .from("leads")
+      .select("em_atendimento_humano")
+      .eq("id", lead.id)
+      .maybeSingle();
+    if (leadFresh?.em_atendimento_humano) {
+      console.log(`🛑 [Takeover in-flight] Gerente assumiu ${phone} durante o processamento — resposta da IA descartada (não enviada)`);
+      await releaseLeadLock(tenantUserId, lead.id).catch(() => {});
+      return;
+    }
+  }
+
   // ── 12c. SAFETY NET DE MÍDIA — força envio se Gemini disse que mandou mas não mandou ──
   // Caso real (Denize, 26/05 22h): Cliente disse "Quero sim" depois do agente
   // perguntar "Quer ver as fotos?". O regex de confirmação não pegou "Quero sim"
