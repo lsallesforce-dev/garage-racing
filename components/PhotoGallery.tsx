@@ -37,39 +37,25 @@ async function applyWatermark(file: File, logoUrl: string | null | undefined): P
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Canvas não suportado");
+  const MAX_DIM = 1280;
+  let scale = 1;
+  if (img.width > MAX_DIM || img.height > MAX_DIM) {
+    scale = Math.min(MAX_DIM / img.width, MAX_DIM / img.height);
+  }
 
-  canvas.width = OUTPUT_W;
-  canvas.height = OUTPUT_H;
+  canvas.width = img.width * scale;
+  canvas.height = img.height * scale;
 
-  // ── Pass 1: fundo borrado (a própria foto escalada para preencher tudo) ──
-  ctx.save();
-  ctx.filter = "blur(30px)";
-  const bgScale = Math.max(OUTPUT_W / img.width, OUTPUT_H / img.height) * 1.15;
-  const bgW = img.width * bgScale;
-  const bgH = img.height * bgScale;
-  ctx.drawImage(img, (OUTPUT_W - bgW) / 2, (OUTPUT_H - bgH) / 2, bgW, bgH);
-  ctx.restore();
-
-  // Escurece levemente o fundo para a foto nítida se destacar
-  ctx.fillStyle = "rgba(0,0,0,0.08)";
-  ctx.fillRect(0, 0, OUTPUT_W, OUTPUT_H);
-
-  // ── Pass 2: foto nítida centralizada (contain — sem cortar) ──
-  const scale = Math.min(OUTPUT_W / img.width, OUTPUT_H / img.height);
-  const drawW = img.width * scale;
-  const drawH = img.height * scale;
-  const offsetX = (OUTPUT_W - drawW) / 2;
-  const offsetY = (OUTPUT_H - drawH) / 2;
-  ctx.drawImage(img, offsetX, offsetY, drawW, drawH);
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
   if (logoUrl) {
     try {
       const logo = await loadImageElement(logoUrl);
-      const logoW = Math.round(OUTPUT_W * 0.2);
+      const logoW = Math.round(canvas.width * 0.2);
       const logoH = Math.round(logoW * (logo.height / (logo.width || 1)));
-      const margin = Math.round(OUTPUT_W * 0.025);
+      const margin = Math.round(canvas.width * 0.025);
       ctx.globalAlpha = 0.82;
-      ctx.drawImage(logo, OUTPUT_W - logoW - margin, OUTPUT_H - logoH - margin, logoW, logoH);
+      ctx.drawImage(logo, canvas.width - logoW - margin, canvas.height - logoH - margin, logoW, logoH);
       ctx.globalAlpha = 1;
     } catch {
       // logo falhou — sobe foto sem marca
@@ -333,11 +319,15 @@ export const PhotoGallery = ({
           </div>
         )}
         {fotos.length > 0 ? (
-          <img
-            src={selectedPhoto || fotos[0]}
-            alt="Destaque"
-            className="w-full h-full object-cover hover:scale-105 transition-transform duration-500 cursor-zoom-in"
-          />
+          <>
+            {/* Fundo borrado CSS dinâmico */}
+            <img src={selectedPhoto || fotos[0]} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover scale-150 blur-3xl opacity-50" />
+            <img
+              src={selectedPhoto || fotos[0]}
+              alt="Destaque"
+              className="absolute inset-0 w-full h-full object-contain cursor-zoom-in"
+            />
+          </>
         ) : (
           <button
             type="button"
@@ -400,11 +390,14 @@ export const PhotoGallery = ({
                   : "border-gray-100 hover:border-red-400"
               }`}
             >
-              <img
-                src={foto}
-                alt={`Miniatura ${i + 1}`}
-                className="w-full h-full object-cover pointer-events-none"
-              />
+              <div className="relative w-full h-full">
+                <img src={foto} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover scale-150 blur-xl opacity-50" />
+                <img
+                  src={foto}
+                  alt={`Miniatura ${i}`}
+                  className="absolute inset-0 w-full h-full object-contain"
+                />
+              </div>
             </button>
 
             <button
