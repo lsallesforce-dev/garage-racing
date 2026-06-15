@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { GenerateMarketingVideoButton } from "@/components/GenerateMarketingVideoButton";
 import PublicarMetaButton from "@/components/PublicarMetaButton";
+import { ArquivarDocumentos } from "@/components/ArquivarDocumentos";
 import dynamic from "next/dynamic";
 import { toVideoUrl } from "@/lib/r2-url";
 import Link from "next/link";
@@ -2237,6 +2238,9 @@ export default function DetalheVeiculo() {
                 await patch(updates);
               }}
             />
+
+            {/* ── Arquivar Documentos (PDFs) ── */}
+            <ArquivarDocumentos veiculoId={veiculo.id} />
 
             {/* ── Tag Pátio ── */}
             <button
