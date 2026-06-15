@@ -41,11 +41,20 @@ async function applyWatermark(file: File, logoUrl: string | null | undefined): P
   canvas.width = OUTPUT_W;
   canvas.height = OUTPUT_H;
 
-  // Fundo neutro para áreas vazias (quando a foto não é 16:9)
-  ctx.fillStyle = "#e5e7eb";
+  // ── Pass 1: fundo borrado (a própria foto escalada para preencher tudo) ──
+  ctx.save();
+  ctx.filter = "blur(30px)";
+  const bgScale = Math.max(OUTPUT_W / img.width, OUTPUT_H / img.height) * 1.15;
+  const bgW = img.width * bgScale;
+  const bgH = img.height * bgScale;
+  ctx.drawImage(img, (OUTPUT_W - bgW) / 2, (OUTPUT_H - bgH) / 2, bgW, bgH);
+  ctx.restore();
+
+  // Escurece levemente o fundo para a foto nítida se destacar
+  ctx.fillStyle = "rgba(0,0,0,0.08)";
   ctx.fillRect(0, 0, OUTPUT_W, OUTPUT_H);
 
-  // Math.min = object-contain (foto inteira, sem cortar)
+  // ── Pass 2: foto nítida centralizada (contain — sem cortar) ──
   const scale = Math.min(OUTPUT_W / img.width, OUTPUT_H / img.height);
   const drawW = img.width * scale;
   const drawH = img.height * scale;
