@@ -475,11 +475,27 @@ export async function POST(req: NextRequest) {
 
     // Tenta resolver LID para número real (mensagens vindas de anúncios CTWA)
     if (isLid && garageConfig?.avisa_base_url && garageConfig?.avisa_token) {
+      const lidOriginal = phone;
       const realPhone = await resolveAvisaLid(phone, {
         baseUrl: garageConfig.avisa_base_url,
         token: garageConfig.avisa_token,
       });
       if (realPhone) {
+        // Migra o lead que ficou salvo com o LID como wa_id para o número real,
+        // pra não dividir o cliente em duas conversas quando ele voltar. Await
+        // (não fire-and-forget) porque o processamento em after() vai dar upsert
+        // pelo número real logo em seguida. Best-effort: se já existe lead com o
+        // número real, o update falha por unique (user_id, wa_id) e seguimos — o
+        // upsert seguinte usa o lead correto e o lead-LID fica órfão (inofensivo).
+        await supabaseAdmin
+          .from("leads")
+          .update({ wa_id: realPhone })
+          .eq("wa_id", lidOriginal)
+          .eq("user_id", tenantUserId)
+          .then(({ error }) => {
+            if (error) console.warn(`⚠️ [LID migrate] ${lidOriginal} → ${realPhone}: ${error.message}`);
+            else console.log(`✅ [LID migrate] ${lidOriginal} → ${realPhone}`);
+          });
         phone = realPhone;
         isLid = false;
       }

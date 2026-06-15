@@ -67,9 +67,14 @@ export async function resolveAvisaLid(lid: string, creds: AvisaCreds): Promise<s
       body: JSON.stringify({ lid: lidJid }),
     });
     if (res.ok) {
-      const data = await res.json();
-      // Campo pode ser phone, number, jid ou id dependendo da versão do Avisa
-      const raw: string = data?.phone ?? data?.number ?? data?.jid ?? data?.id ?? "";
+      const json = await res.json();
+      // A Avisa embrulha a resposta num envelope `data`:
+      //   { status, data: { success, jid: "<num>@s.whatsapp.net", jidClear } }
+      // Sem desembrulhar, data.jid era undefined → raw="" → o LID NUNCA resolvia
+      // → isLid seguia true → skipSend → a IA não enviava nada pro cliente (bug dos
+      // leads de anúncio CTWA). O `?? json` mantém compat com versões antigas (flat).
+      const payload = json?.data ?? json;
+      const raw: string = payload?.jidClear ?? payload?.jid ?? payload?.phone ?? payload?.number ?? payload?.id ?? "";
       const phone = raw.replace(/@s\.whatsapp\.net$/, "").replace(/\D/g, "");
       if (phone && phone.length >= 10) {
         console.log(`✅ [LID resolve] ${lid} → ${phone}`);
