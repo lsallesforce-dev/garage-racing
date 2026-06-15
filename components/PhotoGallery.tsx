@@ -41,7 +41,12 @@ async function applyWatermark(file: File, logoUrl: string | null | undefined): P
   canvas.width = OUTPUT_W;
   canvas.height = OUTPUT_H;
 
-  const scale = Math.max(OUTPUT_W / img.width, OUTPUT_H / img.height);
+  // Fundo neutro para áreas vazias (quando a foto não é 16:9)
+  ctx.fillStyle = "#e5e7eb";
+  ctx.fillRect(0, 0, OUTPUT_W, OUTPUT_H);
+
+  // Math.min = object-contain (foto inteira, sem cortar)
+  const scale = Math.min(OUTPUT_W / img.width, OUTPUT_H / img.height);
   const drawW = img.width * scale;
   const drawH = img.height * scale;
   const offsetX = (OUTPUT_W - drawW) / 2;
