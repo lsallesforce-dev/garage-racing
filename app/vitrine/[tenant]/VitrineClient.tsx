@@ -397,11 +397,11 @@ export default function VitrineClient({ tenant, nomeEmpresa, whatsapp, estoque, 
                       {img ? (
                         <>
                           {/* Fundo borrado preenche áreas vazias — foto fica INTEIRA */}
-                          <img src={img} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover scale-125 blur-2xl opacity-60" />
+                          <img src={img} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover scale-150 blur-3xl opacity-50" />
                           <img
                             src={img}
                             alt={`${carro.marca} ${carro.modelo}`}
-                            className="absolute inset-0 w-full h-full object-contain group-hover:scale-[1.03] transition-transform duration-500"
+                            className="absolute inset-0 w-full h-full object-contain"
                           />
                         </>
                       ) : (

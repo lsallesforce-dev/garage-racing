@@ -32,15 +32,14 @@ function Galeria({ fotos, capa }: { fotos: string[]; capa?: string }) {
           Uma cópia borrada da própria imagem preenche as barras — sem faixas pretas e sem
           cortar o teto/laterais do carro. */}
       <div
-        className="relative w-full rounded-none overflow-hidden cursor-zoom-in shadow-sm bg-gray-200"
-        style={{ aspectRatio: "4/3" }}
+        className="relative w-full rounded-none overflow-hidden cursor-zoom-in shadow-sm bg-gray-200 aspect-video"
         onClick={() => setZoom(true)}
       >
-        <img src={ativa} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover scale-125 blur-2xl opacity-60" />
+        <img src={ativa} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover scale-150 blur-3xl opacity-50" />
         <img
           src={ativa}
           alt="Foto do veículo"
-          className="absolute inset-0 w-full h-full object-contain transition-transform duration-500 hover:scale-105"
+          className="absolute inset-0 w-full h-full object-contain"
         />
         <div className="absolute bottom-3 right-3 bg-black/50 backdrop-blur-sm px-3 py-1 rounded-none text-[9px] font-black uppercase tracking-widest text-white">
           {todas.indexOf(ativa) + 1} / {todas.length}
@@ -121,9 +120,12 @@ function CardRelacionado({ carro, tenant }: { carro: any; tenant: string }) {
   const img = carro.capa_marketing_url ?? carro.fotos?.[0];
   return (
     <Link href={`/vitrine/${tenant}/${carro.id}`} className="group bg-white rounded-none overflow-hidden border border-gray-100 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all block">
-      <div className="aspect-video overflow-hidden bg-gray-100">
+      <div className="relative aspect-video overflow-hidden bg-gray-200">
         {img
-          ? <img src={img} alt={carro.modelo} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+          ? <>
+              <img src={img} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover scale-150 blur-3xl opacity-50" />
+              <img src={img} alt={carro.modelo} className="absolute inset-0 w-full h-full object-contain group-hover:scale-[1.03] transition-transform duration-500" />
+            </>
           : <div className="w-full h-full flex items-center justify-center text-gray-300"><Zap size={24} /></div>
         }
       </div>
