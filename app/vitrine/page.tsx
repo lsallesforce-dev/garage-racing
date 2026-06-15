@@ -390,11 +390,15 @@ function VitrinePublicaInner() {
                   {/* Imagem */}
                   <Link href={`/vitrine/${carro.id}`} className="block relative aspect-video overflow-hidden bg-gray-100 flex-shrink-0">
                     {img ? (
-                      <img
-                        src={img}
-                        alt={carro.modelo}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                      />
+                      <>
+                        {/* Foto inteira (object-contain) sobre fundo borrado — não corta o carro */}
+                        <img src={img} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover blur-xl scale-110 opacity-50" />
+                        <img
+                          src={img}
+                          alt={carro.modelo}
+                          className="relative w-full h-full object-contain group-hover:scale-105 transition-transform duration-500"
+                        />
+                      </>
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-gray-300">
                         <Zap size={32} />
