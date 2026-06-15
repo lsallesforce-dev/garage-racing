@@ -447,7 +447,7 @@ export async function POST(req: NextRequest) {
           // É o gerente respondendo pelo celular — busca o lead para salvar + travar
           const { data: lead } = await supabaseAdmin
             .from("leads")
-            .select("id, em_atendimento_humano")
+            .select("id")
             .eq("user_id", tenantUserId)
             .eq("wa_id", cliente)
             .maybeSingle();
@@ -459,12 +459,18 @@ export async function POST(req: NextRequest) {
               remetente: "agente",
               enviado_por_humano: true,
             });
-            // Pausa a IA se ainda não estava em atendimento humano
-            if (!lead.em_atendimento_humano) {
-              await supabaseAdmin
-                .from("leads")
-                .update({ em_atendimento_humano: true, instrucao_pendente: "Gerente assumiu a conversa respondendo pelo WhatsApp." })
-                .eq("id", lead.id);
+            // Pausa a IA — UPDATE ATÔMICO (check+set numa operação só). O guard
+            // .eq("em_atendimento_humano", false) faz o banco trancar a linha e
+            // garantir a transição false→true sem janela de corrida (não dependemos
+            // do valor lido no SELECT acima, que poderia estar velho). O .select("id")
+            // só retorna linha quando a transição REALMENTE ocorreu → log no momento certo.
+            const { data: travado } = await supabaseAdmin
+              .from("leads")
+              .update({ em_atendimento_humano: true, instrucao_pendente: "Gerente assumiu a conversa respondendo pelo WhatsApp." })
+              .eq("id", lead.id)
+              .eq("em_atendimento_humano", false)
+              .select("id");
+            if (travado && travado.length > 0) {
               console.log(`🙋 [Takeover WhatsApp] Gerente respondeu ${cliente} pelo número do agente → IA travada nesse lead`);
             }
           }
