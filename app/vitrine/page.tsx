@@ -388,15 +388,15 @@ function VitrinePublicaInner() {
                   className="bg-white rounded-3xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group flex flex-col"
                 >
                   {/* Imagem */}
-                  <Link href={`/vitrine/${carro.id}`} className="block relative aspect-video overflow-hidden bg-gray-100 flex-shrink-0">
+                  <Link href={`/vitrine/${carro.id}`} className="block relative aspect-video overflow-hidden bg-gray-200 flex-shrink-0">
                     {img ? (
                       <>
-                        {/* Foto inteira (object-contain) sobre fundo borrado — não corta o carro */}
-                        <img src={img} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover blur-xl scale-110 opacity-50" />
+                        {/* Fundo borrado preenche áreas vazias — foto fica INTEIRA */}
+                        <img src={img} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover scale-125 blur-2xl opacity-60" />
                         <img
                           src={img}
                           alt={carro.modelo}
-                          className="relative w-full h-full object-contain group-hover:scale-105 transition-transform duration-500"
+                          className="absolute inset-0 w-full h-full object-contain group-hover:scale-[1.03] transition-transform duration-500"
                         />
                       </>
                     ) : (

@@ -32,15 +32,15 @@ function Galeria({ fotos, capa }: { fotos: string[]; capa?: string }) {
           Uma cópia borrada da própria imagem preenche as barras — sem faixas pretas e sem
           cortar o teto/laterais do carro. */}
       <div
-        className="relative w-full rounded-none overflow-hidden cursor-zoom-in shadow-sm bg-gray-100"
+        className="relative w-full rounded-none overflow-hidden cursor-zoom-in shadow-sm bg-gray-200"
         style={{ aspectRatio: "4/3" }}
         onClick={() => setZoom(true)}
       >
-        <img src={ativa} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover blur-xl scale-110 opacity-50" />
+        <img src={ativa} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover scale-125 blur-2xl opacity-60" />
         <img
           src={ativa}
           alt="Foto do veículo"
-          className="relative w-full h-full object-contain transition-transform duration-500 hover:scale-105"
+          className="absolute inset-0 w-full h-full object-contain transition-transform duration-500 hover:scale-105"
         />
         <div className="absolute bottom-3 right-3 bg-black/50 backdrop-blur-sm px-3 py-1 rounded-none text-[9px] font-black uppercase tracking-widest text-white">
           {todas.indexOf(ativa) + 1} / {todas.length}

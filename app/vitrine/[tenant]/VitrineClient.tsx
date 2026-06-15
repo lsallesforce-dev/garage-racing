@@ -393,16 +393,15 @@ export default function VitrineClient({ tenant, nomeEmpresa, whatsapp, estoque, 
                   <div key={carro.id} className="bg-white shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group flex flex-col">
 
                     {/* Foto */}
-                    <Link href={`/vitrine/${tenant}/${carro.id}`} className="block relative flex-shrink-0 overflow-hidden bg-gray-100" style={{ aspectRatio: "4/3" }}>
+                    <Link href={`/vitrine/${tenant}/${carro.id}`} className="block relative flex-shrink-0 overflow-hidden bg-gray-200 aspect-video">
                       {img ? (
                         <>
-                          {/* Fundo borrado da própria foto preenche as barras — a foto fica
-                              INTEIRA (object-contain), sem cortar teto/laterais, em 16:9 ou 4:3 */}
-                          <img src={img} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover blur-xl scale-110 opacity-50" />
+                          {/* Fundo borrado preenche áreas vazias — foto fica INTEIRA */}
+                          <img src={img} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover scale-125 blur-2xl opacity-60" />
                           <img
                             src={img}
                             alt={`${carro.marca} ${carro.modelo}`}
-                            className="relative w-full h-full object-contain group-hover:scale-105 transition-transform duration-500"
+                            className="absolute inset-0 w-full h-full object-contain group-hover:scale-[1.03] transition-transform duration-500"
                           />
                         </>
                       ) : (
