@@ -392,7 +392,7 @@ function VitrinePublicaInner() {
                     {img ? (
                       <>
                         {/* Fundo borrado preenche áreas vazias — foto fica INTEIRA */}
-                        <img src={img} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover scale-150 blur-3xl opacity-50" />
+                        <img src={img} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover scale-110 blur-2xl opacity-80" />
                         <img
                           src={img}
                           alt={carro.modelo}

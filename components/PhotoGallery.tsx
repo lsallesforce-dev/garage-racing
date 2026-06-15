@@ -321,7 +321,7 @@ export const PhotoGallery = ({
         {fotos.length > 0 ? (
           <>
             {/* Fundo borrado CSS dinâmico */}
-            <img src={selectedPhoto || fotos[0]} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover scale-150 blur-3xl opacity-50" />
+            <img src={selectedPhoto || fotos[0]} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover scale-110 blur-2xl opacity-80" />
             <img
               src={selectedPhoto || fotos[0]}
               alt="Destaque"
@@ -391,7 +391,7 @@ export const PhotoGallery = ({
               }`}
             >
               <div className="relative w-full h-full">
-                <img src={foto} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover scale-150 blur-xl opacity-50" />
+                <img src={foto} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover scale-110 blur-md opacity-80" />
                 <img
                   src={foto}
                   alt={`Miniatura ${i}`}
