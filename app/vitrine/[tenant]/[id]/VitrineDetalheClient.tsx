@@ -28,20 +28,19 @@ function Galeria({ fotos, capa }: { fotos: string[]; capa?: string }) {
 
   return (
     <div>
-      {/* Container com fundo escuro para acomodar qualquer proporção de foto
-          sem cortar — object-contain mostra a foto inteira, as barras laterais
-          ficam no #111 que combina com carros brancos/prata */}
+      {/* 4:3 é a proporção certa para fotos de carro — mais alta que 16:9,
+          mostra o carro inteiro sem barras. object-cover preenche sem faixas pretas. */}
       <div
-        className="relative w-full rounded-none overflow-hidden cursor-zoom-in shadow-sm"
-        style={{ aspectRatio: "4/3", background: "#111" }}
+        className="relative w-full rounded-none overflow-hidden cursor-zoom-in shadow-sm bg-gray-100"
+        style={{ aspectRatio: "4/3" }}
         onClick={() => setZoom(true)}
       >
         <img
           src={ativa}
           alt="Foto do veículo"
-          className="w-full h-full object-contain transition-transform duration-500 hover:scale-105"
+          className="w-full h-full object-cover transition-transform duration-500 hover:scale-105"
         />
-        <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur-sm px-3 py-1 rounded-none text-[9px] font-black uppercase tracking-widest text-white">
+        <div className="absolute bottom-3 right-3 bg-black/50 backdrop-blur-sm px-3 py-1 rounded-none text-[9px] font-black uppercase tracking-widest text-white">
           {todas.indexOf(ativa) + 1} / {todas.length}
         </div>
       </div>
@@ -52,11 +51,11 @@ function Galeria({ fotos, capa }: { fotos: string[]; capa?: string }) {
             <button
               key={i}
               onClick={() => setAtiva(foto)}
-              className={`flex-shrink-0 w-20 h-14 rounded-none overflow-hidden border-2 transition-all bg-[#111] ${
+              className={`flex-shrink-0 w-20 h-14 rounded-none overflow-hidden border-2 transition-all bg-gray-100 ${
                 ativa === foto ? "border-red-500" : "border-gray-200 hover:border-gray-400"
               }`}
             >
-              <img src={foto} alt="" className="w-full h-full object-contain" />
+              <img src={foto} alt="" className="w-full h-full object-cover" />
             </button>
           ))}
         </div>
