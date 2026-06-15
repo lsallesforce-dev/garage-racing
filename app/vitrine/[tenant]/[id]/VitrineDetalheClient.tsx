@@ -28,33 +28,45 @@ function Galeria({ fotos, capa }: { fotos: string[]; capa?: string }) {
 
   return (
     <div>
+      {/* Container com fundo escuro para acomodar qualquer proporção de foto
+          sem cortar — object-contain mostra a foto inteira, as barras laterais
+          ficam no #111 que combina com carros brancos/prata */}
       <div
-        className="relative w-full rounded-none overflow-hidden bg-gray-100 cursor-zoom-in shadow-sm"
-        style={{ aspectRatio: "16/9" }}
+        className="relative w-full rounded-none overflow-hidden cursor-zoom-in shadow-sm"
+        style={{ aspectRatio: "4/3", background: "#111" }}
         onClick={() => setZoom(true)}
       >
-        <img src={ativa} alt="Foto do veículo" className="w-full h-full object-cover hover:scale-105 transition-transform duration-700" />
-        <div className="absolute bottom-3 right-3 bg-black/50 backdrop-blur-sm px-3 py-1 rounded-none text-[9px] font-black uppercase tracking-widest text-white">
+        <img
+          src={ativa}
+          alt="Foto do veículo"
+          className="w-full h-full object-contain transition-transform duration-500 hover:scale-105"
+        />
+        <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur-sm px-3 py-1 rounded-none text-[9px] font-black uppercase tracking-widest text-white">
           {todas.indexOf(ativa) + 1} / {todas.length}
         </div>
       </div>
+
       {todas.length > 1 && (
         <div className="flex gap-2 mt-3 overflow-x-auto pb-1">
           {todas.map((foto, i) => (
             <button
               key={i}
               onClick={() => setAtiva(foto)}
-              className={`flex-shrink-0 w-20 h-14 rounded-none overflow-hidden border-2 transition-all ${
+              className={`flex-shrink-0 w-20 h-14 rounded-none overflow-hidden border-2 transition-all bg-[#111] ${
                 ativa === foto ? "border-red-500" : "border-gray-200 hover:border-gray-400"
               }`}
             >
-              <img src={foto} alt="" className="w-full h-full object-cover" />
+              <img src={foto} alt="" className="w-full h-full object-contain" />
             </button>
           ))}
         </div>
       )}
+
       {zoom && (
-        <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-4" onClick={() => setZoom(false)}>
+        <div
+          className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-4"
+          onClick={() => setZoom(false)}
+        >
           <img src={ativa} alt="" className="max-w-full max-h-full rounded-none object-contain" />
         </div>
       )}
@@ -74,15 +86,30 @@ function VideoPlayer({ url }: { url: string }) {
     else { videoEl.play(); setPlaying(true); }
   };
 
+  // Reels são 9:16 — limitamos a largura max para o vídeo não ficar
+  // absurdamente alto num container de coluna larga. O vídeo fica centralizado
+  // e mostra o frame inteiro sem cortar.
   return (
-    <div className="relative w-full rounded-none overflow-hidden bg-gray-900 shadow-xl" style={{ aspectRatio: "9/16", maxHeight: 560 }}>
-      <video ref={setVideoEl} src={url} className="w-full h-full object-cover" playsInline loop onEnded={() => setPlaying(false)} />
-      <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent pointer-events-none" />
-      <button onClick={toggle} className="absolute inset-0 flex items-center justify-center group">
-        <div className={`w-16 h-16 rounded-none border-2 border-white/70 bg-black/30 backdrop-blur-sm flex items-center justify-center transition-all group-hover:scale-110 group-hover:border-white ${playing ? "opacity-0 group-hover:opacity-100" : "opacity-100"}`}>
-          {playing ? <Pause size={20} className="text-white fill-white" /> : <Play size={20} className="text-white fill-white ml-1" />}
-        </div>
-      </button>
+    <div className="flex justify-center">
+      <div
+        className="relative w-full rounded-none overflow-hidden bg-gray-900 shadow-xl"
+        style={{ aspectRatio: "9/16", maxWidth: 380 }}
+      >
+        <video
+          ref={setVideoEl}
+          src={url}
+          className="w-full h-full object-contain"
+          playsInline
+          loop
+          onEnded={() => setPlaying(false)}
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent pointer-events-none" />
+        <button onClick={toggle} className="absolute inset-0 flex items-center justify-center group">
+          <div className={`w-16 h-16 rounded-none border-2 border-white/70 bg-black/30 backdrop-blur-sm flex items-center justify-center transition-all group-hover:scale-110 group-hover:border-white ${playing ? "opacity-0 group-hover:opacity-100" : "opacity-100"}`}>
+            {playing ? <Pause size={20} className="text-white fill-white" /> : <Play size={20} className="text-white fill-white ml-1" />}
+          </div>
+        </button>
+      </div>
     </div>
   );
 }
