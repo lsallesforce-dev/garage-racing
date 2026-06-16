@@ -74,10 +74,18 @@ interface Veiculo {
   renavam: string | null;
   chassi: string | null;
   cor: string | null;
+  combustivel: string | null;
+  motor: string | null;
+  quilometragem_estimada: number | null;
+  codigo_fipe: string | null;
+  valor_fipe: number | null;
   preco_sugerido: number | null;
   preco_compra: number | null;
   preco_venda_final: number | null;
   data_venda: string | null;
+  data_compra: string | null;
+  fornecedor: string | null;
+  cliente_id: string | null;
   status_venda: string;
   capa_marketing_url: string | null;
   fotos: string[] | null;
@@ -238,12 +246,14 @@ function SlideOver({
   onClose: () => void;
   onReload: () => void;
 }) {
-  const [aba, setAba]     = useState<"aquisicao" | "despesas" | "receitas" | "venda">("aquisicao");
+  const [aba, setAba]     = useState<"aquisicao" | "despesas" | "receitas" | "venda" | "relatorio">("aquisicao");
   const [saving, setSaving] = useState(false);
   const [saved,  setSaved]  = useState(false);
 
   const [precoCompra, setPrecoCompra] = useState(veiculo.preco_compra ? String(veiculo.preco_compra) : "");
   const [placa, setPlaca]             = useState(veiculo.placa ?? "");
+  const [dataCompra, setDataCompra]   = useState(veiculo.data_compra ?? "");
+  const [fornecedor, setFornecedor]   = useState(veiculo.fornecedor ?? "");
 
   const [despesas, setDespesas] = useState<ItemFinanceiro[]>(veiculo.despesas ?? []);
   const [receitas, setReceitas] = useState<ItemFinanceiro[]>(veiculo.receitas ?? []);
@@ -298,7 +308,7 @@ function SlideOver({
     await fetch("/api/veiculo/patch", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ veiculoId: veiculo.id, fields: { preco_compra: parseNum(precoCompra), placa: placa || null } }),
+      body: JSON.stringify({ veiculoId: veiculo.id, fields: { preco_compra: parseNum(precoCompra), placa: placa || null, data_compra: dataCompra || null, fornecedor: fornecedor || null } }),
     });
     setSaving(false); setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -320,6 +330,7 @@ function SlideOver({
           preco_venda_final: parseNum(precoVenda),
           data_venda: dataVenda || null,
           vendedor_id: vendedorId || null,
+          cliente_id: clienteId || null,
           status_venda: parseNum(precoVenda) ? "VENDIDO" : "DISPONIVEL",
         },
       }),
@@ -412,6 +423,7 @@ function SlideOver({
     { key: "despesas",  label: "Despesas"  },
     { key: "receitas",  label: "Receitas"  },
     { key: "venda",     label: "Venda"     },
+    { key: "relatorio", label: "Relatório" },
   ] as const;
 
   return (
@@ -420,7 +432,7 @@ function SlideOver({
       <div className="fixed inset-0 z-40 bg-black/30 backdrop-blur-[2px]" onClick={onClose} />
 
       {/* Painel */}
-      <div className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-[480px] bg-white shadow-2xl flex flex-col" style={{ animation: "slideInRight 0.25s ease-out" }}>
+      <div className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-[720px] bg-white shadow-2xl flex flex-col" style={{ animation: "slideInRight 0.25s ease-out" }}>
 
         {/* Header — foto + nome + números rápidos */}
         <div className="relative flex-shrink-0">
@@ -507,6 +519,17 @@ function SlideOver({
                   className="w-full px-4 py-4 border border-gray-200 rounded-2xl text-gray-900 font-bold text-lg uppercase tracking-widest focus:outline-none focus:border-red-400"
                   placeholder="ABC-1234" />
               </div>
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2 block">Data de Compra</label>
+                <input type="date" value={dataCompra} onChange={(e) => setDataCompra(e.target.value)}
+                  className="w-full px-4 py-4 border border-gray-200 rounded-2xl text-gray-900 font-bold focus:outline-none focus:border-red-400" />
+              </div>
+              <div>
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2 block">De quem comprou (Fornecedor)</label>
+                <input type="text" value={fornecedor} onChange={(e) => setFornecedor(e.target.value)}
+                  className="w-full px-4 py-4 border border-gray-200 rounded-2xl text-gray-900 font-bold focus:outline-none focus:border-red-400"
+                  placeholder="Nome ou empresa" />
+              </div>
               <button type="button" onClick={salvarAquisicao} disabled={saving}
                 className={`w-full py-4 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${
                   saved ? "bg-green-500" : "bg-gray-900 hover:bg-red-600"
@@ -547,6 +570,189 @@ function SlideOver({
               {saved ? "Alterações salvas!" : "Salvar Alterações"}
             </button>
           )}
+
+          {aba === "relatorio" && (() => {
+            const totalDesp   = despesas.reduce((s, d) => s + d.valor, 0);
+            const totalRec    = receitas.reduce((s, r) => s + r.valor, 0);
+            const custoTotal  = (parseNum(precoCompra) ?? 0) + totalDesp;
+            const lucroFicha  = parseNum(precoVenda) != null
+              ? (parseNum(precoVenda)! - custoTotal + totalRec)
+              : null;
+            const margemFicha = parseNum(precoCompra) && parseNum(precoVenda)
+              ? ((parseNum(precoVenda)! - parseNum(precoCompra)!) / parseNum(precoCompra)!) * 100
+              : null;
+            const compradorFicha = clienteSel
+              ?? (veiculo.cliente_id ? clientes.find(c => c.id === veiculo.cliente_id) ?? null : null);
+            const vendedorFicha  = vendedores.find(v => v.id === (vendedorId || veiculo.vendedor_id));
+
+            const Sec = ({ title }: { title: string }) => (
+              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-gray-400 mb-3 mt-6 first:mt-0">{title}</p>
+            );
+            const Row = ({ label, value, hl }: { label: string; value: string | null | undefined; hl?: string }) => (
+              value ? (
+                <div className="flex justify-between py-2 border-b border-gray-50 last:border-0">
+                  <span className="text-xs text-gray-500">{label}</span>
+                  <span className={`text-xs font-black text-right max-w-[60%] ${hl ?? "text-gray-900"}`}>{value}</span>
+                </div>
+              ) : null
+            );
+
+            return (
+              <div id="ficha-relatorio">
+                {/* Botão imprimir */}
+                <div className="flex justify-end mb-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const el = document.getElementById("ficha-relatorio");
+                      if (!el) return;
+                      const win = window.open("", "_blank");
+                      if (!win) return;
+                      win.document.write(`<html><head><title>Ficha — ${veiculo.marca} ${veiculo.modelo}</title>
+                        <style>
+                          body { font-family: sans-serif; padding: 32px; color: #111; }
+                          h2 { font-size: 22px; font-weight: 900; text-transform: uppercase; font-style: italic; margin: 0 0 4px; }
+                          p.sub { font-size: 11px; color: #888; margin: 0 0 24px; }
+                          .sec { font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.15em; color: #888; margin: 20px 0 8px; border-bottom: 1px solid #eee; padding-bottom: 4px; }
+                          .row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #f5f5f5; font-size: 12px; }
+                          .row span:last-child { font-weight: 700; }
+                          .green { color: #16a34a; } .red { color: #dc2626; } .amber { color: #d97706; }
+                          @media print { body { padding: 16px; } }
+                        </style></head><body>
+                        <h2>${veiculo.marca} ${veiculo.modelo}</h2>
+                        <p class="sub">${[veiculo.versao, veiculo.ano_modelo].filter(Boolean).join(" · ")}</p>
+                        ${el.innerHTML}
+                      </body></html>`);
+                      win.document.close();
+                      win.print();
+                    }}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-gray-900 hover:bg-red-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-colors"
+                  >
+                    <Printer size={12} /> Imprimir Ficha
+                  </button>
+                </div>
+
+                {/* IDENTIFICAÇÃO */}
+                <Sec title="Identificação" />
+                <div className="bg-gray-50 rounded-2xl px-4 py-2 mb-1">
+                  <Row label="Marca" value={veiculo.marca} />
+                  <Row label="Modelo" value={veiculo.modelo} />
+                  <Row label="Versão" value={veiculo.versao} />
+                  <Row label="Ano Fabricação" value={veiculo.ano ? String(veiculo.ano) : null} />
+                  <Row label="Ano Modelo" value={veiculo.ano_modelo ? String(veiculo.ano_modelo) : null} />
+                  <Row label="Cor" value={veiculo.cor} />
+                  <Row label="Combustível" value={veiculo.combustivel} />
+                  <Row label="Motor" value={veiculo.motor} />
+                  <Row label="Quilometragem Est." value={veiculo.quilometragem_estimada ? `${veiculo.quilometragem_estimada.toLocaleString("pt-BR")} km` : null} />
+                  <Row label="Placa" value={placa || veiculo.placa} />
+                  <Row label="Renavam" value={veiculo.renavam} />
+                  <Row label="Chassi" value={veiculo.chassi} />
+                </div>
+
+                {/* TABELA FIPE */}
+                {(veiculo.codigo_fipe || veiculo.valor_fipe) && (
+                  <>
+                    <Sec title="Tabela FIPE" />
+                    <div className="bg-gray-50 rounded-2xl px-4 py-2 mb-1">
+                      <Row label="Código FIPE" value={veiculo.codigo_fipe} />
+                      <Row label="Valor FIPE" value={veiculo.valor_fipe ? fmt(veiculo.valor_fipe) : null} />
+                    </div>
+                  </>
+                )}
+
+                {/* AQUISIÇÃO */}
+                <Sec title="Aquisição" />
+                <div className="bg-gray-50 rounded-2xl px-4 py-2 mb-1">
+                  <Row label="Data de Compra" value={dataCompra ? new Date(dataCompra + "T12:00:00").toLocaleDateString("pt-BR") : null} />
+                  <Row label="Preço de Compra" value={precoCompra ? fmt(parseNum(precoCompra)!) : null} />
+                  <Row label="Fornecedor" value={fornecedor || veiculo.fornecedor} />
+                </div>
+
+                {/* DESPESAS */}
+                {despesas.length > 0 && (
+                  <>
+                    <Sec title={`Despesas (${despesas.length})`} />
+                    <div className="bg-red-50 rounded-2xl px-4 py-2 mb-1">
+                      {despesas.map(d => (
+                        <div key={d.id} className="flex justify-between py-2 border-b border-red-100/60 last:border-0">
+                          <span className="text-xs text-gray-500">{d.descricao}</span>
+                          <span className="text-xs font-black text-red-500">{fmt(d.valor)}</span>
+                        </div>
+                      ))}
+                      <div className="flex justify-between py-2 pt-3">
+                        <span className="text-xs font-black uppercase tracking-widest text-red-600">Total</span>
+                        <span className="text-xs font-black text-red-600">{fmt(totalDesp)}</span>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* RECEITAS EXTRAS */}
+                {receitas.length > 0 && (
+                  <>
+                    <Sec title={`Receitas Extras (${receitas.length})`} />
+                    <div className="bg-green-50 rounded-2xl px-4 py-2 mb-1">
+                      {receitas.map(r => (
+                        <div key={r.id} className="flex justify-between py-2 border-b border-green-100/60 last:border-0">
+                          <span className="text-xs text-gray-500">{r.descricao}</span>
+                          <span className="text-xs font-black text-green-600">{fmt(r.valor)}</span>
+                        </div>
+                      ))}
+                      <div className="flex justify-between py-2 pt-3">
+                        <span className="text-xs font-black uppercase tracking-widest text-green-700">Total</span>
+                        <span className="text-xs font-black text-green-700">{fmt(totalRec)}</span>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* RESULTADO */}
+                <Sec title="Resultado" />
+                <div className="bg-gray-900 rounded-2xl px-4 py-2 mb-1">
+                  <div className="flex justify-between py-2 border-b border-white/10">
+                    <span className="text-xs text-white/50">Custo Total (compra + despesas)</span>
+                    <span className="text-xs font-black text-white">{fmt(custoTotal)}</span>
+                  </div>
+                  {totalRec > 0 && (
+                    <div className="flex justify-between py-2 border-b border-white/10">
+                      <span className="text-xs text-white/50">Receitas extras</span>
+                      <span className="text-xs font-black text-green-400">+ {fmt(totalRec)}</span>
+                    </div>
+                  )}
+                  {parseNum(precoVenda) != null && (
+                    <div className="flex justify-between py-2 border-b border-white/10">
+                      <span className="text-xs text-white/50">Preço de Venda</span>
+                      <span className="text-xs font-black text-white">{fmt(parseNum(precoVenda)!)}</span>
+                    </div>
+                  )}
+                  {lucroFicha != null && (
+                    <div className="flex justify-between py-2 border-b border-white/10">
+                      <span className="text-xs text-white/50">Lucro Bruto</span>
+                      <span className={`text-xs font-black ${lucroFicha >= 0 ? "text-green-400" : "text-red-400"}`}>{fmt(lucroFicha)}</span>
+                    </div>
+                  )}
+                  {margemFicha != null && (
+                    <div className="flex justify-between py-2">
+                      <span className="text-xs text-white/50">Margem sobre custo</span>
+                      <span className={`text-xs font-black ${margemFicha >= 0 ? "text-green-400" : "text-red-400"}`}>{margemFicha > 0 ? "+" : ""}{margemFicha.toFixed(1)}%</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* VENDA */}
+                <Sec title="Venda" />
+                <div className="bg-gray-50 rounded-2xl px-4 py-2 mb-1">
+                  <Row label="Status" value={veiculo.status_venda} />
+                  <Row label="Data da Venda" value={dataVenda ? new Date(dataVenda + "T12:00:00").toLocaleDateString("pt-BR") : (veiculo.data_venda ? new Date(veiculo.data_venda + "T12:00:00").toLocaleDateString("pt-BR") : null)} />
+                  <Row label="Preço de Venda" value={parseNum(precoVenda) != null ? fmt(parseNum(precoVenda)!) : null} />
+                  <Row label="Vendedor (interno)" value={vendedorFicha?.nome} />
+                  <Row label="Comprador" value={compradorFicha?.nome} />
+                  {compradorFicha?.cpf && <Row label="CPF Comprador" value={compradorFicha.cpf} />}
+                  {compradorFicha?.telefone && <Row label="Telefone Comprador" value={compradorFicha.telefone} />}
+                </div>
+              </div>
+            );
+          })()}
 
           {aba === "venda" && (
             <div className="space-y-5">
