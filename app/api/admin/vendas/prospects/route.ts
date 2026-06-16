@@ -128,6 +128,43 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, id: novo?.id });
   }
 
+  // ── Modo edição (nome + telefone) ─────────────────────────────────────────
+  if (acao === "editar") {
+    if (!id) return NextResponse.json({ error: "id é obrigatório" }, { status: 400 });
+    const nomeEmpresa = typeof body.nome_empresa === "string" ? body.nome_empresa.trim() : "";
+    const telefone    = typeof body.telefone    === "string" ? body.telefone.trim()    : "";
+    if (!nomeEmpresa) return NextResponse.json({ error: "nome_empresa é obrigatório" }, { status: 400 });
+    if (!telefone)    return NextResponse.json({ error: "telefone é obrigatório" }, { status: 400 });
+
+    // Re-normaliza o wa_id (é a chave que casa a mensagem recebida ao prospect)
+    const waId = normalizarWaId(telefone);
+    if (waId.length < 8) {
+      return NextResponse.json({ error: "Telefone inválido — informe DDD + número" }, { status: 400 });
+    }
+
+    // Dedup: outro prospect (≠ este) já usa esse WhatsApp?
+    const { data: conflito } = await supabaseAdmin
+      .from("prospects")
+      .select("id, nome_empresa")
+      .eq("wa_id", waId)
+      .neq("id", id as string)
+      .maybeSingle();
+    if (conflito) {
+      return NextResponse.json(
+        { error: `Outro prospect já usa este WhatsApp: ${conflito.nome_empresa}` },
+        { status: 409 },
+      );
+    }
+
+    const { error: updErr } = await supabaseAdmin
+      .from("prospects")
+      .update({ nome_empresa: nomeEmpresa, telefone, wa_id: waId })
+      .eq("id", id as string);
+    return updErr
+      ? NextResponse.json({ error: updErr.message }, { status: 500 })
+      : NextResponse.json({ ok: true });
+  }
+
   // ── Modo ação sobre prospect existente ───────────────────────────────────
   if (!id || !acao) {
     return NextResponse.json({ error: "id e acao são obrigatórios" }, { status: 400 });

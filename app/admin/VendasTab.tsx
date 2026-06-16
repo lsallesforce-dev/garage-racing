@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   Loader2, RefreshCw, CheckCircle2, XCircle, Send, Bot, UserCheck,
   Download, Save, Inbox as InboxIcon, Users, ListChecks,
-  Megaphone, Activity, Ban, Search, Plus, X,
+  Megaphone, Activity, Ban, Search, Plus, X, Pencil,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -242,6 +242,102 @@ function AdicionarProspectModal({ headers, onClose, onSucesso }: AdicionarProspe
   );
 }
 
+// ─── Modal: Editar Prospect (nome + telefone) ─────────────────────────────────
+
+interface EditarProspectModalProps {
+  headers: Record<string, string>;
+  prospect: Prospect;
+  onClose: () => void;
+  onSucesso: () => void;
+}
+
+function EditarProspectModal({ headers, prospect, onClose, onSucesso }: EditarProspectModalProps) {
+  const [nomeEmpresa, setNomeEmpresa] = useState(prospect.nome_empresa ?? "");
+  const [telefone, setTelefone]       = useState(prospect.telefone ?? "");
+  const [salvando, setSalvando]       = useState(false);
+  const [erro, setErro]               = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setErro(null);
+    if (!nomeEmpresa.trim()) { setErro("Nome da empresa é obrigatório."); return; }
+    if (!telefone.trim())    { setErro("Telefone/WhatsApp é obrigatório."); return; }
+
+    setSalvando(true);
+    try {
+      const res = await fetch("/api/admin/vendas/prospects", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          acao: "editar",
+          id: prospect.id,
+          nome_empresa: nomeEmpresa.trim(),
+          telefone:     telefone.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setErro(data.error ?? "Erro ao salvar.");
+      } else {
+        onSucesso();
+        onClose();
+      }
+    } catch {
+      setErro("Erro de rede. Tente novamente.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  const inputCls = "w-full bg-[#f5f5f3] border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition";
+  const labelCls = "text-[9px] font-black uppercase tracking-widest text-gray-400";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 flex flex-col gap-5">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-black uppercase tracking-widest text-gray-900">Editar Prospect</h2>
+          <button onClick={onClose} className="p-1.5 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition">
+            <X size={16} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1">
+            <label className={labelCls}>Nome da Empresa *</label>
+            <input type="text" value={nomeEmpresa} onChange={e => setNomeEmpresa(e.target.value)} className={inputCls} />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className={labelCls}>Telefone / WhatsApp *</label>
+            <input type="tel" value={telefone} onChange={e => setTelefone(e.target.value)}
+              placeholder="Ex: 11987654321" className={inputCls} />
+            <p className="text-[9px] text-gray-400 mt-0.5">DDD + número (com ou sem formatação). Mudar o número altera para onde a mensagem é enviada.</p>
+          </div>
+
+          {erro && (
+            <div className="rounded-xl px-4 py-3 bg-red-50 border border-red-200">
+              <p className="text-red-700 text-[11px] font-black uppercase tracking-widest">{erro}</p>
+            </div>
+          )}
+
+          <div className="flex gap-3 pt-1">
+            <button type="button" onClick={onClose}
+              className="flex-1 py-3 rounded-2xl font-black uppercase text-[11px] tracking-widest bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 transition">
+              Cancelar
+            </button>
+            <button type="submit" disabled={salvando}
+              className="flex-1 py-3 rounded-2xl font-black uppercase text-[11px] tracking-widest bg-[#111827] text-white hover:bg-red-600 transition disabled:opacity-50 flex items-center justify-center gap-2">
+              {salvando
+                ? <><Loader2 size={13} className="animate-spin" /> Salvando...</>
+                : <><Save size={13} /> Salvar</>}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ─── 1. Pipeline ──────────────────────────────────────────────────────────────
 
 function Pipeline({ headers }: { headers: Record<string, string> }) {
@@ -250,6 +346,7 @@ function Pipeline({ headers }: { headers: Record<string, string> }) {
   const [filtro, setFiltro] = useState<ProspectStatus | "todos">("todos");
   const [busca, setBusca] = useState("");
   const [modalAberto, setModalAberto] = useState(false);
+  const [editando, setEditando] = useState<Prospect | null>(null);
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -311,18 +408,27 @@ function Pipeline({ headers }: { headers: Record<string, string> }) {
         />
       )}
 
+      {editando && (
+        <EditarProspectModal
+          headers={headers}
+          prospect={editando}
+          onClose={() => setEditando(null)}
+          onSucesso={carregar}
+        />
+      )}
+
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <table className="w-full text-left">
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50/50">
-              {["Empresa", "Cidade", "Score", "Status", "Última Atividade"].map(h => (
-                <th key={h} className="px-4 py-4 text-[10px] font-black uppercase tracking-widest text-gray-500">{h}</th>
+              {["Empresa", "Cidade", "Score", "Status", "Última Atividade", ""].map(h => (
+                <th key={h || "acoes"} className="px-4 py-4 text-[10px] font-black uppercase tracking-widest text-gray-500">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {filtrados.length === 0 ? (
-              <tr><td colSpan={5} className="text-center py-16 text-sm text-gray-300 font-black uppercase tracking-widest">
+              <tr><td colSpan={6} className="text-center py-16 text-sm text-gray-300 font-black uppercase tracking-widest">
                 {loading ? "Carregando..." : "Nenhum prospect"}
               </td></tr>
             ) : filtrados.map(p => (
@@ -339,6 +445,12 @@ function Pipeline({ headers }: { headers: Record<string, string> }) {
                 <td className="px-4 py-4"><span className="text-base font-black text-gray-900">{p.score}</span></td>
                 <td className="px-4 py-4"><StatusBadge status={p.status} /></td>
                 <td className="px-4 py-4"><span className="text-[11px] text-gray-400 font-bold">{fmtDateTime(p.ultima_msg_at)}</span></td>
+                <td className="px-4 py-4 text-right">
+                  <button onClick={() => setEditando(p)} title="Editar nome e telefone"
+                    className="p-2 rounded-xl text-gray-400 hover:text-gray-900 hover:bg-gray-100 transition">
+                    <Pencil size={14} />
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
