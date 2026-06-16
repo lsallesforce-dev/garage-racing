@@ -435,16 +435,21 @@ export async function POST(req: NextRequest) {
 
     // ── Takeover do gerente pelo mesmo WhatsApp ───────────────────────────────
     // Gerente e IA compartilham o número. Toda mensagem da IA volta como fromMe (eco).
-    // Se chega um fromMe de TEXTO que NÃO bate com um eco recente da IA, foi o gerente
+    // Se chega um fromMe de TEXTO que NÃO bate com um eco recente da IA — ou um ÁUDIO
+    // (a IA nunca envia áudio, então áudio fromMe é sempre o gerente) — foi o gerente
     // que respondeu direto pelo celular → salva no chat + trava o agente.
     if (fromMe) {
       const txtFromMe = (rawMessage || "").trim();
-      const ehMidia = !txtFromMe || txtFromMe === "[Cliente enviou foto(s) do veículo]";
+      const ehAudio = !!audioUrl; // IA nunca manda áudio → fromMe com áudio = gerente
+      // Texto "de verdade" do gerente — ignora o placeholder de foto, que pode ser
+      // eco de uma foto que a PRÓPRIA IA enviou (foto/vídeo fromMe não viram takeover).
+      const ehTextoGerente = !!txtFromMe && txtFromMe !== "[Cliente enviou foto(s) do veículo]";
       const cliente = (chatPhone || "").replace(/\D/g, "");
-      if (!ehMidia && cliente && tenantUserId) {
-        const ehEco = await isAgentEcho(cliente, txtFromMe);
+      if ((ehTextoGerente || ehAudio) && cliente && tenantUserId) {
+        // Áudio: sem checagem de eco (a IA não manda áudio). Texto: só conta se não for eco.
+        const ehEco = ehAudio ? false : await isAgentEcho(cliente, txtFromMe);
         if (!ehEco) {
-          // É o gerente respondendo pelo celular — busca o lead para salvar + travar
+          // É o gerente respondendo pelo celular (texto ou áudio) — busca o lead p/ salvar + travar
           const { data: lead } = await supabaseAdmin
             .from("leads")
             .select("id, em_atendimento_humano")
@@ -455,7 +460,7 @@ export async function POST(req: NextRequest) {
             // Salva a mensagem para aparecer no chat da plataforma
             await supabaseAdmin.from("mensagens").insert({
               lead_id: lead.id,
-              content: txtFromMe,
+              content: ehAudio ? "🎤 Áudio enviado pelo gerente" : txtFromMe,
               remetente: "agente",
               enviado_por_humano: true,
             });
@@ -465,7 +470,7 @@ export async function POST(req: NextRequest) {
                 .from("leads")
                 .update({ em_atendimento_humano: true, instrucao_pendente: "Gerente assumiu a conversa respondendo pelo WhatsApp." })
                 .eq("id", lead.id);
-              console.log(`🙋 [Takeover WhatsApp] Gerente respondeu ${cliente} pelo número do agente → IA travada nesse lead`);
+              console.log(`🙋 [Takeover WhatsApp] Gerente ${ehAudio ? "enviou áudio para" : "respondeu"} ${cliente} pelo número do agente → IA travada nesse lead`);
             }
           }
         }
