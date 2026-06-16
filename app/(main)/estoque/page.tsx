@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import { useUserRole } from "@/components/SidebarWrapper";
-import { Edit3, Plus, Car, Zap, Search, ArrowRight, Trash2, Share2, Copy, Check, X, Loader2 } from "lucide-react";
+import { Edit3, Plus, Car, Zap, Search, ArrowRight, Trash2, Share2, Copy, Check, X, Loader2, RotateCcw } from "lucide-react";
 
 export default function ListaEstoque() {
   const { effectiveUserId, isVendedor } = useUserRole();
@@ -103,6 +103,25 @@ export default function ListaEstoque() {
     } finally {
       setEnviando(false);
     }
+  };
+
+  const estornarVenda = async (id: string) => {
+    if (!confirm("Estornar a venda? O carro voltará para o estoque como DISPONÍVEL.")) return;
+    await fetch("/api/veiculo/patch", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        veiculoId: id,
+        fields: {
+          status_venda: "DISPONIVEL",
+          preco_venda_final: null,
+          data_venda: null,
+          vendedor_id: null,
+          cliente_id: null,
+        },
+      }),
+    });
+    setCarros(prev => prev.map(c => c.id === id ? { ...c, status_venda: "DISPONIVEL", preco_venda_final: null, data_venda: null } : c));
   };
 
   const copiarTexto = async () => {
@@ -296,18 +315,29 @@ export default function ListaEstoque() {
                             <Trash2 size={16} />
                           </button>
                         )}
-                        <button
-                            onClick={() => gerarRepasse(carro.id, "promocao")}
-                            className="flex items-center gap-2 px-4 py-3 md:px-6 md:py-4 bg-blue-600 text-white text-[10px] font-black uppercase italic rounded-2xl hover:bg-blue-700 transition-all tracking-widest shadow-lg shadow-blue-200"
-                        >
-                            <Share2 size={14} /> Envio Whats
-                        </button>
-                        <button
-                            onClick={() => gerarRepasse(carro.id)}
-                            className="flex items-center gap-2 px-4 py-3 md:px-6 md:py-4 bg-green-600 text-white text-[10px] font-black uppercase italic rounded-2xl hover:bg-green-700 transition-all tracking-widest shadow-lg shadow-green-200"
-                        >
-                            <Share2 size={14} /> Repasse
-                        </button>
+                        {carro.status_venda === "VENDIDO" ? (
+                          <button
+                            onClick={() => estornarVenda(carro.id)}
+                            className="flex items-center gap-2 px-4 py-3 md:px-6 md:py-4 bg-amber-500 text-white text-[10px] font-black uppercase italic rounded-2xl hover:bg-amber-600 transition-all tracking-widest shadow-lg shadow-amber-200"
+                          >
+                            <RotateCcw size={14} /> Estornar Venda
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => gerarRepasse(carro.id, "promocao")}
+                              className="flex items-center gap-2 px-4 py-3 md:px-6 md:py-4 bg-blue-600 text-white text-[10px] font-black uppercase italic rounded-2xl hover:bg-blue-700 transition-all tracking-widest shadow-lg shadow-blue-200"
+                            >
+                              <Share2 size={14} /> Envio Whats
+                            </button>
+                            <button
+                              onClick={() => gerarRepasse(carro.id)}
+                              className="flex items-center gap-2 px-4 py-3 md:px-6 md:py-4 bg-green-600 text-white text-[10px] font-black uppercase italic rounded-2xl hover:bg-green-700 transition-all tracking-widest shadow-lg shadow-green-200"
+                            >
+                              <Share2 size={14} /> Repasse
+                            </button>
+                          </>
+                        )}
                         <Link
                             href={`/veiculo/${carro.id}`}
                             className="flex items-center gap-2 px-4 py-3 md:px-8 md:py-4 bg-slate-900 text-white text-[10px] font-black uppercase italic rounded-2xl hover:bg-red-600 transition-all tracking-widest shadow-lg shadow-slate-200"
