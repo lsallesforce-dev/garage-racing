@@ -18,14 +18,7 @@ import { timingSafeEqual } from "crypto";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendAvisaMessage } from "@/lib/avisa";
 import { gerarRespostaProspeccao } from "@/lib/process-prospeccao";
-import { processWhatsAppMessage } from "@/lib/process-whatsapp";
 import type { Prospect, ProspectMensagem } from "@/lib/prospeccao-types";
-
-// Loja-modelo usada na DEMO real (tenant "autozap"). O atendimento roda no motor
-// B2C com o estoque dessa loja, mas o envio sai pelo CHIP DE PROSPECÇÃO (override).
-const DEMO_TENANT_ID = "9e80d6e1-7ad9-4578-a848-1dd61fc36c9a";
-const DEMO_MAX_TROCAS = 5;
-const DEMO_ENCERRAR_RE = /\b(gostei|adorei|amei|massa|show|top|maneiro|bacana|entendi|chega|j[áa]\s*(vi|deu)|pode voltar|voltar|obrigad|valeu|muito bom|excelente|sensacional|fechou|fechado)\b/i;
 
 export const maxDuration = 300;
 
@@ -184,62 +177,6 @@ async function alertarHandoff(prospect: Prospect, motivo: string | null) {
 }
 
 // ─── Handler principal ────────────────────────────────────────────────────────
-// ─── DEMO: config da loja-modelo com canal forçado pro chip de prospecção ─────
-async function carregarDemoConfig(): Promise<Record<string, any>> {
-  const { data } = await supabaseAdmin
-    .from("config_garage")
-    .select("*")
-    .eq("user_id", DEMO_TENANT_ID)
-    .order("created_at", { ascending: false })
-    .limit(1);
-  const cfg = (data?.[0] as Record<string, any>) ?? {};
-  // Override do canal: a loja-modelo atende, mas o envio sai pelo CHIP de prospecção.
-  return {
-    ...cfg,
-    avisa_base_url: process.env.AUTOZAP_AVISA_BASE_URL ?? "",
-    avisa_token: process.env.AUTOZAP_AVISA_TOKEN ?? "",
-  };
-}
-
-// ─── DEMO: roteia a mensagem do prospect pro motor de atendimento real ────────
-async function tratarModoDemo(prospect: any, waId: string, text: string): Promise<NextResponse> {
-  const trocas = (prospect.demo_count ?? 0) + 1;
-  const nowIso = new Date().toISOString();
-
-  // Encerrou o teste (sinalizou que viu o bastante OU atingiu o teto) → volta pro Gabriel
-  if (DEMO_ENCERRAR_RE.test(text) || trocas > DEMO_MAX_TROCAS) {
-    await supabaseAdmin.from("prospects")
-      .update({ modo_demo: false, demo_count: 0, status: "quente", ultima_msg_at: nowIso, updated_at: nowIso })
-      .eq("id", prospect.id);
-    const creds = autozapAvisaCreds();
-    const b1 = "E aí, o que achou? 😄 Foi a IA atendendo, do mesmo jeito que ela faria com os SEUS clientes, 24h.";
-    const b2 = "Posso pedir pro nosso consultor te chamar pra mostrar os planos e liberar 30 dias grátis pra testar na sua loja?";
-    if (creds) { try { await sendAvisaMessage(waId, b1, creds); await sendAvisaMessage(waId, b2, creds); } catch {} }
-    await supabaseAdmin.from("prospect_mensagens").insert([
-      { prospect_id: prospect.id, remetente: "agente", content: b1 },
-      { prospect_id: prospect.id, remetente: "agente", content: b2 },
-    ]);
-    await alertarHandoff(prospect, "fez a demonstração, lead quente").catch(() => {});
-    return NextResponse.json({ status: "demo_encerrada" });
-  }
-
-  // Continua o teste: motor de atendimento da loja-modelo, enviando pelo chip de prospecção
-  try {
-    await processWhatsAppMessage({
-      phone: waId,
-      rawMessage: text,
-      tenantUserId: DEMO_TENANT_ID,
-      garageConfig: (await carregarDemoConfig()) as any,
-    });
-  } catch (err) {
-    console.error("❌ [prospeccao demo] Falha no motor de atendimento:", err);
-  }
-  await supabaseAdmin.from("prospects")
-    .update({ demo_count: trocas, ultima_msg_at: nowIso, updated_at: nowIso })
-    .eq("id", prospect.id);
-  return NextResponse.json({ status: "demo_em_andamento", trocas });
-}
-
 export async function POST(req: NextRequest) {
   // ── Parse do payload (JSON / form-urlencoded / jsonData=) ───────────────────
   let payload: any = {};
@@ -295,12 +232,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ status: "prospect_not_found" });
   }
 
-  // ── MODO DEMO: roteia pro motor de atendimento real da loja-modelo ──────────
-  // (as mensagens ficam no contexto da loja-modelo; não salvamos em prospect_mensagens)
-  if ((prospect as any).modo_demo) {
-    return await tratarModoDemo(prospect, waId, text);
-  }
-
   // ── Salva a mensagem recebida + conta a resposta do dia ─────────────────────
   await supabaseAdmin.from("prospect_mensagens").insert({
     prospect_id: prospect.id,
@@ -345,37 +276,6 @@ export async function POST(req: NextRequest) {
     console.warn(`🛟 [Blindagem Gemini B2B] IA indisponível — silêncio para ${prospect.nome_empresa}; gerente alertado.`);
     await alertarHandoff(prospect, "IA indisponível agora — responda você pelo Inbox de Vendas");
     return NextResponse.json({ status: "gemini_fora_silencio" });
-  }
-
-  // ── Iniciar DEMO: o Gabriel passou a bola pro atendimento real da loja-modelo ─
-  if ((r as any).iniciar_demo) {
-    patchBase.modo_demo = true;
-    patchBase.demo_count = 0;
-    patchBase.status = "quente";
-    await supabaseAdmin.from("prospects").update(patchBase).eq("id", prospect.id);
-
-    // 1) manda a ponte do Gabriel (em bolhas)
-    const credsPonte = autozapAvisaCreds();
-    const ponte = quebrarEmBolhas(r.resposta);
-    if (credsPonte) { for (const b of ponte) { try { await sendAvisaMessage(waId, b, credsPonte); } catch {} } }
-    if (ponte.length) {
-      await supabaseAdmin.from("prospect_mensagens").insert(
-        ponte.map((b) => ({ prospect_id: prospect.id, remetente: "agente", content: b }))
-      );
-    }
-
-    // 2) injeta a 1ª mensagem do "cliente" pro motor (pede o Nivus) → responde com foto/ficha
-    try {
-      await processWhatsAppMessage({
-        phone: waId,
-        rawMessage: "Oi! Vi o Nivus de vocês, ainda está disponível? Pode me mandar fotos e o preço?",
-        tenantUserId: DEMO_TENANT_ID,
-        garageConfig: (await carregarDemoConfig()) as any,
-      });
-    } catch (err) {
-      console.error("❌ [prospeccao demo-start] Falha ao iniciar atendimento:", err);
-    }
-    return NextResponse.json({ status: "demo_iniciada" });
   }
 
   // ── Define o novo status conforme a leitura do agente ───────────────────────
