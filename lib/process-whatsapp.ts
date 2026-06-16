@@ -2030,6 +2030,15 @@ Responda apenas com o JSON, sem markdown.`;
   const agenteMencionouFoto  = /\b(foto|fotos|imagem|imagens)\b/i.test(ultimasMsgsAgente);
   const agenteMencionouVideo = /\bv[íi]deo\b/i.test(ultimasMsgsAgente);
 
+  // Desambiguação foto×vídeo na confirmação ("sim/manda"): se a ÚLTIMA mensagem do
+  // agente ofereceu VÍDEO (e não foto), a confirmação é pra VÍDEO — não deve cair na
+  // foto só porque "foto" apareceu em alguma das 3 últimas msgs.
+  // (bug recorrente: agente oferece vídeo, cliente diz "sim", sistema manda foto.)
+  const ultimaMsgAgenteSozinha = historico.filter((h: any) => h.role === "model").slice(-1)[0]?.parts?.[0]?.text ?? "";
+  const ultimaOfertaVideo = /\bv[íi]deo\b/i.test(ultimaMsgAgenteSozinha);
+  const ultimaOfertaFoto  = /\b(foto|fotos|imagem|imagens)\b/i.test(ultimaMsgAgenteSozinha);
+  const confirmacaoVideo  = ultimaOfertaVideo && !ultimaOfertaFoto;
+
   // Continuação implícita: "e da ranger?", "e o gol?", "e a strada?" após pedido de foto anterior
   // O cliente não repete a palavra "foto" mas está claramente continuando o pedido anterior
   // Exclusão: se a mensagem contém palavra de vídeo ("e tem vídeo?"), NÃO é continuação de foto
@@ -2057,7 +2066,7 @@ Responda apenas com o JSON, sem markdown.`;
     (temIntencaoFoto || mensagemSoFoto || gatilhosFoto.some((g) => mensagemLower.includes(g)) ||
       // Não ativar por confirmação vaga ("Ok/Sim") se há instrucao_pendente: o "Ok" pode
       // ser apenas um acuse de "entendi, vou aguardar" e não consentimento para mídia.
-      (msgConfirmacao && (clientePediuFotoAntes || agenteMencionouFoto) && !lead?.instrucao_pendente) || continuacaoFoto ||
+      (msgConfirmacao && (clientePediuFotoAntes || agenteMencionouFoto) && !lead?.instrucao_pendente && !confirmacaoVideo) || continuacaoFoto ||
       // Cliente pediu parte específica E agente mencionou foto recentemente → envia foto
       (pedindoParteCarro && agenteMencionouFoto)) &&
     !exclusoesFoto.some((e) => mensagemLower.includes(e));
