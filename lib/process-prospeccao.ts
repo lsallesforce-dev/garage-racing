@@ -28,6 +28,8 @@ export interface RespostaProspeccao {
   opt_out: boolean;
   /** true = os 2 modelos Gemini fora do ar — o caller NÃO deve responder o prospect (silêncio + alerta). */
   gemini_fora?: boolean;
+  /** true = o prospect aceitou o TESTE REAL; o caller liga o modo demo (atendimento da loja-modelo no mesmo chip). */
+  iniciar_demo?: boolean;
 }
 
 const VALID_TEMPERATURAS: ProspeccaoTemperatura[] = ["FRIO", "MORNO", "QUENTE"];
@@ -36,7 +38,6 @@ const VALID_TEMPERATURAS: ProspeccaoTemperatura[] = ["FRIO", "MORNO", "QUENTE"];
 function buildSystemInstruction(prospect: Prospect): string {
   const empresa = prospect.nome_empresa || "a revenda";
   const cidade = prospect.cidade ? ` (${prospect.cidade}${prospect.estado ? "/" + prospect.estado : ""})` : "";
-  const DEMO_URL = "https://www.autozap.digital/vitrine/autozap";
 
   // Sinais úteis para o pitch (ex: reviews reclamando de demora no atendimento).
   let blocoSinais = "";
@@ -88,11 +89,11 @@ FECHAMENTO (sua meta): a AutoZap dá 30 DIAS GRÁTIS, sem cartão, e um consulto
 7. Só passe pro consultor humano quando o interesse for FORTE (ver REGRAS DE DECISÃO).
 
 # A DEMONSTRAÇÃO (sua arma secreta — ofereça quando a conversa fluir)
-A melhor venda é o cara SENTIR a IA na pele. Quando houver interesse, ofereça assim:
-"quer ver na prática? tenho uma loja de demonstração no ar. clica aqui, escolhe um carro e me chama no Whats como se você fosse um cliente. você vai falar com a IA de verdade: ${DEMO_URL}"
-- Mande o link ${DEMO_URL} SÓ nesse momento da demo, nunca na 1ª mensagem.
-- Convide a pessoa a agir como COMPRADOR ("pergunta de um carro, pede foto, fala de preço") e deixe a IA da loja de demonstração impressionar.
-- Depois que testar, retome: "e aí, o que achou? imagina isso atendendo os SEUS clientes 24h."
+A melhor venda é o cara SENTIR a IA na pele. Quando houver interesse, ofereça um TESTE REAL aqui mesmo: você passa a atendê-lo como se ele fosse um cliente querendo comprar um carro.
+- Ofereça curto: "quer ver na prática? deixa eu te atender como se você fosse um cliente meu interessado num carro. topa?"
+- Quando ele ACEITAR ("topa", "pode ser", "bora", "quero ver"), dê uma ponte curta (ex.: "show! então me trata como cliente, manda sua pergunta sobre o carro 👇") E retorne "iniciar_demo": true no JSON.
+- IMPORTANTE: você NÃO descreve carro/preço/foto. Assim que iniciar_demo=true, a própria IA de atendimento da loja assume automaticamente no mesmo número. Você só dá a ponte.
+- Ofereça o teste só quando a conversa fluir (interesse real), NUNCA na 1ª mensagem.
 
 # SE A CONVERSA FLUIR, ASSUMA QUE VOCÊ É IA
 Você PODE revelar que é uma IA, como prova viva do produto. Ex.: "inclusive, quem tá te respondendo agora é a própria IA da AutoZap. é esse atendimento que você teria com seus clientes." Com naturalidade e orgulho, nunca como confissão envergonhada. Se perguntarem direto "é um robô?", assuma e emende o valor.
@@ -115,7 +116,8 @@ Responda EXCLUSIVAMENTE um JSON válido, sem markdown, sem comentários, exatame
   "qualificado": true | false,
   "handoff": true | false,
   "motivo_handoff": "string curta ou null",
-  "opt_out": true | false
+  "opt_out": true | false,
+  "iniciar_demo": true | false
 }`;
 }
 
@@ -200,6 +202,7 @@ function parseResposta(jsonText: string): RespostaProspeccao {
         ? parsed.motivo_handoff.trim()
         : null,
     opt_out,
+    iniciar_demo: parsed.iniciar_demo === true,
   };
 }
 
