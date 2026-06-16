@@ -2,6 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FileText, Upload, Loader2, Trash2, Download } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+
+const BUCKET = "documentos-veiculos";
+const MAX_BYTES = 10 * 1024 * 1024;
 
 interface Doc {
   id: string;
@@ -38,21 +42,52 @@ export function ArquivarDocumentos({ veiculoId }: { veiculoId: string }) {
     carregar();
   }, [carregar]);
 
+  // Upload DIRETO pro Storage via signed URL (não passa pelo body da função
+  // Vercel → sem o limite de 4.5MB que dava 413). Por arquivo: 1) pede a signed
+  // upload URL, 2) sobe direto no Supabase, 3) grava o metadado.
+  const enviarUm = async (file: File) => {
+    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+      throw new Error(`"${file.name}" não é PDF.`);
+    }
+    if (file.size > MAX_BYTES) {
+      throw new Error(`"${file.name}" passa de 10 MB.`);
+    }
+
+    const r1 = await fetch(`/api/veiculo/${veiculoId}/documentos`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nome: file.name, tamanho: file.size }),
+    });
+    const d1 = await r1.json();
+    if (!r1.ok) throw new Error(d1.error ?? "Falha ao preparar o upload");
+
+    const { error: upErr } = await supabase.storage
+      .from(BUCKET)
+      .uploadToSignedUrl(d1.path, d1.token, file, { contentType: "application/pdf" });
+    if (upErr) throw new Error(`Falha ao enviar "${file.name}": ${upErr.message}`);
+
+    const r2 = await fetch(`/api/veiculo/${veiculoId}/documentos`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ docId: d1.docId, nome: file.name, tamanho: file.size }),
+    });
+    if (!r2.ok) {
+      const d2 = await r2.json().catch(() => ({}));
+      throw new Error(d2.error ?? "Falha ao salvar o documento");
+    }
+  };
+
   const enviar = async (files: FileList) => {
     setErro(null);
     setUploading(true);
     try {
-      const fd = new FormData();
-      Array.from(files).forEach((f) => fd.append("files", f));
-      const res = await fetch(`/api/veiculo/${veiculoId}/documentos`, { method: "POST", body: fd });
-      const data = await res.json();
-      if (!res.ok) {
-        setErro(data.error ?? "Falha no upload");
-        return;
+      for (const file of Array.from(files)) {
+        await enviarUm(file);
       }
       await carregar();
-    } catch {
-      setErro("Falha de rede no upload");
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha no upload");
+      await carregar(); // mostra os que subiram antes do erro
     } finally {
       setUploading(false);
     }

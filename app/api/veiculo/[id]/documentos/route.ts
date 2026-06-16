@@ -1,13 +1,19 @@
 // app/api/veiculo/[id]/documentos/route.ts
 //
 // Documentos arquivados do veículo (PDFs sensíveis: CRLV, laudo, etc.).
-// Os arquivos ficam num bucket PRIVADO (documentos-veiculos) — o acesso é
-// sempre por signed URL gerada no servidor, nunca por URL pública. No banco
-// só guardamos metadados em veiculos.documentos (jsonb).
+// Os arquivos ficam num bucket PRIVADO (documentos-veiculos) — acesso sempre
+// por signed URL gerada no servidor, nunca por URL pública. No banco só
+// guardamos metadados em veiculos.documentos (jsonb).
 //
-//   GET    → lista os docs com signed URL (1h)
-//   POST   → upload de 1+ PDFs (multipart "files")
-//   DELETE → remove um doc (body { docId })
+// Upload é DIRETO do navegador pro Supabase Storage (signed upload URL):
+// o corpo do PDF NÃO passa pela função da Vercel — isso evita o limite rígido
+// de ~4.5MB do body de serverless (que dava HTTP 413). O limite real passa a
+// ser o do bucket (10MB).
+//
+//   GET    → lista os docs com signed URL de download (1h)
+//   POST   → { nome, tamanho } → cria signed UPLOAD url { docId, path, token }
+//   PUT    → { docId, nome, tamanho } → grava o metadado após o upload
+//   DELETE → { docId } → remove storage + metadado
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
@@ -16,6 +22,7 @@ import { randomUUID } from "crypto";
 
 const BUCKET = "documentos-veiculos";
 const MAX_BYTES = 10 * 1024 * 1024; // 10 MB — igual ao limite do bucket
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface DocMeta {
   id: string;
@@ -34,15 +41,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { error } = await requireVehicleOwner(id);
   if (error) return error;
 
-  const { data: veic } = await supabaseAdmin
-    .from("veiculos")
-    .select("documentos")
-    .eq("id", id)
-    .single();
-
+  const { data: veic } = await supabaseAdmin.from("veiculos").select("documentos").eq("id", id).single();
   const docs = lerDocs(veic?.documentos);
 
-  // Signed URL temporária (1h) por documento — nunca expõe URL pública do bucket privado
   const comUrl = await Promise.all(
     docs.map(async (d) => {
       const { data: signed } = await supabaseAdmin.storage.from(BUCKET).createSignedUrl(d.path, 3600);
@@ -53,56 +54,73 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   return NextResponse.json({ documentos: comUrl });
 }
 
+// Passo 1 do upload: gera uma signed upload URL pro navegador enviar direto ao Storage.
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { user, error } = await requireVehicleOwner(id);
   if (error) return error;
   const userId = getEffectiveUserId(user!);
 
-  const form = await req.formData();
-  const files = form.getAll("files").filter((f): f is File => f instanceof File);
-  if (files.length === 0) {
-    return NextResponse.json({ error: "Nenhum arquivo enviado" }, { status: 400 });
+  const body = await req.json().catch(() => ({}));
+  const nome = String((body as { nome?: string }).nome ?? "").trim();
+  const tamanho = Number((body as { tamanho?: number }).tamanho ?? 0);
+
+  if (!nome.toLowerCase().endsWith(".pdf")) {
+    return NextResponse.json({ error: "Só aceitamos arquivos PDF." }, { status: 400 });
+  }
+  if (!(tamanho > 0) || tamanho > MAX_BYTES) {
+    return NextResponse.json({ error: "PDF inválido ou maior que 10 MB." }, { status: 400 });
   }
 
-  const { data: veic } = await supabaseAdmin
-    .from("veiculos")
-    .select("documentos")
-    .eq("id", id)
-    .single();
+  const docId = randomUUID();
+  const path = `${userId}/${id}/${docId}.pdf`;
+  const { data, error: signErr } = await supabaseAdmin.storage.from(BUCKET).createSignedUploadUrl(path);
+  if (signErr || !data) {
+    return NextResponse.json({ error: "Falha ao preparar o upload." }, { status: 500 });
+  }
+
+  return NextResponse.json({ docId, path: data.path, token: data.token });
+}
+
+// Passo 2 do upload: o navegador já subiu o PDF — grava o metadado no banco.
+// O path é RECONSTRUÍDO no servidor (userId+id+docId) — nunca confiamos no
+// path do cliente, evitando gravar metadado apontando pra arquivo de outro tenant.
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const { user, error } = await requireVehicleOwner(id);
+  if (error) return error;
+  const userId = getEffectiveUserId(user!);
+
+  const body = await req.json().catch(() => ({}));
+  const docId = String((body as { docId?: string }).docId ?? "");
+  const nome = String((body as { nome?: string }).nome ?? "").trim();
+  const tamanho = Number((body as { tamanho?: number }).tamanho ?? 0);
+
+  if (!UUID_RE.test(docId)) return NextResponse.json({ error: "docId inválido" }, { status: 400 });
+  if (!nome) return NextResponse.json({ error: "nome obrigatório" }, { status: 400 });
+
+  const path = `${userId}/${id}/${docId}.pdf`;
+
+  // Confirma que o objeto realmente subiu antes de gravar o metadado
+  const { data: lista } = await supabaseAdmin.storage.from(BUCKET).list(`${userId}/${id}`, { search: `${docId}.pdf` });
+  if (!lista?.some((o) => o.name === `${docId}.pdf`)) {
+    return NextResponse.json({ error: "Arquivo não encontrado no storage — upload não concluído." }, { status: 400 });
+  }
+
+  const { data: veic } = await supabaseAdmin.from("veiculos").select("documentos").eq("id", id).single();
   const docs = lerDocs(veic?.documentos);
-
-  const novos: DocMeta[] = [];
-  for (const file of files) {
-    // Validação dupla (o bucket também restringe, mas falhamos cedo com mensagem clara)
-    if (file.type !== "application/pdf") {
-      return NextResponse.json({ error: `"${file.name}" não é PDF — só aceitamos PDF.` }, { status: 400 });
-    }
-    if (file.size > MAX_BYTES) {
-      return NextResponse.json({ error: `"${file.name}" passa de 10 MB.` }, { status: 400 });
-    }
-    const docId = randomUUID();
-    const path = `${userId}/${id}/${docId}.pdf`;
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const { error: upErr } = await supabaseAdmin.storage
-      .from(BUCKET)
-      .upload(path, buffer, { contentType: "application/pdf", upsert: false });
-    if (upErr) {
-      // limpa o que já subiu neste request pra não deixar órfão
-      if (novos.length) await supabaseAdmin.storage.from(BUCKET).remove(novos.map((n) => n.path)).catch(() => {});
-      return NextResponse.json({ error: `Falha no upload de "${file.name}": ${upErr.message}` }, { status: 500 });
-    }
-    novos.push({ id: docId, nome: file.name, path, tamanho: file.size, enviado_em: new Date().toISOString() });
+  if (docs.some((d) => d.id === docId)) {
+    return NextResponse.json({ ok: true }); // idempotente
   }
 
-  const atualizados = [...docs, ...novos];
-  const { error: dbErr } = await supabaseAdmin.from("veiculos").update({ documentos: atualizados }).eq("id", id);
+  const novo: DocMeta = { id: docId, nome, path, tamanho, enviado_em: new Date().toISOString() };
+  const { error: dbErr } = await supabaseAdmin.from("veiculos").update({ documentos: [...docs, novo] }).eq("id", id);
   if (dbErr) {
-    await supabaseAdmin.storage.from(BUCKET).remove(novos.map((n) => n.path)).catch(() => {});
+    await supabaseAdmin.storage.from(BUCKET).remove([path]).catch(() => {});
     return NextResponse.json({ error: "Falha ao salvar no banco" }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, adicionados: novos.length });
+  return NextResponse.json({ ok: true });
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -114,11 +132,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const docId = (body as { docId?: string }).docId;
   if (!docId) return NextResponse.json({ error: "docId obrigatório" }, { status: 400 });
 
-  const { data: veic } = await supabaseAdmin
-    .from("veiculos")
-    .select("documentos")
-    .eq("id", id)
-    .single();
+  const { data: veic } = await supabaseAdmin.from("veiculos").select("documentos").eq("id", id).single();
   const docs = lerDocs(veic?.documentos);
   const alvo = docs.find((d) => d.id === docId);
   if (!alvo) return NextResponse.json({ error: "Documento não encontrado" }, { status: 404 });
