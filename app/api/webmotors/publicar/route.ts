@@ -116,6 +116,19 @@ export async function POST(req: NextRequest) {
     const anoModelo = v.ano_modelo ?? v.ano_fabricacao ?? new Date().getFullYear();
     const versaoItem = matchVersaoAno(versoes, v.versao ?? v.modelo ?? "", anoModelo);
 
+    // Se a versão existe mas NÃO cobre o ano do modelo, a WM rejeita (43|41 inconsistente
+    // / 43|37 ano inválido). Devolve erro claro e acionável em vez do código cru da SOAP.
+    if (versaoItem?.anos && !versaoItem.anos.includes(anoModelo)) {
+      const anosModelo = [...new Set(versoes.flatMap((vr) => vr.anos ?? []))].sort((a, b) => a - b);
+      return NextResponse.json({
+        error:
+          `A Webmotors não tem a versão "${versaoItem.descricao}" para o ano ${anoModelo}. ` +
+          `Anos dessa versão: ${versaoItem.anos.join(", ")}. ` +
+          `Anos disponíveis para o modelo "${v.modelo}": ${anosModelo.join(", ") || "—"}. ` +
+          `Confira o ano/versão do veículo no cadastro.`,
+      }, { status: 422 });
+    }
+
     const coreItem = matchDominioWM(cores, v.cor ?? "", "cor");
     const combItem = matchDominioWM(combustiveis, v.combustivel ?? "", "combustivel");
     const cambItem = matchDominioWM(cambios, v.cambio ?? "", "cambio");
