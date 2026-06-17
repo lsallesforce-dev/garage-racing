@@ -322,3 +322,10 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ ok: true, acao: "abertura", prospect_id: novo.id });
 }
+
+// Vercel Cron dispara via GET (com Authorization: Bearer CRON_SECRET). Os demais
+// crons do projeto também são GET. Reusa o mesmo handler — em GET o req.text()
+// vem vazio e isAuthorized cai no caminho do CRON_SECRET (fail-closed em prod).
+export async function GET(req: NextRequest) {
+  return POST(req);
+}
