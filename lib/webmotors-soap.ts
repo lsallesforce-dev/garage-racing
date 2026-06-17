@@ -259,6 +259,17 @@ export interface AnuncioWM {
   precoVenda: number;
   observacao?: string;
   opcionais?: string[];         // códigos de opcionais
+  // Flags S/N — a produção REJEITA o anúncio quando ausentes (CodigoRetorno 43 por campo),
+  // mesmo o WSDL marcando como "Optional". Default neutro "N" quando não informado.
+  blindado?: string;
+  adaptadoDeficientes?: string;
+  unicoDono?: string;
+  alienado?: string;
+  ipvaPago?: string;
+  revisadoAgenda?: string;
+  revisoesConcessionaria?: string;
+  garantiaFabrica?: string;
+  licenciado?: string;
 }
 
 function anuncioXml(a: AnuncioWM): string {
@@ -280,6 +291,16 @@ function anuncioXml(a: AnuncioWM): string {
     `<wses:NrPortas>${a.nrPortas}</wses:NrPortas>` +
     `<wses:CodigoCor>${a.codigoCor}</wses:CodigoCor>` +
     `<wses:CodigoCombustivel>${a.codigoCombustivel}</wses:CodigoCombustivel>` +
+    // Flags S/N — ordem do XSD (após Combustível, antes de PrecoReal). Default "N".
+    `<wses:Blindado>${a.blindado ?? "N"}</wses:Blindado>` +
+    `<wses:AdaptadoDeficientesFisicos>${a.adaptadoDeficientes ?? "N"}</wses:AdaptadoDeficientesFisicos>` +
+    `<wses:UnicoDono>${a.unicoDono ?? "N"}</wses:UnicoDono>` +
+    `<wses:Alienado>${a.alienado ?? "N"}</wses:Alienado>` +
+    `<wses:IpvaPago>${a.ipvaPago ?? "N"}</wses:IpvaPago>` +
+    `<wses:RevisadoOficinaAgendaDoCarro>${a.revisadoAgenda ?? "N"}</wses:RevisadoOficinaAgendaDoCarro>` +
+    `<wses:RevisoesEmConcessionaria>${a.revisoesConcessionaria ?? "N"}</wses:RevisoesEmConcessionaria>` +
+    `<wses:GarantiaDeFabrica>${a.garantiaFabrica ?? "N"}</wses:GarantiaDeFabrica>` +
+    `<wses:Licenciado>${a.licenciado ?? "N"}</wses:Licenciado>` +
     `<wses:PrecoReal>${Math.round(a.precoReal)}</wses:PrecoReal>` +
     `<wses:PrecoVenda>${Math.round(a.precoVenda)}</wses:PrecoVenda>` +
     (a.observacao ? `<wses:Observacao>${escapeXml(a.observacao.slice(0, 1000))}</wses:Observacao>` : "") +
@@ -288,21 +309,28 @@ function anuncioXml(a: AnuncioWM): string {
 }
 
 export async function incluirCarro(hash: string, bearer: string, a: AnuncioWM): Promise<string> {
+  const reqXml = anuncioXml({ ...a, codigoAnuncio: a.codigoAnuncio ?? "0" });
   const xml = await soapCall("wsEstoqueRevendedorWebMotors", bearer,
-    envEstoque(`<wses:IncluirCarro><wses:pHashAutenticacao>${hash}</wses:pHashAutenticacao>${anuncioXml({ ...a, codigoAnuncio: a.codigoAnuncio ?? "0" })}</wses:IncluirCarro>`));
+    envEstoque(`<wses:IncluirCarro><wses:pHashAutenticacao>${hash}</wses:pHashAutenticacao>${reqXml}</wses:IncluirCarro>`));
   const codigo = tag(xml, "CodigoAnuncio");
   if (!isSucesso(xml) || !codigo || codigo === "0") {
-    throw new Error(`Webmotors IncluirCarro falhou (CodigoRetorno=${tag(xml, "CodigoRetorno")}): ${xml.slice(0, 400)}`);
+    // Log completo p/ diagnóstico de campo (CodigoRetorno=43|N por campo rejeitado)
+    console.error("❌ [Webmotors] IncluirCarro request enviado:", reqXml);
+    console.error("❌ [Webmotors] IncluirCarro resposta completa:", xml.slice(0, 2000));
+    throw new Error(`Webmotors IncluirCarro falhou (CodigoRetorno=${tag(xml, "CodigoRetorno")}): ${xml.slice(0, 600)}`);
   }
   return codigo;
 }
 
 export async function alterarCarro(hash: string, bearer: string, a: AnuncioWM): Promise<string> {
+  const reqXml = anuncioXml(a);
   const xml = await soapCall("wsEstoqueRevendedorWebMotors", bearer,
-    envEstoque(`<wses:AlterarCarro><wses:pHashAutenticacao>${hash}</wses:pHashAutenticacao>${anuncioXml(a)}</wses:AlterarCarro>`));
+    envEstoque(`<wses:AlterarCarro><wses:pHashAutenticacao>${hash}</wses:pHashAutenticacao>${reqXml}</wses:AlterarCarro>`));
   const codigo = tag(xml, "CodigoAnuncio");
   if (!isSucesso(xml)) {
-    throw new Error(`Webmotors AlterarCarro falhou (CodigoRetorno=${tag(xml, "CodigoRetorno")}): ${xml.slice(0, 400)}`);
+    console.error("❌ [Webmotors] AlterarCarro request enviado:", reqXml);
+    console.error("❌ [Webmotors] AlterarCarro resposta completa:", xml.slice(0, 2000));
+    throw new Error(`Webmotors AlterarCarro falhou (CodigoRetorno=${tag(xml, "CodigoRetorno")}): ${xml.slice(0, 600)}`);
   }
   return codigo ?? a.codigoAnuncio ?? "";
 }
