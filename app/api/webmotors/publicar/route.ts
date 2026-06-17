@@ -139,6 +139,15 @@ export async function POST(req: NextRequest) {
       precoVenda:       v.preco_sugerido ?? 0,
     };
 
+    // Diagnóstico: códigos resolvidos vs valores crus do veículo. A WM rejeita
+    // campo a campo (CodigoRetorno=43|N); este resumo diz QUAL campo ficou "0"/sem match.
+    const diag =
+      `[diag] cambio "${v.cambio ?? ""}"→${cambItem?.codigo ?? "0(SEM MATCH)"} | ` +
+      `cor "${v.cor ?? ""}"→${coreItem?.codigo ?? "0(SEM MATCH)"} | ` +
+      `combustivel "${v.combustivel ?? ""}"→${combItem?.codigo ?? "0(SEM MATCH)"} | ` +
+      `versao "${v.versao ?? v.modelo ?? ""}"→${versaoItem?.codigo ?? "(SEM MATCH, usou fallback)"} | ` +
+      `modalidade→${modalidadeItem?.codigo ?? "?"}`;
+
     // ── Publica ou atualiza ───────────────────────────────────────────────
     let codigoAnuncio: string;
     try {
@@ -150,8 +159,8 @@ export async function POST(req: NextRequest) {
         console.log(`✅ Webmotors: IncluirCarro ${veiculoId} → anúncio ${codigoAnuncio}`);
       }
     } catch (e: any) {
-      console.error("❌ Webmotors IncluirCarro/AlterarCarro:", e.message);
-      return NextResponse.json({ error: e.message }, { status: 502 });
+      console.error("❌ Webmotors IncluirCarro/AlterarCarro:", e.message, diag);
+      return NextResponse.json({ error: `${e.message} — ${diag}` }, { status: 502 });
     }
 
     // ── Fotos (somente em inclusão nova; alteração mantém as existentes) ──
