@@ -18,7 +18,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Receiver } from "@upstash/qstash";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { sendAvisaMessage } from "@/lib/avisa";
+import { sendAvisaMessage, registrarWebhookAvisa } from "@/lib/avisa";
 import { gerarFollowupProspeccao } from "@/lib/process-prospeccao";
 import type { Prospect, ProspeccaoConfig, ProspectMensagem } from "@/lib/prospeccao-types";
 
@@ -58,6 +58,22 @@ function autozapAvisaCreds(): { baseUrl: string; token: string } | null {
   const token = process.env.AUTOZAP_AVISA_TOKEN;
   if (!baseUrl || !token) return null;
   return { baseUrl, token };
+}
+
+// ─── Self-heal do webhook de respostas (idempotente) ──────────────────────────
+// Quando a instância Avisa da prospecção cai e re-pareia, a URL de webhook
+// registrada é perdida/trocada — a Avisa passa a entregar SEM o ?token= correto e
+// o /api/webhook/prospeccao responde 401 → as respostas dos prospects nunca são
+// processadas e a Mari fica "muda" (mesmo com o WhatsApp do celular funcionando).
+// Re-registramos a cada tick (antes dos gates de janela/quota, pra valer 24/7).
+async function garantirWebhookProspeccao(): Promise<void> {
+  const creds = autozapAvisaCreds();
+  const wToken = process.env.AUTOZAP_PROSPECCAO_WEBHOOK_TOKEN;
+  if (!creds || !wToken) return; // sem credenciais não há o que re-registrar
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://www.autozap.digital").replace(/\/+$/, "");
+  const webhookUrl = `${appUrl}/api/webhook/prospeccao?token=${encodeURIComponent(wToken)}`;
+  const r = await registrarWebhookAvisa(creds.baseUrl, creds.token, webhookUrl);
+  if (!r.ok) console.warn(`⚠️ [prospeccao-tick] re-registro do webhook falhou: ${r.error}`);
 }
 
 // ─── Hora/dia em America/Sao_Paulo ────────────────────────────────────────────
@@ -110,6 +126,11 @@ export async function POST(req: NextRequest) {
   if (!(await isAuthorized(req, rawBody))) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+
+  // ── 0. Self-heal do webhook de respostas (antes dos gates — vale 24/7) ───────
+  // Garante que o inbound dos prospects chegue mesmo após queda/re-pareamento da
+  // Avisa. Não bloqueia o tick se falhar.
+  await garantirWebhookProspeccao().catch(() => {});
 
   // ── 1. Config ───────────────────────────────────────────────────────────────
   const { data: cfg } = await supabaseAdmin
