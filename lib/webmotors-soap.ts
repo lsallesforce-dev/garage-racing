@@ -312,10 +312,12 @@ export interface AnuncioWM {
   unicoDono?: string;
   alienado?: string;
   ipvaPago?: string;
+  naoAceitaTroca?: string;
   revisadoAgenda?: string;
   revisoesConcessionaria?: string;
   garantiaFabrica?: string;
   licenciado?: string;
+  leilao?: string;
 }
 
 function anuncioXml(a: AnuncioWM): string {
@@ -343,10 +345,12 @@ function anuncioXml(a: AnuncioWM): string {
     `<wses:UnicoDono>${a.unicoDono ?? "N"}</wses:UnicoDono>` +
     `<wses:Alienado>${a.alienado ?? "N"}</wses:Alienado>` +
     `<wses:IpvaPago>${a.ipvaPago ?? "N"}</wses:IpvaPago>` +
+    `<wses:NaoAceitaTroca>${a.naoAceitaTroca ?? "N"}</wses:NaoAceitaTroca>` +
     `<wses:RevisadoOficinaAgendaDoCarro>${a.revisadoAgenda ?? "N"}</wses:RevisadoOficinaAgendaDoCarro>` +
     `<wses:RevisoesEmConcessionaria>${a.revisoesConcessionaria ?? "N"}</wses:RevisoesEmConcessionaria>` +
     `<wses:GarantiaDeFabrica>${a.garantiaFabrica ?? "N"}</wses:GarantiaDeFabrica>` +
     `<wses:Licenciado>${a.licenciado ?? "N"}</wses:Licenciado>` +
+    `<wses:Leilao>${a.leilao ?? "N"}</wses:Leilao>` +
     `<wses:PrecoReal>${Math.round(a.precoReal)}</wses:PrecoReal>` +
     `<wses:PrecoVenda>${Math.round(a.precoVenda)}</wses:PrecoVenda>` +
     (a.observacao ? `<wses:Observacao>${escapeXml(a.observacao.slice(0, 1000))}</wses:Observacao>` : "") +
