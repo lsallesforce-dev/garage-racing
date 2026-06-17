@@ -367,7 +367,7 @@ export async function incluirCarro(hash: string, bearer: string, a: AnuncioWM): 
     // Log completo p/ diagnóstico de campo (CodigoRetorno=43|N por campo rejeitado)
     console.error("❌ [Webmotors] IncluirCarro request enviado:", reqXml);
     console.error("❌ [Webmotors] IncluirCarro resposta completa:", xml.slice(0, 2000));
-    throw new Error(`Webmotors IncluirCarro falhou (CodigoRetorno=${tag(xml, "CodigoRetorno")}): ${xml.slice(0, 600)}`);
+    throw new Error(`Webmotors IncluirCarro falhou (CodigoRetorno=${tag(xml, "CodigoRetorno")}): ${xml.slice(0, 2500)}`);
   }
   return codigo;
 }
