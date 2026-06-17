@@ -304,12 +304,20 @@ export async function POST(req: NextRequest) {
     console.warn("⚠️ [prospeccao webhook] AUTOZAP_AVISA_* ausentes — resposta gerada mas NÃO enviada (graceful).");
   } else {
     try {
-      for (const bolha of mensagensEnviar) {
-        await sendAvisaMessage(waId, bolha, creds);
-      }
       enviada = true;
+      for (const bolha of mensagensEnviar) {
+        // sendAvisaMessage agora retorna boolean: false = 463/erro (não saiu).
+        const ok = await sendAvisaMessage(waId, bolha, creds);
+        if (!ok) { enviada = false; break; } // não insiste nas próximas bolhas
+      }
     } catch (err) {
-      console.error("❌ [prospeccao webhook] Falha ao enviar resposta:", err);
+      console.error("❌ [prospeccao webhook] Erro inesperado ao enviar resposta:", err);
+      enviada = false;
+    }
+    if (!enviada) {
+      // Envio recusado (tipicamente soft-ban 463 do chip). NÃO grava resposta fantasma
+      // no histórico (bloco abaixo só insere se enviada=true) e conta como bloqueio.
+      console.error("❌ [prospeccao webhook] Resposta NÃO enviada (envio recusado — ex.: 463).");
       await incrementStat("bloqueios").catch(() => {});
     }
   }

@@ -241,10 +241,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ skip: "sem_credenciais", acao: "followup", prospect_id: followup.id });
     }
 
+    let okEnvio = false;
     try {
-      await sendAvisaMessage(alvoTel, texto, creds);
+      okEnvio = await sendAvisaMessage(alvoTel, texto, creds);
     } catch (err) {
-      console.error("❌ [prospeccao-tick] Falha ao enviar follow-up:", err);
+      console.error("❌ [prospeccao-tick] Erro inesperado ao enviar follow-up:", err);
+    }
+    if (!okEnvio) {
+      // Envio recusado (tipicamente 463). Não grava msg do agente nem avança a fila:
+      // conta bloqueio e sai — o prospect continua elegível pro próximo tick.
+      console.error("❌ [prospeccao-tick] Follow-up NÃO enviado (envio recusado — ex.: 463).");
       await incrementStat({ bloqueios: 1 }).catch(() => {});
       return NextResponse.json({ error: "falha_envio", acao: "followup" }, { status: 500 });
     }
@@ -315,10 +321,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ skip: "sem_credenciais", acao: "abertura", prospect_id: novo.id });
   }
 
+  let okAbertura = false;
   try {
-    await sendAvisaMessage(alvoTel, mensagem, creds);
+    okAbertura = await sendAvisaMessage(alvoTel, mensagem, creds);
   } catch (err) {
-    console.error("❌ [prospeccao-tick] Falha ao enviar abertura:", err);
+    console.error("❌ [prospeccao-tick] Erro inesperado ao enviar abertura:", err);
+  }
+  if (!okAbertura) {
+    console.error("❌ [prospeccao-tick] Abertura NÃO enviada (envio recusado — ex.: 463).");
     await incrementStat({ bloqueios: 1 }).catch(() => {});
     return NextResponse.json({ error: "falha_envio", acao: "abertura" }, { status: 500 });
   }

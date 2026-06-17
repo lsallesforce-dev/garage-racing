@@ -135,17 +135,20 @@ async function sendWithRetry(url: string, payload: any, token: string, retries =
       });
       
       const text = await response.text();
-      if (!response.ok) {
+      let data: any;
+      try { data = JSON.parse(text); } catch {}
+      // Falha de negócio mesmo com HTTP 200: a Avisa às vezes responde 200 com erro
+      // no corpo, e o soft-ban de envio (463) vem como HTTP 500 { error: "...463" }.
+      // Sem isso, o 463 era "engolido" e o chamador achava que enviou.
+      const negocioFalhou = !!data && (data.status === false || data.success === false || !!data.error);
+      if (!response.ok || negocioFalhou) {
         console.warn(`Avisa tentativa ${i + 1}: HTTP ${response.status} — ${text.slice(0, 300)}`);
         if (i < retries - 1) await new Promise(r => setTimeout(r, 1500));
         continue;
       }
-      try {
-        return JSON.parse(text);
-      } catch {
-        console.warn(`Avisa tentativa ${i + 1}: HTTP ${response.status} — resposta não-JSON: ${text.slice(0, 200)}`);
-        if (i < retries - 1) await new Promise(r => setTimeout(r, 1500));
-      }
+      if (data !== undefined) return data;
+      console.warn(`Avisa tentativa ${i + 1}: HTTP ${response.status} — resposta não-JSON: ${text.slice(0, 200)}`);
+      if (i < retries - 1) await new Promise(r => setTimeout(r, 1500));
     } catch (err) {
       console.warn(`Avisa tentativa ${i + 1} falhou:`, err);
       if (i < retries - 1) await new Promise(r => setTimeout(r, 1500));
@@ -198,9 +201,12 @@ async function sendAvisaTyping(baseUrl: string, token: string, phone: string, ac
   }
 }
 
-export async function sendAvisaMessage(phone: string, message: string, creds?: Partial<AvisaCreds>, opts?: { typing?: boolean }) {
+// Retorna TRUE só se a Avisa confirmou o envio. FALSE em 463/erro/sem-resposta ou
+// credenciais ausentes — assim quem chama (prospecção, cron) pode contar `bloqueios`
+// em vez de marcar como "enviada" e gravar resposta fantasma no histórico.
+export async function sendAvisaMessage(phone: string, message: string, creds?: Partial<AvisaCreds>, opts?: { typing?: boolean }): Promise<boolean> {
   const c = resolveCreds(creds);
-  if (!c) { console.warn("Avisa credentials missing"); return; }
+  if (!c) { console.warn("Avisa credentials missing"); return false; }
 
   const target = buildTarget(phone);
 
@@ -220,7 +226,8 @@ export async function sendAvisaMessage(phone: string, message: string, creds?: P
   await markAgentEcho(phone, message);
 
   const payload = { ...target, message };
-  return sendWithRetry(`${c.baseUrl}/actions/sendMessage`, payload, c.token);
+  const resultado = await sendWithRetry(`${c.baseUrl}/actions/sendMessage`, payload, c.token);
+  return resultado != null; // sendWithRetry retorna undefined em falha (inclui 463)
 }
 
 export async function sendAvisaImage(phone: string, imageUrlOrBase64: string, message?: string, creds?: Partial<AvisaCreds>) {
