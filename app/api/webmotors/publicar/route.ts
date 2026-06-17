@@ -136,8 +136,12 @@ export async function POST(req: NextRequest) {
       nrPortas:         4,
       codigoCor:        coreItem?.codigo ?? "0",
       codigoCombustivel: combItem?.codigo ?? "0",
-      precoReal:        v.preco_sugerido ?? 0,
+      // PrecoVenda = preço real ao consumidor (aparece na busca do site).
+      // PrecoReal (preço de revenda/repasse B2B — só aparece no Correio WebMotors, manual *08)
+      // DEVE ser diferente de PrecoVenda: enviá-los iguais retorna 22|78 ("preço de venda
+      // inválido"). O exemplo oficial usa PrecoReal > PrecoVenda. Aplica +5% como âncora.
       precoVenda:       v.preco_sugerido ?? 0,
+      precoReal:        Math.round((v.preco_sugerido ?? 0) * 1.05),
       // Descrição automática — anúncio sem Observacao é candidato ao erro 22|78.
       observacao: [
         `${v.marca ?? ""} ${v.modelo ?? ""}${v.versao ? " " + v.versao : ""}`.trim(),
