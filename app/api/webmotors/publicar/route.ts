@@ -25,6 +25,7 @@ import {
   obterModalidade,
   matchItem,
   matchDominioWM,
+  matchVersaoAno,
   incluirCarro,
   alterarCarro,
   incluirFoto,
@@ -110,7 +111,10 @@ export async function POST(req: NextRequest) {
     }
 
     versoes = await obterVersao(hash, bearer, modeloItem.codigo);
-    const versaoItem = matchItem(versoes, v.versao ?? v.modelo ?? "");
+    // Cada CodigoVersao da WM é específico de um conjunto de anos — casar só por nome
+    // pega a versão de outro ano → 43|41 (inconsistente) / 43|37 (ano inválido).
+    const anoModelo = v.ano_modelo ?? v.ano_fabricacao ?? new Date().getFullYear();
+    const versaoItem = matchVersaoAno(versoes, v.versao ?? v.modelo ?? "", anoModelo);
 
     const coreItem = matchDominioWM(cores, v.cor ?? "", "cor");
     const combItem = matchDominioWM(combustiveis, v.combustivel ?? "", "combustivel");
@@ -128,7 +132,7 @@ export async function POST(req: NextRequest) {
       codigoMarca:      marcaItem.codigo,
       codigoModelo:     modeloItem.codigo,
       codigoVersao:     versaoItem?.codigo ?? modelos[0]?.codigo ?? "0",
-      anoModelo:        v.ano_modelo ?? v.ano_fabricacao ?? new Date().getFullYear(),
+      anoModelo:        anoModelo,
       anoFabricacao:    v.ano_fabricacao ?? v.ano_modelo ?? new Date().getFullYear(),
       km:               v.quilometragem_estimada ?? 0,
       placa:            v.placa ?? undefined,
@@ -161,7 +165,8 @@ export async function POST(req: NextRequest) {
       `[diag] cambio "${v.cambio ?? ""}"→${cambItem?.codigo ?? `0(SEM MATCH; opções WM: ${ops(cambios)})`} | ` +
       `cor "${v.cor ?? ""}"→${coreItem?.codigo ?? `0(SEM MATCH; opções WM: ${ops(cores)})`} | ` +
       `combustivel "${v.combustivel ?? ""}"→${combItem?.codigo ?? `0(SEM MATCH; opções WM: ${ops(combustiveis)})`} | ` +
-      `versao "${v.versao ?? v.modelo ?? ""}"→${versaoItem?.codigo ?? "(SEM MATCH, usou fallback)"} | ` +
+      `versao "${v.versao ?? v.modelo ?? ""}" (ano ${anoModelo})→${versaoItem?.codigo ?? "(SEM MATCH, usou fallback)"} [anos dessa versão: ${versaoItem?.anos?.join(",") ?? "?"}] | ` +
+      `VERSÕES p/ ${anoModelo}: ${versoes.filter((vr) => vr.anos?.includes(anoModelo)).map((vr) => `${vr.codigo}=${vr.descricao}`).slice(0, 15).join(" / ") || "NENHUMA"} | ` +
       `modalidade→${modalidadeItem?.codigo ?? "?"} | ` +
       `MODALIDADES DISPONÍVEIS: ${modalidades.map((m) => `${m.codigo}=${m.descricao}`).join(" / ")}`;
 

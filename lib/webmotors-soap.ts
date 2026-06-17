@@ -138,7 +138,7 @@ export async function autenticar(cnpj: string, email: string, senha: string, bea
 }
 
 // ─── Tabelas de domínio (Obter*) com cache ───────────────────────────────────
-export interface Item { codigo: string; descricao: string; }
+export interface Item { codigo: string; descricao: string; anos?: number[]; }
 
 const lookupCache = new Map<string, { data: Item[]; expiresAt: number }>();
 const LOOKUP_TTL = 6 * 60 * 60_000; // 6h — tabelas mudam raramente
@@ -179,8 +179,33 @@ export async function obterVersao(hash: string, bearer: string, codigoModelo: st
     const fim = `${new Date().getFullYear() + 1}-12-31`;
     const xml = await soapCall("wsEstoqueRevendedorWebMotors", bearer,
       envEstoque(`<wses:ObterVersao><wses:pHashAutenticacao>${hash}</wses:pHashAutenticacao><wses:pCodigoModelo>${codigoModelo}</wses:pCodigoModelo><wses:pDataInicioAtualizacao>${ini}</wses:pDataInicioAtualizacao><wses:pDataFimAtualizacao>${fim}</wses:pDataFimAtualizacao></wses:ObterVersao>`));
-    return parseItens(xml, "Versao", "CodigoVersao", "NomeVersao");
+    // ObterVersao retorna VersaoWM2: cada Versao traz AnoModeloWM[] com os anos válidos.
+    // Sem casar o ano, escolhemos um CodigoVersao de outro ano → 43|41/43|37 (ano inválido).
+    return blocks(xml, "Versao").map((b) => {
+      const anos = [...b.matchAll(/<(?:\w+:)?AnoModelo>\s*(\d{4})\s*<\/(?:\w+:)?AnoModelo>/g)]
+        .map((m) => parseInt(m[1], 10))
+        .filter((n) => n >= 1900 && n <= 2100);
+      return {
+        codigo: tag(b, "CodigoVersao") ?? "",
+        descricao: tag(b, "NomeVersao") ?? "",
+        anos: anos.length ? [...new Set(anos)] : undefined,
+      };
+    }).filter((i) => i.codigo);
   });
+}
+
+// Casa a versão por NOME e ANO: entre as versões cujo nome bate, prefere a que cobre
+// o ano do modelo. Cada CodigoVersao da WM é específico de um conjunto de anos.
+export function matchVersaoAno(versoes: Item[], texto: string, anoModelo: number): Item | null {
+  const porNome = matchItem(versoes, texto);
+  if (!porNome) return null;
+  // Se a versão casada já cobre o ano (ou não temos info de ano), usa ela.
+  if (!porNome.anos || porNome.anos.includes(anoModelo)) return porNome;
+  // Senão, procura uma versão com o MESMO nome que cubra o ano alvo.
+  const mesmoNome = versoes.filter((v) => norm(v.descricao) === norm(porNome.descricao));
+  const cobreAno = mesmoNome.find((v) => v.anos?.includes(anoModelo))
+    ?? versoes.find((v) => v.anos?.includes(anoModelo) && norm(v.descricao).includes(norm(texto)));
+  return cobreAno ?? porNome;
 }
 
 export async function obterCores(hash: string, bearer: string): Promise<Item[]> {
