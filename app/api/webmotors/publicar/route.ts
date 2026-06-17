@@ -223,6 +223,29 @@ export async function POST(req: NextRequest) {
       .update({ status_webmotors: "publicado", webmotors_id: codigoAnuncio })
       .eq("id", veiculoId);
 
+    // Registra na tabela `anuncios` p/ aparecer na página de Anúncios (mesma fonte da OLX).
+    // Sem isso, o veículo publica na WM mas a aba WEBMOTORS fica zerada. onConflict
+    // veiculo_id,portal → re-publicar atualiza em vez de duplicar.
+    const now = new Date().toISOString();
+    const { error: anuncioErr } = await supabaseAdmin.from("anuncios").upsert(
+      {
+        user_id:       userId,
+        veiculo_id:    veiculoId,
+        portal:        "webmotors",
+        portal_ad_id:  codigoAnuncio,
+        status:        "publicado",
+        titulo:        `${v.marca ?? ""} ${v.modelo ?? ""}`.trim(),
+        descricao:     anuncio.observacao ?? null,
+        preco:         Number(v.preco_sugerido ?? 0),
+        fotos,
+        snapshot:      { codigoVersao: anuncio.codigoVersao, anoModelo, params: { fuel: v.combustivel, gearbox: v.cambio, carcolor: v.cor, mileage: v.quilometragem_estimada, regdate: anoModelo, vehicle_tag: v.placa } },
+        publicado_em:  now,
+        atualizado_em: now,
+      },
+      { onConflict: "veiculo_id,portal", ignoreDuplicates: false },
+    );
+    if (anuncioErr) console.error("❌ anuncios upsert (webmotors) falhou:", anuncioErr.message);
+
     return NextResponse.json({ success: true, codigoAnuncio });
 
   } catch (e: any) {
