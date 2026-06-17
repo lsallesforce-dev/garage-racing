@@ -596,8 +596,9 @@ export default function AdminPage() {
           </div>
           <div className="flex items-center gap-2">
             <button onClick={() => { carregar(secret); carregarPagamentos(secret); carregarPagarme(secret); }}
-              className="p-2 text-gray-400 hover:text-gray-700 rounded-xl hover:bg-gray-100 transition" title="Recarregar">
-              <RefreshCw size={15} />
+              disabled={loading}
+              className="p-2 text-gray-400 hover:text-gray-700 rounded-xl hover:bg-gray-100 transition disabled:opacity-50" title="Recarregar painel (Clientes / Financeiro)">
+              <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
             </button>
             {tab === "clientes" && (
               <button onClick={() => setShowNovoTenant(true)}

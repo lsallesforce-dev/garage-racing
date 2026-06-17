@@ -550,6 +550,7 @@ function Inbox({ headers }: { headers: Record<string, string> }) {
   const [texto, setTexto] = useState("");
   const [loadingThread, setLoadingThread] = useState(false);
   const [enviando, setEnviando] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const carregarLista = useCallback(async () => {
     const res = await fetch("/api/admin/vendas/prospects", { headers });
@@ -561,19 +562,41 @@ function Inbox({ headers }: { headers: Record<string, string> }) {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const carregarThread = useCallback(async (id: string) => {
-    setLoadingThread(true);
+  // `silent`: atualização de fundo (polling / pós-envio) NÃO mostra o spinner do
+  // thread — senão o chat pisca pra "carregando" a cada poll.
+  const carregarThread = useCallback(async (id: string, silent = false) => {
+    if (!silent) setLoadingThread(true);
     const res = await fetch(`/api/admin/vendas/mensagens?prospect_id=${id}`, { headers });
     if (res.ok) {
       const data = await res.json();
       setProspectAtivo(data.prospect ?? null);
       setMensagens(data.mensagens ?? []);
     }
-    setLoadingThread(false);
+    if (!silent) setLoadingThread(false);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { carregarLista(); }, [carregarLista]);
   useEffect(() => { if (selecionado) carregarThread(selecionado); }, [selecionado, carregarThread]);
+
+  // Auto-refresh: a cada 12s recarrega a lista e o chat aberto (silencioso), pra
+  // a resposta nova do prospect aparecer sozinha sem precisar clicar em nada.
+  useEffect(() => {
+    const t = setInterval(() => {
+      carregarLista();
+      if (selecionado) carregarThread(selecionado, true);
+    }, 12000);
+    return () => clearInterval(t);
+  }, [selecionado, carregarLista, carregarThread]);
+
+  // Refresh manual (botão) — recarrega lista E chat aberto, com feedback visual.
+  const refreshManual = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([
+      carregarLista(),
+      selecionado ? carregarThread(selecionado, true) : Promise.resolve(),
+    ]);
+    setRefreshing(false);
+  }, [carregarLista, carregarThread, selecionado]);
 
   async function enviar() {
     if (!texto.trim() || !selecionado) return;
@@ -585,7 +608,8 @@ function Inbox({ headers }: { headers: Record<string, string> }) {
     setEnviando(false);
     if (res.ok) {
       setTexto("");
-      carregarThread(selecionado);
+      carregarThread(selecionado, true);
+      carregarLista();
     } else {
       alert("Erro ao enviar mensagem.");
     }
@@ -597,8 +621,9 @@ function Inbox({ headers }: { headers: Record<string, string> }) {
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col">
         <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
           <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">Conversas</p>
-          <button onClick={carregarLista} className="p-1 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100 transition">
-            <RefreshCw size={13} />
+          <button onClick={refreshManual} disabled={refreshing} title="Atualizar conversas e chat"
+            className="p-1 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100 transition disabled:opacity-50">
+            <RefreshCw size={13} className={refreshing ? "animate-spin" : ""} />
           </button>
         </div>
         <div className="overflow-y-auto flex-1">
