@@ -353,7 +353,7 @@ function anuncioXml(a: AnuncioWM): string {
     `<wses:Leilao>${a.leilao ?? "N"}</wses:Leilao>` +
     `<wses:PrecoReal>${Math.round(a.precoReal)}</wses:PrecoReal>` +
     `<wses:PrecoVenda>${Math.round(a.precoVenda)}</wses:PrecoVenda>` +
-    (a.observacao ? `<wses:Observacao>${escapeXml(a.observacao.slice(0, 1000))}</wses:Observacao>` : "") +
+    (a.observacao ? `<wses:Observacao>${escapeXml(a.observacao.slice(0, 500))}</wses:Observacao>` : "") +
     (opc ? `<wses:Opcional>${opc}</wses:Opcional>` : "") +
     `</wses:pAnuncio>`;
 }
