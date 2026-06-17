@@ -158,7 +158,8 @@ export async function POST(req: NextRequest) {
       `cor "${v.cor ?? ""}"→${coreItem?.codigo ?? `0(SEM MATCH; opções WM: ${ops(cores)})`} | ` +
       `combustivel "${v.combustivel ?? ""}"→${combItem?.codigo ?? `0(SEM MATCH; opções WM: ${ops(combustiveis)})`} | ` +
       `versao "${v.versao ?? v.modelo ?? ""}"→${versaoItem?.codigo ?? "(SEM MATCH, usou fallback)"} | ` +
-      `modalidade→${modalidadeItem?.codigo ?? "?"}`;
+      `modalidade→${modalidadeItem?.codigo ?? "?"} | ` +
+      `MODALIDADES DISPONÍVEIS: ${modalidades.map((m) => `${m.codigo}=${m.descricao}`).join(" / ")}`;
 
     // ── Publica ou atualiza ───────────────────────────────────────────────
     let codigoAnuncio: string;
