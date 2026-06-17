@@ -239,6 +239,52 @@ export function matchItem(itens: Item[], texto: string): Item | null {
   return melhor?.item ?? null;
 }
 
+// Radical p/ casar gênero/plural: "branca"↔"branco", "pretas"↔"preto"
+function radical(s: string): string {
+  return norm(s).replace(/(as|os|a|o)$/, "");
+}
+
+// Sinônimos por domínio — o vocabulário do veículo (ex. "flex", "Automático") não bate
+// literalmente com a tabela da Webmotors (ex. "Gasolina e álcool", "Automática").
+const SINONIMOS_DOMINIO: Record<string, Record<string, string[]>> = {
+  cambio: {
+    automatico:   ["automatica"],
+    automatica:   ["automatica"],
+    automatizado: ["automatizada"],
+    automatizada: ["automatizada"],
+    cvt:          ["cvt", "automatica"],
+    manual:       ["manual"],
+  },
+  combustivel: {
+    flex:    ["gasolina e alcool", "alcool e gasolina", "flex", "bicombustivel", "alcool/gasolina", "gasolina/alcool"],
+    alcool:  ["alcool", "etanol"],
+    etanol:  ["alcool", "etanol"],
+    gasolina:["gasolina"],
+    diesel:  ["diesel"],
+    eletrico:["eletrico"],
+    hibrido: ["hibrido"],
+    gnv:     ["gnv", "gas natural", "gas natural veicular"],
+  },
+};
+
+// Match tolerante p/ câmbio/cor/combustível: tenta match direto, depois sinônimos,
+// depois radical (gênero/plural). Retorna null só se nada casar.
+export function matchDominioWM(itens: Item[], valor: string, categoria: "cambio" | "cor" | "combustivel"): Item | null {
+  const direto = matchItem(itens, valor);
+  if (direto) return direto;
+  const n = norm(valor);
+  for (const s of SINONIMOS_DOMINIO[categoria]?.[n] ?? []) {
+    const m = matchItem(itens, s);
+    if (m) return m;
+  }
+  const alvo = radical(valor);
+  if (alvo.length >= 3) {
+    const m = itens.find((i) => radical(i.descricao) === alvo || norm(i.descricao).startsWith(alvo));
+    if (m) return m;
+  }
+  return null;
+}
+
 // ─── Publicar / alterar / excluir carro ──────────────────────────────────────
 export interface AnuncioWM {
   codigoAnuncio?: string;       // 0 para incluir, id existente para alterar

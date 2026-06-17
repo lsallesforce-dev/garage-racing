@@ -24,6 +24,7 @@ import {
   obterCambio,
   obterModalidade,
   matchItem,
+  matchDominioWM,
   incluirCarro,
   alterarCarro,
   incluirFoto,
@@ -111,9 +112,9 @@ export async function POST(req: NextRequest) {
     versoes = await obterVersao(hash, bearer, modeloItem.codigo);
     const versaoItem = matchItem(versoes, v.versao ?? v.modelo ?? "");
 
-    const coreItem = matchItem(cores, v.cor ?? "");
-    const combItem = matchItem(combustiveis, v.combustivel ?? "");
-    const cambItem = matchItem(cambios, v.cambio ?? "");
+    const coreItem = matchDominioWM(cores, v.cor ?? "", "cor");
+    const combItem = matchDominioWM(combustiveis, v.combustivel ?? "", "combustivel");
+    const cambItem = matchDominioWM(cambios, v.cambio ?? "", "cambio");
 
     const isNovo = (v.condicao ?? "").toLowerCase().includes("nov");
     const modalidadeItem = isNovo
@@ -141,10 +142,12 @@ export async function POST(req: NextRequest) {
 
     // Diagnóstico: códigos resolvidos vs valores crus do veículo. A WM rejeita
     // campo a campo (CodigoRetorno=43|N); este resumo diz QUAL campo ficou "0"/sem match.
+    // Lista opções reais da WM só p/ o campo que NÃO casou — revela o vocabulário correto.
+    const ops = (itens: { descricao: string }[]) => itens.slice(0, 20).map((i) => i.descricao).join(", ");
     const diag =
-      `[diag] cambio "${v.cambio ?? ""}"→${cambItem?.codigo ?? "0(SEM MATCH)"} | ` +
-      `cor "${v.cor ?? ""}"→${coreItem?.codigo ?? "0(SEM MATCH)"} | ` +
-      `combustivel "${v.combustivel ?? ""}"→${combItem?.codigo ?? "0(SEM MATCH)"} | ` +
+      `[diag] cambio "${v.cambio ?? ""}"→${cambItem?.codigo ?? `0(SEM MATCH; opções WM: ${ops(cambios)})`} | ` +
+      `cor "${v.cor ?? ""}"→${coreItem?.codigo ?? `0(SEM MATCH; opções WM: ${ops(cores)})`} | ` +
+      `combustivel "${v.combustivel ?? ""}"→${combItem?.codigo ?? `0(SEM MATCH; opções WM: ${ops(combustiveis)})`} | ` +
       `versao "${v.versao ?? v.modelo ?? ""}"→${versaoItem?.codigo ?? "(SEM MATCH, usou fallback)"} | ` +
       `modalidade→${modalidadeItem?.codigo ?? "?"}`;
 
