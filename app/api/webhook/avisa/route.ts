@@ -472,6 +472,34 @@ export async function POST(req: NextRequest) {
                 .eq("id", lead.id);
               console.log(`🙋 [Takeover WhatsApp] Gerente ${ehAudio ? "enviou áudio para" : "respondeu"} ${cliente} pelo número do agente → IA travada nesse lead`);
             }
+          } else {
+            // Gerente INICIOU a conversa pelo celular: ainda NÃO existe lead. Se não criar
+            // agora já travado, a 1ª resposta do cliente cria um lead com
+            // em_atendimento_humano=false e a IA entra no meio. Cria o lead travado.
+            // upsert (onConflict) cobre corrida com webhooks concorrentes sem estourar unique.
+            const { data: novoLead } = await supabaseAdmin
+              .from("leads")
+              .upsert(
+                {
+                  user_id: tenantUserId,
+                  wa_id: cliente,
+                  em_atendimento_humano: true,
+                  instrucao_pendente: "Gerente iniciou a conversa pelo WhatsApp.",
+                  updated_at: new Date().toISOString(),
+                },
+                { onConflict: "user_id, wa_id" },
+              )
+              .select("id")
+              .single();
+            if (novoLead?.id) {
+              await supabaseAdmin.from("mensagens").insert({
+                lead_id: novoLead.id,
+                content: ehAudio ? "🎤 Áudio enviado pelo gerente" : txtFromMe,
+                remetente: "agente",
+                enviado_por_humano: true,
+              });
+              console.log(`🙋 [Takeover WhatsApp] Gerente INICIOU conversa com ${cliente} → lead criado já travado (IA não entra)`);
+            }
           }
         }
       }
