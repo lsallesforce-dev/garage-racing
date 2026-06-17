@@ -138,6 +138,15 @@ export async function POST(req: NextRequest) {
       codigoCombustivel: combItem?.codigo ?? "0",
       precoReal:        v.preco_sugerido ?? 0,
       precoVenda:       v.preco_sugerido ?? 0,
+      // Descrição automática — anúncio sem Observacao é candidato ao erro 22|78.
+      observacao: [
+        `${v.marca ?? ""} ${v.modelo ?? ""}${v.versao ? " " + v.versao : ""}`.trim(),
+        (v.ano_fabricacao || v.ano_modelo) ? `Ano ${v.ano_fabricacao ?? v.ano_modelo}/${v.ano_modelo ?? v.ano_fabricacao}` : "",
+        v.quilometragem_estimada != null ? `${v.quilometragem_estimada} km` : "",
+        v.cor ? `Cor ${v.cor}` : "",
+        v.cambio ? `Câmbio ${v.cambio}` : "",
+        "Agende sua visita!",
+      ].filter(Boolean).join(". "),
     };
 
     // Diagnóstico: códigos resolvidos vs valores crus do veículo. A WM rejeita
