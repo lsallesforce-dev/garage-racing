@@ -17,6 +17,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { timingSafeEqual } from "crypto";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendAvisaMessage, extractWebhookToken } from "@/lib/avisa";
+import { debounceProspeccaoReply } from "@/lib/redis";
 import { gerarRespostaProspeccao } from "@/lib/process-prospeccao";
 import type { Prospect, ProspectMensagem } from "@/lib/prospeccao-types";
 
@@ -257,6 +258,33 @@ export async function POST(req: NextRequest) {
     }
     await supabaseAdmin.from("prospects").update(patchBase).eq("id", prospect.id);
     return NextResponse.json({ status: "standby_humano" });
+  }
+
+  // ── Guarda anti-rajada / anti-loop IA×IA ────────────────────────────────────
+  // (a) Debounce: atendentes automáticos do outro lado disparam várias mensagens
+  //     de uma vez; sem isso a Mari responde a cada (4-6 envios em segundos =
+  //     gatilho de ban 463). Só a 1ª da rajada (janela 30s) gera resposta.
+  if (!(await debounceProspeccaoReply(prospect.id))) {
+    await supabaseAdmin.from("prospects").update(patchBase).eq("id", prospect.id);
+    return NextResponse.json({ status: "debounced" });
+  }
+  // (b) Loop: se o prospect despeja muitas mensagens em pouco tempo, é quase certo
+  //     um BOT do outro lado (ping-pong IA×IA). Trava o agente + alerta humano.
+  const doisMinAtras = new Date(Date.now() - 2 * 60_000).toISOString();
+  const { count: inboundRecentes } = await supabaseAdmin
+    .from("prospect_mensagens")
+    .select("*", { count: "exact", head: true })
+    .eq("prospect_id", prospect.id)
+    .eq("remetente", "prospect")
+    .gte("created_at", doisMinAtras);
+  if ((inboundRecentes ?? 0) >= 4) {
+    await supabaseAdmin
+      .from("prospects")
+      .update({ ...patchBase, em_atendimento_humano: true, status: "handoff" })
+      .eq("id", prospect.id);
+    await alertarHandoff(prospect, "Possível loop com atendimento automático (IA×IA) — assuma a conversa");
+    console.warn(`🔁 [prospeccao] Loop guard: ${prospect.nome_empresa} mandou ${inboundRecentes} msgs em 2min — IA travada.`);
+    return NextResponse.json({ status: "loop_guard" });
   }
 
   // ── Carrega o histórico e gera a resposta do agente ─────────────────────────

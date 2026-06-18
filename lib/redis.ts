@@ -239,6 +239,22 @@ export async function debounceFirstContact(
   }
 }
 
+// Debounce de resposta da PROSPECÇÃO (anti-rajada / anti-loop IA×IA).
+// Atendentes automáticos do outro lado disparam 3-4 mensagens de uma vez; sem isso
+// a Mari gera uma resposta pra CADA (rajada de envios = gatilho de ban 463). SET NX
+// EX por prospect, janela de 30s: só a 1ª mensagem da rajada gera resposta.
+// Fail-open: em erro de Redis, processa (não engole mensagem legítima).
+export async function debounceProspeccaoReply(prospectId: string, windowSec = 30): Promise<boolean> {
+  try {
+    const key = `prosp:reply:${prospectId}`;
+    const result = await getClient().set(key, 1, { nx: true, ex: windowSec });
+    return result !== null; // "OK" = 1ª da janela (responde); null = rajada (ignora)
+  } catch (e) {
+    console.warn("⚠️ [Redis] debounceProspeccaoReply falhou — processando (fail-open):", e);
+    return true;
+  }
+}
+
 
 // ─── Stand-by de Troca de Veículo ────────────────────────────────────────────
 //
