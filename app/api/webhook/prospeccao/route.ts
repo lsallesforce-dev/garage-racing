@@ -268,22 +268,24 @@ export async function POST(req: NextRequest) {
     await supabaseAdmin.from("prospects").update(patchBase).eq("id", prospect.id);
     return NextResponse.json({ status: "debounced" });
   }
-  // (b) Loop: se o prospect despeja muitas mensagens em pouco tempo, é quase certo
-  //     um BOT do outro lado (ping-pong IA×IA). Trava o agente + alerta humano.
-  const doisMinAtras = new Date(Date.now() - 2 * 60_000).toISOString();
-  const { count: inboundRecentes } = await supabaseAdmin
+  // (b) Loop: detecta RAJADA INSTANTÂNEA — atendente automático dispara 4-5 msgs
+  //     no MESMO segundo. Janela curta (12s) de propósito: um humano engajado manda
+  //     várias mensagens ao longo de 1-2min (não 4 em 12s), então NÃO cai aqui.
+  //     (Antes era 2min e travava humano à toa — ex.: Top Veículos.)
+  const janelaBurst = new Date(Date.now() - 12_000).toISOString();
+  const { count: inboundRajada } = await supabaseAdmin
     .from("prospect_mensagens")
     .select("*", { count: "exact", head: true })
     .eq("prospect_id", prospect.id)
     .eq("remetente", "prospect")
-    .gte("created_at", doisMinAtras);
-  if ((inboundRecentes ?? 0) >= 4) {
+    .gte("created_at", janelaBurst);
+  if ((inboundRajada ?? 0) >= 4) {
     await supabaseAdmin
       .from("prospects")
       .update({ ...patchBase, em_atendimento_humano: true, status: "handoff" })
       .eq("id", prospect.id);
     await alertarHandoff(prospect, "Possível loop com atendimento automático (IA×IA) — assuma a conversa");
-    console.warn(`🔁 [prospeccao] Loop guard: ${prospect.nome_empresa} mandou ${inboundRecentes} msgs em 2min — IA travada.`);
+    console.warn(`🔁 [prospeccao] Loop guard: ${prospect.nome_empresa} mandou ${inboundRajada} msgs em 12s (rajada/bot) — IA travada.`);
     return NextResponse.json({ status: "loop_guard" });
   }
 
