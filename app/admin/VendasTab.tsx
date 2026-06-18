@@ -615,6 +615,22 @@ function Inbox({ headers }: { headers: Record<string, string> }) {
     }
   }
 
+  // Ação sobre o prospect aberto (atendimento IA×humano, status) + refresh.
+  const [mudando, setMudando] = useState(false);
+  async function acaoProspect(body: Record<string, unknown>) {
+    if (!selecionado) return;
+    setMudando(true);
+    const res = await fetch("/api/admin/vendas/prospects", {
+      method: "POST", headers,
+      body: JSON.stringify({ id: selecionado, ...body }),
+    });
+    if (res.ok) await Promise.all([carregarThread(selecionado, true), carregarLista()]);
+    else alert("Não consegui atualizar a conversa.");
+    setMudando(false);
+  }
+  const toggleAtendimento = (humano: boolean) => acaoProspect({ acao: "atendimento", valor: humano });
+  const mudarStatus = (novo: string) => acaoProspect({ acao: "status", valor: novo });
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-[600px]">
       {/* Lista de conversas */}
@@ -665,13 +681,32 @@ function Inbox({ headers }: { headers: Record<string, string> }) {
                 <p className="text-[10px] text-gray-400">{prospectAtivo?.telefone ?? ""}</p>
               </div>
               {prospectAtivo && (
-                prospectAtivo.em_atendimento_humano
-                  ? <span className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest bg-orange-50 text-orange-700 border border-orange-100 whitespace-nowrap">
-                      <UserCheck size={10} /> Humano assumiu
-                    </span>
-                  : <span className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest bg-blue-50 text-blue-700 border border-blue-100 whitespace-nowrap">
-                      <Bot size={10} /> IA
-                    </span>
+                <div className="flex items-center gap-2 shrink-0">
+                  {/* Mudar status */}
+                  <select
+                    value={prospectAtivo.status}
+                    onChange={e => mudarStatus(e.target.value)}
+                    disabled={mudando}
+                    title="Mudar status da conversa"
+                    className="text-[10px] font-black uppercase tracking-wider rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-gray-700 cursor-pointer focus:outline-none focus:border-red-500 disabled:opacity-50"
+                  >
+                    {ALL_STATUS.map(s => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
+                  </select>
+                  {/* Devolver pra IA / Assumir — clica pra trocar quem atende */}
+                  {prospectAtivo.em_atendimento_humano ? (
+                    <button onClick={() => toggleAtendimento(false)} disabled={mudando}
+                      title="Devolver o atendimento para a IA"
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest bg-orange-50 text-orange-700 border border-orange-200 hover:bg-orange-100 transition whitespace-nowrap disabled:opacity-50">
+                      <Bot size={11} /> Devolver pra IA
+                    </button>
+                  ) : (
+                    <button onClick={() => toggleAtendimento(true)} disabled={mudando}
+                      title="Assumir a conversa (pausa a IA)"
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition whitespace-nowrap disabled:opacity-50">
+                      <UserCheck size={11} /> Assumir
+                    </button>
+                  )}
+                </div>
               )}
             </div>
 

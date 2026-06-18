@@ -187,6 +187,11 @@ export async function POST(req: NextRequest) {
     case "responsavel":
       update = { responsavel: valor };
       break;
+    case "atendimento":
+      // true = humano assume (pausa a IA); false = devolve o atendimento pra IA.
+      // Só mexe no flag; o status é alterado à parte (ação "status").
+      update = { em_atendimento_humano: !!valor };
+      break;
     default:
       return NextResponse.json({ error: "Ação inválida" }, { status: 400 });
   }
