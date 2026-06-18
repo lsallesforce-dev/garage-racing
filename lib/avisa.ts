@@ -32,6 +32,20 @@ interface AvisaCreds {
 // toda vez que o token/credenciais da Avisa forem salvos nas Configurações, para
 // que o setup seja self-service (sem intervenção manual via API).
 // Idempotente: pode ser chamado quantas vezes for preciso.
+// Normaliza um token de webhook: aceita o token PURO ou uma URL colada por engano
+// (ex.: ".../webhook/prospeccao?token=XXX", inclusive aninhada 2x) e extrai sempre o
+// token puro. Blinda contra o erro de colar a URL inteira no lugar do token na env —
+// que gerava webhook aninhado na Avisa e 401 por mismatch.
+export function extractWebhookToken(raw: string | null | undefined): string {
+  let t = (raw || "").trim();
+  for (let i = 0; i < 3 && /[?&]token=/i.test(t); i++) {
+    const m = t.match(/[?&]token=([^&#\s]+)/i);
+    if (!m) break;
+    t = decodeURIComponent(m[1]);
+  }
+  return t;
+}
+
 export async function registrarWebhookAvisa(
   baseUrl: string,
   token: string,

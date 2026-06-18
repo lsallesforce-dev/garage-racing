@@ -18,7 +18,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Receiver } from "@upstash/qstash";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { sendAvisaMessage, registrarWebhookAvisa } from "@/lib/avisa";
+import { sendAvisaMessage, registrarWebhookAvisa, extractWebhookToken } from "@/lib/avisa";
 import { gerarFollowupProspeccao } from "@/lib/process-prospeccao";
 import type { Prospect, ProspeccaoConfig, ProspectMensagem } from "@/lib/prospeccao-types";
 
@@ -68,7 +68,9 @@ function autozapAvisaCreds(): { baseUrl: string; token: string } | null {
 // Re-registramos a cada tick (antes dos gates de janela/quota, pra valer 24/7).
 async function garantirWebhookProspeccao(): Promise<void> {
   const creds = autozapAvisaCreds();
-  const wToken = process.env.AUTOZAP_PROSPECCAO_WEBHOOK_TOKEN;
+  // extractWebhookToken: se a env vier com a URL colada por engano, extrai só o token —
+  // evita registrar webhook aninhado (.../prospeccao?token=https%3A...%3Ftoken%3D...).
+  const wToken = extractWebhookToken(process.env.AUTOZAP_PROSPECCAO_WEBHOOK_TOKEN);
   if (!creds || !wToken) return; // sem credenciais não há o que re-registrar
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://www.autozap.digital").replace(/\/+$/, "");
   const webhookUrl = `${appUrl}/api/webhook/prospeccao?token=${encodeURIComponent(wToken)}`;

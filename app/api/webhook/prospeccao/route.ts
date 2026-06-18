@@ -16,7 +16,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { timingSafeEqual } from "crypto";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { sendAvisaMessage } from "@/lib/avisa";
+import { sendAvisaMessage, extractWebhookToken } from "@/lib/avisa";
 import { gerarRespostaProspeccao } from "@/lib/process-prospeccao";
 import type { Prospect, ProspectMensagem } from "@/lib/prospeccao-types";
 
@@ -32,19 +32,21 @@ function autozapAvisaCreds(): { baseUrl: string; token: string } | null {
 
 // ─── Verificação do token do webhook (timing-safe, nunca fail-open) ──────────
 function verifyWebhookToken(req: NextRequest, payloadToken?: string | null): boolean {
-  const configured = process.env.AUTOZAP_PROSPECCAO_WEBHOOK_TOKEN;
+  // Normaliza: aceita token puro OU uma URL colada por engano na env (extrai o token).
+  const configured = extractWebhookToken(process.env.AUTOZAP_PROSPECCAO_WEBHOOK_TOKEN);
   // Fail-closed: sem token configurado, ninguém entra.
   if (!configured) {
     console.warn("⛔ [prospeccao webhook] AUTOZAP_PROSPECCAO_WEBHOOK_TOKEN não configurado — rejeitando.");
     return false;
   }
 
-  const provided =
+  const provided = extractWebhookToken(
     req.nextUrl.searchParams.get("token") ||
     req.headers.get("x-webhook-token") ||
     req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ||
     payloadToken ||
-    "";
+    "",
+  );
 
   if (!provided) return false;
 
