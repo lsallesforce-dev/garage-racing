@@ -103,7 +103,11 @@ function preencherTemplate(tpl: string, prospect: Prospect): string {
     .replace(/\{nome_empresa\}/gi, prospect.nome_empresa || "")
     .replace(/\{cidade\}/gi, prospect.cidade || "")
     .replace(/\{estado\}/gi, prospect.estado || "")
-    .replace(/\s{2,}/g, " ")
+    // Colapsa só espaços/tabs HORIZONTAIS (placeholder vazio deixa espaço duplo).
+    // NÃO pode tocar em \n: o \s{2,} antigo apagava o \n\n que separa as bolhas
+    // da abertura → o split devolvia 1 bolha só e a abertura saía como bloco
+    // único (saudação + convite + link grudados). Preservar \n mantém as 2 bolhas.
+    .replace(/[^\S\n]{2,}/g, " ")
     .trim();
 }
 
