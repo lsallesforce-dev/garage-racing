@@ -8,9 +8,48 @@ const inter = Inter({
   variable: '--font-inter',
 });
 
+const SITE_URL = (process.env.NEXT_PUBLIC_APP_URL || 'https://www.autozap.digital').replace(/\/+$/, '');
+
+const DESCRICAO =
+  'Plataforma com IA que atende seus leads no WhatsApp 24/7, gera vídeos e vitrine do estoque, anuncia em Webmotors, OLX e Meta e organiza o financeiro da sua revenda de veículos.';
+
 export const metadata: Metadata = {
-  title: 'AutoZap | Inteligência Automotiva',
-  description: 'Gerencie seu estoque e atendimento automotivo com IA.',
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: 'AutoZap — Sistema de IA para revendas de veículos',
+    // Páginas internas viram "Sobre | AutoZap", "Planos | AutoZap" etc.
+    template: '%s | AutoZap',
+  },
+  description: DESCRICAO,
+  applicationName: 'AutoZap',
+  keywords: [
+    'sistema para revenda de carros',
+    'CRM para revenda de veículos',
+    'atendimento automático no WhatsApp',
+    'IA para revenda de carros',
+    'anunciar carro em vários sites',
+    'gestão de revenda de veículos',
+    'automação de WhatsApp para concessionária',
+  ],
+  alternates: { canonical: '/' },
+  openGraph: {
+    type: 'website',
+    locale: 'pt_BR',
+    url: SITE_URL,
+    siteName: 'AutoZap',
+    title: 'AutoZap — Sistema de IA para revendas de veículos',
+    description: DESCRICAO,
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'AutoZap — Sistema de IA para revendas de veículos',
+    description: DESCRICAO,
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: { index: true, follow: true, 'max-image-preview': 'large', 'max-snippet': -1 },
+  },
   icons: {
     icon: [
       { url: '/favicon.svg', type: 'image/svg+xml' },

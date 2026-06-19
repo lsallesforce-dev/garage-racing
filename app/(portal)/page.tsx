@@ -16,9 +16,48 @@ import {
   BadgeCheck,
 } from "lucide-react";
 
+const SITE_URL = (process.env.NEXT_PUBLIC_APP_URL || "https://www.autozap.digital").replace(/\/+$/, "");
+
+// Dados estruturados (schema.org) — ajudam o Google a entender que a AutoZap é um
+// software B2B e a Organização por trás. Conteúdo estático (sem input de usuário);
+// ainda assim escapamos "<" por segurança ao injetar via dangerouslySetInnerHTML.
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": `${SITE_URL}/#organization`,
+      name: "AutoZap",
+      url: SITE_URL,
+      description:
+        "Plataforma de IA para revendas de veículos: atendimento no WhatsApp 24/7, vídeos e vitrine do estoque, anúncios em portais e gestão financeira.",
+    },
+    {
+      "@type": "SoftwareApplication",
+      name: "AutoZap",
+      applicationCategory: "BusinessApplication",
+      operatingSystem: "Web",
+      url: SITE_URL,
+      description:
+        "IA que qualifica leads no WhatsApp, gera vídeos para Instagram, publica anúncios em Webmotors/OLX/Meta e fecha o financeiro da revenda.",
+      offers: {
+        "@type": "Offer",
+        priceCurrency: "BRL",
+        price: "1150",
+        availability: "https://schema.org/InStock",
+      },
+      provider: { "@id": `${SITE_URL}/#organization` },
+    },
+  ],
+};
+
 export default function Page() {
   return (
     <div className="bg-[#efefed] text-[#111827] font-sans antialiased">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }}
+      />
       <Hero />
       <Stats />
       <Marquee />

@@ -146,6 +146,8 @@ export async function proxy(request: NextRequest) {
   // Rotas públicas — sem login obrigatório
   const isPublic =
     pathname === "/" ||
+    pathname === "/robots.txt" ||      // SEO: o Googlebot (sem login) precisa ler
+    pathname.startsWith("/sitemap") ||  // SEO: sitemap.xml (e futuros particionados)
     pathname.startsWith("/planos") ||
     pathname.startsWith("/sobre") ||
     pathname.startsWith("/privacidade") ||
@@ -187,6 +189,6 @@ export async function proxy(request: NextRequest) {
 // Exclui arquivos estáticos e imagens otimizadas do Next.js
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };
