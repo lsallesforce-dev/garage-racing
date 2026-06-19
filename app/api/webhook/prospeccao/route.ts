@@ -19,6 +19,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendAvisaMessage, extractWebhookToken } from "@/lib/avisa";
 import { debounceProspeccaoReply } from "@/lib/redis";
 import { gerarRespostaProspeccao } from "@/lib/process-prospeccao";
+import { bumpStats } from "@/lib/prospeccao-stats";
 import type { Prospect, ProspectMensagem } from "@/lib/prospeccao-types";
 
 export const maxDuration = 300;
@@ -144,21 +145,6 @@ function extractFields(payload: any): {
   return { phone: "", text: "", fromMe: true, messageId: null };
 }
 
-// ─── Incrementa uma métrica diária (read-then-upsert) ─────────────────────────
-async function incrementStat(campo: "enviadas" | "respostas" | "novas_conversas" | "handoffs" | "bloqueios" | "ganhos", por = 1) {
-  const dia = new Date().toISOString().slice(0, 10);
-  const { data } = await supabaseAdmin
-    .from("prospeccao_stats")
-    .select("*")
-    .eq("dia", dia)
-    .maybeSingle();
-
-  const atual = (data?.[campo] as number | undefined) ?? 0;
-  await supabaseAdmin
-    .from("prospeccao_stats")
-    .upsert({ dia, ...(data ?? {}), [campo]: atual + por }, { onConflict: "dia" });
-}
-
 // ─── Alerta de handoff para o dono (via Avisa, se configurado) ────────────────
 async function alertarHandoff(prospect: Prospect, motivo: string | null) {
   const alvo = process.env.AUTOZAP_ALERT_WHATSAPP;
@@ -242,7 +228,7 @@ export async function POST(req: NextRequest) {
     content: text,
     wa_message_id: messageId,
   });
-  await incrementStat("respostas").catch(() => {});
+  await bumpStats({ respostas: 1 }).catch(() => {});
 
   const nowIso = new Date().toISOString();
 
@@ -314,15 +300,21 @@ export async function POST(req: NextRequest) {
   if (r.opt_out) {
     patchBase.status = "opt_out";
     patchBase.opt_out = true;
-  } else if (r.handoff) {
-    patchBase.status = "handoff";
-    // NÃO seta em_atendimento_humano aqui: a IA continua respondendo o cliente
-    // até o HUMANO assumir de fato (via /api/admin/vendas/enviar, que marca o
-    // stand-by). Evita o "vácuo" em que o agente cala e ninguém responde.
-  } else if (r.temperatura === "QUENTE") {
-    patchBase.status = "quente";
   } else {
-    patchBase.status = "respondeu";
+    // Conversa viva: adia a reativação automática do cron (+2 dias). Sem isso, o
+    // proximo_contato_at setado lá na abertura vencia e o cron mandava um
+    // follow-up "oi, tudo certo?" POR CIMA de um papo em andamento.
+    patchBase.proximo_contato_at = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();
+    if (r.handoff) {
+      patchBase.status = "handoff";
+      // NÃO seta em_atendimento_humano aqui: a IA continua respondendo o cliente
+      // até o HUMANO assumir de fato (via /api/admin/vendas/enviar, que marca o
+      // stand-by). Evita o "vácuo" em que o agente cala e ninguém responde.
+    } else if (r.temperatura === "QUENTE") {
+      patchBase.status = "quente";
+    } else {
+      patchBase.status = "respondeu";
+    }
   }
 
   // ── Envia a resposta em BOLHAS curtas (graceful se credenciais ausentes) ─────
@@ -350,7 +342,7 @@ export async function POST(req: NextRequest) {
       // Envio recusado (tipicamente soft-ban 463 do chip). NÃO grava resposta fantasma
       // no histórico (bloco abaixo só insere se enviada=true) e conta como bloqueio.
       console.error("❌ [prospeccao webhook] Resposta NÃO enviada (envio recusado — ex.: 463).");
-      await incrementStat("bloqueios").catch(() => {});
+      await bumpStats({ bloqueios: 1 }).catch(() => {});
     }
   }
 
@@ -365,7 +357,7 @@ export async function POST(req: NextRequest) {
 
   // Alerta de handoff (após persistir o estado).
   if (r.handoff) {
-    if (enviada) await incrementStat("handoffs").catch(() => {});
+    if (enviada) await bumpStats({ handoffs: 1 }).catch(() => {});
     await alertarHandoff(prospect, r.motivo_handoff);
   }
 

@@ -161,3 +161,31 @@ comment on table prospeccao_stats is 'Métricas diárias da prospecção (radar 
 comment on column prospeccao_stats.bloqueios is 'Quantidade de bloqueios/erros de envio detectados no dia — sinal de risco de ban.';
 
 alter table prospeccao_stats enable row level security;
+
+-- Incremento ATÔMICO das métricas diárias (usado por lib/prospeccao-stats.ts).
+-- Substitui o padrão read-then-write (corrida) que cron e webhook usavam: dois
+-- eventos concorrentes liam o mesmo valor e um sobrescrevia o outro. Aqui o
+-- UPDATE col = col + x roda com lock de linha → atômico. O nome do campo é
+-- validado contra whitelist antes do format()/EXECUTE (evita SQL injection).
+create or replace function increment_prospeccao_stat(
+  p_dia date,
+  p_campo text,
+  p_inc int default 1
+)
+returns void
+language plpgsql
+as $$
+begin
+  if p_campo not in ('enviadas','respostas','bloqueios','novas_conversas','handoffs','ganhos') then
+    raise exception 'campo invalido: %', p_campo;
+  end if;
+
+  insert into prospeccao_stats (dia) values (p_dia)
+  on conflict (dia) do nothing;
+
+  execute format(
+    'update prospeccao_stats set %I = coalesce(%I, 0) + $1 where dia = $2',
+    p_campo, p_campo
+  ) using p_inc, p_dia;
+end;
+$$;

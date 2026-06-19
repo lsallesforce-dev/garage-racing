@@ -65,7 +65,7 @@ function buildSystemInstruction(prospect: Prospect): string {
 - Se a pessoa perguntar algo ("o que é a AutoZap?"), responda DIRETO e curto. NÃO emende outra pergunta na mesma mensagem.
 - Diga cada coisa UMA vez. Não repita o mesmo argumento em mensagens seguidas.
 - No máximo 1 emoji, só quando sai natural. Nunca use travessão (—); use vírgula ou ponto.
-- Você JÁ abriu a conversa. NÃO se reapresente nem cumprimente de novo no meio do papo.
+- Você JÁ abriu a conversa: a abertura se apresentou ("sou a Mari da AutoZap") E já convidou a pessoa a testar a demo do Lucas (com o link). NÃO se reapresente nem repita o convite do zero; conduza a partir da reação dela.
 
 # O PRODUTO (AutoZap) — é uma PLATAFORMA COMPLETA, não só atendimento
 A AutoZap é a central da revenda. REGRA DE OURO: não despeje tudo de uma vez (sem textão). Abra o leque em pinceladas curtas e só aprofunde o que o cara demonstrar interesse.
@@ -79,20 +79,20 @@ PREÇO: não empurre cedo. Quando perguntarem preço ou disserem que é "caro", 
 FECHAMENTO (sua meta): a AutoZap dá 30 DIAS GRÁTIS, sem cartão, e um consultor vai até a revenda configurar tudo. É esse convite que você planta quando o interesse aparece. NÃO invente outras promoções.
 
 # COMO CONDUZIR (venda CEDO, NUNCA questionário)
-1. Você já abriu a conversa. Reaja ao que a pessoa responde, sem recomeçar.
+1. Você já abriu a conversa (apresentação + convite pra demo do Lucas). Reaja ao que a pessoa responde, sem recomeçar.
 2. Faça SÓ UMA pergunta de dor (como atendem os leads do Whats hoje? perdem cliente quando demora?). Não fique cavando dor com várias perguntas seguidas.
 3. Assim que o cara admitir QUALQUER dor, VIRE O JOGO na hora: mostre que a IA resolve e abra o leque (1 frase). Parta pra solução cedo, não diagnostique demais.
 4. Deixe ele puxar o que interessa e aprofunde só aquilo, sempre curto.
 5. Saber se é decisor vem no fluxo, de leve, nunca como formulário.
-6. Quando a conversa fluir, OFEREÇA A DEMONSTRAÇÃO (seção abaixo). É sua arma mais forte.
+6. Seu objetivo nº1 é fazer a pessoa TESTAR a demo do Lucas (seção abaixo) — é sua arma mais forte. Se ainda não testou, incentive de leve; se já testou, capitalize na hora.
 7. Só passe pro consultor humano quando o interesse for FORTE (ver REGRAS DE DECISÃO).
 
-# A DEMONSTRAÇÃO (sua arma secreta — ofereça quando a conversa fluir)
-A melhor venda é o cara SENTIR a IA na pele. Quando houver interesse, ofereça assim:
-"quer ver na prática? tenho uma loja de demonstração no ar. clica aqui, escolhe um carro e me chama no Whats como se você fosse um cliente. você vai falar com a IA de verdade: ${DEMO_URL}"
-- Mande o link ${DEMO_URL} SÓ nesse momento da demo, nunca na 1ª mensagem.
-- Convide a pessoa a agir como COMPRADOR ("pergunta de um carro, pede foto, fala de preço") e deixe a IA da loja de demonstração impressionar.
-- Depois que testar, retome: "e aí, o que achou? imagina isso atendendo os SEUS clientes 24h."
+# A DEMONSTRAÇÃO (seu trampolim — a abertura JÁ convidou pra ela)
+Sua abertura já mandou o link de uma loja de teste com o LUCAS, um vendedor de IA que tem um Nivus à venda. O cara SENTIR a IA na pele é a sua venda mais forte, então seu objetivo nº1 é fazer a pessoa TESTAR.
+- Se ainda não testou, incentive de leve e concreto: "chega a falar com o Lucas? manda um oi pra ele, pergunta o preço do Nivus, pede uma foto. é a mesma IA que atenderia os SEUS clientes."
+- Convide a pessoa a agir como COMPRADOR ("pergunta de um carro, pede foto, fala de preço") e deixe o Lucas impressionar.
+- Se já testou, capitalize na hora: "e aí, o que achou do Lucas? imagina ele atendendo os SEUS clientes 24h, sem perder ninguém."
+- Pode remandar o link se a pessoa pedir ou se fizer sentido: ${DEMO_URL}
 
 # SE A CONVERSA FLUIR, ASSUMA QUE VOCÊ É IA
 Você PODE revelar que é uma IA, como prova viva do produto. Ex.: "inclusive, quem tá te respondendo agora é a própria IA da AutoZap. é esse atendimento que você teria com seus clientes." Com naturalidade e orgulho, nunca como confissão envergonhada. Se perguntarem direto "é um robô?", assuma e emende o valor.
@@ -134,16 +134,31 @@ function buildHistorico(mensagens: ProspectMensagem[]): { role: "user" | "model"
       parts: [{ text: m.content }],
     }));
 
+  // O Gemini espera turnos ALTERNADOS user/model. Como uma abertura/resposta é
+  // gravada em VÁRIAS bolhas (cada frase vira uma linha no banco), o histórico
+  // vinha com vários "model" (ou "user") seguidos — a API pode rejeitar (400) ou
+  // degradar. Fundimos turnos consecutivos do mesmo papel numa só entrada,
+  // juntando as bolhas por linha em branco (preserva o conteúdo integral).
+  const fundido: { role: "user" | "model"; parts: { text: string }[] }[] = [];
+  for (const m of mapped) {
+    const ultimo = fundido[fundido.length - 1];
+    if (ultimo && ultimo.role === m.role) {
+      ultimo.parts = [{ text: `${ultimo.parts[0].text}\n\n${m.parts[0].text}` }];
+    } else {
+      fundido.push({ role: m.role, parts: [{ text: m.parts[0].text }] });
+    }
+  }
+
   // O histórico do Gemini NUNCA pode começar com "model" (a API rejeita). Mas a
   // 1ª mensagem normalmente É a abertura do agente. Descartá-la fazia o agente
   // "esquecer" que já tinha aberto e se reapresentar do zero. Em vez disso,
   // injetamos uma entrada "user" neutra na frente — preserva a abertura no
   // contexto e satisfaz a regra do Gemini.
-  if (mapped.length > 0 && mapped[0].role === "model") {
-    mapped.unshift({ role: "user", parts: [{ text: "(o cliente iniciou o contato)" }] });
+  if (fundido.length > 0 && fundido[0].role === "model") {
+    fundido.unshift({ role: "user", parts: [{ text: "(o cliente iniciou o contato)" }] });
   }
 
-  return mapped;
+  return fundido;
 }
 
 // Parse falhou 2x com o Gemini no ar: pede reenvio de um jeito 100% humano
@@ -290,7 +305,7 @@ export async function gerarFollowupProspeccao({
     .map((m) => `${m.role === "user" ? "Revenda" : "Eu"}: ${m.parts[0].text}`)
     .join("\n");
 
-  const prompt = `Você é um vendedor consultivo da AutoZap (IA que atende o WhatsApp de revendas 24/7) conversando com o responsável da revenda "${empresa}".
+  const prompt = `Você é a Mari, vendedora consultiva da AutoZap (IA que atende o WhatsApp de revendas 24/7), conversando com o responsável da revenda "${empresa}".
 A conversa abaixo ficou parada e você quer retomar de forma leve, sem pressão.
 
 Conversa até agora:
@@ -308,16 +323,19 @@ Escreva UMA mensagem curta de retomada (máx. 2 linhas), em português brasileir
     const result = await geminiFlashSales.generateContent(prompt);
     texto = result.response.text().trim().replace(/^["']|["']$/g, "").trim();
   } catch (err: any) {
+    // Resiliência igual à do gerarRespostaProspeccao: QUALQUER erro no modelo
+    // principal (429, timeout, 500…) tenta o fallback antes de desistir — antes,
+    // só o 429 caía no fallback e um erro transitório pulava o follow-up à toa.
     if (err?.status === 429) {
-      try {
-        const result = await geminiFlashFallback.generateContent(prompt);
-        texto = result.response.text().trim().replace(/^["']|["']$/g, "").trim();
-      } catch {
-        return null; // sem texto → cron pula o envio graciosamente
-      }
+      console.warn("⚠️ [prospeccao] follow-up: principal em 429, tentando fallback...");
     } else {
-      console.error("❌ [prospeccao] Erro ao gerar follow-up:", err);
-      return null;
+      console.error("❌ [prospeccao] Erro no modelo principal do follow-up, tentando fallback:", err);
+    }
+    try {
+      const result = await geminiFlashFallback.generateContent(prompt);
+      texto = result.response.text().trim().replace(/^["']|["']$/g, "").trim();
+    } catch {
+      return null; // sem texto → cron pula o envio graciosamente
     }
   }
 

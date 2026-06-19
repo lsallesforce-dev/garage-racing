@@ -20,6 +20,7 @@ import { Receiver } from "@upstash/qstash";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendAvisaMessage, registrarWebhookAvisa, extractWebhookToken } from "@/lib/avisa";
 import { gerarFollowupProspeccao } from "@/lib/process-prospeccao";
+import { bumpStats } from "@/lib/prospeccao-stats";
 import type { Prospect, ProspeccaoConfig, ProspectMensagem } from "@/lib/prospeccao-types";
 
 export const maxDuration = 300;
@@ -94,22 +95,6 @@ function brasiliaHourAndIsoDow(): { hora: number; dow: number } {
   return { hora, dow: map[wd] ?? 1 };
 }
 
-// ─── Incremento de métrica diária (read-then-upsert) ──────────────────────────
-async function incrementStat(campos: Partial<Record<"enviadas" | "respostas" | "novas_conversas" | "handoffs" | "bloqueios" | "ganhos", number>>) {
-  const dia = new Date().toISOString().slice(0, 10);
-  const { data } = await supabaseAdmin
-    .from("prospeccao_stats")
-    .select("*")
-    .eq("dia", dia)
-    .maybeSingle();
-
-  const base: Record<string, any> = data ?? { dia };
-  for (const [k, v] of Object.entries(campos)) {
-    base[k] = ((data?.[k] as number | undefined) ?? 0) + (v ?? 0);
-  }
-  base.dia = dia;
-  await supabaseAdmin.from("prospeccao_stats").upsert(base, { onConflict: "dia" });
-}
 
 // ─── Substitui placeholders de template de abertura ───────────────────────────
 function preencherTemplate(tpl: string, prospect: Prospect): string {
@@ -253,7 +238,7 @@ export async function POST(req: NextRequest) {
       // Envio recusado (tipicamente 463). Não grava msg do agente nem avança a fila:
       // conta bloqueio e sai — o prospect continua elegível pro próximo tick.
       console.error("❌ [prospeccao-tick] Follow-up NÃO enviado (envio recusado — ex.: 463).");
-      await incrementStat({ bloqueios: 1 }).catch(() => {});
+      await bumpStats({ bloqueios: 1 }).catch(() => {});
       return NextResponse.json({ error: "falha_envio", acao: "followup" }, { status: 500 });
     }
 
@@ -272,7 +257,7 @@ export async function POST(req: NextRequest) {
           updated_at: nowIso,
         })
         .eq("id", followup.id),
-      incrementStat({ enviadas: 1 }),
+      bumpStats({ enviadas: 1 }),
     ]);
 
     return NextResponse.json({ ok: true, acao: "followup", prospect_id: followup.id });
@@ -339,7 +324,7 @@ export async function POST(req: NextRequest) {
   }
   if (!okAbertura) {
     console.error("❌ [prospeccao-tick] Abertura NÃO enviada (envio recusado — ex.: 463).");
-    await incrementStat({ bloqueios: 1 }).catch(() => {});
+    await bumpStats({ bloqueios: 1 }).catch(() => {});
     return NextResponse.json({ error: "falha_envio", acao: "abertura" }, { status: 500 });
   }
 
@@ -356,7 +341,7 @@ export async function POST(req: NextRequest) {
         updated_at: nowIso,
       })
       .eq("id", novo.id),
-    incrementStat({ enviadas: 1, novas_conversas: 1 }),
+    bumpStats({ enviadas: 1, novas_conversas: 1 }),
   ]);
 
   return NextResponse.json({ ok: true, acao: "abertura", prospect_id: novo.id });
