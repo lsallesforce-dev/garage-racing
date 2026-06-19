@@ -308,15 +308,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ skip: "sem_credenciais", acao: "abertura", prospect_id: novo.id });
   }
 
-  // Divide o template em bolhas (separadas por linha em branco) — cada bolha
-  // vira uma mensagem separada no WhatsApp com delay humanizado entre elas.
+  // Divide o template em bolhas (linha em branco = nova mensagem). A abertura
+  // sai INTEIRA nesta MESMA execução do cron: 1ª bolha (saudação) e, 5s depois,
+  // a 2ª (convite + link). A pausa é FIXA — NÃO depende do intervalo/warmup do
+  // cron (que rege o tempo ENTRE prospects, não entre as bolhas de uma abertura).
   const bolhasAbertura = mensagem.split(/\n\s*\n/).map((b) => b.trim()).filter(Boolean);
+  const PAUSA_ENTRE_BOLHAS_MS = 5000;
 
   let okAbertura = false;
   try {
     okAbertura = true;
-    for (const bolha of bolhasAbertura) {
-      const ok = await sendAvisaMessage(alvoTel, bolha, creds);
+    for (let i = 0; i < bolhasAbertura.length; i++) {
+      // Pausa fixa de 5s antes de cada bolha a partir da 2ª.
+      if (i > 0) await new Promise((r) => setTimeout(r, PAUSA_ENTRE_BOLHAS_MS));
+      // typing humanizado só na 1ª (saudação parece digitada); nas seguintes
+      // typing:false pra a pausa percebida ser exatamente os 5s, sem somar o
+      // delay variável de "digitando..." do sendAvisaMessage.
+      const ok = await sendAvisaMessage(alvoTel, bolhasAbertura[i], creds, { typing: i === 0 });
       if (!ok) { okAbertura = false; break; }
     }
   } catch (err) {
