@@ -323,9 +323,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ skip: "sem_credenciais", acao: "abertura", prospect_id: novo.id });
   }
 
+  // Divide o template em bolhas (separadas por linha em branco) — cada bolha
+  // vira uma mensagem separada no WhatsApp com delay humanizado entre elas.
+  const bolhasAbertura = mensagem.split(/\n\s*\n/).map((b) => b.trim()).filter(Boolean);
+
   let okAbertura = false;
   try {
-    okAbertura = await sendAvisaMessage(alvoTel, mensagem, creds);
+    okAbertura = true;
+    for (const bolha of bolhasAbertura) {
+      const ok = await sendAvisaMessage(alvoTel, bolha, creds);
+      if (!ok) { okAbertura = false; break; }
+    }
   } catch (err) {
     console.error("❌ [prospeccao-tick] Erro inesperado ao enviar abertura:", err);
   }
@@ -336,11 +344,9 @@ export async function POST(req: NextRequest) {
   }
 
   await Promise.all([
-    supabaseAdmin.from("prospect_mensagens").insert({
-      prospect_id: novo.id,
-      remetente: "agente",
-      content: mensagem,
-    }),
+    supabaseAdmin.from("prospect_mensagens").insert(
+      bolhasAbertura.map((b) => ({ prospect_id: novo.id, remetente: "agente", content: b }))
+    ),
     supabaseAdmin
       .from("prospects")
       .update({
