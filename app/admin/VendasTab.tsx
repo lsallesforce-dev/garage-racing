@@ -557,7 +557,13 @@ function Inbox({ headers }: { headers: Record<string, string> }) {
     if (res.ok) {
       const data = await res.json();
       // Conversas = prospects que já têm atividade de mensagem.
-      const comConversa = (data.prospects ?? []).filter((p: Prospect) => !!p.ultima_msg_at);
+      // Ordena por última mensagem (mais recente no topo) — a API devolve por
+      // score, que deixava o inbox fora de ordem cronológica.
+      const comConversa = (data.prospects ?? [])
+        .filter((p: Prospect) => !!p.ultima_msg_at)
+        .sort((a: Prospect, b: Prospect) =>
+          new Date(b.ultima_msg_at ?? 0).getTime() - new Date(a.ultima_msg_at ?? 0).getTime()
+        );
       setProspects(comConversa);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
