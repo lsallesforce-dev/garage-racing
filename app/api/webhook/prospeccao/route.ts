@@ -66,6 +66,33 @@ function normalizePhone(phone: string): string {
   return cleaned;
 }
 
+// ─── Detecção de autoreply (robô do WhatsApp Business do prospect) ────────────
+// Muitas revendas têm resposta automática ("agradecemos seu contato, como podemos
+// ajudar?"). Isso NÃO é uma pessoa: responder a máquina desperdiça a 1ª impressão
+// da Mari e arrisca loop bot×bot. Quando casa um destes padrões, o webhook salva
+// a mensagem mas NÃO gera resposta — espera um humano real (ou o follow-up do cron).
+// Padrões de ALTA precisão pra não classificar resposta humana real como autoreply.
+const AUTOREPLY_PATTERNS: RegExp[] = [
+  /agrade(?:ce|cemos|ço|cermos)\b[\s\S]{0,40}\bcontato/i,
+  /obrigad[oa]\b[\s\S]{0,30}\b(?:contato|mensagem)/i,
+  /retorn(?:aremos|arei|aremos o seu)\b/i,
+  /assim que poss[íi]vel/i,
+  /hor[áa]rio de (?:atendimento|funcionamento)/i,
+  /(?:mensagem|resposta) autom[áa]tica/i,
+  /como podemos (?:te |lhe )?ajudar/i,
+  /em breve[\s\S]{0,30}\b(?:retorn|respond|contato|atend)/i,
+  /um de nossos (?:atendentes|consultores|vendedores|colaboradores)/i,
+  /seja bem[\s-]?vind/i,
+  /seu contato (?:é|e) (?:muito )?importante/i,
+  /aguarde[\s\S]{0,20}(?:retorn|atend|momento)/i,
+];
+
+function pareceAutoreply(text: string): boolean {
+  const t = (text || "").trim();
+  if (t.length < 6) return false;
+  return AUTOREPLY_PATTERNS.some((re) => re.test(t));
+}
+
 // ─── Quebra a resposta em BOLHAS curtas (no máx ~2 linhas cada) ───────────────
 // Não depende de o Gemini formatar: pica por linha em branco -> frase -> vírgula
 // e reagrupa em pedaços de no máximo MAX chars. Cada pedaço vira uma mensagem
@@ -222,13 +249,16 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Salva a mensagem recebida + conta a resposta do dia ─────────────────────
+  const ehAutoreply = pareceAutoreply(text);
+
   await supabaseAdmin.from("prospect_mensagens").insert({
     prospect_id: prospect.id,
     remetente: "prospect",
     content: text,
     wa_message_id: messageId,
   });
-  await bumpStats({ respostas: 1 }).catch(() => {});
+  // Autoreply é robô do outro lado, não resposta real → não infla a métrica.
+  if (!ehAutoreply) await bumpStats({ respostas: 1 }).catch(() => {});
 
   const nowIso = new Date().toISOString();
 
@@ -244,6 +274,16 @@ export async function POST(req: NextRequest) {
     }
     await supabaseAdmin.from("prospects").update(patchBase).eq("id", prospect.id);
     return NextResponse.json({ status: "standby_humano" });
+  }
+
+  // ── Autoreply do WhatsApp Business do prospect ──────────────────────────────
+  // É uma máquina, não uma pessoa. Não responde (não queima a 1ª impressão da Mari
+  // nem arrisca loop bot×bot) — espera resposta humana real; o follow-up do cron
+  // retoma depois se ninguém aparecer. Mantém o status (não marca como engajamento).
+  if (ehAutoreply) {
+    await supabaseAdmin.from("prospects").update(patchBase).eq("id", prospect.id);
+    console.log(`🤖 [prospeccao] Autoreply detectado de "${prospect.nome_empresa}" — aguardando humano real (sem resposta).`);
+    return NextResponse.json({ status: "autoreply_ignorado" });
   }
 
   // ── Guarda anti-rajada / anti-loop IA×IA ────────────────────────────────────
