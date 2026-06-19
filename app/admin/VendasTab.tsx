@@ -774,7 +774,7 @@ function Campanha({ headers }: { headers: Record<string, string> }) {
       const data = await res.json();
       if (data.config) {
         setConfig(data.config);
-        setTemplates((data.config.templates_abertura ?? []).join("\n"));
+        setTemplates((data.config.templates_abertura ?? []).join("\n---\n"));
       }
     }
     setLoading(false);
@@ -799,7 +799,7 @@ function Campanha({ headers }: { headers: Record<string, string> }) {
       intervalo_min_seg: config.intervalo_min_seg,
       intervalo_max_seg: config.intervalo_max_seg,
       warmup_stage: config.warmup_stage,
-      templates_abertura: templates.split("\n").map(t => t.trim()).filter(Boolean),
+      templates_abertura: templates.split(/\n---\n/).map(t => t.trim()).filter(Boolean),
     };
     const res = await fetch("/api/admin/vendas/config", { method: "POST", headers, body: JSON.stringify(body) });
     setSalvando(false);
@@ -924,9 +924,9 @@ function Campanha({ headers }: { headers: Record<string, string> }) {
         </div>
 
         <div className="flex flex-col gap-1">
-          <label className={labelCls}>Templates de abertura (1 por linha)</label>
-          <textarea rows={5} value={templates} onChange={e => { setTemplates(e.target.value); setSalvo(false); }}
-            placeholder={"Olá! Vi a {empresa}...\nOi, tudo bem? Trabalho com..."}
+          <label className={labelCls}>Templates de abertura — separe templates com ---; linha em branco dentro do template = 2ª mensagem</label>
+          <textarea rows={7} value={templates} onChange={e => { setTemplates(e.target.value); setSalvo(false); }}
+            placeholder={"Oi {empresa}! Sou a Mari...\n\nFaça um teste, chama o Lucas...\nhttps://...\n---\nOutro template aqui"}
             className={`${inputCls} resize-none font-mono text-[12px]`} />
         </div>
 
