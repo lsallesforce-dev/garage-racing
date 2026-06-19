@@ -178,6 +178,7 @@ export default function Dashboard() {
   const [devolvendoIA, setDevolvendoIA] = useState(false);
   const [nomeEmpresa, setNomeEmpresa] = useState("");
   const [diasTrial, setDiasTrial] = useState<number | null>(null);
+  const [diasVencimento, setDiasVencimento] = useState<number | null>(null);
   const [planoId, setPlanoId] = useState("pro");
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 
@@ -200,7 +201,7 @@ export default function Dashboard() {
       if (!user) return;
       supabase
         .from("config_garage")
-        .select("nome_empresa, nome_fantasia, trial_ends_at, plano_ativo, plano")
+        .select("nome_empresa, nome_fantasia, trial_ends_at, plano_ativo, plano, plano_vence_em")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false })
         .limit(1)
@@ -212,6 +213,17 @@ export default function Dashboard() {
             const diff = new Date(row.trial_ends_at).getTime() - Date.now();
             const dias = Math.max(0, Math.ceil(diff / 86_400_000));
             if (dias <= 7) setDiasTrial(dias);
+          } else if (row?.plano_ativo && row?.plano_vence_em) {
+            // Conta dias de calendário em Brasília (-03) p/ "vence em N dias" coerente.
+            const OFFSET = 3 * 3_600_000;
+            const soData = (ms: number) => {
+              const d = new Date(ms - OFFSET);
+              return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+            };
+            const dias = Math.round(
+              (soData(new Date(row.plano_vence_em).getTime()) - soData(Date.now())) / 86_400_000
+            );
+            if (dias <= 7) setDiasVencimento(dias);
           }
         });
     });
@@ -285,6 +297,35 @@ export default function Dashboard() {
                 diasTrial === 0 ? "bg-red-600 hover:bg-red-500" : "bg-amber-500 hover:bg-amber-400"
               }`}>
               Assinar agora →
+            </Link>
+          </div>
+        )}
+
+        {/* ── Aviso de vencimento (plano ativo) ── */}
+        {diasTrial === null && diasVencimento !== null && (
+          <div className={`flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-2xl px-5 py-4 mb-6 border ${
+            diasVencimento <= 2 ? "bg-red-50 border-red-200" : "bg-amber-50 border-amber-200"
+          }`}>
+            <div className="flex items-center gap-3">
+              <AlertTriangle className={`w-5 h-5 shrink-0 ${diasVencimento <= 2 ? "text-red-500" : "text-amber-500"}`} />
+              <div>
+                <p className={`font-black text-sm uppercase italic tracking-tight ${diasVencimento <= 2 ? "text-red-700" : "text-amber-700"}`}>
+                  {diasVencimento < 0
+                    ? "Seu plano venceu!"
+                    : diasVencimento === 0
+                    ? "Seu plano vence hoje!"
+                    : `Seu plano vence em ${diasVencimento} ${diasVencimento === 1 ? "dia" : "dias"}`}
+                </p>
+                <p className={`text-xs mt-0.5 ${diasVencimento <= 2 ? "text-red-500" : "text-amber-600"}`}>
+                  Renove para manter o atendimento automático no ar
+                </p>
+              </div>
+            </div>
+            <Link href={`/assinar?plano=${planoId}&renovacao=1`}
+              className={`shrink-0 px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest text-white transition whitespace-nowrap ${
+                diasVencimento <= 2 ? "bg-red-600 hover:bg-red-500" : "bg-amber-500 hover:bg-amber-400"
+              }`}>
+              Renovar agora →
             </Link>
           </div>
         )}

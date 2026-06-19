@@ -21,6 +21,10 @@
       "schedule": "0 12 * * *"
     },
     {
+      "path": "/api/cron/cobranca-vencimento",
+      "schedule": "0 12 * * *"
+    },
+    {
       "path": "/api/cron/backfill-embeddings",
       "schedule": "0 5 * * *"
     },
