@@ -37,7 +37,7 @@ const nextConfig: NextConfig = {
     ],
   },
   allowedDevOrigins: ['192.168.0.228'],
-  serverExternalPackages: ['ffmpeg-static', '@ffmpeg-installer/ffmpeg', 'fluent-ffmpeg'],
+  serverExternalPackages: ['ffmpeg-static', '@ffmpeg-installer/ffmpeg', 'fluent-ffmpeg', 'sharp'],
   experimental: {
     serverActions: {
       bodySizeLimit: '100mb',

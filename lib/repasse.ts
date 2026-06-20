@@ -7,6 +7,7 @@
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { buscarFipe } from "@/lib/fipe";
+import { gerarCapaRepasse45 } from "@/lib/cover-image";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
@@ -181,7 +182,15 @@ export async function gerarRepasseCompleto(
   ]);
 
   const texto = gerarTextoRepasse(carro, fipe, mediaWeb, botPhone, tipo, vitrineUrl);
-  const capaUrl = carro.capa_marketing_url || carro.fotos?.[0] || null;
+
+  // Foto crua (capa de marketing ou 1ª foto). Normaliza pra 4:5 antes do envio —
+  // senão o WhatsApp Android recorta a prévia da imagem no balão (4:3 da câmera
+  // vira center-crop). Fail-soft: se a normalização falhar, segue com a foto crua.
+  let capaUrl: string | null = carro.capa_marketing_url || carro.fotos?.[0] || null;
+  if (capaUrl && capaUrl.startsWith("http")) {
+    const capa45 = await gerarCapaRepasse45(capaUrl, veiculoId);
+    if (capa45) capaUrl = capa45;
+  }
 
   return { texto, capaUrl };
 }
