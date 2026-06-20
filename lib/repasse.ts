@@ -62,8 +62,12 @@ export function gerarTextoRepasse(
   botPhone?: string | null,
   tipo: "repasse" | "promocao" = "repasse",
   vitrineUrl?: string | null,
+  cidadeTenant?: string | null,
 ): string {
-  const cidade = carro.local || "Interior";
+  // Cidade do anúncio: prioridade pra cidade configurada do tenant
+  // (config_garage.cidade). carro.local costuma vir como placeholder "PÁTIO" do
+  // cadastro — só entra se o tenant não tiver cidade. "Interior" é o último recurso.
+  const cidade = (cidadeTenant && cidadeTenant.trim()) || carro.local || "Interior";
   const cambio = carro.cambio || "";
   const anoFab = carro.ano_fabricacao || carro.ano_modelo || "";
   const anoMod = carro.ano_modelo || "";
@@ -155,7 +159,7 @@ export async function gerarRepasseCompleto(
   // config_garage pode ter múltiplas linhas por user_id — nunca usar .single()/.maybeSingle()
   const { data: cfgRows } = await supabaseAdmin
     .from("config_garage")
-    .select("whatsapp_agente, whatsapp, vitrine_slug")
+    .select("whatsapp_agente, whatsapp, vitrine_slug, cidade")
     .eq("user_id", carro.user_id)
     .order("created_at", { ascending: false })
     .limit(1);
@@ -181,7 +185,7 @@ export async function gerarRepasseCompleto(
     }),
   ]);
 
-  const texto = gerarTextoRepasse(carro, fipe, mediaWeb, botPhone, tipo, vitrineUrl);
+  const texto = gerarTextoRepasse(carro, fipe, mediaWeb, botPhone, tipo, vitrineUrl, cfg?.cidade);
 
   // Foto crua (capa de marketing ou 1ª foto). Normaliza pra 4:5 antes do envio —
   // senão o WhatsApp Android recorta a prévia da imagem no balão (4:3 da câmera
