@@ -2034,11 +2034,25 @@ export default function DetalheVeiculo() {
                     className="w-full bg-transparent text-4xl font-mono font-black border-b border-gray-100 focus:border-red-600 outline-none pb-2 pl-10 transition-all text-gray-900"
                   />
                 </div>
-                {veiculo.valor_fipe ? (
-                  <p className="mt-2 text-[10px] font-bold text-gray-300 uppercase tracking-widest">
-                    FIPE&nbsp;&nbsp;<span className="text-gray-400">{new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(veiculo.valor_fipe)}</span>
-                  </p>
-                ) : null}
+                {/* FIPE editável — a placa (apibrasil) preenche, mas às vezes vem
+                    errada/desatualizada; aqui o operador corrige. É o valor usado no
+                    anúncio de repasse (resolverFipe em lib/repasse.ts). Salva junto no
+                    handleSave (valor_fipe já está no patch + whitelist). */}
+                <div className="mt-3 flex items-center gap-2">
+                  <span className="text-[10px] font-black text-gray-300 uppercase tracking-widest">FIPE</span>
+                  <span className="text-gray-300 font-mono font-bold text-sm">R$</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={veiculo.valor_fipe ? new Intl.NumberFormat("pt-BR").format(Math.round(Number(veiculo.valor_fipe))) : ""}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/\D/g, "");
+                      setVeiculo({ ...veiculo, valor_fipe: raw === "" ? null : Number(raw) });
+                    }}
+                    placeholder="0"
+                    className="w-32 bg-transparent text-sm font-mono font-bold text-gray-500 border-b border-gray-100 focus:border-red-600 outline-none pb-0.5 transition-all"
+                  />
+                </div>
               </div>
 
               {/* Quilometragem */}
