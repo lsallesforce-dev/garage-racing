@@ -159,6 +159,7 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith("/onboarding") ||
     pathname.startsWith("/api/auth/register") ||
     pathname.startsWith("/vitrine") ||
+    pathname.startsWith("/c/") ||         // link curto "Falar com Vendedor" do repasse → 302 pro wa.me
     pathname.startsWith("/loja-nao-encontrada") ||
     pathname.startsWith("/api/webhook") ||
     pathname.startsWith("/api/marketing/worker") ||

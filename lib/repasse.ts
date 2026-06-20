@@ -123,11 +123,15 @@ export function gerarTextoRepasse(
     linhas.push(`✅ Garantia somente da Documentação do Veículo`);
   }
 
-  if (botPhone) {
-    const phoneClean = botPhone.replace(/\D/g, "");
+  if (botPhone && carro.id) {
+    // Link curto da marca → redireciona pro WhatsApp do vendedor JÁ com o contexto
+    // do carro (rota /c/[id]). Mantém o anúncio LIMPO: o contexto vai no redirect,
+    // não no wa.me?text=... gigante que poluía a cara do anúncio. Sem isso, quem
+    // clica chega "do zero" e a IA não sabe de qual carro se trata.
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://www.autozap.digital";
     linhas.push(``);
     linhas.push(`💬 Falar com Vendedor:`);
-    linhas.push(`https://wa.me/${phoneClean}`);
+    linhas.push(`${appUrl}/c/${carro.id}`);
   }
 
   if (vitrineUrl) {
