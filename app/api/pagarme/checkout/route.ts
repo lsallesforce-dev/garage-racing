@@ -7,6 +7,7 @@ import {
   createCardCheckout,
   type PagarmeCustomer,
 } from "@/lib/pagarme";
+import { calcularDescontoIndicacao } from "@/lib/indicacao";
 
 // Preços em centavos
 // "teste" (R$ 1,00) é um plano oculto para validar o fluxo de pagamento ponta a ponta
@@ -50,7 +51,16 @@ export async function POST(req: NextRequest) {
   if (!plano || !metodo || !customer)
     return NextResponse.json({ error: "Parâmetros inválidos" }, { status: 400 });
 
-  const amount = calcAmount(plano, parcelamento as "mensal" | "anual12x");
+  const amountBruto = calcAmount(plano, parcelamento as "mensal" | "anual12x");
+
+  // ── Desconto de indicação ──────────────────────────────────────────────────
+  // Abate créditos disponíveis do tenant, garantindo cobrança mínima de R$1.
+  const amountReais = amountBruto / 100;
+  let descontoReais = await calcularDescontoIndicacao(user!.id, amountReais);
+  descontoReais = Math.min(descontoReais, Math.max(0, amountReais - 1));
+  descontoReais = Math.round(descontoReais * 100) / 100;
+  const amount = Math.round((amountReais - descontoReais) * 100); // centavos, líquido
+
   const installments = metodo === "cartao" && parcelamento === "anual12x" ? 12 : 1;
   const descricao = `${DESCRICOES[plano] ?? plano} — ${parcelamento === "anual12x" ? "Anual 12x" : "Mensal"}`;
 
@@ -94,6 +104,7 @@ export async function POST(req: NextRequest) {
       status: "pendente",
       vencimento,
       notas: `pagarme:${result.order_id}:${parcelamento}`,
+      desconto_indicacao: descontoReais,
     });
 
     return NextResponse.json(result);

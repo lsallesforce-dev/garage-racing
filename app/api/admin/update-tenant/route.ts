@@ -89,6 +89,22 @@ export async function POST(req: NextRequest) {
       update = { plano_ativo: true, plano_vence_em: valor };
       break;
 
+    case "set_indicado_por": {
+      // valor = código de indicação do indicador (vazio = limpar)
+      const code = String(valor ?? "").trim().toUpperCase();
+      if (!code) { update = { indicado_por: null }; break; }
+      const { data: ref } = await supabaseAdmin
+        .from("config_garage")
+        .select("user_id")
+        .eq("codigo_indicacao", code)
+        .maybeSingle();
+      if (!ref || ref.user_id === user_id) {
+        return NextResponse.json({ error: "Código de indicação inválido" }, { status: 400 });
+      }
+      update = { indicado_por: ref.user_id };
+      break;
+    }
+
     case "set_avisa":
       // valor = { avisa_base_url, avisa_token }
       if (!valor?.avisa_base_url && !valor?.avisa_token) {

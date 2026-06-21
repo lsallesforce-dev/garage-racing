@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getOrderStatus } from "@/lib/pagarme";
+import { gerarCreditoIndicacao, consumirCreditoIndicacao } from "@/lib/indicacao";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -48,7 +49,7 @@ export async function POST(req: NextRequest) {
   // Busca o pagamento pelo order_id salvo em `notas`
   const { data: pagamento } = await supabaseAdmin
     .from("pagamentos")
-    .select("id, user_id, plano, notas, valor, metodo, status")
+    .select("id, user_id, plano, notas, valor, metodo, status, desconto_indicacao")
     .like("notas", `pagarme:${orderId}%`)
     .maybeSingle();
 
@@ -81,6 +82,20 @@ export async function POST(req: NextRequest) {
     .from("config_garage")
     .update({ plano_ativo: true, plano_vence_em: planoVenceEm })
     .eq("user_id", pagamento.user_id);
+
+  // ── Indicação ──────────────────────────────────────────────────────────────
+  // 1) gera 5% de crédito pro indicador deste pagador
+  await gerarCreditoIndicacao({
+    pagamentoId: pagamento.id,
+    pagadorUserId: pagamento.user_id,
+    valorPago: Number(pagamento.valor) || 0,
+  }).catch(e => console.warn("[webhook] gerarCreditoIndicacao:", e));
+  // 2) consome os créditos que abateram ESTA fatura (se teve desconto)
+  await consumirCreditoIndicacao({
+    pagamentoId: pagamento.id,
+    beneficiarioUserId: pagamento.user_id,
+    desconto: Number(pagamento.desconto_indicacao) || 0,
+  }).catch(e => console.warn("[webhook] consumirCreditoIndicacao:", e));
 
   // Notifica admin por e-mail
   const adminEmail = process.env.ADMIN_EMAIL;

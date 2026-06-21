@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireAdminSecret } from "@/lib/api-auth";
+import { gerarCreditoIndicacao, consumirCreditoIndicacao } from "@/lib/indicacao";
 
 export async function GET(req: NextRequest) {
   const authError = await requireAdminSecret(req);
@@ -22,6 +23,13 @@ export async function POST(req: NextRequest) {
   const { acao, id, user_id, valor, plano, vencimento, metodo, notas, status } = await req.json();
 
   if (acao === "marcar_pago") {
+    // Carrega valor + desconto p/ alimentar o programa de indicação
+    const { data: pag } = await supabaseAdmin
+      .from("pagamentos")
+      .select("user_id, valor, desconto_indicacao")
+      .eq("id", id)
+      .maybeSingle();
+
     const { error } = await supabaseAdmin
       .from("pagamentos")
       .update({ status: "pago", pago_em: new Date().toISOString() })
@@ -33,6 +41,19 @@ export async function POST(req: NextRequest) {
         plano_ativo: true,
         plano_vence_em: new Date(Date.now() + 30 * 86400000).toISOString(),
       }).eq("user_id", user_id);
+
+      // ── Indicação ──────────────────────────────────────────────────────────
+      const pagadorId = pag?.user_id ?? user_id;
+      await gerarCreditoIndicacao({
+        pagamentoId: id,
+        pagadorUserId: pagadorId,
+        valorPago: Number(pag?.valor) || 0,
+      }).catch(e => console.warn("[admin/pagamentos] gerarCredito:", e));
+      await consumirCreditoIndicacao({
+        pagamentoId: id,
+        beneficiarioUserId: pagadorId,
+        desconto: Number(pag?.desconto_indicacao) || 0,
+      }).catch(e => console.warn("[admin/pagamentos] consumirCredito:", e));
     }
 
     return error

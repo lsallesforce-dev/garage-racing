@@ -5,9 +5,21 @@ import { supabase } from "@/lib/supabase";
 import {
   CheckCircle2, Loader2, Save, KeyRound, Mail, Zap, CreditCard,
   Clock, AlertTriangle, ArrowRight, Users, Plus, Trash2, Shield, Eye,
-  Pencil, X,
+  Pencil, X, Gift, Copy,
 } from "lucide-react";
 import Link from "next/link";
+
+interface IndicacaoInfo {
+  codigo: string;
+  link: string;
+  indicados: { nome: string; plano: string; ativo: boolean }[];
+  credito_disponivel: number;
+  total_ganho: number;
+}
+
+function fmtBRL(v: number) {
+  return (v ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
 
 interface PlanoInfo {
   plano: string; plano_ativo: boolean;
@@ -55,6 +67,9 @@ export default function MinhaContaPage() {
   const [permsEditando, setPermsEditando]   = useState<string[]>([]);
   const [salvandoPerms, setSalvandoPerms]   = useState(false);
 
+  const [indicacao, setIndicacao] = useState<IndicacaoInfo | null>(null);
+  const [copiado, setCopiado]     = useState(false);
+
   const PAGINAS_CONFIG = [
     { id: "dashboard",     label: "Pátio Digital",      desc: "Métricas e visão geral" },
     { id: "estoque",       label: "Estoque Inteligente", desc: "Cadastrar e gerenciar veículos" },
@@ -76,6 +91,10 @@ export default function MinhaContaPage() {
         .eq("user_id", user.id).maybeSingle()
         .then(({ data }) => { if (data) setPlanoInfo(data as PlanoInfo); });
       carregarMembros(user.id);
+      fetch("/api/indicacao")
+        .then(r => r.json())
+        .then(d => { if (d?.codigo) setIndicacao(d as IndicacaoInfo); })
+        .catch(() => {});
     });
   }, []);
 
@@ -233,6 +252,58 @@ export default function MinhaContaPage() {
             </div>
           );
         })()}
+
+        {/* ── Indique e ganhe — oculto para vendedores ── */}
+        {!isVendedor && indicacao && (
+          <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-6">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-8 h-8 rounded-xl bg-green-50 flex items-center justify-center">
+                <Gift size={14} className="text-green-600" />
+              </div>
+              <div>
+                <p className={LABEL}>Indique e ganhe</p>
+                <p className="text-[10px] text-gray-400">Ganhe 5% de cada pagamento de quem você indicar — abatido na próxima parcela.</p>
+              </div>
+            </div>
+
+            {/* Link de indicação */}
+            <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 mb-4">
+              <span className="text-[11px] font-mono text-gray-600 truncate flex-1">{indicacao.link}</span>
+              <button onClick={() => { navigator.clipboard.writeText(indicacao.link).catch(() => {}); setCopiado(true); setTimeout(() => setCopiado(false), 2000); }}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-gray-900 text-white text-[9px] font-black uppercase tracking-widest hover:bg-green-600 transition shrink-0">
+                {copiado ? <CheckCircle2 size={11} /> : <Copy size={11} />} {copiado ? "Copiado" : "Copiar"}
+              </button>
+            </div>
+
+            {/* KPIs */}
+            <div className="grid grid-cols-3 gap-2 mb-4">
+              {[
+                { label: "Indicados",          value: String(indicacao.indicados.length) },
+                { label: "Crédito disponível", value: fmtBRL(indicacao.credito_disponivel) },
+                { label: "Total ganho",        value: fmtBRL(indicacao.total_ganho) },
+              ].map(k => (
+                <div key={k.label} className="bg-gray-50 rounded-xl p-3 text-center">
+                  <p className="text-base font-black text-gray-900">{k.value}</p>
+                  <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mt-0.5">{k.label}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Lista de indicados */}
+            {indicacao.indicados.length > 0 && (
+              <div className="flex flex-col gap-1.5">
+                {indicacao.indicados.map((i, idx) => (
+                  <div key={idx} className="flex items-center justify-between px-3 py-2 bg-gray-50 rounded-xl">
+                    <span className="text-[11px] font-bold text-gray-700 truncate">{i.nome}</span>
+                    <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${i.ativo ? "bg-green-50 text-green-600" : "bg-gray-100 text-gray-400"}`}>
+                      {i.ativo ? "Ativo" : "Inativo"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ── Acesso (e-mail + senha compactos) ── */}
         <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-6">

@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendAvisaMessage } from "@/lib/avisa";
+import { calcularDescontoIndicacao } from "@/lib/indicacao";
 
 export const maxDuration = 60;
 
@@ -108,16 +109,21 @@ export async function GET(req: NextRequest) {
         .like("notas", "auto:%")
         .maybeSingle();
       if (!jaTem) {
+        const preco = PRECO_MENSAL[t.plano] ?? PRECO_MENSAL.starter;
+        // Abate créditos de indicação disponíveis (5% das indicações pagas)
+        const desconto = await calcularDescontoIndicacao(t.user_id, preco);
+        const valor = Math.round((preco - desconto) * 100) / 100;
         await supabaseAdmin.from("pagamentos").insert({
           user_id: t.user_id,
-          valor: PRECO_MENSAL[t.plano] ?? PRECO_MENSAL.starter,
+          valor,
           plano: t.plano,
           metodo: "mensalidade",
           status: "pendente",
           vencimento: venceYmd,
-          notas: "auto:mensalidade",
+          notas: desconto > 0 ? "auto:mensalidade (credito indicacao)" : "auto:mensalidade",
+          desconto_indicacao: desconto,
         });
-        resultados.push({ tenant: t.nome_empresa, status: "conta_gerada", vencimento: venceYmd });
+        resultados.push({ tenant: t.nome_empresa, status: "conta_gerada", vencimento: venceYmd, valor, desconto });
       }
     }
 

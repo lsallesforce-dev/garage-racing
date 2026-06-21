@@ -19,6 +19,7 @@ function OnboardingInner() {
   const params = useSearchParams();
   const plano = params.get("plano") ?? "";
   const planoInfo = PLANO_INFO[plano];
+  const ref = params.get("ref") ?? "";
 
   const [step, setStep]     = useState<Step>(0);
   const [saving, setSaving] = useState(false);
@@ -97,6 +98,15 @@ function OnboardingInner() {
         },
         { onConflict: "user_id" }
       );
+
+      // Indicação: vincula o indicador se veio por link ?ref=CODIGO
+      if (ref) {
+        fetch("/api/indicacao/aplicar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ codigo: ref }),
+        }).catch(() => {});
+      }
 
       if (form.vitrine_slug) {
         fetch("/api/vitrine/seed-slug", {

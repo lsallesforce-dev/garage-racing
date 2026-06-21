@@ -39,6 +39,8 @@ interface Tenant {
   plano_vence_em?: string | null;
   ultima_msg_at?: string | null;
   ativo_7d: boolean;
+  codigo_indicacao?: string | null;
+  indicado_por?: string | null;
 }
 
 interface Stats {
@@ -496,6 +498,7 @@ export default function AdminPage() {
   const [showNovoPag, setShowNovoPag]       = useState(false);
   const [editPag, setEditPag]               = useState<Pagamento | null>(null);
   const [mostrarTestes, setMostrarTestes]   = useState(false);
+  const [refCodInput, setRefCodInput]       = useState("");
   const [acaoLoading, setAcaoLoading]       = useState<string | null>(null);
   const [expandido, setExpandido]           = useState<string | null>(null);
 
@@ -1065,6 +1068,32 @@ export default function AdminPage() {
                                       </button>
                                     ))}
                                   </div>
+                                </div>
+                                <div>
+                                  <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2.5">Indicação</p>
+                                  {t.codigo_indicacao && (
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <span className="text-[10px] text-gray-400">Código:</span>
+                                      <code className="text-[11px] font-mono font-black text-gray-700">{t.codigo_indicacao}</code>
+                                      <button onClick={() => copy(`${APP_URL}/onboarding?ref=${t.codigo_indicacao}`)}
+                                        className="text-[9px] font-black uppercase tracking-widest text-gray-400 hover:text-gray-700 transition">
+                                        Copiar link
+                                      </button>
+                                    </div>
+                                  )}
+                                  <div className="flex gap-2">
+                                    <input value={refCodInput} onChange={e => setRefCodInput(e.target.value.toUpperCase())}
+                                      placeholder={t.indicado_por ? "Trocar indicador (código)" : "Código de quem indicou"}
+                                      className="flex-1 px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs font-mono focus:outline-none focus:border-gray-400" />
+                                    <button onClick={() => { acao(t.user_id, "set_indicado_por", refCodInput); setRefCodInput(""); }}
+                                      disabled={acaoLoading === `${t.user_id}-set_indicado_por`}
+                                      className="px-4 py-2 bg-gray-900 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-red-600 disabled:opacity-50 transition">
+                                      Salvar
+                                    </button>
+                                  </div>
+                                  {t.indicado_por && (
+                                    <p className="text-[9px] text-green-600 font-bold uppercase tracking-widest mt-1">✓ Indicado por outro tenant</p>
+                                  )}
                                 </div>
                               </div>
                             </div>
