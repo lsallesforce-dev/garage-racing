@@ -36,6 +36,12 @@ function diasAteBrt(venceISO: string): number {
   return Math.round((soData(new Date(venceISO).getTime()) - soData(Date.now())) / 86_400_000);
 }
 
+// Data (YYYY-MM-DD) do vencimento no fuso de Brasília — usada como chave da conta a receber.
+function ymdBrt(iso: string): string {
+  const d = new Date(new Date(iso).getTime() - 3 * 3_600_000);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+}
+
 // Mapeia dias-até-vencer → marco da régua (7,3,1,0,-1). null = ainda fora da janela.
 function marcoDe(dias: number): number | null {
   if (dias < 0)  return -1; // vencido
@@ -88,6 +94,32 @@ export async function GET(req: NextRequest) {
 
   for (const t of tenants ?? []) {
     if (!t.plano_vence_em) continue;
+
+    // ── Conta a receber automática ────────────────────────────────────────────
+    // Garante 1 cobrança em aberto para o ciclo atual (vencimento = plano_vence_em).
+    // Quando ela é paga e o plano_vence_em estende, a próxima é gerada sozinha.
+    if (t.plano && t.plano !== "trial") {
+      const venceYmd = ymdBrt(t.plano_vence_em);
+      const { data: jaTem } = await supabaseAdmin
+        .from("pagamentos")
+        .select("id")
+        .eq("user_id", t.user_id)
+        .eq("vencimento", venceYmd)
+        .like("notas", "auto:%")
+        .maybeSingle();
+      if (!jaTem) {
+        await supabaseAdmin.from("pagamentos").insert({
+          user_id: t.user_id,
+          valor: PRECO_MENSAL[t.plano] ?? PRECO_MENSAL.starter,
+          plano: t.plano,
+          metodo: "mensalidade",
+          status: "pendente",
+          vencimento: venceYmd,
+          notas: "auto:mensalidade",
+        });
+        resultados.push({ tenant: t.nome_empresa, status: "conta_gerada", vencimento: venceYmd });
+      }
+    }
 
     const dias = diasAteBrt(t.plano_vence_em);
     const marco = marcoDe(dias);

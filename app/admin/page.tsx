@@ -370,6 +370,7 @@ function EditarPagamentoModal({ secret, pagamento, onClose, onSuccess }: {
             <div className="flex flex-col gap-1">
               <label className={lblCls}>Método</label>
               <select value={form.metodo} onChange={e => setForm(f => ({ ...f, metodo: e.target.value }))} className={fieldCls}>
+                <option value="mensalidade">Mensalidade</option>
                 <option value="manual">Manual</option>
                 <option value="pix">PIX</option>
                 <option value="boleto">Boleto</option>
