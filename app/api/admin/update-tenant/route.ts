@@ -32,6 +32,17 @@ export async function POST(req: NextRequest) {
       };
       break;
 
+    case "demo":
+      // Conta de demonstração/teste: acesso total, nunca expira e FORA do financeiro.
+      // plano='demo' é excluído de MRR, contas a receber e régua de cobrança.
+      update = {
+        plano: "demo",
+        plano_ativo: true,
+        plano_vence_em: "2099-01-01T00:00:00.000Z",
+        cobranca_automatica: false,
+      };
+      break;
+
     case "desativar":
       update = { plano_ativo: false };
       break;

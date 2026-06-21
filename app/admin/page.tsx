@@ -18,7 +18,7 @@ import {
 
 type Tab = "overview" | "clientes" | "financeiro" | "sistema" | "pendentes" | "vendas";
 type ServiceStatus = "ok" | "degraded" | "error" | "loading";
-type PlanoStatus = "trial" | "ativo" | "expirado";
+type PlanoStatus = "trial" | "ativo" | "expirado" | "demo";
 
 interface Tenant {
   user_id: string;
@@ -92,6 +92,7 @@ function dias(dataISO?: string | null) {
 
 function planoStatus(t: Tenant): PlanoStatus {
   const agora = new Date();
+  if (t.plano === "demo") return "demo"; // demo = fora do financeiro, acesso total
   if (t.plano_ativo && t.plano_vence_em && new Date(t.plano_vence_em) > agora) return "ativo";
   if (t.trial_ends_at && new Date(t.trial_ends_at) > agora) return "trial";
   return "expirado";
@@ -132,6 +133,11 @@ function PlanoBadge({ t }: { t: Tenant }) {
     </span>
   );
   const ps = planoStatus(t);
+  if (ps === "demo") return (
+    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest bg-slate-100 text-slate-600 border border-slate-200 whitespace-nowrap">
+      Demo
+    </span>
+  );
   if (ps === "ativo") return (
     <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest bg-blue-50 text-blue-700 border border-blue-100 whitespace-nowrap">
       {t.plano?.toUpperCase() ?? "PRO"} · {dias(t.plano_vence_em)}d
@@ -483,7 +489,7 @@ export default function AdminPage() {
   const [pagamentos, setPagamentos] = useState<Pagamento[]>([]);
   const [loading, setLoading]       = useState(false);
   const [search, setSearch]         = useState("");
-  const [filtroPlano, setFiltroPlano] = useState<"todos" | "trial" | "ativo" | "expirado" | "bloqueado">("todos");
+  const [filtroPlano, setFiltroPlano] = useState<"todos" | "trial" | "ativo" | "expirado" | "bloqueado" | "demo">("todos");
   const [pagarmeBalance, setPagarmeBalance] = useState<PagarmeBalance | null>(null);
   const [pagarmeOrders, setPagarmeOrders]   = useState<PagarmeOrder[]>([]);
   const [showNovoTenant, setShowNovoTenant] = useState(false);
@@ -610,6 +616,7 @@ export default function AdminPage() {
 
   const trialsAtivos   = tenants.filter(t => planoStatus(t) === "trial").length;
   const clientesAtivos = tenants.filter(t => planoStatus(t) === "ativo").length;
+  const demosCount     = tenants.filter(t => planoStatus(t) === "demo").length;
   const expirados      = tenants.filter(t => planoStatus(t) === "expirado").length;
   const expirando7d    = tenants.filter(t => {
     const ps = planoStatus(t);
@@ -757,11 +764,12 @@ export default function AdminPage() {
           <div className="flex flex-col gap-8">
 
             {/* KPIs */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               {[
                 { icon: DollarSign, label: "MRR",             value: fmtBRL(mrr),          color: "text-green-600",  bg: "bg-green-50" },
                 { icon: Building2,  label: "Assinantes",      value: clientesAtivos,        color: "text-blue-600",   bg: "bg-blue-50"  },
                 { icon: Clock,      label: "Trials Ativos",   value: trialsAtivos,          color: "text-purple-600", bg: "bg-purple-50"},
+                { icon: Eye,        label: "Demos",           value: demosCount,            color: "text-slate-600",  bg: "bg-slate-50" },
                 { icon: AlertCircle,label: "Expirados",       value: expirados,             color: "text-red-600",    bg: "bg-red-50"   },
               ].map(({ icon: Icon, label, value, color, bg }) => (
                 <div key={label} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 flex flex-col gap-2">
@@ -874,7 +882,7 @@ export default function AdminPage() {
                 className="bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-red-500 w-72"
               />
               <div className="flex gap-1.5">
-                {(["todos", "ativo", "trial", "expirado", "bloqueado"] as const).map(f => (
+                {(["todos", "ativo", "trial", "expirado", "demo", "bloqueado"] as const).map(f => (
                   <button key={f} onClick={() => setFiltroPlano(f)}
                     className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition ${
                       filtroPlano === f ? "bg-gray-900 text-white shadow" : "bg-white border border-gray-200 text-gray-500 hover:bg-gray-50"
@@ -1044,12 +1052,13 @@ export default function AdminPage() {
                                 <div>
                                   <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2.5">Mudar Plano</p>
                                   <div className="flex gap-2">
-                                    {["starter", "pro", "premium"].map(p => (
-                                      <button key={p} onClick={() => acao(t.user_id, "mudar_plano", p)}
-                                        disabled={acaoLoading === `${t.user_id}-mudar_plano`}
+                                    {["starter", "pro", "premium", "demo"].map(p => (
+                                      <button key={p}
+                                        onClick={() => acao(t.user_id, p === "demo" ? "demo" : "mudar_plano", p === "demo" ? undefined : p)}
+                                        disabled={acaoLoading === `${t.user_id}-${p === "demo" ? "demo" : "mudar_plano"}`}
                                         className={`flex-1 px-4 py-2.5 text-xs font-black uppercase tracking-wider rounded-xl transition disabled:opacity-50 ${
                                           (t.plano ?? "pro") === p
-                                            ? "bg-gray-900 text-white shadow"
+                                            ? (p === "demo" ? "bg-slate-600 text-white shadow" : "bg-gray-900 text-white shadow")
                                             : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-100"
                                         }`}>
                                         {p}

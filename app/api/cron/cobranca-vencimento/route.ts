@@ -98,7 +98,7 @@ export async function GET(req: NextRequest) {
     // ── Conta a receber automática ────────────────────────────────────────────
     // Garante 1 cobrança em aberto para o ciclo atual (vencimento = plano_vence_em).
     // Quando ela é paga e o plano_vence_em estende, a próxima é gerada sozinha.
-    if (t.plano && t.plano !== "trial") {
+    if (t.plano && t.plano !== "trial" && t.plano !== "demo") {
       const venceYmd = ymdBrt(t.plano_vence_em);
       const { data: jaTem } = await supabaseAdmin
         .from("pagamentos")
