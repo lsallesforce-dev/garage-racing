@@ -6,7 +6,7 @@ import {
   XCircle, ExternalLink, Copy, Plus, X, Loader2, RefreshCw, Activity,
   Music, Upload, CheckCircle, DollarSign, Lock, Unlock, Eye, TrendingUp,
   Clock, AlertCircle, BarChart3, Shield, Settings, ChevronDown, ChevronUp,
-  Wallet, ArrowDownToLine, Hourglass, CreditCard, Target,
+  Wallet, ArrowDownToLine, Hourglass, CreditCard, Target, Pencil, Trash2,
 } from "lucide-react";
 import VendasTab from "./VendasTab";
 import {
@@ -309,6 +309,110 @@ function NovoPagamentoModal({ secret, tenants, onClose, onSuccess }: {
   );
 }
 
+// ─── Editar Pagamento ─────────────────────────────────────────────────────────
+
+function EditarPagamentoModal({ secret, pagamento, onClose, onSuccess }: {
+  secret: string; pagamento: Pagamento; onClose: () => void; onSuccess: () => void;
+}) {
+  const [form, setForm] = useState({
+    plano:      pagamento.plano,
+    metodo:     pagamento.metodo,
+    valor:      String(pagamento.valor),
+    vencimento: (pagamento.vencimento ?? "").slice(0, 10),
+    status:     pagamento.status,
+    notas:      pagamento.notas ?? "",
+  });
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    await fetch("/api/admin/pagamentos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-admin-secret": secret },
+      body: JSON.stringify({
+        acao: "editar",
+        id: pagamento.id,
+        plano:      form.plano,
+        metodo:     form.metodo,
+        valor:      parseFloat(form.valor) || 0,
+        vencimento: form.vencimento,
+        status:     form.status,
+        notas:      form.notas,
+      }),
+    });
+    setLoading(false);
+    onSuccess();
+  }
+
+  const fieldCls = "bg-[#f5f5f3] border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-red-500 transition";
+  const lblCls = "text-[9px] font-black uppercase tracking-widest text-gray-400";
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-[2rem] w-full max-w-md p-8 shadow-2xl relative">
+        <button onClick={onClose} className="absolute top-6 right-6 text-gray-400 hover:text-gray-900 p-1"><X size={20} /></button>
+        <h2 className="text-xl font-black uppercase italic tracking-tighter mb-1">Editar Cobrança</h2>
+        <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-6">
+          {pagamento.config_garage?.nome_empresa ?? pagamento.user_id.substring(0, 8)}
+        </p>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <label className={lblCls}>Plano</label>
+              <select value={form.plano} onChange={e => setForm(f => ({ ...f, plano: e.target.value }))} className={fieldCls}>
+                <option value="starter">Starter</option>
+                <option value="pro">Pro</option>
+                <option value="premium">Premium</option>
+                <option value="teste">Teste</option>
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className={lblCls}>Método</label>
+              <select value={form.metodo} onChange={e => setForm(f => ({ ...f, metodo: e.target.value }))} className={fieldCls}>
+                <option value="manual">Manual</option>
+                <option value="pix">PIX</option>
+                <option value="boleto">Boleto</option>
+                <option value="cartao">Cartão</option>
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <label className={lblCls}>Valor (R$)</label>
+              <input type="number" step="0.01" min="0" value={form.valor}
+                onChange={e => setForm(f => ({ ...f, valor: e.target.value }))} className={fieldCls} />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className={lblCls}>Status</label>
+              <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as Pagamento["status"] }))} className={fieldCls}>
+                <option value="pendente">Pendente</option>
+                <option value="pago">Pago</option>
+                <option value="atrasado">Atrasado</option>
+                <option value="cancelado">Cancelado</option>
+              </select>
+            </div>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className={lblCls}>Vencimento</label>
+            <input type="date" value={form.vencimento}
+              onChange={e => setForm(f => ({ ...f, vencimento: e.target.value }))} className={fieldCls} />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className={lblCls}>Notas</label>
+            <input type="text" value={form.notas} onChange={e => setForm(f => ({ ...f, notas: e.target.value }))}
+              placeholder="Observações opcionais" className={fieldCls} />
+          </div>
+          <button type="submit" disabled={loading}
+            className="mt-1 w-full py-3 rounded-2xl font-black uppercase text-[11px] tracking-widest bg-gray-900 text-white hover:bg-red-600 transition disabled:opacity-50 flex items-center justify-center gap-2">
+            {loading ? <><Loader2 size={14} className="animate-spin" /> Salvando...</> : "Salvar Alterações"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ─── Upload Músicas ───────────────────────────────────────────────────────────
 
 const MUSICAS = [
@@ -383,6 +487,8 @@ export default function AdminPage() {
   const [pagarmeOrders, setPagarmeOrders]   = useState<PagarmeOrder[]>([]);
   const [showNovoTenant, setShowNovoTenant] = useState(false);
   const [showNovoPag, setShowNovoPag]       = useState(false);
+  const [editPag, setEditPag]               = useState<Pagamento | null>(null);
+  const [mostrarTestes, setMostrarTestes]   = useState(false);
   const [acaoLoading, setAcaoLoading]       = useState<string | null>(null);
   const [expandido, setExpandido]           = useState<string | null>(null);
 
@@ -474,8 +580,28 @@ export default function AdminPage() {
     carregar(secret);
   }
 
+  async function excluirPagamento(pag: Pagamento) {
+    if (!confirm(`Excluir a cobrança de ${fmtBRL(pag.valor)} (${pag.plano}) de ${pag.config_garage?.nome_empresa ?? "tenant"}?\n\nIsso remove só o registro local — não afeta o Pagar.me.`)) return;
+    setAcaoLoading(`del-${pag.id}`);
+    await fetch("/api/admin/pagamentos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-admin-secret": secret },
+      body: JSON.stringify({ acao: "deletar", id: pag.id }),
+    });
+    setAcaoLoading(null);
+    carregarPagamentos(secret);
+    carregar(secret);
+  }
+
   // ── Métricas derivadas ─────────────────────────────────────────────────────
   const tenants = stats?.tenants ?? [];
+
+  // Feed do Pagar.me: por padrão esconde lixo de teste (R$1, failed, canceled),
+  // que não dá pra apagar no gateway. Toggle "mostrar testes" revela tudo.
+  const pagarmeOrdersVisiveis = mostrarTestes
+    ? pagarmeOrders
+    : pagarmeOrders.filter(o => o.amount > 100 && o.status !== "failed" && o.status !== "canceled");
+  const pagarmeTestesOcultos = pagarmeOrders.length - pagarmeOrdersVisiveis.length;
 
   const mrr = tenants.filter(t => planoStatus(t) === "ativo").reduce((acc, t) => {
     return acc + (PRECOS[(t.plano as keyof typeof PRECOS) ?? "pro"] ?? PRECOS.pro);
@@ -568,6 +694,11 @@ export default function AdminPage() {
       {showNovoPag && (
         <NovoPagamentoModal secret={secret} tenants={tenants} onClose={() => setShowNovoPag(false)}
           onSuccess={() => { setShowNovoPag(false); carregarPagamentos(secret); }}
+        />
+      )}
+      {editPag && (
+        <EditarPagamentoModal secret={secret} pagamento={editPag} onClose={() => setEditPag(null)}
+          onSuccess={() => { setEditPag(null); carregarPagamentos(secret); carregar(secret); }}
         />
       )}
 
@@ -1020,9 +1151,17 @@ export default function AdminPage() {
             {/* ── Transações PagarMe ── */}
             {pagarmeOrders.length > 0 && (
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
-                  <CreditCard size={13} className="text-gray-400" />
-                  <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">Últimas Transações PagarMe</p>
+                <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <CreditCard size={13} className="text-gray-400" />
+                    <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">Últimas Transações PagarMe</p>
+                  </div>
+                  {(pagarmeTestesOcultos > 0 || mostrarTestes) && (
+                    <button onClick={() => setMostrarTestes(v => !v)}
+                      className="text-[9px] font-black uppercase tracking-widest text-gray-400 hover:text-red-600 transition whitespace-nowrap">
+                      {mostrarTestes ? "Ocultar testes" : `Mostrar testes (${pagarmeTestesOcultos})`}
+                    </button>
+                  )}
                 </div>
                 <table className="w-full text-left">
                   <thead>
@@ -1033,7 +1172,7 @@ export default function AdminPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {pagarmeOrders.map(o => {
+                    {pagarmeOrdersVisiveis.map(o => {
                       const metodo = o.charges?.[0]?.payment_method ?? "—";
                       const statusColor: Record<string, string> = {
                         paid:    "bg-green-50 text-green-700 border-green-100",
@@ -1112,16 +1251,25 @@ export default function AdminPage() {
                           <StatusPagBadge status={p.status} />
                         </td>
                         <td className="px-4 py-3">
-                          {p.status === "pendente" || p.status === "atrasado" ? (
-                            <button onClick={() => marcarPago(p)}
-                              disabled={acaoLoading === `pag-${p.id}`}
-                              className="px-2.5 py-1 bg-green-600 hover:bg-green-700 text-white text-[9px] font-black uppercase tracking-widest rounded-lg transition disabled:opacity-50 flex items-center gap-1">
-                              {acaoLoading === `pag-${p.id}` ? <Loader2 size={10} className="animate-spin" /> : <CheckCircle2 size={10} />}
-                              Pago
+                          <div className="flex items-center gap-1.5">
+                            {(p.status === "pendente" || p.status === "atrasado") && (
+                              <button onClick={() => marcarPago(p)}
+                                disabled={acaoLoading === `pag-${p.id}`}
+                                className="px-2.5 py-1 bg-green-600 hover:bg-green-700 text-white text-[9px] font-black uppercase tracking-widest rounded-lg transition disabled:opacity-50 flex items-center gap-1">
+                                {acaoLoading === `pag-${p.id}` ? <Loader2 size={10} className="animate-spin" /> : <CheckCircle2 size={10} />}
+                                Pago
+                              </button>
+                            )}
+                            <button onClick={() => setEditPag(p)} title="Editar"
+                              className="p-1.5 text-gray-400 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition">
+                              <Pencil size={12} />
                             </button>
-                          ) : (
-                            <span className="text-[9px] text-gray-300 font-bold uppercase">—</span>
-                          )}
+                            <button onClick={() => excluirPagamento(p)} title="Excluir"
+                              disabled={acaoLoading === `del-${p.id}`}
+                              className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition disabled:opacity-50">
+                              {acaoLoading === `del-${p.id}` ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
