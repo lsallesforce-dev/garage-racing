@@ -25,6 +25,7 @@ function OnboardingInner() {
   const [saving, setSaving] = useState(false);
   const [showPass, setShowPass]   = useState(false);
   const [showConf, setShowConf]   = useState(false);
+  const [aceitouTermos, setAceitouTermos] = useState(false);
   const [error, setError]   = useState("");
 
   const [account, setAccount] = useState({ nome: "", email: "", senha: "", confirma: "" });
@@ -51,13 +52,14 @@ function OnboardingInner() {
     setError("");
     if (account.senha !== account.confirma) { setError("As senhas não coincidem."); return; }
     if (account.senha.length < 6)           { setError("Senha mínima de 6 caracteres."); return; }
+    if (!aceitouTermos)                     { setError("Você precisa aceitar os Termos de Uso e a Política de Privacidade."); return; }
 
     setSaving(true);
     try {
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nome: account.nome, email: account.email, senha: account.senha }),
+        body: JSON.stringify({ nome: account.nome, email: account.email, senha: account.senha, aceitou_termos: aceitouTermos }),
       });
       const json = await res.json();
 
@@ -98,6 +100,9 @@ function OnboardingInner() {
         },
         { onConflict: "user_id" }
       );
+
+      // Inicia o trial de 30 dias (idempotente — só na primeira vez)
+      await fetch("/api/onboarding/iniciar-trial", { method: "POST" }).catch(() => {});
 
       // Indicação: vincula o indicador se veio por link ?ref=CODIGO
       if (ref) {
@@ -251,13 +256,28 @@ function OnboardingInner() {
                 </div>
               </div>
 
+              {/* Aceite dos termos */}
+              <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                <input type="checkbox" checked={aceitouTermos}
+                  onChange={e => { setAceitouTermos(e.target.checked); setError(""); }}
+                  className="mt-0.5 w-4 h-4 accent-red-600 shrink-0 cursor-pointer" />
+                <span className="text-[11px] text-gray-500 leading-relaxed">
+                  Li e aceito os{" "}
+                  <a href="/termos" target="_blank" rel="noopener noreferrer" className="text-red-600 font-bold hover:underline">Termos de Uso</a>
+                  {" "}e a{" "}
+                  <a href="/privacidade" target="_blank" rel="noopener noreferrer" className="text-red-600 font-bold hover:underline">Política de Privacidade</a>.
+                  <br />
+                  <span className="text-gray-400">Teste grátis por 30 dias. Após esse período, o acesso é interrompido até a assinatura.</span>
+                </span>
+              </label>
+
               {error && (
                 <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-2.5">
                   <p className="text-red-600 text-[11px] font-bold text-center">{error}</p>
                 </div>
               )}
 
-              <button type="submit" disabled={saving}
+              <button type="submit" disabled={saving || !aceitouTermos}
                 className="mt-2 w-full py-3 rounded-2xl font-black uppercase text-[11px] tracking-widest bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-all flex items-center justify-center gap-2">
                 {saving ? <><Loader2 size={14} className="animate-spin" /> Criando conta...</> : <>Criar conta <ArrowRight size={14} /></>}
               </button>
