@@ -6,10 +6,10 @@
 // Roda 1x/dia via Vercel Cron (vercel.json): 06:00 UTC (03:00 BRT).
 //
 // Para cada campanha "ativo":
-//   1. Busca insights (gasto, leads, impressões) via Meta API
-//   2. Verifica se a campanha ainda está ACTIVE na Meta
-//   3. Atualiza meta_campanhas com métricas reais
-//   4. Se encerra_em < now(), marca como "encerrado"
+//   1. Busca insights (gasto, impressões) via Meta API com o meta_ads_token do tenant
+//   2. Atualiza meta_campanhas (gasto_total, impressoes) — leads_gerados fica
+//      por conta do webhook leadgen (não sobrescreve aqui pra não regredir)
+//   3. Se encerra_em < now(), marca como "encerrado"
 //
 // Para cada tenant com meta_ads_token:
 //   1. Tenta um GET /me para validar se o token ainda funciona
@@ -41,17 +41,34 @@ export async function GET(req: NextRequest) {
   let campanhasEncerradas = 0;
   let tokensExpirados = 0;
 
-  // ── 1. Sincronizar campanhas ativas ────────────────────────────────────────
+  // ── Mapa user_id → meta_ads_token (mais recente por tenant) ────────────────
+  // config_garage pode ter múltiplas linhas por tenant — ordena desc e fica
+  // com a 1ª (mais recente) por user. Reaproveitado nas duas etapas abaixo.
+  const { data: configs } = await supabaseAdmin
+    .from("config_garage")
+    .select("user_id, meta_ads_token, whatsapp, nome_fantasia, nome_empresa, meta_phone_id, meta_access_token, avisa_base_url, avisa_token, created_at")
+    .not("meta_ads_token", "is", null)
+    .neq("meta_ads_token", "")
+    .order("created_at", { ascending: false });
+
+  const tokenByUser = new Map<string, string>();
+  const cfgByUser = new Map<string, any>();
+  for (const cfg of configs ?? []) {
+    if (cfgByUser.has(cfg.user_id)) continue;
+    cfgByUser.set(cfg.user_id, cfg);
+    if (cfg.meta_ads_token) tokenByUser.set(cfg.user_id, cfg.meta_ads_token);
+  }
+
+  // ── 1. Sincronizar campanhas ativas (gasto + impressões) ───────────────────
+  // /{ad_id}/insights exige ads_read — usa o meta_ads_token do tenant, NÃO o
+  // page token. leads_gerados é mantido em tempo real pelo webhook.
   const { data: campanhas } = await supabaseAdmin
     .from("meta_campanhas")
-    .select("id, ad_id, user_id, encerra_em, pagina_id, meta_paginas(page_access_token)")
+    .select("id, ad_id, user_id, encerra_em")
     .eq("status", "ativo");
 
   for (const camp of campanhas ?? []) {
     try {
-      const pageToken = (camp as any).meta_paginas?.page_access_token;
-      if (!camp.ad_id || !pageToken) continue;
-
       // Verifica se a campanha passou da data de encerramento
       if (camp.encerra_em && new Date(camp.encerra_em) < agora) {
         await supabaseAdmin
@@ -62,15 +79,17 @@ export async function GET(req: NextRequest) {
         continue;
       }
 
+      const adToken = tokenByUser.get(camp.user_id);
+      if (!camp.ad_id || !adToken) continue; // sem token de Ads não dá pra ler insights
+
       // Busca métricas reais da Meta API
-      const metricas = await buscarMetricasCampanha(camp.ad_id, pageToken);
+      const metricas = await buscarMetricasCampanha(camp.ad_id, adToken);
 
       await supabaseAdmin
         .from("meta_campanhas")
         .update({
-          gasto_total:    metricas.gasto,
-          leads_gerados:  metricas.leads,
-          impressoes:     metricas.impressoes,
+          gasto_total: metricas.gasto,
+          impressoes:  metricas.impressoes,
         })
         .eq("id", camp.id);
 
@@ -80,14 +99,8 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // ── 2. Verificar tokens expirados ──────────────────────────────────────────
-  const { data: configs } = await supabaseAdmin
-    .from("config_garage")
-    .select("user_id, meta_ads_token, whatsapp, nome_fantasia, nome_empresa, meta_phone_id, meta_access_token, avisa_base_url, avisa_token")
-    .not("meta_ads_token", "is", null)
-    .neq("meta_ads_token", "");
-
-  for (const cfg of configs ?? []) {
+  // ── 2. Verificar tokens expirados (1 alerta por tenant) ────────────────────
+  for (const cfg of cfgByUser.values()) {
     try {
       // Tenta uma chamada simples pra ver se o token funciona
       const res = await fetch(`${GRAPH}/me?access_token=${cfg.meta_ads_token}`);

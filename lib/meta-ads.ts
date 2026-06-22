@@ -329,14 +329,18 @@ export async function buscarDadosLead(leadgenId: string, pageAccessToken: string
 }
 
 // ─── Métricas de Campanha ─────────────────────────────────────────────────────
+// IMPORTANTE: /{ad_id}/insights exige ads_read/ads_management — passe o
+// meta_ads_token do tenant, NUNCA o page_access_token. O page token não lê
+// insights de anúncio: a chamada falha e (por causa do catch abaixo) retorna
+// zeros silenciosamente, zerando o painel.
 
-export async function buscarMetricasCampanha(adId: string, pageAccessToken: string): Promise<{
+export async function buscarMetricasCampanha(adId: string, accessToken: string): Promise<{
   gasto: number;
   leads: number;
   impressoes: number;
 }> {
   try {
-    const data = await graphGet(`${adId}/insights`, pageAccessToken, {
+    const data = await graphGet(`${adId}/insights`, accessToken, {
       fields: "spend,actions,impressions",
       date_preset: "lifetime",
     });
