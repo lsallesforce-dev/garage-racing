@@ -4,6 +4,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { timingSafeEqual } from "crypto";
 import { rateLimit } from "@/lib/redis";
+import { createSupabaseServerClient } from "@/lib/supabase-server";
+
+/**
+ * true se a request tem uma sessão Supabase de ADMIN (app_metadata.is_admin)
+ * com 2FA já validada na sessão (AAL2). Falha fechada em qualquer erro.
+ * É o caminho que substitui a senha-mestra estática.
+ */
+async function isAdminSessionWith2FA(): Promise<boolean> {
+  try {
+    const supabase = await createSupabaseServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user || user.app_metadata?.is_admin !== true) return false;
+    const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    return aal?.currentLevel === "aal2";
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Valida o ADMIN_SECRET de forma segura.
@@ -14,6 +32,13 @@ import { rateLimit } from "@/lib/redis";
  *   chamadas seguidas ao trocar plano, estender trial, atualizar stats etc).
  */
 export async function requireAdminSecret(req: NextRequest): Promise<NextResponse | null> {
+  // ── Caminho novo (recomendado): sessão Supabase + is_admin + 2FA (AAL2) ──────
+  // Admin logado com a própria conta e 2FA validada passa SEM precisar do secret.
+  // Conta-por-pessoa, sessão que expira, sem string estática trafegando, rastro
+  // individual. Para EXIGIR isso de todos, basta apagar ADMIN_SECRET no Vercel —
+  // aí o fallback legado abaixo deixa de existir (retorna 401 fail-closed).
+  if (await isAdminSessionWith2FA()) return null;
+
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
 
   // Bloqueia ANTES de validar — se o IP já estourou (10 falhas/min), barra de cara
@@ -46,7 +71,6 @@ export async function requireAdminSecret(req: NextRequest): Promise<NextResponse
   return null; // autorizado — não consome budget do rate limit
 }
 
-import { createSupabaseServerClient } from "@/lib/supabase-server";
 import type { User } from "@supabase/supabase-js";
 
 /**

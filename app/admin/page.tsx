@@ -9,6 +9,7 @@ import {
   Wallet, ArrowDownToLine, Hourglass, CreditCard, Target, Pencil, Trash2,
 } from "lucide-react";
 import VendasTab from "./VendasTab";
+import { supabase } from "@/lib/supabase";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell,
@@ -481,7 +482,9 @@ function MusicasPanel({ secret }: { secret: string }) {
 // ─── Página Principal ─────────────────────────────────────────────────────────
 
 export default function AdminPage() {
-  const [secret, setSecret]         = useState("");
+  // Mantido só para compat dos fetches/modais do painel — a auth real agora é via
+  // cookie de sessão Supabase (+2FA). Fica "" e o header x-admin-secret vai vazio.
+  const [secret]                    = useState("");
   const [autenticado, setAutenticado] = useState(false);
   const [tab, setTab]               = useState<Tab>("overview");
   const [pendentes, setPendentes]   = useState<{ user_id: string; email: string; nome_empresa: string | null; whatsapp: string | null; created_at: string }[]>([]);
@@ -501,6 +504,16 @@ export default function AdminPage() {
   const [refCodInput, setRefCodInput]       = useState("");
   const [acaoLoading, setAcaoLoading]       = useState<string | null>(null);
   const [expandido, setExpandido]           = useState<string | null>(null);
+
+  // ── Auth: login Supabase + 2FA obrigatório (substitui a senha-mestra estática) ──
+  const [authStep, setAuthStep]   = useState<"checking" | "login" | "enroll" | "challenge">("checking");
+  const [email, setEmail]         = useState("");
+  const [password, setPassword]   = useState("");
+  const [mfaCode, setMfaCode]     = useState("");
+  const [qr, setQr]               = useState<string | null>(null);
+  const [mfaSecret, setMfaSecret] = useState<string | null>(null);
+  const [factorId, setFactorId]   = useState<string | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   const carregar = useCallback(async (s: string) => {
     setLoading(true);
@@ -538,19 +551,83 @@ export default function AdminPage() {
     }
   }, []);
 
-  async function handleLogin(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-    const ok = await carregar(secret);
-    if (ok) {
-      setAutenticado(true);
-      carregarPagamentos(secret);
-      carregarPagarme(secret);
-      carregarPendentes(secret);
-    } else {
-      alert("Senha incorreta.");
-      setLoading(false);
+  // Entra no painel — auth já é via cookie de sessão (não há mais secret estático).
+  const enterPanel = useCallback(async () => {
+    setAutenticado(true);
+    await carregar("");
+    carregarPagamentos("");
+    carregarPagarme("");
+    carregarPendentes("");
+  }, [carregar, carregarPagamentos, carregarPagarme, carregarPendentes]);
+
+  // Decide o próximo passo conforme o nível de 2FA da sessão (AAL).
+  const routeByAAL = useCallback(async () => {
+    const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (aal?.currentLevel === "aal2") { await enterPanel(); return; }
+
+    const { data: factors } = await supabase.auth.mfa.listFactors();
+    const verified = factors?.totp?.find(f => f.status === "verified");
+    if (verified) {
+      setFactorId(verified.id);
+      setAuthStep("challenge");
+      return;
     }
+    // Sem fator verificado → enrola um TOTP novo (mostra QR).
+    const { data: enr, error } = await supabase.auth.mfa.enroll({ factorType: "totp" });
+    if (error) { setAuthError(error.message); setAuthStep("login"); return; }
+    setFactorId(enr.id);
+    setQr(enr.totp.qr_code);
+    setMfaSecret(enr.totp.secret);
+    setAuthStep("enroll");
+  }, [enterPanel]);
+
+  // Ao montar: se já existe sessão de admin, pula direto pro 2FA/painel.
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setAuthStep("login"); return; }
+      if (user.app_metadata?.is_admin !== true) {
+        setAuthError("Esta conta não tem acesso de administrador.");
+        setAuthStep("login");
+        return;
+      }
+      await routeByAAL();
+    })();
+  }, [routeByAAL]);
+
+  async function handlePasswordLogin(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true); setAuthError(null);
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    setLoading(false);
+    if (error) { setAuthError("E-mail ou senha incorretos."); return; }
+    if (data.user?.app_metadata?.is_admin !== true) {
+      setAuthError("Esta conta não tem acesso de administrador.");
+      await supabase.auth.signOut();
+      return;
+    }
+    await routeByAAL();
+  }
+
+  async function handleVerifyMfa(e: React.FormEvent) {
+    e.preventDefault();
+    if (!factorId) return;
+    setLoading(true); setAuthError(null);
+    const { data: ch, error: chErr } = await supabase.auth.mfa.challenge({ factorId });
+    if (chErr) { setLoading(false); setAuthError(chErr.message); return; }
+    const { error: vErr } = await supabase.auth.mfa.verify({ factorId, challengeId: ch.id, code: mfaCode.trim() });
+    setLoading(false);
+    if (vErr) { setAuthError("Código inválido. Confira o app autenticador e tente de novo."); return; }
+    setMfaCode("");
+    await enterPanel();
+  }
+
+  async function handleAuthLogout() {
+    await supabase.auth.signOut();
+    setAutenticado(false);
+    setAuthStep("login");
+    setPassword(""); setMfaCode(""); setQr(null); setMfaSecret(null);
+    setFactorId(null); setAuthError(null);
   }
 
   async function acao(user_id: string, act: string, val?: string) {
@@ -658,7 +735,7 @@ export default function AdminPage() {
     return matchSearch && matchPlano;
   });
 
-  // ── Tela de login ──────────────────────────────────────────────────────────
+  // ── Tela de autenticação: login Supabase + 2FA obrigatório ───────────────────
   if (!autenticado) {
     return (
       <div className="min-h-screen bg-[#efefed] flex items-center justify-center px-4">
@@ -669,16 +746,61 @@ export default function AdminPage() {
             </span>
             <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mt-1">Painel Administrativo Master</p>
           </div>
-          <form onSubmit={handleLogin} className="flex flex-col gap-3">
-            <input type="password" placeholder="Senha de administrador"
-              value={secret} onChange={e => setSecret(e.target.value)}
-              className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500"
-            />
-            <button type="submit" disabled={loading}
-              className="bg-gray-900 hover:bg-red-600 text-white text-[11px] font-black uppercase tracking-widest py-3 rounded-xl transition disabled:opacity-50 flex items-center justify-center gap-2">
-              {loading ? <><Loader2 size={14} className="animate-spin" /> Carregando...</> : "Entrar"}
-            </button>
-          </form>
+
+          {authStep === "checking" && (
+            <div className="flex items-center justify-center py-8 text-gray-400">
+              <Loader2 size={20} className="animate-spin" />
+            </div>
+          )}
+
+          {authStep === "login" && (
+            <form onSubmit={handlePasswordLogin} className="flex flex-col gap-3">
+              <input type="email" placeholder="E-mail" autoComplete="username"
+                value={email} onChange={e => setEmail(e.target.value)}
+                className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500"
+              />
+              <input type="password" placeholder="Senha" autoComplete="current-password"
+                value={password} onChange={e => setPassword(e.target.value)}
+                className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500"
+              />
+              {authError && <p className="text-[11px] text-red-600 font-semibold">{authError}</p>}
+              <button type="submit" disabled={loading}
+                className="bg-gray-900 hover:bg-red-600 text-white text-[11px] font-black uppercase tracking-widest py-3 rounded-xl transition disabled:opacity-50 flex items-center justify-center gap-2">
+                {loading ? <><Loader2 size={14} className="animate-spin" /> Entrando...</> : "Entrar"}
+              </button>
+            </form>
+          )}
+
+          {(authStep === "enroll" || authStep === "challenge") && (
+            <form onSubmit={handleVerifyMfa} className="flex flex-col gap-3">
+              {authStep === "enroll" && (
+                <div className="flex flex-col items-center gap-2 mb-1">
+                  <p className="text-[11px] text-gray-500 text-center leading-relaxed">
+                    Escaneie no Google Authenticator / Authy e digite o código de 6 dígitos para ativar o 2FA.
+                  </p>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  {qr && <img src={qr} alt="QR code 2FA" width={168} height={168} className="rounded-lg border border-gray-100" />}
+                  {mfaSecret && <code className="text-[10px] text-gray-400 break-all text-center">{mfaSecret}</code>}
+                </div>
+              )}
+              {authStep === "challenge" && (
+                <p className="text-[11px] text-gray-500 text-center">Digite o código de 6 dígitos do seu app autenticador.</p>
+              )}
+              <input type="text" inputMode="numeric" autoComplete="one-time-code" placeholder="000000" maxLength={6}
+                value={mfaCode} onChange={e => setMfaCode(e.target.value.replace(/\D/g, ""))}
+                className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-center text-lg tracking-[0.4em] focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500"
+              />
+              {authError && <p className="text-[11px] text-red-600 font-semibold">{authError}</p>}
+              <button type="submit" disabled={loading || mfaCode.length !== 6}
+                className="bg-gray-900 hover:bg-red-600 text-white text-[11px] font-black uppercase tracking-widest py-3 rounded-xl transition disabled:opacity-50 flex items-center justify-center gap-2">
+                {loading ? <><Loader2 size={14} className="animate-spin" /> Verificando...</> : (authStep === "enroll" ? "Ativar 2FA" : "Verificar")}
+              </button>
+              <button type="button" onClick={handleAuthLogout}
+                className="text-[10px] text-gray-400 hover:text-gray-600 uppercase tracking-widest font-bold">
+                Sair
+              </button>
+            </form>
+          )}
         </div>
       </div>
     );
