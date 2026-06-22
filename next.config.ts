@@ -1,5 +1,18 @@
 import type { NextConfig } from "next";
 
+// 'unsafe-eval' só é liberado em DEV (o HMR/refresh do Next usa eval).
+// Em produção ele sai do script-src — fecha a brecha que deixava a CSP
+// decorativa contra XSS. ⚠️ Se a geração de PDF (jspdf/html2canvas em
+// contratos e tag de pátio) quebrar em produção, é por causa disto.
+const isProd = process.env.NODE_ENV === "production";
+const scriptSrc = [
+  "script-src 'self' 'unsafe-inline'",
+  isProd ? "" : "'unsafe-eval'",
+  "https://connect.facebook.net https://www.google-analytics.com https://vercel.live",
+]
+  .filter(Boolean)
+  .join(" ");
+
 const securityHeaders = [
   // Impede que o painel seja embutido em iframes de outros domínios (anti-clonagem/clickjacking)
   { key: "X-Frame-Options", value: "SAMEORIGIN" },
@@ -18,7 +31,7 @@ const securityHeaders = [
     key: "Content-Security-Policy",
     value: [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://connect.facebook.net https://www.google-analytics.com https://vercel.live",
+      scriptSrc,
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",

@@ -225,10 +225,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, data });
 
   } catch (error: unknown) {
+    // Detalhe (erro do Gemini/Supabase) fica só no log — não vaza ao cliente
     console.error("Analysis Error:", error);
-    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
     return NextResponse.json(
-      { success: false, error: errorMessage },
+      { success: false, error: "Falha ao analisar o vídeo. Tente novamente." },
       { status: 500 }
     );
   }

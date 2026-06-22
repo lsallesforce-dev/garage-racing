@@ -1,23 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { requireOwner } from "@/lib/api-auth";
 import { sendMetaMessage } from "@/lib/meta";
 import { sendAvisaMessage } from "@/lib/avisa";
 
 export async function POST(req: NextRequest) {
-  // Verify caller is authenticated admin
-  const supabase = await createSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // SÓ o DONO do tenant pode criar/editar acessos — vendedor recebe 403.
+  // Esta rota usa service role (supabaseAdmin), então RLS NÃO protege:
+  // a checagem de papel aqui é a única barreira contra um vendedor criar contas.
+  const { user, error: authError } = await requireOwner();
+  if (authError) return authError;
+  const caller = user!;
 
   const body = await req.json();
-  const { vendedorId, email, senha, authUserId, nome: nomeSimples, role: novoRole } = body as {
+  // `role` NUNCA vem do cliente — sempre "vendedor" (evita escalonamento para "dono").
+  const { vendedorId, email, senha, authUserId, nome: nomeSimples } = body as {
     vendedorId?: string;
     email: string;
     senha?: string;
     authUserId?: string;
     nome?: string;
-    role?: "vendedor" | "dono";
   };
 
   if (!email) return NextResponse.json({ error: "Email obrigatório" }, { status: 400 });
@@ -31,7 +33,7 @@ export async function POST(req: NextRequest) {
       email_confirm: true,
       // role e owner_user_id vão em app_metadata (imutável pelo usuário)
       // nome vai em user_metadata (campo de perfil, sem impacto de segurança)
-      app_metadata: { role: novoRole ?? "vendedor", owner_user_id: user.id },
+      app_metadata: { role: "vendedor", owner_user_id: caller.id },
       user_metadata: { nome: nomeSimples ?? email },
     });
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -44,7 +46,7 @@ export async function POST(req: NextRequest) {
     .from("vendedores")
     .select("id, user_id, auth_user_id, nome, whatsapp")
     .eq("id", vendedorId)
-    .eq("user_id", user.id)
+    .eq("user_id", caller.id)
     .maybeSingle();
 
   if (!vendedor) return NextResponse.json({ error: "Vendedor não encontrado" }, { status: 404 });
@@ -70,7 +72,7 @@ export async function POST(req: NextRequest) {
       email,
       password: senha,
       email_confirm: true,
-      app_metadata: { role: "vendedor", owner_user_id: user.id },
+      app_metadata: { role: "vendedor", owner_user_id: caller.id },
     });
 
     if (error) {
@@ -92,7 +94,7 @@ export async function POST(req: NextRequest) {
     const { data: garageConfig } = await supabaseAdmin
       .from("config_garage")
       .select("nome_empresa, nome_fantasia, avisa_base_url, avisa_token, meta_phone_id, meta_access_token")
-      .eq("user_id", user.id)
+      .eq("user_id", caller.id)
       .maybeSingle();
 
     const useAvisa = !!(garageConfig?.avisa_base_url && garageConfig?.avisa_token);

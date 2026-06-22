@@ -74,6 +74,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ signedUrl, publicUrl });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message || "Erro interno" }, { status: 500 });
+    // Detalhe fica só no log do servidor — não vaza estrutura interna ao cliente
+    console.error("[upload] erro ao gerar presigned URL:", error);
+    return NextResponse.json({ error: "Erro ao preparar o upload" }, { status: 500 });
   }
 }
