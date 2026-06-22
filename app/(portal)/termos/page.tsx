@@ -7,7 +7,7 @@ export default function TermosPage() {
   return (
     <main className="max-w-3xl mx-auto px-6 py-20 text-gray-700">
       <h1 className="text-4xl font-bold text-gray-900 mb-2">Terms of Service</h1>
-      <p className="text-sm text-gray-500 mb-10">Last updated: April 24, 2026</p>
+      <p className="text-sm text-gray-500 mb-10">Last updated: June 21, 2026</p>
 
       <Section title="1. Acceptance">
         <p>
@@ -45,7 +45,15 @@ export default function TermosPage() {
         </ul>
       </Section>
 
-      <Section title="5. Plans and payment">
+      <Section title="5. Free trial">
+        <p>
+          New accounts include a <strong className="text-gray-900">30-day free trial</strong> with
+          full access to the platform, with no charge and no payment method required. At the end of
+          the trial period, access is automatically suspended until a paid subscription is activated.
+        </p>
+      </Section>
+
+      <Section title="6. Plans and payment">
         <p>
           Plans and pricing are described at{" "}
           <a href="/planos" className="text-blue-600 underline">/planos</a>. Payment is monthly and
@@ -54,42 +62,42 @@ export default function TermosPage() {
         </p>
       </Section>
 
-      <Section title="6. Availability">
+      <Section title="7. Availability">
         <p>
           We target 99.5% uptime but do not guarantee uninterrupted availability. Scheduled
           maintenance will be communicated in advance.
         </p>
       </Section>
 
-      <Section title="7. Intellectual property">
+      <Section title="8. Intellectual property">
         <p>
           The AutoZap code, design, and brand are the property of LS Tecnologias. Data entered by
           users (vehicles, leads, etc.) remains their property.
         </p>
       </Section>
 
-      <Section title="8. Termination">
+      <Section title="9. Termination">
         <p>
           You may cancel at any time from the dashboard. We reserve the right to suspend accounts
           that violate these Terms.
         </p>
       </Section>
 
-      <Section title="9. Limitation of liability">
+      <Section title="10. Limitation of liability">
         <p>
           AutoZap is not liable for indirect damages, lost profits, or data loss arising from the
           use or inability to use the platform, to the maximum extent permitted by applicable law.
         </p>
       </Section>
 
-      <Section title="10. Governing law">
+      <Section title="11. Governing law">
         <p>
           These Terms are governed by the laws of Brazil. The courts of São Paulo/SP shall have
           exclusive jurisdiction over any disputes.
         </p>
       </Section>
 
-      <Section title="11. Contact">
+      <Section title="12. Contact">
         <CompanyFooter />
       </Section>
     </main>
