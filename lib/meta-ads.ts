@@ -172,11 +172,15 @@ export async function criarCampanhaLeadAd(p: CriarCampanhaParams): Promise<Campa
   const leadformId = await criarLeadForm(pageId, pageAccessToken, veiculoNome, privacyUrl);
 
   // 3. Campaign — usa adToken
+  // is_adset_budget_sharing_enabled é OBRIGATÓRIO desde a mudança da Meta
+  // (erro 100/4834011 se omitido). false = cada ad set tem seu próprio
+  // orçamento (nosso modelo: daily_budget no ad set, não na campanha).
   const campaign = await graphPost(`${adAccountId}/campaigns`, adToken, {
     name: `AutoZap — ${veiculoNome}`,
     objective: "OUTCOME_LEADS",
     status: "ACTIVE",
     special_ad_categories: [],
+    is_adset_budget_sharing_enabled: false,
   });
   const campaignId = campaign.id as string;
 
