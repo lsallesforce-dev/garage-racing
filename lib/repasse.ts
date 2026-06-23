@@ -129,7 +129,9 @@ export function gerarTextoRepasse(
     // interno do WhatsApp.) Prefill curto com o carro → o agente resolve via busca.
     const modeloCurto = String(carro.modelo || "").split(/\s+/).slice(0, 2).join(" ");
     const ctx = [carro.marca, modeloCurto, anoMod].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
-    const prefill = encodeURIComponent(`Tenho interesse no ${ctx}`).replace(/%20/g, "+");
+    // Prefill enxuto = só o carro (sem "Tenho interesse no") → link mais curto na
+    // cara do anúncio. O agente resolve o carro pela busca do mesmo jeito.
+    const prefill = encodeURIComponent(ctx).replace(/%20/g, "+");
     linhas.push(``);
     linhas.push(`💬 Falar com Vendedor:`);
     linhas.push(`https://wa.me/${phoneClean}?text=${prefill}`);
