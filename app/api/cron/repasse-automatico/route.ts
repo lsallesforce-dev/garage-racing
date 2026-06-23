@@ -188,14 +188,14 @@ export async function GET(req: NextRequest) {
         // Pausa entre anúncios consecutivos — evita burst e mantém ordem no grupo
         if (i > 0) await new Promise((r) => setTimeout(r, 4000));
 
-        // ── 6. Enviar para o grupo via Avisa — FOTO e TEXTO SEPARADOS ───────
-        // 1) foto sem legenda (proporção original) → 2) texto. Assim a foto vai
-        // inteira e o texto não fica truncado em "ler mais" embaixo da imagem.
+        // ── 6. Enviar para o grupo via Avisa — imagem + legenda juntas ──────
+        // sendAvisaImage manda a foto como base64 COM width/height (lê a dimensão
+        // real) → o WhatsApp não corta a prévia. Foto + texto numa mensagem só.
         if (capaUrl && String(capaUrl).startsWith("http")) {
-          await sendAvisaImage(grupoJid, capaUrl, undefined, avisaCreds);
-          await new Promise((r) => setTimeout(r, 2500)); // garante ordem: foto antes do texto
+          await sendAvisaImage(grupoJid, capaUrl, texto, avisaCreds);
+        } else {
+          await sendAvisaMessage(grupoJid, texto, avisaCreds, { typing: false });
         }
-        await sendAvisaMessage(grupoJid, texto, avisaCreds, { typing: false });
 
         // ── 7. Atualiza repasse_enviado_em do carro (só após envio sem throw) ─
         await supabaseAdmin

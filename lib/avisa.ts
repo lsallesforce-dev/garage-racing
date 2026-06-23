@@ -244,24 +244,59 @@ export async function sendAvisaMessage(phone: string, message: string, creds?: P
   return resultado != null; // sendWithRetry retorna undefined em falha (inclui 463)
 }
 
+// Allowlist anti-SSRF: só baixamos imagens dos NOSSOS hosts (Supabase Storage / R2).
+function isOwnStorageUrl(u: string): boolean {
+  try {
+    const host = new URL(u).hostname;
+    return [process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.R2_PUBLIC_URL]
+      .filter(Boolean)
+      .some((env) => {
+        try { return new URL(env as string).hostname === host; } catch { return false; }
+      });
+  } catch {
+    return false;
+  }
+}
+
 export async function sendAvisaImage(phone: string, imageUrlOrBase64: string, message?: string, creds?: Partial<AvisaCreds>) {
   const c = resolveCreds(creds);
   if (!c) { console.warn("Avisa credentials missing"); return; }
 
-  // URLs (Supabase Storage, R2) → sendMedia com fileUrl
-  if (imageUrlOrBase64.startsWith("http")) {
-    const payload: any = {
-      ...buildTarget(phone),
-      fileUrl: imageUrlOrBase64,
-      type: "image",
-      fileName: "foto.jpg",
-    };
-    if (message) payload.message = message;
-    console.log(`🖼️ Avisa sendImage (URL) → ${formatPhone(phone)}`);
-    return sendWithRetry(`${c.baseUrl}/actions/sendMedia`, payload, c.token);
+  const isHttp = imageUrlOrBase64.startsWith("http");
+
+  // FIX DO "CROP": o WhatsApp recorta/achata a prévia quando a imagem chega SEM a
+  // dimensão. Mandamos como base64 COM width/height (lidos da própria imagem) — aí o
+  // WhatsApp respeita a proporção real, igual ao envio nativo do celular. (Validado
+  // ao vivo: sem width/height a Avisa corta; com, a foto sai inteira.) Só baixamos
+  // URLs do nosso storage (allowlist anti-SSRF); o resto cai no fallback por URL.
+  try {
+    let buf: Buffer | null = null;
+    if (isHttp && isOwnStorageUrl(imageUrlOrBase64)) {
+      const r = await fetch(imageUrlOrBase64);
+      if (r.ok) buf = Buffer.from(await r.arrayBuffer());
+    } else if (!isHttp) {
+      buf = Buffer.from(imageUrlOrBase64, "base64");
+    }
+    if (buf) {
+      const sharp = (await import("sharp")).default;
+      const meta = await sharp(buf).metadata();
+      const payload: any = { ...buildTarget(phone), image: buf.toString("base64") };
+      if (meta.width && meta.height) { payload.width = meta.width; payload.height = meta.height; }
+      if (message) payload.message = message;
+      console.log(`🖼️ Avisa sendImage (${meta.width}x${meta.height}) → ${formatPhone(phone)}`);
+      return sendWithRetry(`${c.baseUrl}/actions/sendImage`, payload, c.token);
+    }
+  } catch (e) {
+    console.warn("🖼️ Avisa sendImage: preparo com dimensão falhou, fallback:", e);
   }
 
-  // Base64 → sendImage
+  // Fallback fail-soft (nunca derruba o envio) — método antigo por URL/base64.
+  if (isHttp) {
+    const payload: any = { ...buildTarget(phone), fileUrl: imageUrlOrBase64, type: "image", fileName: "foto.jpg" };
+    if (message) payload.message = message;
+    console.log(`🖼️ Avisa sendImage (URL fallback) → ${formatPhone(phone)}`);
+    return sendWithRetry(`${c.baseUrl}/actions/sendMedia`, payload, c.token);
+  }
   const payload: any = { ...buildTarget(phone), image: imageUrlOrBase64 };
   if (message) payload.message = message;
   return sendWithRetry(`${c.baseUrl}/actions/sendImage`, payload, c.token);
