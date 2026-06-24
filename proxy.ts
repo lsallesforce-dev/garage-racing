@@ -175,6 +175,18 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
+  // Conta de ADMIN não é um tenant — seu lugar é o painel /admin, não o dashboard
+  // (que mostraria a garagem vazia "Minha Garagem"). Redireciona /login e /dashboard.
+  // Não afeta impersonação: ao impersonar, a sessão vira a do tenant (sem is_admin),
+  // então o gerente continua vendo o dashboard real do cliente normalmente.
+  const isAdminUser = user?.app_metadata?.is_admin === true;
+  if (isAdminUser && (pathname === "/login" || pathname === "/dashboard")) {
+    const adminUrl = request.nextUrl.clone();
+    adminUrl.pathname = "/admin";
+    adminUrl.search = "";
+    return NextResponse.redirect(adminUrl);
+  }
+
   // Usuário logado tentando acessar /login → redireciona para o painel
   if (user && pathname === "/login") {
     const homeUrl = request.nextUrl.clone();

@@ -864,6 +864,10 @@ export default function AdminPage() {
               className="p-2 text-gray-400 hover:text-gray-700 rounded-xl hover:bg-gray-100 transition disabled:opacity-50" title="Recarregar painel (Clientes / Financeiro)">
               <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
             </button>
+            <button onClick={async () => { await supabase.auth.signOut(); window.location.href = "/login"; }}
+              className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-red-600 rounded-xl hover:bg-gray-100 transition" title="Encerrar sessão de admin">
+              Sair
+            </button>
             {tab === "clientes" && (
               <button onClick={() => setShowNovoTenant(true)}
                 className="flex items-center gap-1.5 px-4 py-2 bg-gray-900 text-white font-black uppercase text-[10px] tracking-widest rounded-xl hover:bg-red-600 transition">
