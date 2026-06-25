@@ -163,8 +163,16 @@ export async function criarCampanhaLeadAd(p: CriarCampanhaParams): Promise<Campa
   const precoFormatado = veiculo.preco.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   const kmFormatado = veiculo.km.toLocaleString("pt-BR") + " km";
 
-  // 1. Upload da foto principal — usa adToken (requer ads_management no Ad Account)
-  const imageHash = await uploadFotoParaMeta(adAccountId, veiculo.fotoUrl, adToken);
+  // 1. Foto principal. Preferimos /adimages (image_hash = melhor qualidade), mas
+  // ele exige Acesso Avançado do ads_management (dá #3 sem ele). Fallback: usar
+  // `picture` (URL pública da foto) direto no creative — funciona sem #3 e
+  // destrava o "Publicar" antes do review das permissões ser aprovado.
+  let imageHash: string | null = null;
+  try {
+    imageHash = await uploadFotoParaMeta(adAccountId, veiculo.fotoUrl, adToken);
+  } catch (e: any) {
+    console.warn(`⚠️ /adimages indisponível (${e.message?.slice(0, 80)}) — usando picture URL no creative`);
+  }
 
   // 2. Lead Form — usa pageAccessToken (operação no Page)
   const privacyUrl = garagem.privacyPolicyUrl ??
@@ -271,7 +279,8 @@ export async function criarCampanhaLeadAd(p: CriarCampanhaParams): Promise<Campa
     message:         adMessage,
     name:            veiculoNome,
     description:     `${precoFormatado} — ${garagem.nome}`,
-    image_hash:      imageHash,
+    // image_hash se o upload funcionou; senão picture (URL) — evita o #3 do /adimages
+    ...(imageHash ? { image_hash: imageHash } : { picture: veiculo.fotoUrl }),
     lead_gen_form_id: leadformId,
     call_to_action:  { type: "LEARN_MORE" },
   };
