@@ -117,6 +117,7 @@ export default function ConfiguracoesPage() {
   const [metaPaginaSalva, setMetaPaginaSalva] = useState<any | null>(null);
   const [selectedPageId, setSelectedPageId] = useState("");
   const [selectedAdAccountId, setSelectedAdAccountId] = useState("");
+  const [desvinculandoMeta, setDesvinculandoMeta] = useState(false);
   const [config, setConfig] = useState<GarageConfig>({
     nome_empresa: "",
     nome_fantasia: "",
@@ -360,6 +361,32 @@ export default function ConfiguracoesPage() {
       setMetaAdsError("Erro de conexão");
     } finally {
       setMetaAdsLoading(false);
+    }
+  };
+
+  const desvincularMetaAds = async () => {
+    if (!confirm("Desvincular o Meta Ads? As campanhas já criadas continuam na Meta, mas você precisará reconectar a conta para publicar novos anúncios. (Seu WhatsApp não é afetado.)")) return;
+    setDesvinculandoMeta(true);
+    try {
+      const res = await fetch("/api/meta/pagina", { method: "DELETE" });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        setMetaAdsError(e.error ?? "Erro ao desvincular");
+        return;
+      }
+      // Reseta todo o estado do Meta Ads
+      setConfig((c) => ({ ...c, meta_ads_token: "" }));
+      setMetaPaginas([]);
+      setMetaAdAccounts([]);
+      setMetaPaginaSalva(null);
+      setMetaCarregado(false);
+      setSelectedPageId("");
+      setSelectedAdAccountId("");
+      setMetaAdsError(null);
+    } catch {
+      setMetaAdsError("Erro de conexão ao desvincular");
+    } finally {
+      setDesvinculandoMeta(false);
     }
   };
 
@@ -2254,7 +2281,26 @@ export default function ConfiguracoesPage() {
                       <p className="text-[10px] text-green-600">{metaPaginaSalva.adAccountId}</p>
                     )}
                   </div>
+                  <button
+                    type="button"
+                    onClick={desvincularMetaAds}
+                    disabled={desvinculandoMeta}
+                    className="ml-auto text-[9px] font-black uppercase tracking-widest text-red-400 hover:text-red-600 transition shrink-0 disabled:opacity-50"
+                  >
+                    {desvinculandoMeta ? "..." : "Desvincular"}
+                  </button>
                 </div>
+              )}
+
+              {config.meta_ads_token && !metaPaginaSalva && (
+                <button
+                  type="button"
+                  onClick={desvincularMetaAds}
+                  disabled={desvinculandoMeta}
+                  className="w-full py-2 rounded-2xl border border-red-200 text-red-500 hover:bg-red-50 text-[11px] font-bold transition-colors disabled:opacity-50"
+                >
+                  {desvinculandoMeta ? "Desvinculando..." : "Desvincular Meta Ads"}
+                </button>
               )}
 
               {metaAdsError && (

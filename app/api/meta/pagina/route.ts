@@ -95,3 +95,21 @@ export async function POST(req: NextRequest) {
   if (dbErr) return NextResponse.json({ error: dbErr.message }, { status: 500 });
   return NextResponse.json({ ok: true });
 }
+
+// DELETE — desvincula o Meta Ads: limpa o token de Ads e remove as páginas salvas.
+// NÃO mexe no meta_access_token (canal de WhatsApp é independente).
+export async function DELETE() {
+  const { user, error } = await requireAuth();
+  if (error) return error;
+  const userId = getEffectiveUserId(user!);
+
+  const [cfg, pag] = await Promise.all([
+    supabaseAdmin.from("config_garage").update({ meta_ads_token: null }).eq("user_id", userId),
+    supabaseAdmin.from("meta_paginas").delete().eq("user_id", userId),
+  ]);
+
+  if (cfg.error || pag.error) {
+    return NextResponse.json({ error: cfg.error?.message ?? pag.error?.message }, { status: 500 });
+  }
+  return NextResponse.json({ ok: true });
+}
