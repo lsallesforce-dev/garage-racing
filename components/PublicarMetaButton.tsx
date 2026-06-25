@@ -49,27 +49,26 @@ interface Props {
 
 // ─── Listas de targeting ──────────────────────────────────────────────────────
 
+// IDs validados na Meta (adinterest search, 06/2026). Os antigos estavam mortos
+// e quebravam o adset com "interesse inválido".
 const INTERESSES: OpcaoTargeting[] = [
-  { id: "6003200098907", nome: "Automóveis" },
-  { id: "6003183645424", nome: "Compra de veículo" },
-  { id: "6003208890647", nome: "Carro usado" },
-  { id: "6004483778498", nome: "Setor automotivo" },
-  { id: "6003139264106", nome: "Concessionárias" },
-  { id: "6003172012714", nome: "Financiamento auto" },
-  { id: "6002910399551", nome: "SUVs e Pickups" },
+  { id: "6003176678152", nome: "Automóveis" },
+  { id: "6003304473660", nome: "SUVs" },
+  { id: "6003284404179", nome: "Concessionárias" },
+  { id: "6004048615096", nome: "Veículo de luxo" },
+  { id: "6003103779434", nome: "Carro elétrico" },
+  { id: "6003481743064", nome: "Toyota" },
+  { id: "6003144341584", nome: "Volkswagen" },
+  { id: "6003342603828", nome: "Fiat" },
 ];
 
-const COMPORTAMENTOS: OpcaoTargeting[] = [
-  { id: "6002714895372", nome: "Compradores carro novo" },
-  { id: "6002714898572", nome: "Compradores carro usado" },
-  { id: "6002783849748", nome: "Pesquisadores de veículo" },
-  { id: "6015235495383", nome: "Usuários app de carros" },
-];
+// Comportamentos automotivos não existem pra BR na Meta (busca só retorna
+// device/OS/viagem) — seção removida da UI.
 
 const ORCAMENTOS = [10, 15, 30, 50, 100];
 const ORCAMENTO_RECOMENDADO = 30;
 const DURACOES = [7, 14, 21, 30];
-const RAIO_PRESETS = [15, 30, 50, 100, 200, 500];
+const RAIO_PRESETS = [15, 30, 50, 65, 80]; // Meta: máx 80km (~50mi) p/ custom_locations
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 
@@ -132,7 +131,6 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
   const [idadeMax, setIdadeMax]           = useState(55);
   const [genero, setGenero]               = useState<"todos" | "masculino" | "feminino">("todos");
   const [interesses, setInteresses]       = useState<string[]>([]);
-  const [comportamentos, setComportamentos] = useState<string[]>([]);
   const [renda, setRenda]                 = useState<"todos" | "top50" | "top25" | "top10">("todos");
 
   useEffect(() => {
@@ -165,7 +163,6 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
     setErro(null);
     try {
       const interessesSelecionados = INTERESSES.filter(i => interesses.includes(i.id));
-      const comportamentosSelecionados = COMPORTAMENTOS.filter(c => comportamentos.includes(c.id));
 
       const res = await fetch("/api/meta/ads/criar", {
         method: "POST",
@@ -181,7 +178,7 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
           idadeMax,
           genero,
           interesses: interessesSelecionados,
-          comportamentos: comportamentosSelecionados,
+          comportamentos: [],
           renda,
           cidadesExtras: cidadesExtras.map(c => ({ key: c.key ?? null, nome: c.nome })),
         }),
@@ -512,20 +509,20 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
                                   : "bg-gray-100 text-gray-500 hover:bg-gray-200"
                               }`}
                             >
-                              {v >= 500 ? "500+" : v}
+                              {v}
                             </button>
                           ))}
                         </div>
 
                         <input
-                          type="range" min={5} max={500} step={5} value={raio}
+                          type="range" min={5} max={80} step={5} value={raio}
                           onChange={e => setRaio(Number(e.target.value))}
                           className="w-full accent-blue-500"
                         />
                         <div className="flex justify-between text-[9px] text-gray-300 mt-1">
                           <span>5 km</span>
                           <span className="text-gray-400 font-bold">{raio} km selecionado</span>
-                          <span>500 km</span>
+                          <span>80 km</span>
                         </div>
                       </div>
                     </div>
@@ -594,26 +591,6 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
                                 interesses.includes(item.id)
                                   ? "bg-blue-500 text-white border-blue-500"
                                   : "bg-white text-gray-500 border-gray-200 hover:border-blue-300 hover:text-blue-600"
-                              }`}
-                            >
-                              {item.nome}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Comportamento */}
-                      <div>
-                        <p className="text-[9px] text-gray-500 font-bold mb-1.5">Comportamento</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {COMPORTAMENTOS.map(item => (
-                            <button
-                              key={item.id}
-                              onClick={() => toggleItem(comportamentos, setComportamentos, item.id)}
-                              className={`px-3 py-1.5 rounded-full text-[10px] font-bold transition-all border ${
-                                comportamentos.includes(item.id)
-                                  ? "bg-purple-500 text-white border-purple-500"
-                                  : "bg-white text-gray-500 border-gray-200 hover:border-purple-300 hover:text-purple-600"
                               }`}
                             >
                               {item.nome}

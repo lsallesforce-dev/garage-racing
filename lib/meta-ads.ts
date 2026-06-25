@@ -261,7 +261,7 @@ export async function criarCampanhaLeadAd(p: CriarCampanhaParams): Promise<Campa
   };
 
   // 4. AdSet — usa adToken
-  const adset = await graphPost(`${adAccountId}/adsets`, adToken, {
+  const adsetBody: Record<string, any> = {
     campaign_id:       campaignId,
     name:              `AdSet — ${veiculoNome}`,
     optimization_goal: "LEAD_GENERATION",
@@ -274,7 +274,24 @@ export async function criarCampanhaLeadAd(p: CriarCampanhaParams): Promise<Campa
     targeting,
     promoted_object:   { page_id: pageId },
     status:            "ACTIVE",
-  });
+  };
+
+  // Rede de segurança: IDs de interesse da Meta envelhecem e derrubam o adset.
+  // Em vez de quebrar o publish inteiro, tenta de novo SEM interesses (geo+idade
+  // continua válido). Só vale a pena se havia flexible_spec.
+  let adset: any;
+  try {
+    adset = await graphPost(`${adAccountId}/adsets`, adToken, adsetBody);
+  } catch (e: any) {
+    if (flexSpec.length && /interess|flexible_spec|invalid parameter/i.test(e.message ?? "")) {
+      console.warn(`⚠️ AdSet falhou (possível interesse inválido) — retry sem interesses: ${e.message?.slice(0, 120)}`);
+      const targetingSemInteresses = { ...targeting };
+      delete targetingSemInteresses.flexible_spec;
+      adset = await graphPost(`${adAccountId}/adsets`, adToken, { ...adsetBody, targeting: targetingSemInteresses });
+    } else {
+      throw e;
+    }
+  }
   const adsetId = adset.id as string;
 
   // 5. Ad Creative — usa adToken
