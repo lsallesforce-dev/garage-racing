@@ -144,6 +144,7 @@ export async function criarLeadForm(
     thank_you_page: {
       title: "Recebemos seu contato!",
       body: "Em breve nossa equipe entrará em contato pelo WhatsApp.",
+      button_type: "NONE", // Meta passou a exigir (erro 100 se omitido)
     },
     locale: "pt_BR",
   });
