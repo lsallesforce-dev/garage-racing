@@ -228,16 +228,20 @@ export async function criarCampanhaLeadAd(p: CriarCampanhaParams): Promise<Campa
   const extrasComKey  = (configuracao.cidadesExtras ?? []).filter(c => c.key);
   const extrasSemKey  = (configuracao.cidadesExtras ?? []).filter(c => !c.key && c.lat && c.lng);
 
+  // Meta limita custom_locations a 50 milhas (~80 km). Raios maiores (presets
+  // 100/200/500) dão erro 100 "raio muito grande" — então clampa em 80.
+  const raioKm = Math.min(Math.max(configuracao.raioKm || 30, 1), 80);
+
   const customLocations = [
-    { latitude: garagem.latitude, longitude: garagem.longitude, radius: configuracao.raioKm, distance_unit: "kilometer" },
+    { latitude: garagem.latitude, longitude: garagem.longitude, radius: raioKm, distance_unit: "kilometer" },
     ...extrasSemKey.map(c => ({
-      latitude: c.lat!, longitude: c.lng!, radius: configuracao.raioKm, distance_unit: "kilometer",
+      latitude: c.lat!, longitude: c.lng!, radius: raioKm, distance_unit: "kilometer",
     })),
   ];
 
   const citiesTargeting = extrasComKey.map(c => ({
     key:           c.key,
-    radius:        configuracao.raioKm,
+    radius:        raioKm,
     distance_unit: "kilometer",
   }));
 
