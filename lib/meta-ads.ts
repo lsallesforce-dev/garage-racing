@@ -249,6 +249,7 @@ export async function criarCampanhaLeadAd(p: CriarCampanhaParams): Promise<Campa
     age_min: configuracao.idadeMin,
     age_max: configuracao.idadeMax,
     publisher_platforms: publisherPlatforms,
+    targeting_automation: { advantage_audience: 0 }, // Meta exige a flag (0 = público manual)
     ...(facebookPositions.length  ? { facebook_positions: facebookPositions }   : {}),
     ...(instagramPositions.length ? { instagram_positions: instagramPositions } : {}),
     ...(genders.length            ? { genders }                                 : {}),
@@ -261,6 +262,8 @@ export async function criarCampanhaLeadAd(p: CriarCampanhaParams): Promise<Campa
     name:              `AdSet — ${veiculoNome}`,
     optimization_goal: "LEAD_GENERATION",
     billing_event:     "IMPRESSIONS",
+    bid_strategy:      "LOWEST_COST_WITHOUT_CAP", // lance automático (sem bid_amount)
+    destination_type:  "ON_AD",                   // lead form abre no anúncio (instant form)
     daily_budget:      Math.round(configuracao.orcamentoDiario * 100), // centavos
     start_time:        agora.toISOString(),
     end_time:          encerraEm.toISOString(),
@@ -280,10 +283,11 @@ export async function criarCampanhaLeadAd(p: CriarCampanhaParams): Promise<Campa
     message:         adMessage,
     name:            veiculoNome,
     description:     `${precoFormatado} — ${garagem.nome}`,
+    link:            process.env.NEXT_PUBLIC_APP_URL ?? "https://www.autozap.digital",
     // image_hash se o upload funcionou; senão picture (URL) — evita o #3 do /adimages
     ...(imageHash ? { image_hash: imageHash } : { picture: veiculo.fotoUrl }),
-    lead_gen_form_id: leadformId,
-    call_to_action:  { type: "LEARN_MORE" },
+    // lead_gen_form_id vai DENTRO de call_to_action.value (não no topo do link_data)
+    call_to_action:  { type: "LEARN_MORE", value: { lead_gen_form_id: leadformId } },
   };
 
   const storySpec: Record<string, any> = { page_id: pageId, link_data: linkData };
