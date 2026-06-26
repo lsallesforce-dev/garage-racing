@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { PortalCarro } from "@/lib/portal/query";
 import {
   Search, MapPin, Gauge, Fuel, Cog, Video, ShieldCheck, BadgeCheck,
-  TrendingDown, MessageCircle, X, Car,
+  TrendingDown, MessageCircle, X, Car, ArrowRight,
 } from "lucide-react";
 
 const fmtBRL = (v: number | null) =>
@@ -43,13 +43,6 @@ export default function CarrosVitrine({ carros, totalLojas }: { carros: PortalCa
   const [preset, setPreset] = useState("");
   const [ordenar, setOrdenar] = useState<Ordenar>("recentes");
 
-  // Conta quantos carros cada preset captura — usado p/ esconder os vazios.
-  const presetCounts = useMemo(() => {
-    const m: Record<string, number> = {};
-    for (const p of PRESETS) m[p.id] = carros.filter(p.pred).length;
-    return m;
-  }, [carros]);
-
   // ── Facets derivados do estoque real ──────────────────────────────────────
   const marcas = useMemo(() => uniqSorted(carros.map((c) => c.marca)), [carros]);
   const categorias = useMemo(() => {
@@ -62,6 +55,19 @@ export default function CarrosVitrine({ carros, totalLojas }: { carros: PortalCa
     [carros]
   );
   const ufs = useMemo(() => uniqSorted(carros.map((c) => c.uf)), [carros]);
+
+  // Carro de destaque pro hero: o mais premium (maior preço) com marca e foto.
+  const destaque = useMemo(() => {
+    const full = carros.filter((c) => c.foto && c.preco && c.marca);
+    const pool = full.length ? full : carros.filter((c) => c.foto);
+    return pool.length ? [...pool].sort((a, b) => (b.preco ?? 0) - (a.preco ?? 0))[0] : null;
+  }, [carros]);
+
+  const presetCounts = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const p of PRESETS) m[p.id] = carros.filter(p.pred).length;
+    return m;
+  }, [carros]);
 
   // ── Filtro + ordenação ────────────────────────────────────────────────────
   const filtrados = useMemo(() => {
@@ -93,88 +99,120 @@ export default function CarrosVitrine({ carros, totalLojas }: { carros: PortalCa
 
   return (
     <div>
-      {/* ══ HERO ══ */}
-      <section className="relative bg-[#161616] text-white overflow-hidden">
-        <div
-          className="absolute inset-0 opacity-50 pointer-events-none"
-          style={{
-            backgroundImage:
-              "linear-gradient(rgba(255,255,255,0.045) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.045) 1px, transparent 1px)",
-            backgroundSize: "44px 44px",
-          }}
-        />
-        <div className="absolute -top-32 -right-24 w-[460px] h-[460px] rounded-full bg-[#ef4444]/25 blur-[120px] pointer-events-none" />
+      {/* ══ HERO (claro, 2 colunas — estilo AutoNexus) ══ */}
+      <section className="relative overflow-hidden bg-gradient-to-b from-white to-[#f1f1ef] border-b border-gray-200">
+        <div className="absolute -top-24 -right-24 w-[380px] h-[380px] rounded-full bg-red-500/10 blur-[120px] pointer-events-none" />
+        <div className="relative max-w-7xl mx-auto px-5 py-12 lg:py-16 grid lg:grid-cols-2 gap-10 lg:gap-12 items-center">
+          {/* ESQUERDA */}
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-[0.22em] text-gray-400 mb-4">
+              / PORTAL DE SEMINOVOS E USADOS
+            </div>
+            <h1 className="font-bold tracking-[-0.03em] leading-[0.97] text-gray-900" style={{ fontSize: "clamp(40px, 5.5vw, 68px)" }}>
+              Encontre seu próximo
+              <br />
+              <span className="text-red-600">carro com confiança.</span>
+            </h1>
+            <p className="mt-5 max-w-lg text-gray-500 text-[16px] leading-relaxed">
+              Seminovos e usados de revendas verificadas — fotos, vídeo e atendimento na hora pelo
+              WhatsApp. Sem formulário que ninguém responde.
+            </p>
 
-        <div className="relative max-w-7xl mx-auto px-5 pt-16 pb-12">
-          <div className="text-[10px] font-black uppercase tracking-[0.22em] text-white/50 mb-5">
-            / PORTAL DE SEMINOVOS E USADOS
-          </div>
-          <h1 className="font-bold tracking-[-0.03em] leading-[0.98]" style={{ fontSize: "clamp(38px, 6vw, 76px)" }}>
-            Encontre seu próximo
-            <br />
-            <span className="text-[#ef4444]">carro.</span>
-          </h1>
-          <p className="mt-5 max-w-xl text-white/70 text-[16px] leading-relaxed">
-            Seminovos e usados de revendas verificadas — com fotos, vídeo e atendimento na hora pelo WhatsApp.
-            Sem formulário que ninguém responde.
-          </p>
+            {/* Busca */}
+            <div className="mt-7 max-w-xl">
+              <div className="flex items-center gap-2 bg-white rounded-2xl pl-4 pr-2 py-2 shadow-lg shadow-gray-200/60 ring-1 ring-gray-100">
+                <Search size={20} className="text-gray-400 shrink-0" />
+                <input
+                  value={busca}
+                  onChange={(e) => setBusca(e.target.value)}
+                  placeholder="Busque por marca, modelo ou cidade…"
+                  className="flex-1 bg-transparent text-gray-900 placeholder:text-gray-400 text-[15px] py-2 focus:outline-none"
+                />
+                {busca ? (
+                  <button onClick={() => setBusca("")} className="text-gray-400 hover:text-gray-700 p-2"><X size={16} /></button>
+                ) : (
+                  <a href="#estoque" className="w-10 h-10 rounded-xl bg-red-600 hover:bg-red-700 grid place-items-center text-white transition shrink-0">
+                    <ArrowRight size={18} />
+                  </a>
+                )}
+              </div>
+            </div>
 
-          {/* Busca */}
-          <div className="mt-8 max-w-2xl">
-            <div className="flex items-center gap-3 bg-white rounded-2xl px-4 py-1 shadow-2xl shadow-black/30">
-              <Search size={20} className="text-gray-400 shrink-0" />
-              <input
-                value={busca}
-                onChange={(e) => setBusca(e.target.value)}
-                placeholder="Busque por marca, modelo ou cidade…"
-                className="flex-1 bg-transparent text-gray-900 placeholder:text-gray-400 text-[15px] py-3.5 focus:outline-none"
-              />
-              {busca && (
-                <button onClick={() => setBusca("")} className="text-gray-400 hover:text-gray-700 p-1">
-                  <X size={16} />
-                </button>
-              )}
+            {/* Selos de confiança */}
+            <div className="mt-6 flex flex-wrap gap-x-5 gap-y-2">
+              {[
+                { icon: <ShieldCheck size={14} />, t: "Revendas verificadas" },
+                { icon: <Video size={14} />, t: "Vídeo de verdade" },
+                { icon: <MessageCircle size={14} />, t: "Atendimento na hora" },
+              ].map((b) => (
+                <span key={b.t} className="flex items-center gap-1.5 text-[12px] font-bold text-gray-600">
+                  <span className="text-red-600">{b.icon}</span> {b.t}
+                </span>
+              ))}
+            </div>
+
+            {/* Stat */}
+            <div className="mt-6 flex items-center gap-5 text-gray-900">
+              <Stat n={`${carros.length}`} label="carros" />
+              <span className="w-px h-8 bg-gray-200" />
+              <Stat n={`${marcas.length}`} label="marcas" />
+              <span className="w-px h-8 bg-gray-200" />
+              <Stat n={`${totalLojas}`} label={totalLojas === 1 ? "revenda" : "revendas"} />
             </div>
           </div>
 
-          {/* Stat */}
-          <div className="mt-6 flex items-center gap-2.5 text-[12px] font-mono uppercase tracking-[0.18em] text-white/45">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#22c55e]" />
-            {carros.length} carros · {totalLojas} {totalLojas === 1 ? "revenda verificada" : "revendas verificadas"}
-          </div>
+          {/* DIREITA — carro de destaque (preenche o espaço) */}
+          {destaque && (
+            <div className="relative">
+              {/* badge flutuante estilo "830+ Cars Available" */}
+              <div className="hidden sm:flex flex-col items-center absolute -top-4 -right-2 z-10 bg-white rounded-2xl shadow-xl shadow-gray-300/50 px-5 py-2.5 ring-1 ring-gray-100">
+                <span className="text-2xl font-black tracking-tighter text-gray-900">{carros.length}</span>
+                <span className="text-[8px] font-black uppercase tracking-widest text-gray-400 -mt-0.5">disponíveis</span>
+              </div>
 
-          {/* Carrocerias */}
-          {categorias.length > 0 && (
-            <div className="mt-8 flex flex-wrap gap-2">
-              {categorias.map(([cat, n]) => {
-                const ativo = categoria === cat;
-                return (
-                  <button
-                    key={cat}
-                    onClick={() => setCategoria(ativo ? "" : cat)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-full text-[12px] font-black uppercase tracking-widest transition ${
-                      ativo
-                        ? "bg-[#ef4444] text-white"
-                        : "bg-white/10 text-white/80 hover:bg-white/15 ring-1 ring-inset ring-white/10"
-                    }`}
-                  >
-                    {cat}
-                    <span className={ativo ? "text-white/70" : "text-white/40"}>{n}</span>
-                  </button>
-                );
-              })}
+              <Link href={`/carros/${destaque.id}`} className="group block relative rounded-[2rem] overflow-hidden shadow-2xl shadow-gray-400/30 aspect-[4/3] bg-gray-900">
+                <img src={destaque.foto!} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover scale-110 blur-2xl opacity-60" />
+                <img src={destaque.foto!} alt={`${destaque.marca} ${destaque.modelo}`} className="absolute inset-0 w-full h-full object-contain group-hover:scale-[1.03] transition-transform duration-500" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
+                <span className="absolute top-4 left-4 bg-red-600 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest shadow">
+                  ★ Destaque
+                </span>
+                <div className="absolute bottom-0 left-0 right-0 p-5 text-white">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-white/60 mb-1">{destaque.loja.nome}</p>
+                  <h3 className="text-xl sm:text-2xl font-black uppercase italic tracking-tight leading-none">
+                    {[destaque.marca, destaque.modelo].filter(Boolean).join(" ")}
+                  </h3>
+                  <div className="flex items-end justify-between mt-2">
+                    <p className="text-[11px] text-white/70 font-bold uppercase tracking-wider">{[destaque.ano, fmtKm(destaque.km)].filter(Boolean).join(" • ")}</p>
+                    <p className="text-2xl font-black tracking-tighter">{fmtBRL(destaque.preco)}</p>
+                  </div>
+                </div>
+              </Link>
             </div>
           )}
+        </div>
+      </section>
 
-          {/* Atalhos por estilo de vida e faixa de preço */}
+      {/* ══ EXPLORAR POR CARROCERIA / ESTILO / PREÇO ══ */}
+      <section className="bg-white border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-5 py-6 flex flex-col gap-5">
+          {categorias.length > 0 && (
+            <ChipRow titulo="Carroceria">
+              {categorias.map(([cat, n]) => (
+                <ChipBtn key={cat} ativo={categoria === cat} onClick={() => setCategoria(categoria === cat ? "" : cat)}>
+                  {cat} <span className="opacity-50">{n}</span>
+                </ChipBtn>
+              ))}
+            </ChipRow>
+          )}
           <PresetRow titulo="Pra quem é o carro" grupo="estilo" preset={preset} setPreset={setPreset} counts={presetCounts} />
           <PresetRow titulo="Por faixa de preço" grupo="preco" preset={preset} setPreset={setPreset} counts={presetCounts} />
         </div>
       </section>
 
       {/* ══ POR QUE COMPRAR AQUI ══ */}
-      <section className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-5 py-5 grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <section className="bg-[#f7f7f5] border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-5 py-6 grid grid-cols-2 lg:grid-cols-4 gap-4">
           {[
             { icon: <ShieldCheck size={16} />, t: "Revendas verificadas", d: "Lojas reais, estoque conferido" },
             { icon: <Video size={16} />, t: "Vídeo de verdade", d: "Veja o carro, não só foto" },
@@ -193,7 +231,7 @@ export default function CarrosVitrine({ carros, totalLojas }: { carros: PortalCa
       </section>
 
       {/* ══ FILTROS ══ */}
-      <div className="sticky top-16 z-30 bg-[#f7f7f5]/90 backdrop-blur border-b border-gray-200">
+      <div id="estoque" className="sticky top-16 z-30 bg-[#f7f7f5]/90 backdrop-blur border-b border-gray-200 scroll-mt-16">
         <div className="max-w-7xl mx-auto px-5 py-3 flex flex-wrap items-center gap-2.5">
           <Select value={marca} onChange={setMarca} cls={selectCls} placeholder="Marca" options={marcas} />
           <Select value={categoria} onChange={setCategoria} cls={selectCls} placeholder="Carroceria" options={categorias.map(([c]) => c)} />
@@ -217,10 +255,7 @@ export default function CarrosVitrine({ carros, totalLojas }: { carros: PortalCa
             <Chevron />
           </div>
           {temFiltro && (
-            <button
-              onClick={limpar}
-              className="flex items-center gap-1 text-[11px] font-black uppercase tracking-widest text-red-500 hover:text-red-600 px-2"
-            >
+            <button onClick={limpar} className="flex items-center gap-1 text-[11px] font-black uppercase tracking-widest text-red-500 hover:text-red-600 px-2">
               <X size={13} /> Limpar
             </button>
           )}
@@ -240,9 +275,7 @@ export default function CarrosVitrine({ carros, totalLojas }: { carros: PortalCa
         ) : (
           <div className="py-28 text-center border-2 border-dashed border-gray-200 rounded-3xl bg-white">
             <Car size={32} className="mx-auto text-gray-300 mb-4" />
-            <p className="text-xs font-black uppercase tracking-widest text-gray-400">
-              Nenhum carro com esses filtros
-            </p>
+            <p className="text-xs font-black uppercase tracking-widest text-gray-400">Nenhum carro com esses filtros</p>
             {temFiltro && (
               <button onClick={limpar} className="mt-4 text-[11px] font-black uppercase tracking-widest text-red-500 hover:text-red-600">
                 Limpar filtros
@@ -255,7 +288,54 @@ export default function CarrosVitrine({ carros, totalLojas }: { carros: PortalCa
   );
 }
 
-// ─── Select com chevron ───────────────────────────────────────────────────────
+// ─── Subcomponentes ───────────────────────────────────────────────────────────
+function Stat({ n, label }: { n: string; label: string }) {
+  return (
+    <div>
+      <p className="text-2xl font-black tracking-tighter leading-none">{n}<span className="text-red-600">+</span></p>
+      <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mt-1">{label}</p>
+    </div>
+  );
+}
+
+function ChipRow({ titulo, children }: { titulo: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-gray-400 mb-2">{titulo}</p>
+      <div className="flex flex-wrap gap-2">{children}</div>
+    </div>
+  );
+}
+
+function ChipBtn({ ativo, onClick, children }: { ativo: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`px-3.5 py-1.5 rounded-full text-[12px] font-bold transition ${
+        ativo ? "bg-gray-900 text-white" : "bg-white text-gray-600 border border-gray-200 hover:border-gray-400"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function PresetRow({ titulo, grupo, preset, setPreset, counts }: {
+  titulo: string; grupo: "estilo" | "preco"; preset: string; setPreset: (v: string) => void; counts: Record<string, number>;
+}) {
+  const items = PRESETS.filter((p) => p.grupo === grupo && counts[p.id] > 0);
+  if (items.length === 0) return null;
+  return (
+    <ChipRow titulo={titulo}>
+      {items.map((p) => (
+        <ChipBtn key={p.id} ativo={preset === p.id} onClick={() => setPreset(preset === p.id ? "" : p.id)}>
+          {p.label}
+        </ChipBtn>
+      ))}
+    </ChipRow>
+  );
+}
+
 function Select({
   value, onChange, options, placeholder, cls,
 }: {
@@ -280,36 +360,6 @@ function Chevron() {
   );
 }
 
-// Linha de atalhos (estilo de vida ou faixa de preço) — esconde presets vazios
-// e a linha inteira some se nenhum preset do grupo tiver carro.
-function PresetRow({ titulo, grupo, preset, setPreset, counts }: {
-  titulo: string; grupo: "estilo" | "preco"; preset: string; setPreset: (v: string) => void; counts: Record<string, number>;
-}) {
-  const items = PRESETS.filter((p) => p.grupo === grupo && counts[p.id] > 0);
-  if (items.length === 0) return null;
-  return (
-    <div className="mt-5">
-      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/40 mb-2">{titulo}</p>
-      <div className="flex flex-wrap gap-2">
-        {items.map((p) => {
-          const ativo = preset === p.id;
-          return (
-            <button
-              key={p.id}
-              onClick={() => setPreset(ativo ? "" : p.id)}
-              className={`px-3.5 py-1.5 rounded-full text-[12px] font-bold transition ${
-                ativo ? "bg-white text-gray-900" : "bg-white/5 text-white/70 hover:bg-white/10 ring-1 ring-inset ring-white/10"
-              }`}
-            >
-              {p.label}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 // ─── Card do veículo ──────────────────────────────────────────────────────────
 function Card({ c }: { c: PortalCarro }) {
   const titulo = [c.marca, c.modelo].filter(Boolean).join(" ") || c.modelo || "Veículo";
@@ -318,7 +368,6 @@ function Card({ c }: { c: PortalCarro }) {
     `Olá! Vi o ${[c.marca, c.modelo, c.ano].filter(Boolean).join(" ")} no portal AutoZap e tenho interesse. Ainda está disponível?`
   );
   const wa = c.loja.whatsapp ? `https://wa.me/${c.loja.whatsapp.replace(/\D/g, "")}?text=${msg}` : null;
-  const specs = [fmtKm(c.km), c.combustivel, c.cambio].filter(Boolean) as string[];
 
   return (
     <article className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 flex flex-col">
@@ -367,26 +416,22 @@ function Card({ c }: { c: PortalCarro }) {
           {[c.versao, c.ano].filter(Boolean).join(" • ") || "—"}
         </p>
 
-        {specs.length > 0 && (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-3 text-[11px] text-gray-500 font-semibold">
-            {fmtKm(c.km) && <span className="flex items-center gap-1"><Gauge size={11} /> {fmtKm(c.km)}</span>}
-            {c.combustivel && <span className="flex items-center gap-1"><Fuel size={11} /> {c.combustivel}</span>}
-            {c.cambio && <span className="flex items-center gap-1"><Cog size={11} /> {c.cambio}</span>}
-          </div>
-        )}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-3 text-[11px] text-gray-500 font-semibold">
+          {fmtKm(c.km) && <span className="flex items-center gap-1"><Gauge size={11} /> {fmtKm(c.km)}</span>}
+          {c.combustivel && <span className="flex items-center gap-1"><Fuel size={11} /> {c.combustivel}</span>}
+          {c.cambio && <span className="flex items-center gap-1"><Cog size={11} /> {c.cambio}</span>}
+        </div>
 
         <div className="mt-4 pt-4 border-t border-gray-50">
           <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-0.5">Preço</p>
           <p className="text-2xl font-black tracking-tighter text-gray-900">{fmtBRL(c.preco)}</p>
         </div>
 
-        {/* Loja + local */}
         <div className="mt-3 flex items-center justify-between text-[10px] text-gray-400 font-bold uppercase tracking-wider">
           <span className="truncate">{c.loja.nome ?? "Revenda verificada"}</span>
           {local && <span className="flex items-center gap-1 shrink-0"><MapPin size={10} /> {local}</span>}
         </div>
 
-        {/* CTA — o moat: cai direto no WhatsApp do agente */}
         {wa ? (
           <a
             href={wa}
