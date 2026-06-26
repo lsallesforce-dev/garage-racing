@@ -680,6 +680,40 @@ export default function AdminPage() {
     carregar(secret);
   }
 
+  // Deleta um tenant POR COMPLETO (dados + login). Irreversível — confirmação
+  // dupla (exige digitar o nome) quando o tenant ainda tem veículos ou leads.
+  async function deletarTenant(t: Tenant) {
+    const temDados = (t.veiculos ?? 0) > 0 || (t.leads ?? 0) > 0;
+    const aviso =
+      `⚠️ DELETAR PERMANENTEMENTE "${t.nome_empresa}"?\n\n` +
+      `Apaga PARA SEMPRE: config, ${t.veiculos} veículo(s), ${t.leads} lead(s), ` +
+      `todas as mensagens, vendedores, anúncios, financeiro e o LOGIN do cliente.\n\n` +
+      `Não dá pra desfazer.`;
+    if (!confirm(aviso)) return;
+    if (temDados) {
+      const digitou = prompt(`Esse tenant TEM dados. Para confirmar, digite o nome EXATO da empresa:\n\n${t.nome_empresa}`);
+      if ((digitou ?? "").trim() !== t.nome_empresa.trim()) {
+        alert("Nome não confere — exclusão cancelada.");
+        return;
+      }
+    }
+    setAcaoLoading(`${t.user_id}-delete`);
+    const res = await fetch("/api/admin/delete-tenant", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-admin-secret": secret },
+      body: JSON.stringify({ user_id: t.user_id }),
+    });
+    const data = await res.json().catch(() => ({}));
+    setAcaoLoading(null);
+    if (!res.ok) {
+      alert("Erro ao deletar: " + (data.error ?? "desconhecido") + (data.detalhes ? "\n\n" + data.detalhes.join("\n") : ""));
+      return;
+    }
+    if (data.aviso) alert(data.aviso);
+    setExpandido(null);
+    carregar(secret);
+  }
+
   // ── Métricas derivadas ─────────────────────────────────────────────────────
   const tenants = stats?.tenants ?? [];
 
@@ -1222,6 +1256,25 @@ export default function AdminPage() {
                                   )}
                                 </div>
                               </div>
+                            </div>
+
+                            {/* Zona de perigo — exclusão permanente do tenant */}
+                            <div className="mt-6 pt-5 border-t border-red-100 flex items-center justify-between flex-wrap gap-3">
+                              <div>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-red-500 mb-1 flex items-center gap-1.5">
+                                  <AlertTriangle size={11} /> Zona de Perigo
+                                </p>
+                                <p className="text-[11px] text-gray-500 max-w-md">
+                                  Apaga o tenant e tudo dele — veículos, leads, mensagens, financeiro e o login. Permanente, sem desfazer.
+                                </p>
+                              </div>
+                              <button onClick={() => deletarTenant(t)}
+                                disabled={acaoLoading === `${t.user_id}-delete`}
+                                className="flex items-center gap-1.5 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition disabled:opacity-50 shrink-0">
+                                {acaoLoading === `${t.user_id}-delete`
+                                  ? <><Loader2 size={13} className="animate-spin" /> Deletando...</>
+                                  : <><Trash2 size={13} /> Deletar Permanentemente</>}
+                              </button>
                             </div>
                           </td>
                         </tr>
