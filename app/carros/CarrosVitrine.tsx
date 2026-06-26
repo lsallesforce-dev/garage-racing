@@ -20,6 +20,19 @@ function uniqSorted(arr: (string | null | undefined)[]): string[] {
 
 type Ordenar = "recentes" | "preco_asc" | "preco_desc";
 
+// Atalhos por estilo de vida e faixa de preço (briefing). Predicados sobre o
+// dado real — presets com 0 resultado são escondidos (nunca parece vazio).
+const PRESETS: { id: string; label: string; grupo: "estilo" | "preco"; pred: (c: PortalCarro) => boolean }[] = [
+  { id: "familia",  label: "Pra família",      grupo: "estilo", pred: (c) => ["SUV", "Sedan", "Utilitário"].includes(c.categoria ?? "") },
+  { id: "primeiro", label: "Primeiro carro",   grupo: "estilo", pred: (c) => c.categoria === "Hatch" && (c.preco ?? Infinity) <= 60000 },
+  { id: "app",      label: "Motorista de app", grupo: "estilo", pred: (c) => c.combustivel === "Flex" && ["Sedan", "Hatch"].includes(c.categoria ?? "") && (c.preco ?? Infinity) <= 90000 },
+  { id: "economico",label: "Econômico",        grupo: "estilo", pred: (c) => (c.preco ?? Infinity) <= 45000 },
+  { id: "ate40",    label: "Até R$ 40 mil",    grupo: "preco",  pred: (c) => (c.preco ?? Infinity) <= 40000 },
+  { id: "p4070",    label: "R$ 40–70 mil",     grupo: "preco",  pred: (c) => (c.preco ?? 0) > 40000 && (c.preco ?? 0) <= 70000 },
+  { id: "p70100",   label: "R$ 70–100 mil",    grupo: "preco",  pred: (c) => (c.preco ?? 0) > 70000 && (c.preco ?? 0) <= 100000 },
+  { id: "acima100", label: "Acima de R$ 100 mil", grupo: "preco", pred: (c) => (c.preco ?? 0) > 100000 },
+];
+
 export default function CarrosVitrine({ carros, totalLojas }: { carros: PortalCarro[]; totalLojas: number }) {
   const [busca, setBusca] = useState("");
   const [marca, setMarca] = useState("");
@@ -27,7 +40,15 @@ export default function CarrosVitrine({ carros, totalLojas }: { carros: PortalCa
   const [ano, setAno] = useState("");
   const [precoMax, setPrecoMax] = useState("");
   const [uf, setUf] = useState("");
+  const [preset, setPreset] = useState("");
   const [ordenar, setOrdenar] = useState<Ordenar>("recentes");
+
+  // Conta quantos carros cada preset captura — usado p/ esconder os vazios.
+  const presetCounts = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const p of PRESETS) m[p.id] = carros.filter(p.pred).length;
+    return m;
+  }, [carros]);
 
   // ── Facets derivados do estoque real ──────────────────────────────────────
   const marcas = useMemo(() => uniqSorted(carros.map((c) => c.marca)), [carros]);
@@ -45,7 +66,9 @@ export default function CarrosVitrine({ carros, totalLojas }: { carros: PortalCa
   // ── Filtro + ordenação ────────────────────────────────────────────────────
   const filtrados = useMemo(() => {
     const q = busca.trim().toLowerCase();
+    const presetDef = preset ? PRESETS.find((p) => p.id === preset) : null;
     let r = carros.filter((c) => {
+      if (presetDef && !presetDef.pred(c)) return false;
       if (marca && c.marca !== marca) return false;
       if (categoria && c.categoria !== categoria) return false;
       if (ano && String(c.ano) !== ano) return false;
@@ -60,10 +83,10 @@ export default function CarrosVitrine({ carros, totalLojas }: { carros: PortalCa
     if (ordenar === "preco_asc") r = [...r].sort((a, b) => (a.preco ?? Infinity) - (b.preco ?? Infinity));
     if (ordenar === "preco_desc") r = [...r].sort((a, b) => (b.preco ?? -1) - (a.preco ?? -1));
     return r;
-  }, [carros, busca, marca, categoria, ano, uf, precoMax, ordenar]);
+  }, [carros, busca, marca, categoria, ano, uf, precoMax, preset, ordenar]);
 
-  const temFiltro = !!(busca || marca || categoria || ano || precoMax || uf);
-  const limpar = () => { setBusca(""); setMarca(""); setCategoria(""); setAno(""); setPrecoMax(""); setUf(""); };
+  const temFiltro = !!(busca || marca || categoria || ano || precoMax || uf || preset);
+  const limpar = () => { setBusca(""); setMarca(""); setCategoria(""); setAno(""); setPrecoMax(""); setUf(""); setPreset(""); };
 
   const selectCls =
     "appearance-none bg-white border border-gray-200 rounded-xl pl-3.5 pr-8 py-2.5 text-sm font-bold text-gray-700 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 cursor-pointer";
@@ -142,6 +165,30 @@ export default function CarrosVitrine({ carros, totalLojas }: { carros: PortalCa
               })}
             </div>
           )}
+
+          {/* Atalhos por estilo de vida e faixa de preço */}
+          <PresetRow titulo="Pra quem é o carro" grupo="estilo" preset={preset} setPreset={setPreset} counts={presetCounts} />
+          <PresetRow titulo="Por faixa de preço" grupo="preco" preset={preset} setPreset={setPreset} counts={presetCounts} />
+        </div>
+      </section>
+
+      {/* ══ POR QUE COMPRAR AQUI ══ */}
+      <section className="bg-white border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-5 py-5 grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {[
+            { icon: <ShieldCheck size={16} />, t: "Revendas verificadas", d: "Lojas reais, estoque conferido" },
+            { icon: <Video size={16} />, t: "Vídeo de verdade", d: "Veja o carro, não só foto" },
+            { icon: <MessageCircle size={16} />, t: "Atendimento na hora", d: "Cai direto no WhatsApp da loja" },
+            { icon: <TrendingDown size={16} />, t: "Preço transparente", d: "FIPE na ficha, sem taxa oculta" },
+          ].map((b) => (
+            <div key={b.t} className="flex items-start gap-2.5">
+              <span className="w-9 h-9 rounded-xl bg-red-50 text-red-600 grid place-items-center shrink-0">{b.icon}</span>
+              <div>
+                <p className="text-[12px] font-black uppercase tracking-wide text-gray-900 leading-tight">{b.t}</p>
+                <p className="text-[11px] text-gray-500 mt-0.5">{b.d}</p>
+              </div>
+            </div>
+          ))}
         </div>
       </section>
 
@@ -230,6 +277,36 @@ function Chevron() {
     <svg className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
       <path d="M6 9l6 6 6-6" />
     </svg>
+  );
+}
+
+// Linha de atalhos (estilo de vida ou faixa de preço) — esconde presets vazios
+// e a linha inteira some se nenhum preset do grupo tiver carro.
+function PresetRow({ titulo, grupo, preset, setPreset, counts }: {
+  titulo: string; grupo: "estilo" | "preco"; preset: string; setPreset: (v: string) => void; counts: Record<string, number>;
+}) {
+  const items = PRESETS.filter((p) => p.grupo === grupo && counts[p.id] > 0);
+  if (items.length === 0) return null;
+  return (
+    <div className="mt-5">
+      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-white/40 mb-2">{titulo}</p>
+      <div className="flex flex-wrap gap-2">
+        {items.map((p) => {
+          const ativo = preset === p.id;
+          return (
+            <button
+              key={p.id}
+              onClick={() => setPreset(ativo ? "" : p.id)}
+              className={`px-3.5 py-1.5 rounded-full text-[12px] font-bold transition ${
+                ativo ? "bg-white text-gray-900" : "bg-white/5 text-white/70 hover:bg-white/10 ring-1 ring-inset ring-white/10"
+              }`}
+            >
+              {p.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
