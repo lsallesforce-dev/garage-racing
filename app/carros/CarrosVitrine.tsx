@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import type { PortalCarro } from "@/lib/portal/query";
 import {
   Search, MapPin, Gauge, Fuel, Cog, Video, ShieldCheck, BadgeCheck,
@@ -245,7 +246,7 @@ function Card({ c }: { c: PortalCarro }) {
   return (
     <article className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 flex flex-col">
       {/* Foto */}
-      <div className="relative aspect-[4/3] bg-gray-100 overflow-hidden">
+      <Link href={`/carros/${c.id}`} className="relative aspect-[4/3] bg-gray-100 overflow-hidden block">
         {c.foto && (
           <>
             <img src={c.foto} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover scale-110 blur-2xl opacity-70" />
@@ -278,11 +279,13 @@ function Card({ c }: { c: PortalCarro }) {
             </span>
           )}
         </div>
-      </div>
+      </Link>
 
       {/* Info */}
       <div className="p-5 flex flex-col flex-1">
-        <h2 className="text-[17px] font-black uppercase italic tracking-tight leading-none text-gray-900">{titulo}</h2>
+        <Link href={`/carros/${c.id}`}>
+          <h2 className="text-[17px] font-black uppercase italic tracking-tight leading-none text-gray-900 hover:text-red-600 transition">{titulo}</h2>
+        </Link>
         <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1.5 line-clamp-1">
           {[c.versao, c.ano].filter(Boolean).join(" • ") || "—"}
         </p>

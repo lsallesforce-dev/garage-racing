@@ -8,6 +8,7 @@
 //   veiculos.status_venda = 'DISPONIVEL' AND preco_sugerido > 0 AND tem foto
 
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { toVideoUrl } from "@/lib/r2-url";
 import { normalizeMarca, normalizeCategoria, normalizeCombustivel, normalizeCidade } from "./normalize";
 
 export interface PortalCarro {
@@ -109,4 +110,107 @@ export async function getPortalEstoque(): Promise<PortalCarro[]> {
   }
 
   return out;
+}
+
+// ─── Detalhe de um carro (página /carros/[id]) ───────────────────────────────
+export interface PortalCarroDetalhe extends PortalCarro {
+  fotos: string[];           // galeria completa (capa primeiro)
+  videoUrl: string | null;   // resolvido p/ proxy /api/r2
+  opcionais: string[];
+  pontosFortes: string[];
+  motor: string | null;
+  potenciaCv: number | null;
+  condicao: string | null;
+  qtdProprietarios: number | null;
+  valorFipe: number | null;
+  anoFabricacao: number | null;
+  detalhesInspecao: string | null;
+}
+
+// Colunas SEGURAS p/ exibição pública — nada de placa/chassi/renavam/custos/NF.
+const SELECT_DETALHE =
+  `id, marca, modelo, versao, ano, ano_modelo, ano_fabricacao, preco_sugerido,
+   quilometragem_estimada, combustivel, cambio, cor, categoria, capa_marketing_url,
+   fotos, video_url, municipio_origem, uf_origem, vistoriado, vistoria_cautelar,
+   segundo_dono, abaixo_fipe, de_repasse, opcionais, pontos_fortes_venda, motor,
+   potencia_cv, condicao, qtd_proprietarios, valor_fipe, detalhes_inspecao, user_id`;
+
+export async function getPortalCarroDetalhe(id: string): Promise<PortalCarroDetalhe | null> {
+  if (!id || !/^[0-9a-fA-F-]{36}$/.test(id)) return null; // valida UUID
+
+  const { data } = await supabaseAdmin
+    .from("veiculos")
+    .select(SELECT_DETALHE)
+    .eq("id", id)
+    .eq("status_venda", "DISPONIVEL")
+    .maybeSingle();
+  if (!data) return null;
+  const v = data as any;
+
+  // Tenant tem que ser cliente real (não-demo, ativo) — senão não é publicável.
+  const { data: lojas } = await supabaseAdmin
+    .from("config_garage")
+    .select("nome_empresa, vitrine_slug, whatsapp, whatsapp_agente, plano, plano_ativo")
+    .eq("user_id", v.user_id);
+  const lojaRow = (lojas ?? []).find((l: any) => l.plano !== "demo" && l.plano_ativo);
+  if (!lojaRow) return null;
+
+  const foto: string | null =
+    v.capa_marketing_url ?? (Array.isArray(v.fotos) && v.fotos.length > 0 ? v.fotos[0] : null);
+  if (!foto) return null;
+
+  const fotosArr: string[] = Array.isArray(v.fotos) ? v.fotos.filter(Boolean) : [];
+  const galeria =
+    v.capa_marketing_url && !fotosArr.includes(v.capa_marketing_url)
+      ? [v.capa_marketing_url, ...fotosArr]
+      : fotosArr.length > 0
+      ? fotosArr
+      : [foto];
+
+  return {
+    id: v.id,
+    marca: normalizeMarca(v.marca),
+    modelo: v.modelo ?? null,
+    versao: v.versao ?? null,
+    ano: v.ano_modelo ?? v.ano_fabricacao ?? v.ano ?? null,
+    preco: v.preco_sugerido ?? null,
+    km: v.quilometragem_estimada ?? null,
+    combustivel: normalizeCombustivel(v.combustivel),
+    cambio: v.cambio ?? null,
+    cor: v.cor ?? null,
+    categoria: normalizeCategoria(v.categoria),
+    foto,
+    temVideo: !!v.video_url,
+    cidade: normalizeCidade(v.municipio_origem),
+    uf: v.uf_origem ?? null,
+    selos: {
+      vistoriado: !!v.vistoriado,
+      cautelar: !!v.vistoria_cautelar,
+      unicoDono: v.segundo_dono === false,
+      abaixoFipe: !!v.abaixo_fipe,
+      repasse: !!v.de_repasse,
+    },
+    loja: {
+      nome: lojaRow.nome_empresa ?? null,
+      slug: lojaRow.vitrine_slug ?? null,
+      whatsapp: (lojaRow.whatsapp_agente || lojaRow.whatsapp) ?? null,
+    },
+    fotos: galeria,
+    videoUrl: v.video_url ? toVideoUrl(v.video_url) : null,
+    opcionais: Array.isArray(v.opcionais) ? v.opcionais.filter(Boolean) : [],
+    pontosFortes: Array.isArray(v.pontos_fortes_venda) ? v.pontos_fortes_venda.filter(Boolean) : [],
+    motor: v.motor ?? null,
+    potenciaCv: v.potencia_cv ?? null,
+    condicao: v.condicao ?? null,
+    qtdProprietarios: v.qtd_proprietarios ?? null,
+    valorFipe: v.valor_fipe ?? null,
+    anoFabricacao: v.ano_fabricacao ?? null,
+    detalhesInspecao: v.detalhes_inspecao ?? null,
+  };
+}
+
+// Carros relacionados (mesma loja, exclui o atual). Usa o estoque publicável.
+export async function getPortalRelacionados(carro: PortalCarroDetalhe, limite = 4): Promise<PortalCarro[]> {
+  const todos = await getPortalEstoque();
+  return todos.filter((c) => c.loja.nome === carro.loja.nome && c.id !== carro.id).slice(0, limite);
 }
