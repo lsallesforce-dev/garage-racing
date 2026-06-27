@@ -9,7 +9,7 @@
 
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { toVideoUrl } from "@/lib/r2-url";
-import { normalizeMarca, normalizeCategoria, normalizeCombustivel, normalizeCidade } from "./normalize";
+import { normalizeMarca, normalizeCategoria, normalizeCombustivel, normalizeCidade, slugify } from "./normalize";
 
 export interface PortalCarro {
   id: string;
@@ -213,4 +213,78 @@ export async function getPortalCarroDetalhe(id: string): Promise<PortalCarroDeta
 export async function getPortalRelacionados(carro: PortalCarroDetalhe, limite = 4): Promise<PortalCarro[]> {
   const todos = await getPortalEstoque();
   return todos.filter((c) => c.loja.nome === carro.loja.nome && c.id !== carro.id).slice(0, limite);
+}
+
+// ─── Landing pages de SEO (/carros/[marca]/[modelo]/[cidade]) ─────────────────
+// Modelo curto = 1ª palavra do modelo verboso ("CAPTUR Intense 2.0..." → "Captur").
+export function modeloCurtoStr(modelo?: string | null): string | null {
+  if (!modelo) return null;
+  const w = modelo.trim().split(/\s+/)[0];
+  return w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : null;
+}
+
+export interface PortalLanding {
+  marca: string;
+  modelo: string | null;
+  cidade: string | null;
+  carros: PortalCarro[];
+  precoMin: number | null;
+}
+
+// Resolve uma landing pelos slugs. Retorna null se NÃO houver estoque real
+// (anti-página-fina: o Google pune doorway pages vazias).
+export async function getPortalLanding(
+  marcaSlug: string,
+  modeloSlug?: string,
+  cidadeSlug?: string
+): Promise<PortalLanding | null> {
+  if (!marcaSlug) return null;
+  const todos = await getPortalEstoque();
+
+  let cars = todos.filter((c) => c.marca && slugify(c.marca) === marcaSlug);
+  if (cars.length === 0) return null;
+  const marca = cars[0].marca!;
+
+  let modelo: string | null = null;
+  if (modeloSlug) {
+    cars = cars.filter((c) => {
+      const mc = modeloCurtoStr(c.modelo);
+      return mc && slugify(mc) === modeloSlug;
+    });
+    if (cars.length === 0) return null;
+    modelo = modeloCurtoStr(cars[0].modelo);
+  }
+
+  let cidade: string | null = null;
+  if (cidadeSlug) {
+    cars = cars.filter((c) => c.cidade && slugify(c.cidade) === cidadeSlug);
+    if (cars.length === 0) return null;
+    cidade = cars[0].cidade;
+  }
+
+  const precoMin = cars.reduce<number | null>(
+    (min, c) => (c.preco != null && (min == null || c.preco < min) ? c.preco : min),
+    null
+  );
+  return { marca, modelo, cidade, carros: cars, precoMin };
+}
+
+// Enumera TODAS as combinações de landing com estoque real — pro sitemap.
+// Cada item já tem ≥1 carro por construção (sem páginas fina/vazia).
+export async function getPortalLandingPaths(): Promise<string[]> {
+  const todos = await getPortalEstoque();
+  const set = new Set<string>();
+  for (const c of todos) {
+    if (!c.marca) continue;
+    const m = slugify(c.marca);
+    if (!m) continue;
+    set.add(m);
+    const mc = modeloCurtoStr(c.modelo);
+    if (mc) {
+      const mm = `${m}/${slugify(mc)}`;
+      set.add(mm);
+      if (c.cidade) set.add(`${mm}/${slugify(c.cidade)}`);
+    }
+  }
+  return [...set];
 }

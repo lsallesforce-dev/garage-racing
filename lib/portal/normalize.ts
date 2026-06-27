@@ -99,3 +99,16 @@ export function normalizeCidade(raw?: string | null): string | null {
     .map((w, i) => (i > 0 && MINUSCULAS.has(w) ? w : w.charAt(0).toUpperCase() + w.slice(1)))
     .join(" ");
 }
+
+// ─── Slug pra URLs de SEO ─────────────────────────────────────────────────────
+// "VW - VolksWagen" → "vw-volkswagen"? NÃO: passa pela marca normalizada antes.
+// "São José do Rio Preto" → "sao-jose-do-rio-preto". "Gol" → "gol".
+export function slugify(s?: string | null): string {
+  if (!s) return "";
+  return s
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}

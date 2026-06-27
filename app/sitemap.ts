@@ -10,6 +10,7 @@
 
 import type { MetadataRoute } from "next";
 import { createClient } from "@supabase/supabase-js";
+import { getPortalEstoque, getPortalLandingPaths } from "@/lib/portal/query";
 
 const BASE = (process.env.NEXT_PUBLIC_APP_URL || "https://www.autozap.digital").replace(/\/+$/, "");
 
@@ -71,7 +72,27 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       })
       .filter((u): u is NonNullable<typeof u> => u !== null);
 
-    return [...estaticas, ...vitrines, ...veiculos];
+    // Portal agregado /carros — listagem, landing pages de SEO (marca/modelo/
+    // cidade, só combos com estoque real) e detalhe de cada carro publicável.
+    const [portalEstoque, landingPaths] = await Promise.all([
+      getPortalEstoque(),
+      getPortalLandingPaths(),
+    ]);
+    const portalPages: MetadataRoute.Sitemap = [
+      { url: `${BASE}/carros`, changeFrequency: "daily", priority: 0.9 },
+      ...landingPaths.map((p) => ({
+        url: `${BASE}/carros/${p}`,
+        changeFrequency: "daily" as const,
+        priority: 0.7,
+      })),
+      ...portalEstoque.map((c) => ({
+        url: `${BASE}/carros/${c.id}`,
+        changeFrequency: "weekly" as const,
+        priority: 0.6,
+      })),
+    ];
+
+    return [...estaticas, ...vitrines, ...veiculos, ...portalPages];
   } catch (e) {
     // Fallback gracioso: ao menos as institucionais entram no sitemap.
     console.error("[sitemap] erro ao montar vitrines dinâmicas:", e);
