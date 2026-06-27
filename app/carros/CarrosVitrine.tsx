@@ -78,10 +78,15 @@ export default function CarrosVitrine({ carros, totalLojas }: { carros: PortalCa
   }, [carros]);
   const [destaqueIdx, setDestaqueIdx] = useState(0);
   const [pausado, setPausado] = useState(false);
-  // Troca automática a cada 2s (pausa no hover).
+  // Pré-carrega as fotos do carrossel pro browser cachear antes de exibir —
+  // evita a troca acontecer com a imagem ainda em branco.
+  useEffect(() => {
+    destaques.forEach((c) => { if (c.foto) { const img = new Image(); img.src = c.foto; } });
+  }, [destaques]);
+  // Troca automática a cada 4s (pausa no hover).
   useEffect(() => {
     if (destaques.length <= 1 || pausado) return;
-    const t = setInterval(() => setDestaqueIdx((i) => (i + 1) % destaques.length), 2000);
+    const t = setInterval(() => setDestaqueIdx((i) => (i + 1) % destaques.length), 4000);
     return () => clearInterval(t);
   }, [destaques.length, pausado]);
   const atual = destaques.length ? destaques[destaqueIdx % destaques.length] : null;
@@ -208,6 +213,13 @@ export default function CarrosVitrine({ carros, totalLojas }: { carros: PortalCa
                     className="absolute right-3 top-1/2 -translate-y-1/2 z-20 w-11 h-11 rounded-full bg-white/90 hover:bg-white shadow-lg grid place-items-center text-gray-800 transition active:scale-95">
                     <ChevronRight size={20} strokeWidth={2.5} />
                   </button>
+                  {/* Dots — indicam e trocam o carro */}
+                  <div className="flex justify-center gap-1.5 mt-4">
+                    {destaques.map((_, i) => (
+                      <button key={i} onClick={() => setDestaqueIdx(i)} aria-label={`Ir pro carro ${i + 1}`}
+                        className={`h-2 rounded-full transition-all ${i === destaqueIdx ? "w-6 bg-red-600" : "w-2 bg-gray-300 hover:bg-gray-400"}`} />
+                    ))}
+                  </div>
                 </>
               )}
             </div>
