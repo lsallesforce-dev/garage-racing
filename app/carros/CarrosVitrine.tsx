@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { PortalCarro } from "@/lib/portal/query";
 import {
   Search, MapPin, Gauge, Fuel, Cog, Video, ShieldCheck, BadgeCheck,
-  TrendingDown, MessageCircle, X, Car, ArrowRight,
+  TrendingDown, MessageCircle, X, Car,
 } from "lucide-react";
 
 const fmtBRL = (v: number | null) =>
@@ -18,33 +18,48 @@ function uniqSorted(arr: (string | null | undefined)[]): string[] {
   return [...new Set(arr.filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b, "pt-BR"));
 }
 
+// Modelo no banco é verboso ("CAPTUR Intense 2.0 16V..."). Pro dropdown usamos a
+// 1ª palavra ("Captur") — read-time, sem mexer no dado.
+function modeloCurto(c: PortalCarro): string | null {
+  if (!c.modelo) return null;
+  const w = c.modelo.trim().split(/\s+/)[0];
+  return w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : null;
+}
+
 type Ordenar = "recentes" | "preco_asc" | "preco_desc";
 
-// Atalhos por estilo de vida e faixa de preço (briefing). Predicados sobre o
-// dado real — presets com 0 resultado são escondidos (nunca parece vazio).
-const PRESETS: { id: string; label: string; grupo: "estilo" | "preco"; pred: (c: PortalCarro) => boolean }[] = [
-  { id: "familia",  label: "Pra família",      grupo: "estilo", pred: (c) => ["SUV", "Sedan", "Utilitário"].includes(c.categoria ?? "") },
-  { id: "primeiro", label: "Primeiro carro",   grupo: "estilo", pred: (c) => c.categoria === "Hatch" && (c.preco ?? Infinity) <= 60000 },
-  { id: "app",      label: "Motorista de app", grupo: "estilo", pred: (c) => c.combustivel === "Flex" && ["Sedan", "Hatch"].includes(c.categoria ?? "") && (c.preco ?? Infinity) <= 90000 },
-  { id: "economico",label: "Econômico",        grupo: "estilo", pred: (c) => (c.preco ?? Infinity) <= 45000 },
-  { id: "ate40",    label: "Até R$ 40 mil",    grupo: "preco",  pred: (c) => (c.preco ?? Infinity) <= 40000 },
-  { id: "p4070",    label: "R$ 40–70 mil",     grupo: "preco",  pred: (c) => (c.preco ?? 0) > 40000 && (c.preco ?? 0) <= 70000 },
-  { id: "p70100",   label: "R$ 70–100 mil",    grupo: "preco",  pred: (c) => (c.preco ?? 0) > 70000 && (c.preco ?? 0) <= 100000 },
-  { id: "acima100", label: "Acima de R$ 100 mil", grupo: "preco", pred: (c) => (c.preco ?? 0) > 100000 },
+// Faixas de preço do banner (estilo "Price Range" do AutoNexus).
+const FAIXAS: { id: string; label: string; min: number; max: number }[] = [
+  { id: "ate40",    label: "Até R$ 40 mil",      min: 0,      max: 40000 },
+  { id: "f4070",    label: "R$ 40–70 mil",       min: 40000,  max: 70000 },
+  { id: "f70100",   label: "R$ 70–100 mil",      min: 70000,  max: 100000 },
+  { id: "acima100", label: "Acima de R$ 100 mil", min: 100000, max: Infinity },
+];
+
+// Atalhos por estilo de vida (briefing) — predicados sobre dado real; vazios escondidos.
+const PRESETS: { id: string; label: string; pred: (c: PortalCarro) => boolean }[] = [
+  { id: "familia",  label: "Pra família",      pred: (c) => ["SUV", "Sedan", "Utilitário"].includes(c.categoria ?? "") },
+  { id: "primeiro", label: "Primeiro carro",   pred: (c) => c.categoria === "Hatch" && (c.preco ?? Infinity) <= 60000 },
+  { id: "app",      label: "Motorista de app", pred: (c) => c.combustivel === "Flex" && ["Sedan", "Hatch"].includes(c.categoria ?? "") && (c.preco ?? Infinity) <= 90000 },
+  { id: "economico",label: "Econômico",        pred: (c) => (c.preco ?? Infinity) <= 45000 },
 ];
 
 export default function CarrosVitrine({ carros, totalLojas }: { carros: PortalCarro[]; totalLojas: number }) {
   const [busca, setBusca] = useState("");
   const [marca, setMarca] = useState("");
+  const [modelo, setModelo] = useState("");
   const [categoria, setCategoria] = useState("");
   const [ano, setAno] = useState("");
-  const [precoMax, setPrecoMax] = useState("");
-  const [uf, setUf] = useState("");
+  const [faixa, setFaixa] = useState("");
   const [preset, setPreset] = useState("");
   const [ordenar, setOrdenar] = useState<Ordenar>("recentes");
 
   // ── Facets derivados do estoque real ──────────────────────────────────────
   const marcas = useMemo(() => uniqSorted(carros.map((c) => c.marca)), [carros]);
+  const modelos = useMemo(() => {
+    const pool = marca ? carros.filter((c) => c.marca === marca) : carros;
+    return uniqSorted(pool.map(modeloCurto));
+  }, [carros, marca]);
   const categorias = useMemo(() => {
     const m = new Map<string, number>();
     carros.forEach((c) => { if (c.categoria) m.set(c.categoria, (m.get(c.categoria) ?? 0) + 1); });
@@ -54,7 +69,6 @@ export default function CarrosVitrine({ carros, totalLojas }: { carros: PortalCa
     () => uniqSorted(carros.map((c) => c.ano?.toString())).sort((a, b) => Number(b) - Number(a)),
     [carros]
   );
-  const ufs = useMemo(() => uniqSorted(carros.map((c) => c.uf)), [carros]);
 
   // Carro de destaque pro hero: o mais premium (maior preço) com marca e foto.
   const destaque = useMemo(() => {
@@ -73,13 +87,17 @@ export default function CarrosVitrine({ carros, totalLojas }: { carros: PortalCa
   const filtrados = useMemo(() => {
     const q = busca.trim().toLowerCase();
     const presetDef = preset ? PRESETS.find((p) => p.id === preset) : null;
+    const faixaDef = faixa ? FAIXAS.find((f) => f.id === faixa) : null;
     let r = carros.filter((c) => {
       if (presetDef && !presetDef.pred(c)) return false;
       if (marca && c.marca !== marca) return false;
+      if (modelo && modeloCurto(c) !== modelo) return false;
       if (categoria && c.categoria !== categoria) return false;
       if (ano && String(c.ano) !== ano) return false;
-      if (uf && c.uf !== uf) return false;
-      if (precoMax && (c.preco ?? Infinity) > Number(precoMax)) return false;
+      if (faixaDef) {
+        const p = c.preco ?? -1;
+        if (p < faixaDef.min || p >= faixaDef.max) return false;
+      }
       if (q) {
         const hay = `${c.marca ?? ""} ${c.modelo ?? ""} ${c.versao ?? ""} ${c.cidade ?? ""} ${c.categoria ?? ""}`.toLowerCase();
         if (!hay.includes(q)) return false;
@@ -89,20 +107,19 @@ export default function CarrosVitrine({ carros, totalLojas }: { carros: PortalCa
     if (ordenar === "preco_asc") r = [...r].sort((a, b) => (a.preco ?? Infinity) - (b.preco ?? Infinity));
     if (ordenar === "preco_desc") r = [...r].sort((a, b) => (b.preco ?? -1) - (a.preco ?? -1));
     return r;
-  }, [carros, busca, marca, categoria, ano, uf, precoMax, preset, ordenar]);
+  }, [carros, busca, marca, modelo, categoria, ano, faixa, preset, ordenar]);
 
-  const temFiltro = !!(busca || marca || categoria || ano || precoMax || uf || preset);
-  const limpar = () => { setBusca(""); setMarca(""); setCategoria(""); setAno(""); setPrecoMax(""); setUf(""); setPreset(""); };
-
-  const selectCls =
-    "appearance-none bg-white border border-gray-200 rounded-xl pl-3.5 pr-8 py-2.5 text-sm font-bold text-gray-700 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 cursor-pointer";
+  const temFiltro = !!(busca || marca || modelo || categoria || ano || faixa || preset);
+  const limpar = () => {
+    setBusca(""); setMarca(""); setModelo(""); setCategoria(""); setAno(""); setFaixa(""); setPreset("");
+  };
 
   return (
     <div>
       {/* ══ HERO (claro, 2 colunas — estilo AutoNexus) ══ */}
       <section className="relative overflow-hidden bg-gradient-to-b from-white to-[#f1f1ef] border-b border-gray-200">
         <div className="absolute -top-24 -right-24 w-[380px] h-[380px] rounded-full bg-red-500/10 blur-[120px] pointer-events-none" />
-        <div className="relative max-w-7xl mx-auto px-5 py-12 lg:py-16 grid lg:grid-cols-2 gap-10 lg:gap-12 items-center">
+        <div className="relative max-w-7xl mx-auto px-5 pt-12 lg:pt-16 pb-20 grid lg:grid-cols-2 gap-10 lg:gap-12 items-center">
           {/* ESQUERDA */}
           <div>
             <div className="text-[10px] font-black uppercase tracking-[0.22em] text-gray-400 mb-4">
@@ -118,26 +135,6 @@ export default function CarrosVitrine({ carros, totalLojas }: { carros: PortalCa
               WhatsApp. Sem formulário que ninguém responde.
             </p>
 
-            {/* Busca */}
-            <div className="mt-7 max-w-xl">
-              <div className="flex items-center gap-2 bg-white rounded-2xl pl-4 pr-2 py-2 shadow-lg shadow-gray-200/60 ring-1 ring-gray-100">
-                <Search size={20} className="text-gray-400 shrink-0" />
-                <input
-                  value={busca}
-                  onChange={(e) => setBusca(e.target.value)}
-                  placeholder="Busque por marca, modelo ou cidade…"
-                  className="flex-1 bg-transparent text-gray-900 placeholder:text-gray-400 text-[15px] py-2 focus:outline-none"
-                />
-                {busca ? (
-                  <button onClick={() => setBusca("")} className="text-gray-400 hover:text-gray-700 p-2"><X size={16} /></button>
-                ) : (
-                  <a href="#estoque" className="w-10 h-10 rounded-xl bg-red-600 hover:bg-red-700 grid place-items-center text-white transition shrink-0">
-                    <ArrowRight size={18} />
-                  </a>
-                )}
-              </div>
-            </div>
-
             {/* Selos de confiança */}
             <div className="mt-6 flex flex-wrap gap-x-5 gap-y-2">
               {[
@@ -152,7 +149,7 @@ export default function CarrosVitrine({ carros, totalLojas }: { carros: PortalCa
             </div>
 
             {/* Stat */}
-            <div className="mt-6 flex items-center gap-5 text-gray-900">
+            <div className="mt-7 flex items-center gap-5 text-gray-900">
               <Stat n={`${carros.length}`} label="carros" />
               <span className="w-px h-8 bg-gray-200" />
               <Stat n={`${marcas.length}`} label="marcas" />
@@ -161,10 +158,9 @@ export default function CarrosVitrine({ carros, totalLojas }: { carros: PortalCa
             </div>
           </div>
 
-          {/* DIREITA — carro de destaque (preenche o espaço) */}
+          {/* DIREITA — carro de destaque */}
           {destaque && (
             <div className="relative">
-              {/* badge flutuante estilo "830+ Cars Available" */}
               <div className="hidden sm:flex flex-col items-center absolute -top-4 -right-2 z-10 bg-white rounded-2xl shadow-xl shadow-gray-300/50 px-5 py-2.5 ring-1 ring-gray-100">
                 <span className="text-2xl font-black tracking-tighter text-gray-900">{carros.length}</span>
                 <span className="text-[8px] font-black uppercase tracking-widest text-gray-400 -mt-0.5">disponíveis</span>
@@ -193,80 +189,79 @@ export default function CarrosVitrine({ carros, totalLojas }: { carros: PortalCa
         </div>
       </section>
 
-      {/* ══ EXPLORAR POR CARROCERIA / ESTILO / PREÇO ══ */}
-      <section className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-5 py-6 flex flex-col gap-5">
-          {categorias.length > 0 && (
-            <ChipRow titulo="Carroceria">
-              {categorias.map(([cat, n]) => (
-                <ChipBtn key={cat} ativo={categoria === cat} onClick={() => setCategoria(categoria === cat ? "" : cat)}>
-                  {cat} <span className="opacity-50">{n}</span>
-                </ChipBtn>
-              ))}
-            </ChipRow>
-          )}
-          <PresetRow titulo="Pra quem é o carro" grupo="estilo" preset={preset} setPreset={setPreset} counts={presetCounts} />
-          <PresetRow titulo="Por faixa de preço" grupo="preco" preset={preset} setPreset={setPreset} counts={presetCounts} />
+      {/* ══ BANNER DE FILTRO (card branco flutuante — estilo AutoNexus) ══ */}
+      <div id="busca" className="relative z-20 max-w-7xl mx-auto px-5 -mt-12">
+        <div className="bg-white rounded-2xl shadow-xl shadow-gray-300/40 ring-1 ring-gray-100 p-4 sm:p-5">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 items-end">
+            <BannerSelect label="Marca" value={marca} placeholder="Todas" onChange={(v) => { setMarca(v); setModelo(""); }}
+              options={marcas.map((m) => ({ value: m, label: m }))} />
+            <BannerSelect label="Modelo" value={modelo} placeholder="Todos" onChange={setModelo}
+              options={modelos.map((m) => ({ value: m, label: m }))} />
+            <BannerSelect label="Faixa de preço" value={faixa} placeholder="Qualquer" onChange={setFaixa}
+              options={FAIXAS.map((f) => ({ value: f.id, label: f.label }))} />
+            <BannerSelect label="Carroceria" value={categoria} placeholder="Todas" onChange={setCategoria}
+              options={categorias.map(([c, n]) => ({ value: c, label: `${c} (${n})` }))} />
+            <BannerSelect label="Ano" value={ano} placeholder="Qualquer" onChange={setAno}
+              options={anos.map((a) => ({ value: a, label: a }))} />
+            <a href="#estoque" className="flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white rounded-xl px-4 py-2.5 font-black uppercase text-[12px] tracking-widest transition h-[44px] mt-auto">
+              <Search size={16} /> Buscar
+            </a>
+          </div>
+
+          {/* Atalhos por estilo de vida + limpar */}
+          <div className="mt-3 pt-3 border-t border-gray-100 flex flex-wrap items-center gap-2">
+            <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 mr-1">Atalhos</span>
+            {PRESETS.filter((p) => presetCounts[p.id] > 0).map((p) => (
+              <button key={p.id} onClick={() => setPreset(preset === p.id ? "" : p.id)}
+                className={`px-3 py-1.5 rounded-full text-[11px] font-bold transition ${
+                  preset === p.id ? "bg-gray-900 text-white" : "bg-gray-50 text-gray-600 border border-gray-200 hover:border-gray-400"
+                }`}>
+                {p.label}
+              </button>
+            ))}
+            {temFiltro && (
+              <button onClick={limpar} className="ml-auto flex items-center gap-1 text-[11px] font-black uppercase tracking-widest text-red-500 hover:text-red-600">
+                <X size={13} /> Limpar
+              </button>
+            )}
+          </div>
         </div>
-      </section>
+      </div>
 
       {/* ══ POR QUE COMPRAR AQUI ══ */}
-      <section className="bg-[#f7f7f5] border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-5 py-6 grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {[
-            { icon: <ShieldCheck size={16} />, t: "Revendas verificadas", d: "Lojas reais, estoque conferido" },
-            { icon: <Video size={16} />, t: "Vídeo de verdade", d: "Veja o carro, não só foto" },
-            { icon: <MessageCircle size={16} />, t: "Atendimento na hora", d: "Cai direto no WhatsApp da loja" },
-            { icon: <TrendingDown size={16} />, t: "Preço transparente", d: "FIPE na ficha, sem taxa oculta" },
-          ].map((b) => (
-            <div key={b.t} className="flex items-start gap-2.5">
-              <span className="w-9 h-9 rounded-xl bg-red-50 text-red-600 grid place-items-center shrink-0">{b.icon}</span>
-              <div>
-                <p className="text-[12px] font-black uppercase tracking-wide text-gray-900 leading-tight">{b.t}</p>
-                <p className="text-[11px] text-gray-500 mt-0.5">{b.d}</p>
-              </div>
+      <section className="max-w-7xl mx-auto px-5 py-8 grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {[
+          { icon: <ShieldCheck size={16} />, t: "Revendas verificadas", d: "Lojas reais, estoque conferido" },
+          { icon: <Video size={16} />, t: "Vídeo de verdade", d: "Veja o carro, não só foto" },
+          { icon: <MessageCircle size={16} />, t: "Atendimento na hora", d: "Cai direto no WhatsApp da loja" },
+          { icon: <TrendingDown size={16} />, t: "Preço transparente", d: "FIPE na ficha, sem taxa oculta" },
+        ].map((b) => (
+          <div key={b.t} className="flex items-start gap-2.5">
+            <span className="w-9 h-9 rounded-xl bg-red-50 text-red-600 grid place-items-center shrink-0">{b.icon}</span>
+            <div>
+              <p className="text-[12px] font-black uppercase tracking-wide text-gray-900 leading-tight">{b.t}</p>
+              <p className="text-[11px] text-gray-500 mt-0.5">{b.d}</p>
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
       </section>
 
-      {/* ══ FILTROS ══ */}
-      <div id="estoque" className="sticky top-16 z-30 bg-[#f7f7f5]/90 backdrop-blur border-b border-gray-200 scroll-mt-16">
-        <div className="max-w-7xl mx-auto px-5 py-3 flex flex-wrap items-center gap-2.5">
-          <Select value={marca} onChange={setMarca} cls={selectCls} placeholder="Marca" options={marcas} />
-          <Select value={categoria} onChange={setCategoria} cls={selectCls} placeholder="Carroceria" options={categorias.map(([c]) => c)} />
-          <Select value={ano} onChange={setAno} cls={selectCls} placeholder="Ano" options={anos} />
-          <Select value={uf} onChange={setUf} cls={selectCls} placeholder="UF" options={ufs} />
+      {/* ══ GRID ══ */}
+      <section id="estoque" className="max-w-7xl mx-auto px-5 pb-12 scroll-mt-20">
+        <div className="flex items-center justify-between gap-3 mb-6">
+          <p className="text-[11px] font-black uppercase tracking-widest text-gray-400">
+            {filtrados.length} {filtrados.length === 1 ? "veículo encontrado" : "veículos encontrados"}
+          </p>
           <div className="relative">
-            <select value={precoMax} onChange={(e) => setPrecoMax(e.target.value)} className={selectCls}>
-              <option value="">Preço máx.</option>
-              {[30000, 50000, 80000, 100000, 150000, 200000].map((p) => (
-                <option key={p} value={p}>{fmtBRL(p)}</option>
-              ))}
-            </select>
-            <Chevron />
-          </div>
-          <div className="relative ml-auto">
-            <select value={ordenar} onChange={(e) => setOrdenar(e.target.value as Ordenar)} className={selectCls}>
+            <select value={ordenar} onChange={(e) => setOrdenar(e.target.value as Ordenar)}
+              className="appearance-none bg-white border border-gray-200 rounded-xl pl-3.5 pr-8 py-2 text-[13px] font-bold text-gray-700 focus:outline-none focus:border-red-500 cursor-pointer">
               <option value="recentes">Mais recentes</option>
               <option value="preco_asc">Menor preço</option>
               <option value="preco_desc">Maior preço</option>
             </select>
             <Chevron />
           </div>
-          {temFiltro && (
-            <button onClick={limpar} className="flex items-center gap-1 text-[11px] font-black uppercase tracking-widest text-red-500 hover:text-red-600 px-2">
-              <X size={13} /> Limpar
-            </button>
-          )}
         </div>
-      </div>
-
-      {/* ══ GRID ══ */}
-      <section className="max-w-7xl mx-auto px-5 py-10">
-        <p className="text-[11px] font-black uppercase tracking-widest text-gray-400 mb-6">
-          {filtrados.length} {filtrados.length === 1 ? "veículo encontrado" : "veículos encontrados"}
-        </p>
 
         {filtrados.length > 0 ? (
           <div className="grid gap-5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
@@ -298,56 +293,25 @@ function Stat({ n, label }: { n: string; label: string }) {
   );
 }
 
-function ChipRow({ titulo, children }: { titulo: string; children: React.ReactNode }) {
+function BannerSelect({
+  label, value, onChange, options, placeholder,
+}: {
+  label: string; value: string; onChange: (v: string) => void; options: { value: string; label: string }[]; placeholder: string;
+}) {
   return (
     <div>
-      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-gray-400 mb-2">{titulo}</p>
-      <div className="flex flex-wrap gap-2">{children}</div>
-    </div>
-  );
-}
-
-function ChipBtn({ ativo, onClick, children }: { ativo: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`px-3.5 py-1.5 rounded-full text-[12px] font-bold transition ${
-        ativo ? "bg-gray-900 text-white" : "bg-white text-gray-600 border border-gray-200 hover:border-gray-400"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function PresetRow({ titulo, grupo, preset, setPreset, counts }: {
-  titulo: string; grupo: "estilo" | "preco"; preset: string; setPreset: (v: string) => void; counts: Record<string, number>;
-}) {
-  const items = PRESETS.filter((p) => p.grupo === grupo && counts[p.id] > 0);
-  if (items.length === 0) return null;
-  return (
-    <ChipRow titulo={titulo}>
-      {items.map((p) => (
-        <ChipBtn key={p.id} ativo={preset === p.id} onClick={() => setPreset(preset === p.id ? "" : p.id)}>
-          {p.label}
-        </ChipBtn>
-      ))}
-    </ChipRow>
-  );
-}
-
-function Select({
-  value, onChange, options, placeholder, cls,
-}: {
-  value: string; onChange: (v: string) => void; options: string[]; placeholder: string; cls: string;
-}) {
-  return (
-    <div className="relative">
-      <select value={value} onChange={(e) => onChange(e.target.value)} className={cls}>
-        <option value="">{placeholder}</option>
-        {options.map((o) => <option key={o} value={o}>{o}</option>)}
-      </select>
-      <Chevron />
+      <label className="block text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1.5 px-1">{label}</label>
+      <div className="relative">
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full appearance-none bg-gray-50 border border-gray-200 rounded-xl pl-3.5 pr-8 py-2.5 text-sm font-bold text-gray-800 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 cursor-pointer"
+        >
+          <option value="">{placeholder}</option>
+          {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+        <Chevron />
+      </div>
     </div>
   );
 }
@@ -379,7 +343,6 @@ function Card({ c }: { c: PortalCarro }) {
             <img src={c.foto} alt={titulo} loading="lazy" className="absolute inset-0 w-full h-full object-contain" />
           </>
         )}
-        {/* Badges esquerda */}
         <div className="absolute top-3 left-3 flex flex-col items-start gap-1.5">
           {c.temVideo && (
             <span className="flex items-center gap-1 bg-red-600 text-white px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest shadow">
@@ -392,7 +355,6 @@ function Card({ c }: { c: PortalCarro }) {
             </span>
           )}
         </div>
-        {/* Badges direita */}
         <div className="absolute top-3 right-3 flex flex-col items-end gap-1.5">
           {(c.selos.vistoriado || c.selos.cautelar) && (
             <span className="flex items-center gap-1 bg-white/90 backdrop-blur text-gray-700 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest">
