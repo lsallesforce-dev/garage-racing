@@ -266,6 +266,19 @@ export async function POST(req: NextRequest) {
   const patchBase: Record<string, any> = { ultima_msg_at: nowIso, updated_at: nowIso };
   if (!prospect.wa_id) patchBase.wa_id = waId;
 
+  // ── Pausa global da IA de prospecção ────────────────────────────────────────
+  // Campanha pausada (ativo=false) = pausa TOTAL: nem proativo (cron), nem reativo.
+  // A mensagem recebida fica salva (acima) pro humano ver no Inbox, mas a Mari NÃO
+  // responde. Reativa ao religar a campanha (ativo=true).
+  {
+    const { data: cfgCampanha } = await supabaseAdmin
+      .from("prospeccao_config").select("ativo").eq("id", 1).maybeSingle();
+    if (cfgCampanha?.ativo === false) {
+      await supabaseAdmin.from("prospects").update(patchBase).eq("id", prospect.id);
+      return NextResponse.json({ status: "campanha_pausada" });
+    }
+  }
+
   // ── Stand-by humano: não responde se um humano assumiu ──────────────────────
   if (prospect.em_atendimento_humano) {
     // Marca como "respondeu" se ainda não evoluiu, mas mantém o humano no controle.
