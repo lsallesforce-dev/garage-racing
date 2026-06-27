@@ -1,11 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { PortalCarro } from "@/lib/portal/query";
 import {
   Search, MapPin, Gauge, Fuel, Cog, Video, ShieldCheck, BadgeCheck,
-  TrendingDown, MessageCircle, X, Car,
+  TrendingDown, MessageCircle, X, Car, ChevronLeft, ChevronRight,
 } from "lucide-react";
 
 const fmtBRL = (v: number | null) =>
@@ -70,12 +70,23 @@ export default function CarrosVitrine({ carros, totalLojas }: { carros: PortalCa
     [carros]
   );
 
-  // Carro de destaque pro hero: o mais premium (maior preço) com marca e foto.
-  const destaque = useMemo(() => {
+  // Carrossel de destaques pro hero: os 8 mais premium (maior preço) com marca e foto.
+  const destaques = useMemo(() => {
     const full = carros.filter((c) => c.foto && c.preco && c.marca);
     const pool = full.length ? full : carros.filter((c) => c.foto);
-    return pool.length ? [...pool].sort((a, b) => (b.preco ?? 0) - (a.preco ?? 0))[0] : null;
+    return [...pool].sort((a, b) => (b.preco ?? 0) - (a.preco ?? 0)).slice(0, 8);
   }, [carros]);
+  const [destaqueIdx, setDestaqueIdx] = useState(0);
+  const [pausado, setPausado] = useState(false);
+  // Troca automática a cada 2s (pausa no hover).
+  useEffect(() => {
+    if (destaques.length <= 1 || pausado) return;
+    const t = setInterval(() => setDestaqueIdx((i) => (i + 1) % destaques.length), 2000);
+    return () => clearInterval(t);
+  }, [destaques.length, pausado]);
+  const atual = destaques.length ? destaques[destaqueIdx % destaques.length] : null;
+  const prevDestaque = () => setDestaqueIdx((i) => (i - 1 + destaques.length) % destaques.length);
+  const nextDestaque = () => setDestaqueIdx((i) => (i + 1) % destaques.length);
 
   const presetCounts = useMemo(() => {
     const m: Record<string, number> = {};
@@ -116,6 +127,7 @@ export default function CarrosVitrine({ carros, totalLojas }: { carros: PortalCa
 
   return (
     <div>
+      <style>{`@keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }`}</style>
       {/* ══ HERO (claro, 2 colunas — estilo AutoNexus) ══ */}
       <section className="relative overflow-hidden bg-gradient-to-b from-white to-[#f1f1ef] border-b border-gray-200">
         <div className="absolute -top-24 -right-24 w-[380px] h-[380px] rounded-full bg-red-500/10 blur-[120px] pointer-events-none" />
@@ -158,32 +170,46 @@ export default function CarrosVitrine({ carros, totalLojas }: { carros: PortalCa
             </div>
           </div>
 
-          {/* DIREITA — carro de destaque */}
-          {destaque && (
-            <div className="relative">
-              <div className="hidden sm:flex flex-col items-center absolute -top-4 -right-2 z-10 bg-white rounded-2xl shadow-xl shadow-gray-300/50 px-5 py-2.5 ring-1 ring-gray-100">
+          {/* DIREITA — carrossel de destaques (auto 2s + setas) */}
+          {atual && (
+            <div className="relative" onMouseEnter={() => setPausado(true)} onMouseLeave={() => setPausado(false)}>
+              <div className="hidden sm:flex flex-col items-center absolute -top-4 -right-2 z-30 bg-white rounded-2xl shadow-xl shadow-gray-300/50 px-5 py-2.5 ring-1 ring-gray-100">
                 <span className="text-2xl font-black tracking-tighter text-gray-900">{carros.length}</span>
                 <span className="text-[8px] font-black uppercase tracking-widest text-gray-400 -mt-0.5">disponíveis</span>
               </div>
 
-              <Link href={`/carros/${destaque.id}`} className="group block relative rounded-[2rem] overflow-hidden shadow-2xl shadow-gray-400/30 aspect-[4/3] bg-gray-900">
-                <img src={destaque.foto!} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover scale-110 blur-2xl opacity-60" />
-                <img src={destaque.foto!} alt={`${destaque.marca} ${destaque.modelo}`} className="absolute inset-0 w-full h-full object-contain group-hover:scale-[1.03] transition-transform duration-500" />
+              <Link href={`/carros/${atual.id}`} className="group block relative rounded-[2rem] overflow-hidden shadow-2xl shadow-gray-400/30 aspect-[4/3] bg-gray-900">
+                <img key={`${atual.id}-bg`} src={atual.foto!} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover scale-110 blur-2xl opacity-60" />
+                <img key={atual.id} src={atual.foto!} alt={`${atual.marca} ${atual.modelo}`} className="absolute inset-0 w-full h-full object-contain animate-[fadeIn_0.5s_ease]" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
                 <span className="absolute top-4 left-4 bg-red-600 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest shadow">
                   ★ Destaque
                 </span>
-                <div className="absolute bottom-0 left-0 right-0 p-5 text-white">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-white/60 mb-1">{destaque.loja.nome}</p>
+                <div className="absolute bottom-0 left-0 right-0 p-5 pb-6 text-white">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-white/60 mb-1">{atual.loja.nome}</p>
                   <h3 className="text-xl sm:text-2xl font-black uppercase italic tracking-tight leading-none">
-                    {[destaque.marca, destaque.modelo].filter(Boolean).join(" ")}
+                    {[atual.marca, atual.modelo].filter(Boolean).join(" ")}
                   </h3>
                   <div className="flex items-end justify-between mt-2">
-                    <p className="text-[11px] text-white/70 font-bold uppercase tracking-wider">{[destaque.ano, fmtKm(destaque.km)].filter(Boolean).join(" • ")}</p>
-                    <p className="text-2xl font-black tracking-tighter">{fmtBRL(destaque.preco)}</p>
+                    <p className="text-[11px] text-white/70 font-bold uppercase tracking-wider">{[atual.ano, fmtKm(atual.km)].filter(Boolean).join(" • ")}</p>
+                    <p className="text-2xl font-black tracking-tighter">{fmtBRL(atual.preco)}</p>
                   </div>
                 </div>
               </Link>
+
+              {/* Setas — fora do Link, não navegam ao clicar */}
+              {destaques.length > 1 && (
+                <>
+                  <button onClick={prevDestaque} aria-label="Carro anterior"
+                    className="absolute left-3 top-1/2 -translate-y-1/2 z-20 w-11 h-11 rounded-full bg-white/90 hover:bg-white shadow-lg grid place-items-center text-gray-800 transition active:scale-95">
+                    <ChevronLeft size={20} strokeWidth={2.5} />
+                  </button>
+                  <button onClick={nextDestaque} aria-label="Próximo carro"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 z-20 w-11 h-11 rounded-full bg-white/90 hover:bg-white shadow-lg grid place-items-center text-gray-800 transition active:scale-95">
+                    <ChevronRight size={20} strokeWidth={2.5} />
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>
