@@ -192,6 +192,7 @@ export async function GET(req: NextRequest) {
     napista:       "Na Pista",
     manual:        "Cadastro Manual",
     site:          "Site / Vitrine",
+    portal:        "Portal AutoZap",
     link_whatsapp: "Link WhatsApp",
     ligacao:       "Ligação",
     whatsapp:      "WhatsApp Direto",

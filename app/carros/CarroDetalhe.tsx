@@ -302,7 +302,7 @@ function ModalFinanciamento({ c, wa, onClose }: { c: PortalCarroDetalhe; wa: str
   const valorParcela = saldo / (parseInt(parcelas) || 1);
 
   const msg = encodeURIComponent(
-    `Olá! Simulei o ${[c.marca, c.modelo, c.ano].filter(Boolean).join(" ")}: entrada de ${brl(entradaNum)}, ${parcelas}x de ~${brl(valorParcela)}. Podemos conversar?`
+    `Olá! Simulei o ${[c.marca, c.modelo, c.ano].filter(Boolean).join(" ")} no Portal AutoZap: entrada de ${brl(entradaNum)}, ${parcelas}x de ~${brl(valorParcela)}. Podemos conversar?`
   );
   const waSim = c.loja.whatsapp ? `https://wa.me/${c.loja.whatsapp.replace(/\D/g, "")}?text=${msg}` : wa;
 

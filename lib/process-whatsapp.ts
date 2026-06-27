@@ -1299,6 +1299,7 @@ Responda apenas com o JSON, sem markdown.`;
     if (origemAtual === "whatsapp" || origemAtual === null) {
       const msgLower = userMessage.toLowerCase();
       const portalDetectado =
+        /portal\s*autozap/i.test(userMessage)                      ? "portal"        :
         /tenho interesse e queria mais informa/i.test(userMessage) ? "olx"           :
         /\bolx\b/.test(msgLower)                                   ? "olx"           :
         /webmotors/.test(msgLower)                                 ? "webmotors"     :
