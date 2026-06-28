@@ -1,9 +1,8 @@
 "use client";
 
-// Listener de conversão para o portal /carros.
-// O gtag.js já é carregado no root layout — aqui só disparamos o evento
-// `generate_lead` quando o visitante clica num link wa.me (WhatsApp).
-// O Google Ads otimiza a campanha por LEAD, não por clique.
+// Listener GLOBAL de conversão — captura cliques em links wa.me em QUALQUER
+// página (portal /carros, vitrines /vitrine/*, landing pages) e dispara
+// `generate_lead` no GA4. O Google Ads otimiza a campanha por LEAD.
 import { useEffect } from "react";
 
 declare global {
@@ -12,7 +11,7 @@ declare global {
   }
 }
 
-export default function Analytics() {
+export default function GtagLeadTracker() {
   useEffect(() => {
     function onClick(e: MouseEvent) {
       const target = e.target as HTMLElement | null;
@@ -21,7 +20,7 @@ export default function Analytics() {
       const href = a.getAttribute("href") || "";
       if (href.startsWith("https://wa.me/")) {
         window.gtag?.("event", "generate_lead", {
-          event_category: "portal_carros",
+          event_category: "whatsapp_click",
           event_label: window.location.pathname,
           value: 1,
         });
