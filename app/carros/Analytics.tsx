@@ -7,7 +7,9 @@
 import Script from "next/script";
 import { useEffect } from "react";
 
-const GA = process.env.NEXT_PUBLIC_GA_ID;
+// Measurement ID do GA4 (público — aparece no HTML mesmo). Default fixo p/ não
+// depender de env var; pode sobrescrever via NEXT_PUBLIC_GA_ID na Vercel.
+const GA = process.env.NEXT_PUBLIC_GA_ID || "G-JWDYTSV7TT";
 
 declare global {
   interface Window {
