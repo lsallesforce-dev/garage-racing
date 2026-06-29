@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import Analytics from "./Analytics";
 
 const SITE_URL = (process.env.NEXT_PUBLIC_APP_URL || "https://www.autozap.digital").replace(/\/+$/, "");
 
@@ -79,7 +78,6 @@ function PortalFooter() {
 export default function CarrosLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="bg-[#f7f7f5] min-h-screen flex flex-col">
-      <Analytics />
       <PortalHeader />
       <div className="flex-1">{children}</div>
       <PortalFooter />
