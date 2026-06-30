@@ -63,8 +63,8 @@ export default function Page() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }}
       />
-      <Hero />
       <VitrineParceiros />
+      <Hero />
       <Stats />
       <Marquee />
       <Funil />
@@ -84,7 +84,7 @@ async function VitrineParceiros() {
   if (carros.length === 0) return null;
 
   return (
-    <section className="bg-[#161616] text-white border-t border-white/5">
+    <section className="bg-[#161616] text-white">
       <div className="max-w-[1400px] mx-auto px-6 py-20">
         <div className="flex items-end justify-between flex-wrap gap-6 mb-10">
           <div>
