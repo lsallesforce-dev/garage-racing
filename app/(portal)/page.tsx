@@ -15,8 +15,13 @@ import {
   Calendar,
   BadgeCheck,
 } from "lucide-react";
+import { getPortalEstoque } from "@/lib/portal/query";
+import CarroCard from "@/app/carros/CarroCard";
 
 const SITE_URL = (process.env.NEXT_PUBLIC_APP_URL || "https://www.autozap.digital").replace(/\/+$/, "");
+
+// Estoque dos parceiros muda pouco — ISR 5 min (a faixa /carros espelhada na home).
+export const revalidate = 300;
 
 // Dados estruturados (schema.org) — ajudam o Google a entender que a AutoZap é um
 // software B2B e a Organização por trás. Conteúdo estático (sem input de usuário);
@@ -59,6 +64,7 @@ export default function Page() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }}
       />
       <Hero />
+      <VitrineParceiros />
       <Stats />
       <Marquee />
       <Funil />
@@ -67,6 +73,54 @@ export default function Page() {
       <Offer />
       <FinalCTA />
     </div>
+  );
+}
+
+/* ============================================================== */
+/*  VITRINE DOS PARCEIROS — espelho de uma faixa do /carros        */
+/* ============================================================== */
+async function VitrineParceiros() {
+  const carros = (await getPortalEstoque()).slice(0, 3);
+  if (carros.length === 0) return null;
+
+  return (
+    <section className="bg-[#161616] text-white border-t border-white/5">
+      <div className="max-w-[1400px] mx-auto px-6 py-20">
+        <div className="flex items-end justify-between flex-wrap gap-6 mb-10">
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-[0.18em] text-white/50 mb-4">
+              / VITRINE DOS PARCEIROS
+            </div>
+            <h2
+              className="font-bold tracking-[-0.03em] leading-[0.98]"
+              style={{ fontSize: "clamp(32px, 4.2vw, 56px)" }}
+            >
+              Encontre seu próximo veículo{" "}
+              <span className="text-[#ef4444]">em um de nossos parceiros.</span>
+            </h2>
+            <p className="mt-4 max-w-xl text-white/60 text-[15px] leading-relaxed">
+              Seminovos e usados de revendas verificadas — fotos, vídeo e atendimento na hora
+              pelo WhatsApp.
+            </p>
+          </div>
+          <Link
+            href="/carros"
+            className="group inline-flex items-center gap-3 bg-white text-[#161616] pl-6 pr-2 py-2.5 rounded-full text-[15px] font-semibold hover:bg-white/90 transition shrink-0"
+          >
+            Ver todos os carros
+            <span className="w-9 h-9 rounded-full bg-[#ef4444] text-white grid place-items-center transition-transform group-hover:translate-x-1">
+              <ArrowRight className="w-4 h-4" strokeWidth={2.5} />
+            </span>
+          </Link>
+        </div>
+
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          {carros.map((c) => (
+            <CarroCard key={c.id} c={c} />
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }
 
