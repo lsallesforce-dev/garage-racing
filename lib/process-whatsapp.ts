@@ -1386,6 +1386,45 @@ Responda apenas com o JSON, sem markdown.`;
     return;
   }
 
+  // ── 4b. Guarda anti-loop (robô/lead-fantasma repetindo a MESMA coisa) ────────
+  // Leads de Meta Ads às vezes são bots que despejam "Oi" sem parar; sem trava, a IA
+  // respondia a cada um → dezenas de mensagens pro mesmo número (inútil + risco de
+  // ban do canal do tenant, igual ao 463). Só dispara com mensagem CURTA/trivial
+  // repetida ≥5x + IA já tendo respondido ≥5x (bar alta = zero falso-positivo em
+  // conversa real; cliente de verdade não manda a mesma coisinha 5 vezes). Ao
+  // detectar: trava o lead (em_atendimento_humano) + alerta o gerente e para.
+  if (lead?.id && userMessage) {
+    const normLoop = (s: string) =>
+      (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const alvoLoop = normLoop(userMessage);
+    if (alvoLoop && alvoLoop.length <= 12) {
+      const { data: recentesLoop } = await supabaseAdmin
+        .from("mensagens")
+        .select("remetente, content")
+        .eq("lead_id", lead.id)
+        .order("created_at", { ascending: false })
+        .limit(14);
+      const rowsLoop = recentesLoop ?? [];
+      const clienteIguais = rowsLoop
+        .filter((m) => m.remetente === "usuario")
+        .filter((m) => normLoop(m.content) === alvoLoop).length;
+      const iaRespostas = rowsLoop.filter((m) => m.remetente === "agente").length;
+      if (clienteIguais >= 5 && iaRespostas >= 5) {
+        await supabaseAdmin.from("leads").update({
+          em_atendimento_humano: true,
+          instrucao_pendente: `Possível robô/lead-fantasma repetindo "${userMessage.slice(0, 20)}" — IA travada p/ não entrar em loop.`,
+        }).eq("id", lead.id);
+        const gerenteLoopWa = (garageConfig?.whatsapp || "").replace(/\D/g, "");
+        if (gerenteLoopWa) {
+          await sendAlert(gerenteLoopWa, `🔁 Lead ${phone} parece robô (repetiu "${(userMessage || "").slice(0, 20)}" várias vezes). Pausei a IA nesse contato — confere no chat se é real.`).catch(() => {});
+        }
+        await releaseLeadLock(tenantUserId, lead.id).catch(() => {});
+        console.warn(`🔁 [Loop guard] Lead ${phone} repetindo "${(userMessage || "").slice(0, 30)}" (${clienteIguais}x) — IA travada.`);
+        return;
+      }
+    }
+  }
+
   // ── 5. Config da Garagem ────────────────────────────────────────────────────
   const nomeEmpresa = garageConfig?.nome_fantasia || garageConfig?.nome_empresa || "nossa loja";
   const nomeAgente = garageConfig?.nome_agente || "Assistente";
