@@ -34,7 +34,8 @@ export async function POST(req: NextRequest) {
     .order("created_at", { ascending: false })
     .limit(1);
 
-  const garageConfig = (rows?.[0] ?? null) as GarageConfig | null;
+  // FIELDS inclui user_id, mas a interface GarageConfig (process-whatsapp) não o declara
+  const garageConfig = (rows?.[0] ?? null) as (GarageConfig & { user_id: string }) | null;
   if (!garageConfig) {
     return NextResponse.json({ error: "webhook_token inválido" }, { status: 401 });
   }

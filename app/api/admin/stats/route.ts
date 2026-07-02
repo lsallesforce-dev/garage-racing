@@ -5,6 +5,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireAdminSecret } from "@/lib/api-auth";
 
+// 00:00 de hoje em BRT (UTC-3 fixo, Brasil não tem mais horário de verão) = 03:00 UTC.
+// Sem isso o KPI "Mensagens Hoje" era janela rolante de 24h, não "hoje".
+function inicioHojeBRT(): string {
+  const agoraBRT = new Date(Date.now() - 3 * 3600_000);
+  return new Date(Date.UTC(agoraBRT.getUTCFullYear(), agoraBRT.getUTCMonth(), agoraBRT.getUTCDate(), 3)).toISOString();
+}
+
 export async function GET(req: NextRequest) {
   const authError = await requireAdminSecret(req);
   if (authError) return authError;
@@ -32,8 +39,13 @@ export async function GET(req: NextRequest) {
     supabaseAdmin
       .from("mensagens")
       .select("*", { count: "exact", head: true })
-      .gte("created_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
+      .gte("created_at", inicioHojeBRT()),
   ]);
+
+  // E-mail de cada tenant (auth.users) — permite buscar cliente por e-mail no painel
+  const emailPorUser: Record<string, string> = {};
+  const { data: usersData } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+  usersData?.users?.forEach(u => { if (u.email) emailPorUser[u.id] = u.email; });
 
   const sete_dias_atras = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -66,7 +78,7 @@ export async function GET(req: NextRequest) {
       if (!g.webhook_token) status = "sem_webhook";
       else if ((veiculos ?? 0) === 0) status = "sem_estoque";
 
-      return { ...g, veiculos: veiculos ?? 0, leads: leads ?? 0, status, ultima_msg_at, ativo_7d };
+      return { ...g, email: emailPorUser[g.user_id] ?? null, veiculos: veiculos ?? 0, leads: leads ?? 0, status, ultima_msg_at, ativo_7d };
     })
   );
 

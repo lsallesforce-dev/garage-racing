@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireAdminSecret } from "@/lib/api-auth";
 
 const BASE = "https://api.pagar.me/core/v5";
 
@@ -8,10 +9,8 @@ function authHeaders() {
 }
 
 export async function GET(req: NextRequest) {
-  const secret = req.headers.get("x-admin-secret");
-  if (secret !== process.env.ADMIN_SECRET) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authError = await requireAdminSecret(req);
+  if (authError) return authError;
 
   const [balanceRes, ordersRes] = await Promise.all([
     fetch(`${BASE}/balance`, { headers: authHeaders() }),

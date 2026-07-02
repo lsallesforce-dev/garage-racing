@@ -6,7 +6,16 @@
 //         Header: x-admin-secret: <CRON_SECRET>
 
 import { NextRequest, NextResponse } from "next/server";
+import { timingSafeEqual } from "crypto";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+
+function secretOk(provided: string | null): boolean {
+  const expected = process.env.CRON_SECRET;
+  if (!provided || !expected) return false;
+  const a = Buffer.from(provided, "utf8");
+  const b = Buffer.from(expected, "utf8");
+  return a.length === b.length && timingSafeEqual(a, b);
+}
 
 function detectarPortal(texto: string): string | null {
   const t = texto.toLowerCase();
@@ -18,8 +27,7 @@ function detectarPortal(texto: string): string | null {
 }
 
 export async function POST(req: NextRequest) {
-  const secret = req.headers.get("x-admin-secret");
-  if (!secret || secret !== process.env.CRON_SECRET) {
+  if (!secretOk(req.headers.get("x-admin-secret"))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

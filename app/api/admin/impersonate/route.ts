@@ -24,12 +24,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error?.message ?? "Erro ao gerar link" }, { status: 500 });
   }
 
-  // Loga o acesso
-  await supabaseAdmin.from("admin_audit_log").insert({
+  // Loga o acesso — falha no log não bloqueia o impersonate, mas fica visível
+  const { error: logErr } = await supabaseAdmin.from("admin_audit_log").insert({
     acao: "impersonate",
     user_id_alvo: user_id,
     email_alvo: user.user.email,
-  }).then(() => {}).catch(() => {});
+  });
+  if (logErr) console.error("[impersonate] Falha ao gravar admin_audit_log:", logErr.message);
 
   return NextResponse.json({ link: data.properties.action_link });
 }

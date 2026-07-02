@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, Fragment } from "react";
 import {
   Building2, Car, Users, MessageSquare, Zap, CheckCircle2, AlertTriangle,
   XCircle, ExternalLink, Copy, Plus, X, Loader2, RefreshCw, Activity,
   Music, Upload, CheckCircle, DollarSign, Lock, Unlock, Eye, TrendingUp,
-  Clock, AlertCircle, BarChart3, Shield, Settings, ChevronDown, ChevronUp,
+  Clock, AlertCircle, BarChart3, Settings, ChevronDown, ChevronUp,
   Wallet, ArrowDownToLine, Hourglass, CreditCard, Target, Pencil, Trash2,
 } from "lucide-react";
 import VendasTab from "./VendasTab";
@@ -25,6 +25,7 @@ interface Tenant {
   user_id: string;
   nome_empresa: string;
   nome_agente?: string;
+  email?: string | null;
   whatsapp?: string;
   vitrine_slug?: string;
   webhook_token?: string;
@@ -102,6 +103,37 @@ function planoStatus(t: Tenant): PlanoStatus {
 }
 
 function copy(text: string) { navigator.clipboard.writeText(text).catch(() => {}); }
+
+// Fetch do painel admin: valida res.ok, alerta no erro e trata sessão expirada.
+// Antes, quase toda ação engolia falha em silêncio — "botão que não funciona".
+// silent = não alertar erro de operação (loaders de fundo); 401 sempre é tratado.
+let sessaoExpiradaAvisada = false;
+async function fetchAdmin(
+  url: string,
+  init?: RequestInit,
+  opts?: { silent?: boolean },
+): Promise<{ ok: boolean; data: any }> {
+  let res: Response;
+  try {
+    res = await fetch(url, init);
+  } catch {
+    if (!opts?.silent) alert("Erro de rede — confira a conexão e tente de novo.");
+    return { ok: false, data: null };
+  }
+  if (res.status === 401) {
+    if (!sessaoExpiradaAvisada) {
+      sessaoExpiradaAvisada = true;
+      alert("Sessão de admin expirada — entre de novo.");
+      window.location.reload();
+    }
+    return { ok: false, data: null };
+  }
+  const data = await res.json().catch(() => null);
+  if (!res.ok && !opts?.silent) {
+    alert(`Erro (${res.status}): ${data?.error ?? "falha na operação"}`);
+  }
+  return { ok: res.ok, data };
+}
 
 function fmtDate(iso?: string | null) {
   if (!iso) return "—";
@@ -182,15 +214,17 @@ function NovoTenantModal({ secret, onClose, onSuccess }: { secret: string; onClo
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    const res = await fetch("/api/admin/create-tenant", {
+    const { ok, data } = await fetchAdmin("/api/admin/create-tenant", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-admin-secret": secret },
       body: JSON.stringify(form),
-    });
-    const data = await res.json();
-    setResultado(data.ok ? { ok: true, webhook_url: data.webhook_url } : { ok: false, error: data.error });
+    }, { silent: true });
+    const sucesso = ok && data?.ok;
+    setResultado(sucesso
+      ? { ok: true, webhook_url: data.webhook_url }
+      : { ok: false, error: data?.error ?? "Erro inesperado — tente de novo" });
     setLoading(false);
-    if (data.ok) onSuccess();
+    if (sucesso) onSuccess();
   }
 
   return (
@@ -246,13 +280,13 @@ function NovoPagamentoModal({ secret, tenants, onClose, onSuccess }: {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    await fetch("/api/admin/pagamentos", {
+    const { ok } = await fetchAdmin("/api/admin/pagamentos", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-admin-secret": secret },
       body: JSON.stringify({ acao: "criar", ...form, valor }),
     });
     setLoading(false);
-    onSuccess();
+    if (ok) onSuccess();
   }
 
   return (
@@ -518,36 +552,31 @@ export default function AdminPage() {
   const carregar = useCallback(async (s: string) => {
     setLoading(true);
     const [sRes, hRes] = await Promise.all([
-      fetch("/api/admin/stats", { headers: { "x-admin-secret": s } }),
-      fetch("/api/health"),
+      fetchAdmin("/api/admin/stats", { headers: { "x-admin-secret": s } }, { silent: true }),
+      fetch("/api/health").catch(() => null),
     ]);
     if (!sRes.ok) { setLoading(false); return false; }
-    const [sData, hData] = await Promise.all([sRes.json(), hRes.json()]);
-    setStats(sData);
-    setHealth(hData);
+    setStats(sRes.data);
+    if (hRes?.ok) setHealth(await hRes.json().catch(() => null));
     setLoading(false);
     return true;
   }, []);
 
   const carregarPagamentos = useCallback(async (s: string) => {
-    const res = await fetch("/api/admin/pagamentos", { headers: { "x-admin-secret": s } });
-    if (res.ok) {
-      const data = await res.json();
-      setPagamentos(data.pagamentos ?? []);
-    }
+    const { ok, data } = await fetchAdmin("/api/admin/pagamentos", { headers: { "x-admin-secret": s } }, { silent: true });
+    if (ok) setPagamentos(data?.pagamentos ?? []);
   }, []);
 
   const carregarPendentes = useCallback(async (s: string) => {
-    const res = await fetch("/api/admin/pendentes", { headers: { "x-admin-secret": s } });
-    if (res.ok) setPendentes(await res.json());
+    const { ok, data } = await fetchAdmin("/api/admin/pendentes", { headers: { "x-admin-secret": s } }, { silent: true });
+    if (ok) setPendentes(data ?? []);
   }, []);
 
   const carregarPagarme = useCallback(async (s: string) => {
-    const res = await fetch("/api/admin/pagarme-financeiro", { headers: { "x-admin-secret": s } });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.balance) setPagarmeBalance(data.balance);
-      setPagarmeOrders(data.orders ?? []);
+    const { ok, data } = await fetchAdmin("/api/admin/pagarme-financeiro", { headers: { "x-admin-secret": s } }, { silent: true });
+    if (ok) {
+      if (data?.balance) setPagarmeBalance(data.balance);
+      setPagarmeOrders(data?.orders ?? []);
     }
   }, []);
 
@@ -595,6 +624,11 @@ export default function AdminPage() {
     })();
   }, [routeByAAL]);
 
+  // Recarrega pendentes ao abrir a aba — antes o badge ficava preso no valor do login
+  useEffect(() => {
+    if (autenticado && tab === "pendentes") carregarPendentes("");
+  }, [autenticado, tab, carregarPendentes]);
+
   async function handlePasswordLogin(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true); setAuthError(null);
@@ -632,52 +666,54 @@ export default function AdminPage() {
 
   async function acao(user_id: string, act: string, val?: string) {
     setAcaoLoading(`${user_id}-${act}`);
-    await fetch("/api/admin/update-tenant", {
+    const { ok } = await fetchAdmin("/api/admin/update-tenant", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-admin-secret": secret },
       body: JSON.stringify({ user_id, acao: act, valor: val }),
     });
     setAcaoLoading(null);
-    carregar(secret);
+    if (ok) carregar(secret);
   }
 
   async function impersonate(user_id: string, nome: string) {
     if (!confirm(`Acessar painel de "${nome}"? Isso abrirá uma nova aba logada como esse cliente.`)) return;
     setAcaoLoading(`${user_id}-imp`);
-    const res = await fetch("/api/admin/impersonate", {
+    const { ok, data } = await fetchAdmin("/api/admin/impersonate", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-admin-secret": secret },
       body: JSON.stringify({ user_id }),
     });
     setAcaoLoading(null);
-    const data = await res.json();
-    if (data.link) window.open(data.link, "_blank");
-    else alert("Erro: " + (data.error ?? "desconhecido"));
+    if (ok && data?.link) window.open(data.link, "_blank");
   }
 
   async function marcarPago(pag: Pagamento) {
     setAcaoLoading(`pag-${pag.id}`);
-    await fetch("/api/admin/pagamentos", {
+    const { ok } = await fetchAdmin("/api/admin/pagamentos", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-admin-secret": secret },
       body: JSON.stringify({ acao: "marcar_pago", id: pag.id, user_id: pag.user_id }),
     });
     setAcaoLoading(null);
-    carregarPagamentos(secret);
-    carregar(secret);
+    if (ok) {
+      carregarPagamentos(secret);
+      carregar(secret);
+    }
   }
 
   async function excluirPagamento(pag: Pagamento) {
     if (!confirm(`Excluir a cobrança de ${fmtBRL(pag.valor)} (${pag.plano}) de ${pag.config_garage?.nome_empresa ?? "tenant"}?\n\nIsso remove só o registro local — não afeta o Pagar.me.`)) return;
     setAcaoLoading(`del-${pag.id}`);
-    await fetch("/api/admin/pagamentos", {
+    const { ok } = await fetchAdmin("/api/admin/pagamentos", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-admin-secret": secret },
       body: JSON.stringify({ acao: "deletar", id: pag.id }),
     });
     setAcaoLoading(null);
-    carregarPagamentos(secret);
-    carregar(secret);
+    if (ok) {
+      carregarPagamentos(secret);
+      carregar(secret);
+    }
   }
 
   // Deleta um tenant POR COMPLETO (dados + login). Irreversível — confirmação
@@ -698,18 +734,17 @@ export default function AdminPage() {
       }
     }
     setAcaoLoading(`${t.user_id}-delete`);
-    const res = await fetch("/api/admin/delete-tenant", {
+    const { ok, data } = await fetchAdmin("/api/admin/delete-tenant", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-admin-secret": secret },
       body: JSON.stringify({ user_id: t.user_id }),
-    });
-    const data = await res.json().catch(() => ({}));
+    }, { silent: true });
     setAcaoLoading(null);
-    if (!res.ok) {
-      alert("Erro ao deletar: " + (data.error ?? "desconhecido") + (data.detalhes ? "\n\n" + data.detalhes.join("\n") : ""));
+    if (!ok) {
+      alert("Erro ao deletar: " + (data?.error ?? "desconhecido") + (data?.detalhes ? "\n\n" + data.detalhes.join("\n") : ""));
       return;
     }
-    if (data.aviso) alert(data.aviso);
+    if (data?.aviso) alert(data.aviso);
     setExpandido(null);
     carregar(secret);
   }
@@ -746,21 +781,33 @@ export default function AdminPage() {
   const pag_atrasado = pagamentos.filter(p => p.status === "atrasado" || (p.status === "pendente" && new Date(p.vencimento) < hoje)).reduce((a, p) => a + p.valor, 0);
   const pags_vencidos = pagamentos.filter(p => p.status === "pendente" && new Date(p.vencimento) < hoje);
 
-  // Gráfico: cadastros por mês (últimos 6 meses)
+  // Gráfico: cadastros por mês (últimos 6 meses).
+  // Agrupa por chave YYYY-MM e ordena ANTES de formatar — o stats devolve os
+  // tenants em created_at DESC, então agrupar na ordem de chegada invertia o
+  // eixo e, com >6 meses de histórico, mostrava os meses mais antigos.
   const chartData = (() => {
     const meses: Record<string, number> = {};
     tenants.forEach(t => {
-      const m = new Date(t.created_at).toLocaleDateString("pt-BR", { month: "short", year: "2-digit" });
-      meses[m] = (meses[m] ?? 0) + 1;
+      const d = new Date(t.created_at);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      meses[key] = (meses[key] ?? 0) + 1;
     });
-    return Object.entries(meses).slice(-6).map(([mes, qty]) => ({ mes, qty }));
+    return Object.keys(meses).sort().slice(-6).map(key => {
+      const [y, m] = key.split("-").map(Number);
+      const mes = new Date(y, m - 1, 1).toLocaleDateString("pt-BR", { month: "short", year: "2-digit" });
+      return { mes, qty: meses[key] };
+    });
   })();
 
-  // Filtros
+  // Filtros — busca por nome, e-mail, WhatsApp (só dígitos) ou webhook_token
   const tenantsFiltrados = tenants.filter(t => {
-    const matchSearch = !search ||
-      t.nome_empresa?.toLowerCase().includes(search.toLowerCase()) ||
-      t.webhook_token?.toLowerCase().includes(search.toLowerCase());
+    const q = search.trim().toLowerCase();
+    const qDigits = q.replace(/\D/g, "");
+    const matchSearch = !q ||
+      t.nome_empresa?.toLowerCase().includes(q) ||
+      t.email?.toLowerCase().includes(q) ||
+      (qDigits.length >= 4 && (t.whatsapp ?? "").replace(/\D/g, "").includes(qDigits)) ||
+      t.webhook_token?.toLowerCase().includes(q);
     const ps = planoStatus(t);
     const matchPlano =
       filtroPlano === "todos" ? true :
@@ -853,9 +900,10 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen bg-[#efefed] font-sans">
 
+      {/* onSuccess não fecha o modal — antes fechava na hora e a URL do webhook nunca aparecia */}
       {showNovoTenant && (
         <NovoTenantModal secret={secret} onClose={() => setShowNovoTenant(false)}
-          onSuccess={() => { setShowNovoTenant(false); carregar(secret); }}
+          onSuccess={() => carregar(secret)}
         />
       )}
       {showNovoPag && (
@@ -1040,7 +1088,7 @@ export default function AdminPage() {
 
             {/* Filtros */}
             <div className="flex flex-wrap items-center gap-3">
-              <input type="text" placeholder="Buscar por nome ou token..." value={search}
+              <input type="text" placeholder="Buscar por nome, e-mail, WhatsApp ou token..." value={search}
                 onChange={e => setSearch(e.target.value)}
                 className="bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-red-500 w-72"
               />
@@ -1071,8 +1119,8 @@ export default function AdminPage() {
                   {tenantsFiltrados.length === 0 ? (
                     <tr><td colSpan={6} className="text-center py-16 text-sm text-gray-300 font-black uppercase tracking-widest">Nenhum resultado</td></tr>
                   ) : tenantsFiltrados.map(t => (
-                    <>
-                      <tr key={t.user_id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+                    <Fragment key={t.user_id}>
+                      <tr className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
                         {/* Empresa */}
                         <td className="px-4 py-4">
                           <div className="flex items-center gap-3">
@@ -1167,6 +1215,10 @@ export default function AdminPage() {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                               {/* Coluna 1 — Identificação */}
                               <div className="flex flex-col gap-4">
+                                <div>
+                                  <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">E-mail</p>
+                                  <p className="text-sm font-bold text-gray-700">{t.email ?? "—"}</p>
+                                </div>
                                 <div>
                                   <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">WhatsApp</p>
                                   <p className="text-sm font-bold text-gray-700">{t.whatsapp ?? "—"}</p>
@@ -1279,7 +1331,7 @@ export default function AdminPage() {
                           </td>
                         </tr>
                       )}
-                    </>
+                    </Fragment>
                   ))}
                 </tbody>
               </table>
@@ -1310,11 +1362,12 @@ export default function AdminPage() {
                 <button
                   onClick={async () => {
                     for (const p of pags_vencidos) {
-                      await fetch("/api/admin/pagamentos", {
+                      const { ok } = await fetchAdmin("/api/admin/pagamentos", {
                         method: "POST",
                         headers: { "Content-Type": "application/json", "x-admin-secret": secret },
                         body: JSON.stringify({ acao: "marcar_atrasado", id: p.id }),
                       });
+                      if (!ok) break; // erro já alertado — não martela o resto
                     }
                     carregarPagamentos(secret);
                   }}
@@ -1620,98 +1673,6 @@ export default function AdminPage() {
               </a>
             </div>
 
-            {/* SQL */}
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-              <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-3 flex items-center gap-2">
-                <Shield size={11} /> SQL necessário para o Admin v2
-              </p>
-              <pre className="bg-gray-950 text-green-400 text-[10px] rounded-xl p-4 overflow-x-auto leading-relaxed">{`-- Tabela de pagamentos
-CREATE TABLE IF NOT EXISTS pagamentos (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id uuid NOT NULL,
-  valor numeric NOT NULL,
-  plano text NOT NULL,
-  metodo text DEFAULT 'manual',
-  status text DEFAULT 'pendente',
-  vencimento date NOT NULL,
-  pago_em timestamptz,
-  notas text,
-  created_at timestamptz DEFAULT now()
-);
-
--- Colunas novas em config_garage
-ALTER TABLE config_garage
-  ADD COLUMN IF NOT EXISTS plano text DEFAULT 'pro',
-  ADD COLUMN IF NOT EXISTS bloqueado boolean DEFAULT false;
-
--- Log de auditoria (impersonate)
-CREATE TABLE IF NOT EXISTS admin_audit_log (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  acao text NOT NULL,
-  user_id_alvo uuid,
-  email_alvo text,
-  created_at timestamptz DEFAULT now()
-);
-
--- Colunas NF-e em config_garage
-ALTER TABLE config_garage
-  ADD COLUMN IF NOT EXISTS nf_habilitado boolean DEFAULT false,
-  ADD COLUMN IF NOT EXISTS nf_regime_tributario integer DEFAULT 1,
-  ADD COLUMN IF NOT EXISTS nf_inscricao_estadual text,
-  ADD COLUMN IF NOT EXISTS nf_cep text,
-  ADD COLUMN IF NOT EXISTS nf_logradouro text,
-  ADD COLUMN IF NOT EXISTS nf_numero_end text,
-  ADD COLUMN IF NOT EXISTS nf_bairro text,
-  ADD COLUMN IF NOT EXISTS nf_municipio text,
-  ADD COLUMN IF NOT EXISTS nf_uf text;
-
--- Colunas NF-e em veiculos
-ALTER TABLE veiculos
-  ADD COLUMN IF NOT EXISTS nf_ref text,
-  ADD COLUMN IF NOT EXISTS nf_chave text,
-  ADD COLUMN IF NOT EXISTS nf_numero text,
-  ADD COLUMN IF NOT EXISTS nf_status text,
-  ADD COLUMN IF NOT EXISTS nf_pdf_url text,
-  ADD COLUMN IF NOT EXISTS nf_xml_url text,
-  ADD COLUMN IF NOT EXISTS nf_emitida_em timestamptz,
-  ADD COLUMN IF NOT EXISTS nf_comprador_nome text,
-  ADD COLUMN IF NOT EXISTS nf_comprador_doc text;`}</pre>
-              <button onClick={() => copy(`CREATE TABLE IF NOT EXISTS pagamentos (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, user_id uuid NOT NULL, valor numeric NOT NULL, plano text NOT NULL, metodo text DEFAULT 'manual', status text DEFAULT 'pendente', vencimento date NOT NULL, pago_em timestamptz, notas text, created_at timestamptz DEFAULT now()); ALTER TABLE config_garage ADD COLUMN IF NOT EXISTS plano text DEFAULT 'pro', ADD COLUMN IF NOT EXISTS bloqueado boolean DEFAULT false; CREATE TABLE IF NOT EXISTS admin_audit_log (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, acao text NOT NULL, user_id_alvo uuid, email_alvo text, created_at timestamptz DEFAULT now());`)}
-                className="mt-3 flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-gray-400 hover:text-gray-700 transition">
-                <Copy size={11} /> Copiar SQL
-              </button>
-            </div>
-
-            {/* SQL Agenda */}
-            <div className="bg-gray-900 rounded-2xl p-5 mt-4">
-              <p className="text-[10px] font-black text-purple-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                <Shield size={11} /> SQL — Tabela agenda
-              </p>
-              <pre className="text-[10px] text-gray-300 leading-relaxed whitespace-pre-wrap font-mono">{`CREATE TABLE IF NOT EXISTS agenda (
-  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  titulo text NOT NULL,
-  descricao text,
-  data_hora timestamptz NOT NULL,
-  tipo text DEFAULT 'outro' CHECK (tipo IN ('visita','ligacao','reuniao','outro')),
-  lead_id uuid REFERENCES leads(id) ON DELETE SET NULL,
-  status text DEFAULT 'pendente' CHECK (status IN ('pendente','feito','cancelado')),
-  created_by text DEFAULT 'manual' CHECK (created_by IN ('manual','ia','whatsapp')),
-  created_at timestamptz DEFAULT now()
-);
-
-ALTER TABLE agenda ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "users manage own agenda" ON agenda
-  USING (user_id = auth.uid())
-  WITH CHECK (user_id = auth.uid());
-
-CREATE INDEX IF NOT EXISTS agenda_user_data ON agenda (user_id, data_hora);`}</pre>
-              <button onClick={() => copy(`CREATE TABLE IF NOT EXISTS agenda (\n  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,\n  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,\n  titulo text NOT NULL,\n  descricao text,\n  data_hora timestamptz NOT NULL,\n  tipo text DEFAULT 'outro' CHECK (tipo IN ('visita','ligacao','reuniao','outro')),\n  lead_id uuid REFERENCES leads(id) ON DELETE SET NULL,\n  status text DEFAULT 'pendente' CHECK (status IN ('pendente','feito','cancelado')),\n  created_by text DEFAULT 'manual' CHECK (created_by IN ('manual','ia','whatsapp')),\n  created_at timestamptz DEFAULT now()\n);\n\nALTER TABLE agenda ENABLE ROW LEVEL SECURITY;\n\nCREATE POLICY "users manage own agenda" ON agenda\n  USING (user_id = auth.uid())\n  WITH CHECK (user_id = auth.uid());\n\nCREATE INDEX IF NOT EXISTS agenda_user_data ON agenda (user_id, data_hora);`)}
-                className="mt-3 flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-gray-400 hover:text-gray-700 transition">
-                <Copy size={11} /> Copiar SQL
-              </button>
-            </div>
           </div>
         )}
 
