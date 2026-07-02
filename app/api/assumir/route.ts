@@ -4,47 +4,35 @@
 // Um toque faz tudo:
 //   1. Para a IA (em_atendimento_humano = true)
 //   2. Abre o WhatsApp direto na conversa com o cliente (sem passar por página web)
+//
+// Segurança: o link é ASSINADO (HMAC + expiração 24h) — gerar sempre com
+// buildAssumirLink() de lib/assumir-link.ts. Antes, `uid` cru na query era
+// IDOR (qualquer um com o user_id pausava a IA de leads alheios) e o caminho
+// por webhook_token foi removido (o token é semi-público: localizador de vitrine).
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { validarAssumirLink } from "@/lib/assumir-link";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
-  const waId  = searchParams.get("wa_id");
-  const uid   = searchParams.get("uid");   // user_id direto (Meta)
-  const token = searchParams.get("token"); // webhook_token legado (Avisa)
+  const waId = searchParams.get("wa_id");
+  const uid  = searchParams.get("uid");
+  const exp  = Number(searchParams.get("exp"));
+  const sig  = searchParams.get("sig");
 
-  if (!waId) return new NextResponse("wa_id obrigatório", { status: 400 });
-  if (!uid && !token) return new NextResponse("Identificação obrigatória", { status: 401 });
-
-  let tenantUserId: string | null = null;
-
-  if (uid) {
-    // Valida que o uid realmente corresponde a um tenant existente
-    const { data: cfg } = await supabaseAdmin
-      .from("config_garage")
-      .select("user_id")
-      .eq("user_id", uid)
-      .maybeSingle();
-    if (!cfg) return new NextResponse("Identificação inválida", { status: 403 });
-    tenantUserId = cfg.user_id;
-  } else if (token) {
-    // Legado: resolve user_id pelo webhook_token
-    const { data: cfg } = await supabaseAdmin
-      .from("config_garage")
-      .select("user_id")
-      .eq("webhook_token", token)
-      .maybeSingle();
-    if (!cfg) return new NextResponse("Token inválido", { status: 403 });
-    tenantUserId = cfg.user_id;
+  if (!waId || !uid || !sig) return new NextResponse("Link inválido", { status: 400 });
+  if (!validarAssumirLink(waId, uid, exp, sig)) {
+    return new NextResponse("Link inválido ou expirado — use o link do alerta mais recente.", { status: 403 });
   }
 
-  // Para a IA apenas para leads deste tenant
+  // Para a IA apenas para leads deste tenant (a assinatura prova que o
+  // servidor emitiu este link para este uid+wa_id)
   await supabaseAdmin
     .from("leads")
     .update({ em_atendimento_humano: true })
     .eq("wa_id", waId)
-    .eq("user_id", tenantUserId);
+    .eq("user_id", uid);
 
   const phone = waId.replace(/\D/g, "");
 
