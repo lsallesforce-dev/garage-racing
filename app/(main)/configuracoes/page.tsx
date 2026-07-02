@@ -2017,13 +2017,29 @@ export default function ConfiguracoesPage() {
                 </div>
                 {currentUserId && (
                   <div className="bg-gray-50 border border-gray-100 rounded-2xl px-4 py-3 space-y-1">
-                    <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">URL do Webhook (cadastrar na OLX)</p>
+                    <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">URL do Webhook de Leads (cadastrar na OLX — produto &quot;Leads&quot;)</p>
                     <div className="flex items-center gap-2">
                       <code className="text-[10px] text-gray-700 break-all flex-1">
                         {`${process.env.NEXT_PUBLIC_APP_URL ?? "https://www.autozap.digital"}/api/webhook/olx/${currentUserId}`}
                       </code>
                       <button
                         onClick={() => navigator.clipboard.writeText(`${process.env.NEXT_PUBLIC_APP_URL ?? "https://www.autozap.digital"}/api/webhook/olx/${currentUserId}`)}
+                        className="text-[9px] font-black text-gray-400 hover:text-gray-700 shrink-0"
+                      >
+                        Copiar
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {currentUserId && (
+                  <div className="bg-gray-50 border border-gray-100 rounded-2xl px-4 py-3 space-y-1">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">URL do Webhook de Chat (cadastrar na OLX — produto &quot;Chat&quot;)</p>
+                    <div className="flex items-center gap-2">
+                      <code className="text-[10px] text-gray-700 break-all flex-1">
+                        {`${process.env.NEXT_PUBLIC_APP_URL ?? "https://www.autozap.digital"}/api/webhook/olx-chat/${currentUserId}`}
+                      </code>
+                      <button
+                        onClick={() => navigator.clipboard.writeText(`${process.env.NEXT_PUBLIC_APP_URL ?? "https://www.autozap.digital"}/api/webhook/olx-chat/${currentUserId}`)}
                         className="text-[9px] font-black text-gray-400 hover:text-gray-700 shrink-0"
                       >
                         Copiar
