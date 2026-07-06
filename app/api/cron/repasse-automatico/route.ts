@@ -76,8 +76,8 @@ export async function GET(req: NextRequest) {
        repasse_intervalo_min, repasse_janela_inicio, repasse_janela_fim,
        repasse_janela_fim_sabado, repasse_qtd_por_envio,
        repasse_bomdia_ativo, repasse_bomdia_enviado_em,
-       repasse_link_comunidade, repasse_link_instagram,
-       nome_fantasia, nome_empresa, logo_url`,
+       repasse_link_comunidade, repasse_link_instagram, repasse_bomdia_logo_url,
+       nome_fantasia, nome_empresa`,
     )
     .eq("repasse_auto_ativo", true)
     .not("repasse_grupo_jid", "is", null)
@@ -140,11 +140,12 @@ export async function GET(req: NextRequest) {
           // Card de metadado (ícone + nome da loja + "Convite para comunidade") no link
           // do grupo — Baileys/Avisa não busca isso sozinho, precisa vir explícito. A
           // Avisa EXIGE imagem no payload do /actions/sendPreview (400 sem ela) — sem
-          // logo cadastrada em Configurações, cai pro texto simples (sem card).
+          // logo dedicada (repasse_bomdia_logo_url, separada da logo geral da loja)
+          // cadastrada em Configurações, cai pro texto simples (sem card).
           let logoBase64: string | undefined;
-          if (cfg.repasse_link_comunidade && cfg.logo_url) {
+          if (cfg.repasse_link_comunidade && cfg.repasse_bomdia_logo_url) {
             try {
-              const r = await fetch(cfg.logo_url as string);
+              const r = await fetch(cfg.repasse_bomdia_logo_url as string);
               if (r.ok) logoBase64 = Buffer.from(await r.arrayBuffer()).toString("base64");
             } catch (e) {
               console.warn(`⚠️ [repasse/${tenantId}] Falha ao baixar logo pro preview do bom dia:`, e);

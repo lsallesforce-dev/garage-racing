@@ -9,6 +9,9 @@ export async function POST(req: NextRequest) {
 
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
+    // "bomdia" grava numa logo separada, usada só no card de preview do Bom Dia
+    // diário — não sobrescreve a logo geral da loja.
+    const tipo = formData.get("tipo") === "bomdia" ? "bomdia" : "geral";
 
     if (!file) return NextResponse.json({ error: "Nenhum arquivo enviado" }, { status: 400 });
 
@@ -31,11 +34,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Formato inválido. Envie PNG, JPEG ou WebP." }, { status: 400 });
     }
 
-    const path = `logos/${user!.id}.png`;
+    const ext = isJpeg ? "jpg" : isWebp ? "webp" : "png";
+    const contentType = isJpeg ? "image/jpeg" : isWebp ? "image/webp" : "image/png";
+    const suffix = tipo === "bomdia" ? "-bomdia" : "";
+    const path = `logos/${user!.id}${suffix}.${ext}`;
 
     const { error } = await supabaseAdmin.storage
       .from("configuracoes")
-      .upload(path, buffer, { upsert: true, contentType: "image/png" });
+      .upload(path, buffer, { upsert: true, contentType });
 
     if (error) throw error;
 

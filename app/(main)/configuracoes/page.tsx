@@ -70,6 +70,7 @@ interface GarageConfig {
   repasse_bomdia_ativo?: boolean;
   repasse_link_comunidade?: string;
   repasse_link_instagram?: string;
+  repasse_bomdia_logo_url?: string | null;
 }
 
 export default function ConfiguracoesPage() {
@@ -159,8 +160,38 @@ export default function ConfiguracoesPage() {
     repasse_bomdia_ativo: true,
     repasse_link_comunidade: "",
     repasse_link_instagram: "",
+    repasse_bomdia_logo_url: null,
   });
   const fileRef = useRef<HTMLInputElement>(null);
+  const bomdiaLogoRef = useRef<HTMLInputElement>(null);
+  const [uploadingBomdiaLogo, setUploadingBomdiaLogo] = useState(false);
+
+  const handleUploadBomdiaLogo = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingBomdiaLogo(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("tipo", "bomdia");
+      const res = await fetch("/api/configuracoes/logo", { method: "POST", body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Falha no upload");
+      const url = `${data.url}?t=${Date.now()}`;
+      await supabase.from("config_garage").update({ repasse_bomdia_logo_url: url }).eq("id", config.id!);
+      setConfig(c => ({ ...c, repasse_bomdia_logo_url: url }));
+    } catch (err: any) {
+      alert("Erro ao subir logo do bom dia: " + err.message);
+    } finally {
+      setUploadingBomdiaLogo(false);
+      if (bomdiaLogoRef.current) bomdiaLogoRef.current.value = "";
+    }
+  };
+
+  const handleRemoveBomdiaLogo = async () => {
+    await supabase.from("config_garage").update({ repasse_bomdia_logo_url: null }).eq("id", config.id!);
+    setConfig(c => ({ ...c, repasse_bomdia_logo_url: null }));
+  };
   const pfxRef = useRef<HTMLInputElement>(null);
   // Sincronização de grupos do Repasse (GET/POST /api/repasse/grupos)
   const [gruposDisponiveis, setGruposDisponiveis] = useState<{ jid: string; name: string }[] | null>(null);
@@ -502,6 +533,7 @@ export default function ConfiguracoesPage() {
               repasse_bomdia_ativo: row.repasse_bomdia_ativo ?? true,
               repasse_link_comunidade: row.repasse_link_comunidade ?? "",
               repasse_link_instagram: row.repasse_link_instagram ?? "",
+              repasse_bomdia_logo_url: row.repasse_bomdia_logo_url ?? null,
             });
             if (row.logo_url) {
               setCurrentLogo(row.logo_url);
@@ -1840,6 +1872,52 @@ export default function ConfiguracoesPage() {
                     }`}
                   />
                 </button>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+                  Logo do card de convite <span className="text-gray-400 normal-case font-normal">(aparece só na mensagem de bom dia)</span>
+                </label>
+                <div className="flex items-center gap-3">
+                  {config.repasse_bomdia_logo_url ? (
+                    <img
+                      src={config.repasse_bomdia_logo_url}
+                      alt="Logo do bom dia"
+                      className="w-12 h-12 rounded-xl object-cover border border-gray-200"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-xl bg-[#f5f5f3] border border-gray-200 flex items-center justify-center">
+                      <ImageIcon className="w-5 h-5 text-gray-300" />
+                    </div>
+                  )}
+                  <input
+                    ref={bomdiaLogoRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="hidden"
+                    onChange={handleUploadBomdiaLogo}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => bomdiaLogoRef.current?.click()}
+                    disabled={uploadingBomdiaLogo}
+                    className="text-[10px] font-black uppercase tracking-widest bg-gray-900 text-white rounded-xl px-4 py-2.5 hover:bg-green-600 transition disabled:opacity-50"
+                  >
+                    {uploadingBomdiaLogo ? "Enviando..." : config.repasse_bomdia_logo_url ? "Trocar" : "Enviar logo"}
+                  </button>
+                  {config.repasse_bomdia_logo_url && (
+                    <button
+                      type="button"
+                      onClick={handleRemoveBomdiaLogo}
+                      className="text-[10px] font-black uppercase tracking-widest text-red-500 hover:text-red-600 transition"
+                    >
+                      Remover
+                    </button>
+                  )}
+                </div>
+                <p className="text-[9px] text-gray-400">
+                  Sem logo, o card de preview do link não é exibido — a mensagem sai só com o texto.
+                </p>
               </div>
 
               <div className="flex flex-col gap-1.5">
