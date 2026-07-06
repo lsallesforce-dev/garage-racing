@@ -24,7 +24,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { sendAvisaMessage, sendAvisaImage } from "@/lib/avisa";
+import { sendAvisaMessage, sendAvisaImage, sendAvisaPreview } from "@/lib/avisa";
 import { gerarRepasseCompleto, gerarTextoBomDia } from "@/lib/repasse";
 import { chaveDataBRT } from "@/lib/frases-motivacionais";
 
@@ -76,7 +76,8 @@ export async function GET(req: NextRequest) {
        repasse_intervalo_min, repasse_janela_inicio, repasse_janela_fim,
        repasse_janela_fim_sabado, repasse_qtd_por_envio,
        repasse_bomdia_ativo, repasse_bomdia_enviado_em,
-       repasse_link_comunidade, repasse_link_instagram`,
+       repasse_link_comunidade, repasse_link_instagram,
+       nome_fantasia, nome_empresa, logo_url`,
     )
     .eq("repasse_auto_ativo", true)
     .not("repasse_grupo_jid", "is", null)
@@ -134,12 +135,35 @@ export async function GET(req: NextRequest) {
 
         if (ultimoBomDiaBRT !== hojeBRT) {
           const textoBomDia = gerarTextoBomDia(cfg.repasse_link_comunidade, cfg.repasse_link_instagram, agora);
-          await sendAvisaMessage(
-            cfg.repasse_grupo_jid as string,
-            textoBomDia,
-            { baseUrl: cfg.avisa_base_url as string, token: cfg.avisa_token as string },
-            { typing: false },
-          );
+          const avisaCredsBomDia = { baseUrl: cfg.avisa_base_url as string, token: cfg.avisa_token as string };
+
+          // Card de metadado (ícone + nome da loja + "Convite para comunidade") no link
+          // do grupo — Baileys/Avisa não busca isso sozinho, precisa vir explícito. A
+          // Avisa EXIGE imagem no payload do /actions/sendPreview (400 sem ela) — sem
+          // logo cadastrada em Configurações, cai pro texto simples (sem card).
+          let logoBase64: string | undefined;
+          if (cfg.repasse_link_comunidade && cfg.logo_url) {
+            try {
+              const r = await fetch(cfg.logo_url as string);
+              if (r.ok) logoBase64 = Buffer.from(await r.arrayBuffer()).toString("base64");
+            } catch (e) {
+              console.warn(`⚠️ [repasse/${tenantId}] Falha ao baixar logo pro preview do bom dia:`, e);
+            }
+          }
+
+          if (cfg.repasse_link_comunidade && logoBase64) {
+            await sendAvisaPreview(
+              cfg.repasse_grupo_jid as string,
+              textoBomDia,
+              cfg.repasse_link_comunidade as string,
+              (cfg.nome_fantasia || cfg.nome_empresa || "Comunidade") as string,
+              "Convite para comunidade",
+              logoBase64,
+              avisaCredsBomDia,
+            );
+          } else {
+            await sendAvisaMessage(cfg.repasse_grupo_jid as string, textoBomDia, avisaCredsBomDia, { typing: false });
+          }
           await supabaseAdmin
             .from("config_garage")
             .update({ repasse_bomdia_enviado_em: agora.toISOString() })
