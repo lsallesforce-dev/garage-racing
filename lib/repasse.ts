@@ -85,42 +85,20 @@ export function gerarTextoRepasse(
   linhas.push(``);
   linhas.push(`🗓️ ${anoFab}/${anoMod}`);
   linhas.push(``);
-  linhas.push(`⚙️ KM:${km}`);
-  linhas.push(``);
-  linhas.push(`IPVA ${new Date().getFullYear()} PAGO`);
-  linhas.push(``);
-  linhas.push(`Manual e chave reserva ok`);
+  linhas.push(`⚙️ Km: ${km}`);
   linhas.push(``);
 
   if (mediaWeb) {
-    linhas.push(`🛜 *Média de Venda na Web:*`);
-    linhas.push(`${mediaWeb}`);
+    linhas.push(`🛜 Média da Web: ${mediaWeb}`);
     linhas.push(``);
   }
 
   if (fipe) {
-    linhas.push(`📈 Valor da Tabela FIPE: ${fipe}`);
+    linhas.push(`📈 Fipe: ${fipe}`);
     linhas.push(``);
   }
 
-  linhas.push(`💵 Valor de Venda:`);
-  linhas.push(`${preco}`);
-  linhas.push(``);
-  linhas.push(`Detalhes do Veículo no vídeo`);
-  linhas.push(``);
-  linhas.push(`📷 Tenho Fotos e Vídeos`);
-  linhas.push(``);
-  linhas.push(`🎯 Veículo comigo`);
-  linhas.push(``);
-  if (tipo === "repasse") {
-    linhas.push(
-      `Veículo vendido na Modalidade REPASSE, *nas condições e estado em que se encontra de conservação e sem Garantia*`,
-    );
-    linhas.push(``);
-    linhas.push(`🚨 Lembrando que Veículos de Repasse não têm garantia`);
-    linhas.push(``);
-    linhas.push(`✅ Garantia somente da Documentação do Veículo`);
-  }
+  linhas.push(`💵 Valor: ${preco}`);
 
   if (botPhone) {
     const phoneClean = botPhone.replace(/\D/g, "");
@@ -135,6 +113,20 @@ export function gerarTextoRepasse(
     linhas.push(``);
     linhas.push(`💬 Falar com Vendedor:`);
     linhas.push(`https://wa.me/${phoneClean}?text=${prefill}`);
+  }
+
+  linhas.push(``);
+  linhas.push(`📷 Tenho Fotos e Vídeos`);
+  linhas.push(``);
+  linhas.push(`🎯 Veículo Comigo`);
+
+  if (tipo === "repasse") {
+    linhas.push(``);
+    linhas.push(
+      `📣 Veiculo vendido na Modalidade de Repasse nas Condições e Estado de Conservação em que se encontra.`,
+    );
+    linhas.push(``);
+    linhas.push(`🚨 Lembrando que, Veículo de Repasse não tem Garantia !`);
   }
 
   if (vitrineUrl) {
