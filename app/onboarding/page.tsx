@@ -71,6 +71,15 @@ function OnboardingInner() {
         refresh_token: json.refresh_token,
       });
 
+      // Conversão B2B (GA4 → Google Ads): revenda criou conta no onboarding.
+      // Evento separado do `generate_lead` (que é clique de WhatsApp de CARRO).
+      window.gtag?.("event", "sign_up", {
+        method: "onboarding",
+        event_category: "b2b_signup",
+        event_label: plano || "trial",
+        value: 1,
+      });
+
       setStep(1);
     } catch {
       setError("Erro de conexão. Tente novamente.");
@@ -130,6 +139,14 @@ function OnboardingInner() {
           email:         account.email,
         }),
       }).catch(() => {});
+
+      // Conversão B2B principal (GA4 → Google Ads): onboarding concluído / trial iniciado.
+      // É este o evento a importar como conversão primária da campanha de Pesquisa B2B.
+      window.gtag?.("event", "trial_iniciado", {
+        event_category: "b2b_trial",
+        event_label: plano || "trial",
+        value: 1,
+      });
 
       router.push("/upload");
     } catch (err: any) {
