@@ -67,6 +67,9 @@ interface GarageConfig {
   repasse_janela_inicio?: number;
   repasse_janela_fim?: number;
   repasse_janela_fim_sabado?: number;
+  repasse_bomdia_ativo?: boolean;
+  repasse_link_comunidade?: string;
+  repasse_link_instagram?: string;
 }
 
 export default function ConfiguracoesPage() {
@@ -153,6 +156,9 @@ export default function ConfiguracoesPage() {
     repasse_janela_inicio: 8,
     repasse_janela_fim: 18,
     repasse_janela_fim_sabado: 12,
+    repasse_bomdia_ativo: true,
+    repasse_link_comunidade: "",
+    repasse_link_instagram: "",
   });
   const fileRef = useRef<HTMLInputElement>(null);
   const pfxRef = useRef<HTMLInputElement>(null);
@@ -493,6 +499,9 @@ export default function ConfiguracoesPage() {
               repasse_janela_inicio: row.repasse_janela_inicio ?? 8,
               repasse_janela_fim:    row.repasse_janela_fim    ?? 18,
               repasse_janela_fim_sabado: row.repasse_janela_fim_sabado ?? 12,
+              repasse_bomdia_ativo: row.repasse_bomdia_ativo ?? true,
+              repasse_link_comunidade: row.repasse_link_comunidade ?? "",
+              repasse_link_instagram: row.repasse_link_instagram ?? "",
             });
             if (row.logo_url) {
               setCurrentLogo(row.logo_url);
@@ -651,6 +660,9 @@ export default function ConfiguracoesPage() {
             repasse_janela_inicio: config.repasse_janela_inicio ?? 8,
             repasse_janela_fim:    config.repasse_janela_fim    ?? 18,
             repasse_janela_fim_sabado: config.repasse_janela_fim_sabado ?? 12,
+            repasse_bomdia_ativo: config.repasse_bomdia_ativo ?? true,
+            repasse_link_comunidade: config.repasse_link_comunidade || null,
+            repasse_link_instagram: config.repasse_link_instagram || null,
           },
           { onConflict: "user_id" }
         );
@@ -1805,6 +1817,57 @@ export default function ConfiguracoesPage() {
             <p className="text-[10px] text-gray-400 italic">
               Apenas carros disponíveis com preço preenchido entram no rodízio — os há mais tempo sem anúncio vão primeiro.
             </p>
+
+            {/* Bom dia diário */}
+            <div className="border-t border-gray-100 pt-5 flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-gray-700">Bom dia diário</p>
+                  <p className="text-[9px] text-gray-400 mt-0.5">
+                    Manda 1 mensagem de bom dia com frase motivacional antes do rodízio começar (frase muda todo dia)
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setConfig(c => ({ ...c, repasse_bomdia_ativo: !c.repasse_bomdia_ativo }))}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
+                    config.repasse_bomdia_ativo ? "bg-green-500" : "bg-gray-200"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                      config.repasse_bomdia_ativo ? "translate-x-6" : "translate-x-1"
+                    }`}
+                  />
+                </button>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+                  Link de convite da comunidade/grupo
+                </label>
+                <input
+                  type="text"
+                  value={config.repasse_link_comunidade ?? ""}
+                  onChange={e => setConfig(c => ({ ...c, repasse_link_comunidade: e.target.value }))}
+                  placeholder="https://chat.whatsapp.com/..."
+                  className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+                  Link do Instagram
+                </label>
+                <input
+                  type="text"
+                  value={config.repasse_link_instagram ?? ""}
+                  onChange={e => setConfig(c => ({ ...c, repasse_link_instagram: e.target.value }))}
+                  placeholder="https://www.instagram.com/..."
+                  className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition"
+                />
+              </div>
+            </div>
           </div>
         </div>
 

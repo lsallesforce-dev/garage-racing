@@ -7,8 +7,52 @@
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { buscarFipe } from "@/lib/fipe";
+import { fraseDoDia } from "@/lib/frases-motivacionais";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+
+/**
+ * Gera a mensagem diária de "Bom dia" do Repasse Automático em Comunidade:
+ * frase motivacional do dia (rotativa, ver lib/frases-motivacionais.ts) +
+ * convite pro grupo/comunidade + link do Instagram. Enviada 1x por dia,
+ * antes do rodízio de carros começar (ver cron/repasse-automatico).
+ */
+export function gerarTextoBomDia(
+  linkComunidade?: string | null,
+  linkInstagram?: string | null,
+  data: Date = new Date(),
+): string {
+  const diaSemana = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    weekday: "long",
+  }).format(data).toUpperCase();
+  const { frase, autor } = fraseDoDia(data);
+
+  const linhas: string[] = [];
+  linhas.push(`*BOM DIA A TODOS !*`);
+  linhas.push(``);
+  linhas.push(`*FRASE DO DIA:* "${frase}" - ${autor}`);
+  linhas.push(``);
+  linhas.push(`*ÓTIMA ${diaSemana} E BOAS VENDAS, BORA PRA CIMA !*`);
+
+  if (linkComunidade) {
+    linhas.push(``);
+    linhas.push(`*Quer convidar um AMIGO ou LOJISTA? Compartilhe o link abaixo.*`);
+    linhas.push(``);
+    linhas.push(`*Clique aqui para entrar no grupo* 👇`);
+    linhas.push(linkComunidade);
+  }
+
+  if (linkInstagram) {
+    linhas.push(``);
+    linhas.push(`*Siga-nos nas redes sociais apenas clicando no link abaixo!*`);
+    linhas.push(``);
+    linhas.push(`*Clique aqui para nos seguir no Instagram* 👇`);
+    linhas.push(linkInstagram);
+  }
+
+  return linhas.join("\n");
+}
 
 export async function buscarMediaWeb(
   marca: string,
