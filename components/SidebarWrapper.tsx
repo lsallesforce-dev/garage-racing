@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Sidebar } from "./Sidebar";
 import { ZapWidget } from "./ZapWidget";
 import { Menu } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 
 // ─── User Role Context ────────────────────────────────────────────────────────
 
@@ -63,6 +64,22 @@ export function SidebarWrapper({
 }: SidebarWrapperProps) {
   const [open, setOpen] = useState(false);
 
+  // Flag do pacote Prospecção (transmissão) — feature do dono, admin-only.
+  // Buscada client-side porque o layout não repassa esse campo hoje.
+  const [transmissaoHabilitada, setTransmissaoHabilitada] = useState(false);
+  useEffect(() => {
+    if (isVendedor || !effectiveUserId) return;
+    supabase
+      .from("config_garage")
+      .select("transmissao_habilitada")
+      .eq("user_id", effectiveUserId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .then(({ data }) => {
+        if (data?.[0]?.transmissao_habilitada) setTransmissaoHabilitada(true);
+      });
+  }, [isVendedor, effectiveUserId]);
+
   // Divide nome para colorir metade no header mobile
   const nomeEmpresa = garageConfig?.nomeEmpresa ?? "";
   const meio        = Math.ceil(nomeEmpresa.length / 2);
@@ -84,6 +101,7 @@ export function SidebarWrapper({
             effectiveUserId={effectiveUserId}
             garageConfig={garageConfig}
             paginasPermitidas={paginasPermitidas}
+            transmissaoHabilitada={transmissaoHabilitada}
             onClose={() => setOpen(false)}
           />
         </div>

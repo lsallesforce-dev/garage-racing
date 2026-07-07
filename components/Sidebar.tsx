@@ -1,6 +1,6 @@
 "use client";
 
-import { LayoutDashboard, MessageSquare, DollarSign, Users, ShieldCheck, Car, Store, Settings, LogOut, X, UserCircle, Contact, FileSignature, AlertCircle, Megaphone, CalendarDays } from "lucide-react";
+import { LayoutDashboard, MessageSquare, DollarSign, Users, ShieldCheck, Car, Store, Settings, LogOut, X, UserCircle, Contact, FileSignature, AlertCircle, Megaphone, CalendarDays, Send } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
@@ -41,6 +41,7 @@ interface SidebarProps {
   effectiveUserId?: string;
   garageConfig?: GarageConfig;
   paginasPermitidas?: string[];
+  transmissaoHabilitada?: boolean;
 }
 
 export const Sidebar = ({
@@ -48,6 +49,7 @@ export const Sidebar = ({
   isVendedor = false,
   garageConfig,
   paginasPermitidas,
+  transmissaoHabilitada = false,
 }: SidebarProps) => {
   const pathname = usePathname();
   const router   = useRouter();
@@ -74,7 +76,12 @@ export const Sidebar = ({
         ...todasPaginas.filter(p => p.id === "minhas-vendas" || vendedorPaginas.includes(p.id)),
         { id: "minha-conta", icon: UserCircle, label: "Minha Conta", href: "/minha-conta" },
       ]
-    : adminMenuItems;
+    : adminMenuItems.flatMap(item =>
+        // Pacote Prospecção (transmissão) — só pra tenant habilitado, logo após Marketing
+        item.href === "/marketing" && transmissaoHabilitada
+          ? [item, { icon: Send, label: "Prospecção", href: "/prospeccao" }]
+          : [item]
+      );
 
   return (
     <aside className="w-64 h-screen bg-[#e2e2de] border-r border-gray-300 px-5 py-5 flex flex-col">
