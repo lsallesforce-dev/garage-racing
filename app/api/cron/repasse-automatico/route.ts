@@ -190,7 +190,14 @@ export async function GET(req: NextRequest) {
       if (ultimoEnvio) {
         const diffMs = agora.getTime() - new Date(ultimoEnvio).getTime();
         const diffMin = diffMs / 60_000;
-        if (diffMin < intervaloMin) {
+        // Tolerância p/ o jitter do cron: este cron roda a cada 10min (*/10), mas o
+        // tick nunca cai no segundo exato do último envio — chega ~alguns segundos
+        // "antes" dos Nmin cheios (ex.: último envio 12:00:06, tick 12:10:01 → diff
+        // 9,9min). Sem a folga, `9,9 < 10` pulava o tick e o intervalo de 10min do
+        // usuário virava 20min na prática (pulava 1 tick sempre). 2min absorve o
+        // jitter sem transformar em spam (mínimo efetivo = intervalo - 2).
+        const TOLERANCIA_CRON_MIN = 2;
+        if (diffMin < intervaloMin - TOLERANCIA_CRON_MIN) {
           console.log(
             `⏱️ [repasse/${tenantId}] Último envio há ${diffMin.toFixed(0)}min (intervalo mínimo: ${intervaloMin}min) — pulando`,
           );
