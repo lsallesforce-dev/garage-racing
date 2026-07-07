@@ -24,7 +24,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { sendAvisaMessage, sendAvisaImage, sendAvisaPreview } from "@/lib/avisa";
+import { sendAvisaMessage, sendAvisaImage } from "@/lib/avisa";
 import { gerarRepasseCompleto, gerarTextoBomDia } from "@/lib/repasse";
 import { chaveDataBRT } from "@/lib/frases-motivacionais";
 
@@ -137,29 +137,18 @@ export async function GET(req: NextRequest) {
           const textoBomDia = gerarTextoBomDia(cfg.repasse_link_comunidade, cfg.repasse_link_instagram, agora);
           const avisaCredsBomDia = { baseUrl: cfg.avisa_base_url as string, token: cfg.avisa_token as string };
 
-          // Card de metadado (ícone + nome da loja + "Convite para comunidade") no link
-          // do grupo — Baileys/Avisa não busca isso sozinho, precisa vir explícito. A
-          // Avisa EXIGE imagem no payload do /actions/sendPreview (400 sem ela) — sem
-          // logo dedicada (repasse_bomdia_logo_url, separada da logo geral da loja)
-          // cadastrada em Configurações, cai pro texto simples (sem card).
-          let logoBase64: string | undefined;
-          if (cfg.repasse_link_comunidade && cfg.repasse_bomdia_logo_url) {
-            try {
-              const r = await fetch(cfg.repasse_bomdia_logo_url as string);
-              if (r.ok) logoBase64 = Buffer.from(await r.arrayBuffer()).toString("base64");
-            } catch (e) {
-              console.warn(`⚠️ [repasse/${tenantId}] Falha ao baixar logo pro preview do bom dia:`, e);
-            }
-          }
-
-          if (cfg.repasse_link_comunidade && logoBase64) {
-            await sendAvisaPreview(
+          // Formato igual ao das comunidades (ex.: Marcos Repasse): a logo vai como
+          // IMAGEM real (grande) + o texto do bom dia como legenda — via /actions/sendImage.
+          // (sendPreview gera só um card pequeno de link e é instável; sendImage replica
+          // o visual que o cliente quer.) O card cinza "Convite para comunidade" do link
+          // é gerado nativamente pelo WhatsApp p/ links chat.whatsapp.com. Sem logo
+          // dedicada (repasse_bomdia_logo_url) cai pro texto simples.
+          if (cfg.repasse_bomdia_logo_url) {
+            // sendAvisaImage baixa a URL do nosso storage e manda base64 + dimensão real.
+            await sendAvisaImage(
               cfg.repasse_grupo_jid as string,
+              cfg.repasse_bomdia_logo_url as string,
               textoBomDia,
-              cfg.repasse_link_comunidade as string,
-              (cfg.nome_fantasia || cfg.nome_empresa || "Comunidade") as string,
-              "Convite para comunidade",
-              logoBase64,
               avisaCredsBomDia,
             );
           } else {
