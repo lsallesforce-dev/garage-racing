@@ -28,7 +28,10 @@ import { sendAvisaMessage, sendAvisaImage } from "@/lib/avisa";
 import { gerarRepasseCompleto, gerarTextoBomDia, gruposDoConfig } from "@/lib/repasse";
 import { chaveDataBRT } from "@/lib/frases-motivacionais";
 
-export const maxDuration = 120;
+// 300s (era 120): com múltiplos grupos + retries de Avisa lenta, o tick das
+// 17:10 de 08/07 estourou os 120s no MEIO dos envios → morreu antes de marcar
+// repasse_enviado_em → o retry automático da Vercel re-enviou o carro (3x no grupo).
+export const maxDuration = 300;
 
 // ─── Autenticação (idêntica ao padrão de app/api/cron/followup/route.ts) ──────
 function isAuthorized(req: NextRequest): boolean {
@@ -254,28 +257,39 @@ export async function GET(req: NextRequest) {
         // Pausa entre anúncios consecutivos — evita burst e mantém ordem no grupo
         if (i > 0) await new Promise((r) => setTimeout(r, 4000));
 
-        // ── 6. Enviar para TODOS os grupos vinculados — imagem + legenda ────
-        // sendAvisaImage manda a foto como base64 COM width/height (lê a dimensão
-        // real) → o WhatsApp não corta a prévia. Foto + texto numa mensagem só.
-        for (let gi = 0; gi < grupos.length; gi++) {
-          if (gi > 0) await new Promise((r) => setTimeout(r, 4000)); // pausa entre grupos
-          const grupo = grupos[gi];
-          if (capaUrl && String(capaUrl).startsWith("http")) {
-            await sendAvisaImage(grupo.jid, capaUrl, texto, avisaCreds);
-          } else {
-            await sendAvisaMessage(grupo.jid, texto, avisaCreds, { typing: false });
-          }
-          console.log(`✅ [repasse/${tenantId}] Enviado veículo ${veiculoId} para grupo ${grupo.nome ?? grupo.jid}`);
-        }
-
-        // ── 7. Atualiza repasse_enviado_em do carro (só após envio sem throw) ─
-        // 1x por carro, independente de quantos grupos — o rodízio é por carro.
+        // ── 6. Marcar ANTES de enviar + enviar para TODOS os grupos ─────────
+        // repasse_enviado_em é gravado ANTES dos envios (claim do slot): se a
+        // função morrer no meio (timeout/redeploy) e a Vercel re-executar o cron,
+        // ou se a Avisa responder 504 ambíguo (entregou mas sem confirmação), o
+        // carro JAMAIS é re-enviado — duplicata num grupo de 1.800 membros é bem
+        // pior que um carro pular uma volta do rodízio (incidente do Uno 3x, 08/07).
         await supabaseAdmin
           .from("veiculos")
           .update({ repasse_enviado_em: agora.toISOString() })
           .eq("id", veiculoId);
 
-        enviados++;
+        // sendAvisaImage manda a foto como base64 COM width/height (lê a dimensão
+        // real) → o WhatsApp não corta a prévia. Foto + texto numa mensagem só.
+        let algumOk = false;
+        for (let gi = 0; gi < grupos.length; gi++) {
+          if (gi > 0) await new Promise((r) => setTimeout(r, 4000)); // pausa entre grupos
+          const grupo = grupos[gi];
+          let ok: boolean;
+          if (capaUrl && String(capaUrl).startsWith("http")) {
+            const resultado = await sendAvisaImage(grupo.jid, capaUrl, texto, avisaCreds);
+            ok = resultado != null;
+          } else {
+            ok = await sendAvisaMessage(grupo.jid, texto, avisaCreds, { typing: false });
+          }
+          if (ok) algumOk = true;
+          console.log(
+            ok
+              ? `✅ [repasse/${tenantId}] Enviado veículo ${veiculoId} para grupo ${grupo.nome ?? grupo.jid}`
+              : `⚠️ [repasse/${tenantId}] FALHA (ou entrega não confirmada) do veículo ${veiculoId} no grupo ${grupo.nome ?? grupo.jid}`,
+          );
+        }
+
+        if (algumOk) enviados++;
       }
     } catch (e) {
       // Erro em um tenant não derruba os outros

@@ -162,6 +162,14 @@ async function sendWithRetry(url: string, payload: any, token: string, retries =
       const negocioFalhou = !!data && (data.status === false || data.success === false || !!data.error);
       if (!response.ok || negocioFalhou) {
         console.warn(`Avisa tentativa ${i + 1}: HTTP ${response.status} — ${text.slice(0, 300)}`);
+        // 504/524 = timeout de GATEWAY (Cloudflare desistiu de esperar) — o backend
+        // da Avisa pode ter ENVIADO a mensagem mesmo assim. Re-tentar aqui DUPLICA
+        // a mensagem pro destinatário (caso real: repasse 3x no grupo, 08/07).
+        // Estado desconhecido → não re-enviar; reporta falha e o chamador decide.
+        if (response.status === 504 || response.status === 524) {
+          console.warn(`Avisa: HTTP ${response.status} (gateway timeout) — SEM retry: a mensagem pode ter sido entregue.`);
+          return undefined;
+        }
         if (i < retries - 1) await new Promise(r => setTimeout(r, 1500));
         continue;
       }
