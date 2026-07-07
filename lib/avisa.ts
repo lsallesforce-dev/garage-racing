@@ -104,6 +104,11 @@ export async function resolveAvisaLid(lid: string, creds: AvisaCreds): Promise<s
 
 // Lista os grupos/comunidades em que a instância está (GET /group/list).
 // Retorna [{ jid, name }] ou null se o endpoint falhar.
+//
+// IsParent é FILTRADO: comunidade do WhatsApp aparece 2x na lista — o grupo-pai
+// (IsParent, casca técnica com só os admins) e o grupo de Avisos (IsAnnounce/
+// IsDefaultSubGroup, onde os membros estão, MESMO nome). Postar no pai não chega
+// em ninguém — em 08/07 o Marcos Repasse vinculou os 2 achando que era dobrado.
 export async function listAvisaGroups(creds: AvisaCreds): Promise<{ jid: string; name: string }[] | null> {
   try {
     const res = await fetch(`${creds.baseUrl.replace(/\/+$/, "")}/group/list`, {
@@ -114,7 +119,7 @@ export async function listAvisaGroups(creds: AvisaCreds): Promise<{ jid: string;
     const groups = data?.data?.data?.Groups ?? data?.data?.Groups ?? data?.Groups;
     if (!Array.isArray(groups)) return null;
     return groups
-      .filter((g: any) => typeof g?.JID === "string" && g.JID.endsWith("@g.us"))
+      .filter((g: any) => typeof g?.JID === "string" && g.JID.endsWith("@g.us") && g?.IsParent !== true)
       .map((g: any) => ({ jid: g.JID as string, name: (g.Name as string) || g.JID }));
   } catch {
     return null;
