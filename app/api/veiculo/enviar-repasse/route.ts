@@ -10,6 +10,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireVehicleOwner } from "@/lib/api-auth";
 import { sendMetaMessage, sendMetaCtaButton } from "@/lib/meta";
 import { sendAvisaMessage, sendAvisaImage } from "@/lib/avisa";
+import { gruposDoConfig } from "@/lib/repasse";
 
 export const maxDuration = 30;
 
@@ -35,7 +36,7 @@ export async function POST(req: NextRequest) {
   // config_garage pode ter múltiplas linhas por user_id — nunca usar .single()/.maybeSingle()
   const { data: cfgRows } = await supabaseAdmin
     .from("config_garage")
-    .select("whatsapp, whatsapp_agente, meta_phone_id, meta_access_token, avisa_base_url, avisa_token, repasse_grupo_jid")
+    .select("whatsapp, whatsapp_agente, meta_phone_id, meta_access_token, avisa_base_url, avisa_token, repasse_grupo_jid, repasse_grupo_nome, repasse_grupos")
     .eq("user_id", carro.user_id)
     .order("created_at", { ascending: false })
     .limit(1);
@@ -59,17 +60,22 @@ export async function POST(req: NextRequest) {
   const ctaUrl = botPhone ? `https://wa.me/${botPhone}` : null;
 
   // ── Canal Avisa: sem botão CTA — o link vai no corpo; capa via sendMedia ────
-  // Se repasse_grupo_jid estiver preenchido, envia para o grupo; caso contrário, para o gerente.
+  // Com grupo(s) vinculado(s) (repasse_grupos, migration 021), envia para TODOS;
+  // sem nenhum, cai pro WhatsApp do gerente.
   if (useAvisa) {
     const avisaCreds = { baseUrl: cfg!.avisa_base_url as string, token: cfg!.avisa_token as string };
     // O texto gerado por gerarTextoRepasse já inclui o link "Falar com Vendedor" —
     // só anexa aqui se o usuário tiver removido/editado o texto sem o link.
     const textoComLink = ctaUrl && !texto.includes("wa.me/") ? `${texto}\n\n💬 Falar com vendedor: ${ctaUrl}` : texto;
-    const destinoAvisa = (cfg?.repasse_grupo_jid as string | null | undefined) || destino;
-    if (capaUrl && String(capaUrl).startsWith("http")) {
-      await sendAvisaImage(destinoAvisa, capaUrl, textoComLink, avisaCreds);
-    } else {
-      await sendAvisaMessage(destinoAvisa, textoComLink, avisaCreds, { typing: false });
+    const grupos = gruposDoConfig(cfg);
+    const destinos = grupos.length > 0 ? grupos.map((g) => g.jid) : [destino];
+    for (let i = 0; i < destinos.length; i++) {
+      if (i > 0) await new Promise((r) => setTimeout(r, 4000)); // pausa entre grupos
+      if (capaUrl && String(capaUrl).startsWith("http")) {
+        await sendAvisaImage(destinos[i], capaUrl, textoComLink, avisaCreds);
+      } else {
+        await sendAvisaMessage(destinos[i], textoComLink, avisaCreds, { typing: false });
+      }
     }
     return NextResponse.json({ ok: true });
   }

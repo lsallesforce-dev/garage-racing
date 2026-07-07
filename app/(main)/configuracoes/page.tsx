@@ -61,6 +61,7 @@ interface GarageConfig {
   nf_cep?: string;
   repasse_grupo_jid?: string | null;
   repasse_grupo_nome?: string | null;
+  repasse_grupos?: { jid: string; nome: string | null }[];
   repasse_auto_ativo?: boolean;
   repasse_intervalo_min?: number;
   repasse_qtd_por_envio?: number;
@@ -151,6 +152,7 @@ export default function ConfiguracoesPage() {
     telefone_loja: "",
     repasse_grupo_jid: null,
     repasse_grupo_nome: null,
+    repasse_grupos: [],
     repasse_auto_ativo: false,
     repasse_intervalo_min: 120,
     repasse_qtd_por_envio: 1,
@@ -222,11 +224,13 @@ export default function ConfiguracoesPage() {
     }
   };
 
-  const vincularGrupo = async (jid: string | null) => {
+  // Vincula MAIS UM grupo (múltiplos desde a migration 021) — a API devolve a
+  // lista completa atualizada e mantém os campos legados espelhando o 1º item.
+  const vincularGrupo = async (jid: string) => {
     setVinculandoGrupo(true);
     setErroGrupos("");
     try {
-      const nome = jid ? (gruposDisponiveis?.find(g => g.jid === jid)?.name ?? null) : null;
+      const nome = gruposDisponiveis?.find(g => g.jid === jid)?.name ?? null;
       const res = await fetch("/api/repasse/grupos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -236,12 +240,41 @@ export default function ConfiguracoesPage() {
       if (!res.ok) {
         setErroGrupos(data.error || "Erro ao vincular grupo.");
       } else {
-        setConfig(c => ({ ...c, repasse_grupo_jid: jid, repasse_grupo_nome: nome }));
-        setGruposDisponiveis(null);
+        const grupos = data.grupos ?? [];
+        setConfig(c => ({
+          ...c,
+          repasse_grupos: grupos,
+          repasse_grupo_jid: grupos[0]?.jid ?? null,
+          repasse_grupo_nome: grupos[0]?.nome ?? null,
+        }));
         setGrupoSelecionado("");
       }
     } catch {
       setErroGrupos("Erro de rede ao vincular grupo.");
+    } finally {
+      setVinculandoGrupo(false);
+    }
+  };
+
+  const desvincularGrupo = async (jid: string) => {
+    setVinculandoGrupo(true);
+    setErroGrupos("");
+    try {
+      const res = await fetch(`/api/repasse/grupos?jid=${encodeURIComponent(jid)}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) {
+        setErroGrupos(data.error || "Erro ao desvincular grupo.");
+      } else {
+        const grupos = data.grupos ?? [];
+        setConfig(c => ({
+          ...c,
+          repasse_grupos: grupos,
+          repasse_grupo_jid: grupos[0]?.jid ?? null,
+          repasse_grupo_nome: grupos[0]?.nome ?? null,
+        }));
+      }
+    } catch {
+      setErroGrupos("Erro de rede ao desvincular grupo.");
     } finally {
       setVinculandoGrupo(false);
     }
@@ -524,6 +557,10 @@ export default function ConfiguracoesPage() {
               nf_cep:            row.nf_cep            ?? "",
               repasse_grupo_jid:    row.repasse_grupo_jid    ?? null,
               repasse_grupo_nome:   row.repasse_grupo_nome   ?? null,
+              // Fallback legado: tenant que nunca re-salvou depois da migration 021
+              repasse_grupos: (Array.isArray(row.repasse_grupos) && row.repasse_grupos.length > 0)
+                ? row.repasse_grupos
+                : (row.repasse_grupo_jid ? [{ jid: row.repasse_grupo_jid, nome: row.repasse_grupo_nome ?? null }] : []),
               repasse_auto_ativo:   row.repasse_auto_ativo   ?? false,
               repasse_intervalo_min: row.repasse_intervalo_min ?? 120,
               repasse_qtd_por_envio: row.repasse_qtd_por_envio ?? 1,
@@ -1664,28 +1701,30 @@ export default function ConfiguracoesPage() {
             Repasse Automático em Comunidade
           </h2>
           <p className="text-[11px] text-gray-500 mb-6">
-            Envia um carro disponível por vez, em rodízio, para um grupo/comunidade do WhatsApp.
+            Envia um carro disponível por vez, em rodízio, para um ou mais grupos/comunidades do WhatsApp.
           </p>
 
-          {/* Status do grupo vinculado + sincronização */}
+          {/* Grupos vinculados (múltiplos) + sincronização */}
           <div className="mb-5 flex flex-col gap-3">
-            {config.repasse_grupo_jid ? (
-              <div className="flex items-center gap-2 px-4 py-3 bg-green-50 border border-green-200 rounded-2xl">
-                <span className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-green-700 shrink-0">
-                  <CheckCircle2 size={13} className="text-green-500 shrink-0" />
-                  Grupo vinculado
-                </span>
-                <span className="ml-1 text-[11px] font-bold text-green-700 truncate">
-                  {config.repasse_grupo_nome || config.repasse_grupo_jid.slice(0, 10) + "..."}
-                </span>
-                <button
-                  onClick={() => vincularGrupo(null)}
-                  disabled={vinculandoGrupo}
-                  className="ml-auto text-[9px] font-black uppercase tracking-widest text-red-400 hover:text-red-600 transition shrink-0"
-                >
-                  Desvincular
-                </button>
-              </div>
+            {(config.repasse_grupos ?? []).length > 0 ? (
+              (config.repasse_grupos ?? []).map(g => (
+                <div key={g.jid} className="flex items-center gap-2 px-4 py-3 bg-green-50 border border-green-200 rounded-2xl">
+                  <span className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-green-700 shrink-0">
+                    <CheckCircle2 size={13} className="text-green-500 shrink-0" />
+                    Grupo vinculado
+                  </span>
+                  <span className="ml-1 text-[11px] font-bold text-green-700 truncate">
+                    {g.nome || g.jid.slice(0, 10) + "..."}
+                  </span>
+                  <button
+                    onClick={() => desvincularGrupo(g.jid)}
+                    disabled={vinculandoGrupo}
+                    className="ml-auto text-[9px] font-black uppercase tracking-widest text-red-400 hover:text-red-600 transition shrink-0"
+                  >
+                    Desvincular
+                  </button>
+                </div>
+              ))
             ) : (
               <div className="flex items-start gap-2 px-4 py-3 bg-amber-50 border border-amber-200 rounded-2xl">
                 <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-amber-500 shrink-0 mt-0.5">
@@ -1698,7 +1737,7 @@ export default function ConfiguracoesPage() {
               </div>
             )}
 
-            {/* Sincronizar + escolher grupo */}
+            {/* Sincronizar + adicionar grupo (pode vincular vários) */}
             {gruposDisponiveis === null ? (
               <button
                 onClick={sincronizarGrupos}
@@ -1707,27 +1746,33 @@ export default function ConfiguracoesPage() {
               >
                 {sincronizandoGrupos ? "Sincronizando..." : "🔄 Sincronizar grupos"}
               </button>
-            ) : gruposDisponiveis.length > 0 ? (
-              <div className="flex gap-2 items-center">
-                <select
-                  value={grupoSelecionado}
-                  onChange={e => setGrupoSelecionado(e.target.value)}
-                  className="flex-1 bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition"
-                >
-                  <option value="">Escolha o grupo...</option>
-                  {gruposDisponiveis.map(g => (
-                    <option key={g.jid} value={g.jid}>{g.name}</option>
-                  ))}
-                </select>
-                <button
-                  onClick={() => vincularGrupo(grupoSelecionado)}
-                  disabled={!grupoSelecionado || vinculandoGrupo}
-                  className="px-4 py-2.5 rounded-xl bg-green-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-green-700 transition disabled:opacity-40 shrink-0"
-                >
-                  {vinculandoGrupo ? "Vinculando..." : "Vincular"}
-                </button>
-              </div>
-            ) : null}
+            ) : (() => {
+              const vinculados = new Set((config.repasse_grupos ?? []).map(g => g.jid));
+              const disponiveis = gruposDisponiveis.filter(g => !vinculados.has(g.jid));
+              return disponiveis.length > 0 ? (
+                <div className="flex gap-2 items-center">
+                  <select
+                    value={grupoSelecionado}
+                    onChange={e => setGrupoSelecionado(e.target.value)}
+                    className="flex-1 bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition"
+                  >
+                    <option value="">Escolha o grupo para adicionar...</option>
+                    {disponiveis.map(g => (
+                      <option key={g.jid} value={g.jid}>{g.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => vincularGrupo(grupoSelecionado)}
+                    disabled={!grupoSelecionado || vinculandoGrupo}
+                    className="px-4 py-2.5 rounded-xl bg-green-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-green-700 transition disabled:opacity-40 shrink-0"
+                  >
+                    {vinculandoGrupo ? "Vinculando..." : "+ Vincular"}
+                  </button>
+                </div>
+              ) : (
+                <p className="text-[10px] text-gray-400 italic">Todos os grupos da instância já estão vinculados.</p>
+              );
+            })()}
 
             {erroGrupos && (
               <p className="text-[10px] text-red-500">{erroGrupos}</p>
@@ -1740,22 +1785,22 @@ export default function ConfiguracoesPage() {
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-gray-700">Envio automático</p>
                 <p className="text-[9px] text-gray-400 mt-0.5">
-                  {!config.repasse_grupo_jid ? "Vincule uma comunidade para habilitar" : "Ativa o envio programado de anúncios"}
+                  {(config.repasse_grupos ?? []).length === 0 ? "Vincule uma comunidade para habilitar" : "Ativa o envio programado de anúncios"}
                 </p>
               </div>
               <button
                 type="button"
-                disabled={!config.repasse_grupo_jid}
+                disabled={(config.repasse_grupos ?? []).length === 0}
                 onClick={() => setConfig(c => ({ ...c, repasse_auto_ativo: !c.repasse_auto_ativo }))}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
-                  config.repasse_auto_ativo && config.repasse_grupo_jid
+                  config.repasse_auto_ativo && (config.repasse_grupos ?? []).length > 0
                     ? "bg-green-500"
                     : "bg-gray-200"
-                } ${!config.repasse_grupo_jid ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}`}
+                } ${(config.repasse_grupos ?? []).length === 0 ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}`}
               >
                 <span
                   className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
-                    config.repasse_auto_ativo && config.repasse_grupo_jid ? "translate-x-6" : "translate-x-1"
+                    config.repasse_auto_ativo && (config.repasse_grupos ?? []).length > 0 ? "translate-x-6" : "translate-x-1"
                   }`}
                 />
               </button>

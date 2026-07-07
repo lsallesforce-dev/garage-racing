@@ -25,7 +25,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendAvisaMessage, sendAvisaImage } from "@/lib/avisa";
-import { gerarRepasseCompleto, gerarTextoBomDia } from "@/lib/repasse";
+import { gerarRepasseCompleto, gerarTextoBomDia, gruposDoConfig } from "@/lib/repasse";
 import { chaveDataBRT } from "@/lib/frases-motivacionais";
 
 export const maxDuration = 120;
@@ -66,24 +66,40 @@ export async function GET(req: NextRequest) {
     agora.toLocaleString("en-US", { weekday: "short", timeZone: "America/Sao_Paulo" }) === "Sat";
 
   // ── 1. Busca tenants elegíveis ────────────────────────────────────────────
-  // config_garage: repasse_auto_ativo=true, repasse_grupo_jid preenchido,
-  //                avisa_base_url e avisa_token preenchidos
-  const { data: configRows, error: configErr } = await supabaseAdmin
-    .from("config_garage")
-    .select(
-      `user_id, avisa_base_url, avisa_token,
-       repasse_grupo_jid, repasse_auto_ativo,
+  // config_garage: repasse_auto_ativo=true + avisa preenchida. O(s) grupo(s) de
+  // destino vêm de repasse_grupos (jsonb, migration 021) com fallback pro
+  // repasse_grupo_jid legado — resolvidos por gruposDoConfig() no loop.
+  const CAMPOS_BASE = `user_id, avisa_base_url, avisa_token,
+       repasse_grupo_jid, repasse_grupo_nome, repasse_auto_ativo,
        repasse_intervalo_min, repasse_janela_inicio, repasse_janela_fim,
        repasse_janela_fim_sabado, repasse_qtd_por_envio,
        repasse_bomdia_ativo, repasse_bomdia_enviado_em,
        repasse_link_comunidade, repasse_link_instagram, repasse_bomdia_logo_url,
-       nome_fantasia, nome_empresa`,
-    )
-    .eq("repasse_auto_ativo", true)
-    .not("repasse_grupo_jid", "is", null)
-    .not("avisa_base_url", "is", null)
-    .not("avisa_token", "is", null)
-    .order("created_at", { ascending: false });
+       nome_fantasia, nome_empresa`;
+
+  // any[]: o shape muda entre o select com/sem repasse_grupos (fallback abaixo)
+  let { data: configRows, error: configErr }: { data: any[] | null; error: { message?: string } | null } =
+    await supabaseAdmin
+      .from("config_garage")
+      .select(`${CAMPOS_BASE}, repasse_grupos`)
+      .eq("repasse_auto_ativo", true)
+      .not("avisa_base_url", "is", null)
+      .not("avisa_token", "is", null)
+      .order("created_at", { ascending: false });
+
+  // Janela deploy→migration 021: se a coluna repasse_grupos ainda não existe,
+  // refaz sem ela — gruposDoConfig() cai pro repasse_grupo_jid legado e o
+  // repasse NÃO para (cron quente de produção, cliente real no ar).
+  if (configErr && /repasse_grupos/i.test(configErr.message ?? "")) {
+    console.warn("⚠️ repasse-automatico: coluna repasse_grupos ausente (migration 021 pendente) — usando grupo legado");
+    ({ data: configRows, error: configErr } = await supabaseAdmin
+      .from("config_garage")
+      .select(CAMPOS_BASE)
+      .eq("repasse_auto_ativo", true)
+      .not("avisa_base_url", "is", null)
+      .not("avisa_token", "is", null)
+      .order("created_at", { ascending: false }));
+  }
 
   if (configErr) {
     console.error("❌ repasse-automatico: erro ao buscar config_garage:", configErr);
@@ -114,7 +130,13 @@ export async function GET(req: NextRequest) {
     const tenantId = cfg.user_id;
 
     try {
-      // ── 2. Gate de janela horária ─────────────────────────────────────────
+      // ── 2. Grupos de destino + gate de janela horária ─────────────────────
+      const grupos = gruposDoConfig(cfg);
+      if (grupos.length === 0) {
+        console.log(`👥 [repasse/${tenantId}] Nenhum grupo vinculado — pulando`);
+        continue;
+      }
+
       const janelaBRT = horaBRT;
       const inicio: number = cfg.repasse_janela_inicio ?? 8;
       const fim: number = ehSabado
@@ -143,22 +165,21 @@ export async function GET(req: NextRequest) {
           // o visual que o cliente quer.) O card cinza "Convite para comunidade" do link
           // é gerado nativamente pelo WhatsApp p/ links chat.whatsapp.com. Sem logo
           // dedicada (repasse_bomdia_logo_url) cai pro texto simples.
-          if (cfg.repasse_bomdia_logo_url) {
-            // sendAvisaImage baixa a URL do nosso storage e manda base64 + dimensão real.
-            await sendAvisaImage(
-              cfg.repasse_grupo_jid as string,
-              cfg.repasse_bomdia_logo_url as string,
-              textoBomDia,
-              avisaCredsBomDia,
-            );
-          } else {
-            await sendAvisaMessage(cfg.repasse_grupo_jid as string, textoBomDia, avisaCredsBomDia, { typing: false });
+          for (let gi = 0; gi < grupos.length; gi++) {
+            if (gi > 0) await new Promise((r) => setTimeout(r, 4000)); // pausa entre grupos
+            const grupo = grupos[gi];
+            if (cfg.repasse_bomdia_logo_url) {
+              // sendAvisaImage baixa a URL do nosso storage e manda base64 + dimensão real.
+              await sendAvisaImage(grupo.jid, cfg.repasse_bomdia_logo_url as string, textoBomDia, avisaCredsBomDia);
+            } else {
+              await sendAvisaMessage(grupo.jid, textoBomDia, avisaCredsBomDia, { typing: false });
+            }
+            console.log(`☀️ [repasse/${tenantId}] Bom dia enviado para o grupo ${grupo.nome ?? grupo.jid}`);
           }
           await supabaseAdmin
             .from("config_garage")
             .update({ repasse_bomdia_enviado_em: agora.toISOString() })
             .eq("user_id", tenantId);
-          console.log(`☀️ [repasse/${tenantId}] Bom dia enviado para o grupo ${cfg.repasse_grupo_jid}`);
           await new Promise((r) => setTimeout(r, 4000));
         }
       }
@@ -210,7 +231,6 @@ export async function GET(req: NextRequest) {
         continue;
       }
 
-      const grupoJid: string = cfg.repasse_grupo_jid as string;
       const avisaCreds = {
         baseUrl: cfg.avisa_base_url as string,
         token: cfg.avisa_token as string,
@@ -234,25 +254,28 @@ export async function GET(req: NextRequest) {
         // Pausa entre anúncios consecutivos — evita burst e mantém ordem no grupo
         if (i > 0) await new Promise((r) => setTimeout(r, 4000));
 
-        // ── 6. Enviar para o grupo via Avisa — imagem + legenda juntas ──────
+        // ── 6. Enviar para TODOS os grupos vinculados — imagem + legenda ────
         // sendAvisaImage manda a foto como base64 COM width/height (lê a dimensão
         // real) → o WhatsApp não corta a prévia. Foto + texto numa mensagem só.
-        if (capaUrl && String(capaUrl).startsWith("http")) {
-          await sendAvisaImage(grupoJid, capaUrl, texto, avisaCreds);
-        } else {
-          await sendAvisaMessage(grupoJid, texto, avisaCreds, { typing: false });
+        for (let gi = 0; gi < grupos.length; gi++) {
+          if (gi > 0) await new Promise((r) => setTimeout(r, 4000)); // pausa entre grupos
+          const grupo = grupos[gi];
+          if (capaUrl && String(capaUrl).startsWith("http")) {
+            await sendAvisaImage(grupo.jid, capaUrl, texto, avisaCreds);
+          } else {
+            await sendAvisaMessage(grupo.jid, texto, avisaCreds, { typing: false });
+          }
+          console.log(`✅ [repasse/${tenantId}] Enviado veículo ${veiculoId} para grupo ${grupo.nome ?? grupo.jid}`);
         }
 
         // ── 7. Atualiza repasse_enviado_em do carro (só após envio sem throw) ─
+        // 1x por carro, independente de quantos grupos — o rodízio é por carro.
         await supabaseAdmin
           .from("veiculos")
           .update({ repasse_enviado_em: agora.toISOString() })
           .eq("id", veiculoId);
 
         enviados++;
-        console.log(
-          `✅ [repasse/${tenantId}] Enviado veículo ${veiculoId} para grupo ${grupoJid}`,
-        );
       }
     } catch (e) {
       // Erro em um tenant não derruba os outros

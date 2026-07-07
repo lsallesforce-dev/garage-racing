@@ -398,9 +398,27 @@ export async function POST(req: NextRequest) {
         const ehGerente = fromMe || (!!gerente && candidatos.some((s) => s.endsWith(gerente) || gerente.endsWith(s)));
         console.log(`👥 [Grupo] comando !grupo detectado | fromMe=${fromMe} candidatos=${candidatos.join(",")} gerente=${gerente} → ehGerente=${ehGerente}`);
         if (ehGerente && garageConfig?.avisa_base_url && garageConfig?.avisa_token) {
+          // Desde a migration 021 os destinos são MÚLTIPLOS (repasse_grupos jsonb):
+          // o !grupo ADICIONA à lista (não sobrescreve) e mantém o legado espelhando
+          // o primeiro item — mesmo contrato da rota /api/repasse/grupos.
+          const { gruposDoConfig } = await import("@/lib/repasse");
+          const { data: cfgGruposRows } = await supabaseAdmin
+            .from("config_garage")
+            .select("repasse_grupos, repasse_grupo_jid, repasse_grupo_nome")
+            .eq("user_id", tenantUserId)
+            .order("created_at", { ascending: false })
+            .limit(1);
+          const gruposAtuais = gruposDoConfig(cfgGruposRows?.[0] ?? null);
+          const gruposNovos = gruposAtuais.some((g) => g.jid === groupJid)
+            ? gruposAtuais
+            : [...gruposAtuais, { jid: groupJid, nome: null }];
           await supabaseAdmin
             .from("config_garage")
-            .update({ repasse_grupo_jid: groupJid })
+            .update({
+              repasse_grupos: gruposNovos,
+              repasse_grupo_jid: gruposNovos[0]?.jid ?? null,
+              repasse_grupo_nome: gruposNovos[0]?.nome ?? null,
+            })
             .eq("user_id", tenantUserId);
           await sendAvisaMessage(
             groupJid,

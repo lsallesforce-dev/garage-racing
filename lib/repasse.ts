@@ -86,6 +86,37 @@ export function formatarMoeda(valor: number): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(valor);
 }
 
+export interface RepasseGrupo {
+  jid: string;
+  nome: string | null;
+}
+
+/**
+ * Grupos de destino do repasse do tenant. Fonte da verdade: repasse_grupos
+ * (jsonb, array de {jid, nome} — migration 021). Fallback: repasse_grupo_jid
+ * legado (tenant que nunca re-salvou depois da migração). Dedup por jid e
+ * só JIDs de grupo válidos (@g.us).
+ */
+export function gruposDoConfig(cfg: any): RepasseGrupo[] {
+  const vistos = new Set<string>();
+  const out: RepasseGrupo[] = [];
+
+  const arr = Array.isArray(cfg?.repasse_grupos) ? cfg.repasse_grupos : [];
+  for (const g of arr) {
+    const jid = typeof g?.jid === "string" ? g.jid : "";
+    if (!jid.endsWith("@g.us") || vistos.has(jid)) continue;
+    vistos.add(jid);
+    out.push({ jid, nome: typeof g?.nome === "string" ? g.nome : null });
+  }
+
+  const legacy = typeof cfg?.repasse_grupo_jid === "string" ? cfg.repasse_grupo_jid : "";
+  if (out.length === 0 && legacy.endsWith("@g.us")) {
+    out.push({ jid: legacy, nome: cfg?.repasse_grupo_nome ?? null });
+  }
+
+  return out;
+}
+
 // FIPE do anúncio: prioridade é o valor EXATO salvo no cadastro pela placa
 // (apibrasil → veiculos.valor_fipe). Carro sem placa (cadastro por vídeo/manual)
 // cai na busca textual da parallelum por marca/modelo/versão.
