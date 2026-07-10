@@ -42,7 +42,7 @@
     },
     {
       "path": "/api/cron/transmissao-envios",
-      "schedule": "*/5 11-21 * * 1-6"
+      "schedule": "*/2 11-21 * * 1-6"
     }
   ]
 }

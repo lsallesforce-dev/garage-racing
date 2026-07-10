@@ -5,13 +5,13 @@
 // (config_garage.transmissao_avisa_base_url/token — NUNCA a instância do agente IA).
 //
 // Anti-ban (lição do soft-ban 463 do chip da Mari):
-//   · janela horária BRT por tenant: [transmissao_janela_inicio, transmissao_janela_fim)
+//   · tick a cada 2min (vercel.json), janela horária BRT por tenant:
+//     [transmissao_janela_inicio, transmissao_janela_fim)
 //   · cap diário (transmissao_cap_dia, default 150); RAMP-UP: chip com menos de
 //     7 dias de ativação (transmissao_ativada_em null ou recente) → máx 50/dia
 //   · máx 4 envios por tick + jitter 20–45s entre envios (cadência humana)
-//   · saudação sorteada por contato (montarMensagemEnvio) quebra o fingerprint
-//     de payload idêntico em massa
 //   · 3 falhas consecutivas → pausa a campanha + alerta o gerente (possível 463)
+//     — número inválido (erro "Could not validate...") NÃO conta pra isso
 //
 // Corrida entre ticks: claim atômico por envio (pendente → enviando com
 // WHERE status='pendente'); se o UPDATE não retornar linha, outro tick pegou.
