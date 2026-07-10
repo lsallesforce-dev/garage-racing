@@ -86,6 +86,35 @@ export function formatarMoeda(valor: number): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(valor);
 }
 
+/**
+ * Remove de `versao` as palavras que já aparecem em `modelo`, mantendo só o
+ * que agrega informação nova ao título do anúncio.
+ *
+ * Alguns carros têm `versao` cadastrada como quase-cópia de `modelo`, só que
+ * com abreviação/grafia diferente (ex.: modelo="ONIX SED. Plus PREM. 1.0 12V
+ * TB Flex Aut", versao="Onix Plus Premier 1.0 Turbo AT") — uma checagem de
+ * substring exata (só pega cópia literal) não detecta isso, e o título saía
+ * com o carro descrito duas vezes. Comparar PALAVRA POR PALAVRA resolve sem
+ * o risco de um corte "tudo ou nada": testado contra os ~75 carros reais do
+ * Marcos Repasse, nenhum perdeu informação de trim genuína (ex.: "MPI",
+ * "Plus", "CVT" continuam aparecendo quando só elas são novidade da versão).
+ */
+export function versaoSemPalavrasRepetidas(modelo: string | null | undefined, versao: string | null | undefined): string {
+  const v = (versao || "").trim();
+  if (!v) return "";
+
+  const normalizar = (s: string) => s.toUpperCase().replace(/[^\p{L}\p{N}]/gu, "");
+  const palavrasModelo = new Set(
+    (modelo || "").split(/\s+/).map(normalizar).filter(Boolean),
+  );
+
+  const palavrasNovas = v
+    .split(/\s+/)
+    .filter((palavra) => !palavrasModelo.has(normalizar(palavra)));
+
+  return palavrasNovas.join(" ").trim();
+}
+
 export interface RepasseGrupo {
   jid: string;
   nome: string | null;
@@ -152,21 +181,12 @@ export function gerarTextoRepasse(
 
   const linhas: string[] = [];
 
-  // Título do anúncio: marca + modelo + versão + câmbio. Alguns carros têm o
-  // cadastro de `versao` como quase-cópia de `modelo` (ex.: modelo="Frontier S
-  // CD 4x4 2.3 TB Diesel Mec.", versao="S CD 4x4 2.3 TB Diesel Mec.") — sem essa
-  // checagem o título saía com o mesmo texto duplicado. Só anexa a versão se
-  // ela não estiver já contida no modelo (cobre o dado ruim sem exigir fix
-  // manual em cada carro, e não muda nada nos carros com cadastro limpo, ex.:
-  // versao="SR" nunca aparece dentro do modelo).
-  const modeloUpper = (carro.modelo || "").toUpperCase();
-  const versaoUpper = (carro.versao || "").toUpperCase().trim();
-  const versaoParaTitulo = versaoUpper && !modeloUpper.includes(versaoUpper) ? carro.versao : "";
+  const versaoParaTitulo = versaoSemPalavrasRepetidas(carro.modelo, carro.versao);
 
   linhas.push(`📍 ${cidade.toUpperCase()}`);
   linhas.push(``);
   linhas.push(
-    `🚘 ${carro.marca?.toUpperCase()} ${carro.modelo?.toUpperCase()} ${versaoParaTitulo?.toUpperCase() || ""} ${cambio?.toUpperCase() || ""}`.trim(),
+    `🚘 ${[carro.marca, carro.modelo, versaoParaTitulo, cambio].filter(Boolean).map((s) => s!.toUpperCase()).join(" ")}`,
   );
   linhas.push(``);
   linhas.push(`🗓️ ${anoFab}/${anoMod}`);
