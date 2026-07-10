@@ -152,10 +152,21 @@ export function gerarTextoRepasse(
 
   const linhas: string[] = [];
 
+  // Título do anúncio: marca + modelo + versão + câmbio. Alguns carros têm o
+  // cadastro de `versao` como quase-cópia de `modelo` (ex.: modelo="Frontier S
+  // CD 4x4 2.3 TB Diesel Mec.", versao="S CD 4x4 2.3 TB Diesel Mec.") — sem essa
+  // checagem o título saía com o mesmo texto duplicado. Só anexa a versão se
+  // ela não estiver já contida no modelo (cobre o dado ruim sem exigir fix
+  // manual em cada carro, e não muda nada nos carros com cadastro limpo, ex.:
+  // versao="SR" nunca aparece dentro do modelo).
+  const modeloUpper = (carro.modelo || "").toUpperCase();
+  const versaoUpper = (carro.versao || "").toUpperCase().trim();
+  const versaoParaTitulo = versaoUpper && !modeloUpper.includes(versaoUpper) ? carro.versao : "";
+
   linhas.push(`📍 ${cidade.toUpperCase()}`);
   linhas.push(``);
   linhas.push(
-    `🚘 ${carro.marca?.toUpperCase()} ${carro.modelo?.toUpperCase()} ${carro.versao?.toUpperCase() || ""} ${cambio?.toUpperCase() || ""}`.trim(),
+    `🚘 ${carro.marca?.toUpperCase()} ${carro.modelo?.toUpperCase()} ${versaoParaTitulo?.toUpperCase() || ""} ${cambio?.toUpperCase() || ""}`.trim(),
   );
   linhas.push(``);
   linhas.push(`🗓️ ${anoFab}/${anoMod}`);
