@@ -80,21 +80,21 @@ export async function GET(req: NextRequest) {
        repasse_link_comunidade, repasse_link_instagram, repasse_bomdia_logo_url,
        nome_fantasia, nome_empresa`;
 
-  // any[]: o shape muda entre o select com/sem repasse_grupos (fallback abaixo)
+  // any[]: o shape muda entre o select com/sem as colunas novas (fallback abaixo)
   let { data: configRows, error: configErr }: { data: any[] | null; error: { message?: string } | null } =
     await supabaseAdmin
       .from("config_garage")
-      .select(`${CAMPOS_BASE}, repasse_grupos`)
+      .select(`${CAMPOS_BASE}, repasse_grupos, repasse_ciclo_iniciado_em`)
       .eq("repasse_auto_ativo", true)
       .not("avisa_base_url", "is", null)
       .not("avisa_token", "is", null)
       .order("created_at", { ascending: false });
 
-  // Janela deploy→migration 021: se a coluna repasse_grupos ainda não existe,
-  // refaz sem ela — gruposDoConfig() cai pro repasse_grupo_jid legado e o
+  // Janela deploy→migration (021/022): se alguma coluna nova ainda não existe,
+  // refaz sem elas — grupo cai pro legado e o rodízio cai pra ordem antiga; o
   // repasse NÃO para (cron quente de produção, cliente real no ar).
-  if (configErr && /repasse_grupos/i.test(configErr.message ?? "")) {
-    console.warn("⚠️ repasse-automatico: coluna repasse_grupos ausente (migration 021 pendente) — usando grupo legado");
+  if (configErr && /repasse_grupos|repasse_ciclo_iniciado_em/i.test(configErr.message ?? "")) {
+    console.warn("⚠️ repasse-automatico: coluna nova ausente (migration 021/022 pendente) — usando modo legado");
     ({ data: configRows, error: configErr } = await supabaseAdmin
       .from("config_garage")
       .select(CAMPOS_BASE)
@@ -218,21 +218,56 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      // ── 4. Próximos carros do rodízio (1–N por envio, conforme config) ─────
+      // ── 4. Próximos carros do rodízio — SORTEIO sem repetição por ciclo ────
+      // (pedido Marcos Repasse 09/07: a ordem fixa por repasse_enviado_em fazia
+      // os dias ficarem idênticos — sempre do 1º ao último carro na mesma sequência)
+      //
+      // Ciclo: repasse_ciclo_iniciado_em (migration 022) marca o início. Carro
+      // "pendente" = repasse_enviado_em NULL ou anterior ao marco. Sorteia entre
+      // os pendentes → nenhum carro repete antes de TODOS saírem; acabou o ciclo,
+      // grava novo marco e re-embaralha. Migration 022 pendente → o marco não
+      // persiste e degrada pra sorteio simples (pode repetir), sem parar o cron.
       const qtdPorEnvio = Math.min(Math.max(cfg.repasse_qtd_por_envio ?? 1, 1), 5);
-      const { data: carros } = await supabaseAdmin
-        .from("veiculos")
-        .select("id")
-        .eq("user_id", tenantId)
-        .eq("status_venda", "DISPONIVEL")
-        .gt("preco_sugerido", 0)
-        .order("repasse_enviado_em", { ascending: true, nullsFirst: true })
-        .limit(qtdPorEnvio);
+      const cicloInicio: string | null = cfg.repasse_ciclo_iniciado_em ?? null;
 
-      if (!carros || carros.length === 0) {
+      const buscarPendentes = async (marco: string | null) => {
+        let q = supabaseAdmin
+          .from("veiculos")
+          .select("id")
+          .eq("user_id", tenantId)
+          .eq("status_venda", "DISPONIVEL")
+          .gt("preco_sugerido", 0);
+        if (marco) q = q.or(`repasse_enviado_em.is.null,repasse_enviado_em.lt.${marco}`);
+        else q = q.is("repasse_enviado_em", null); // sem marco: só os nunca enviados
+        return (await q).data ?? [];
+      };
+
+      let pendentes = await buscarPendentes(cicloInicio);
+
+      if (pendentes.length === 0) {
+        // Ciclo completo (ou primeiro uso) → novo marco; todos voltam a ser pendentes
+        const novoMarco = agora.toISOString();
+        await supabaseAdmin
+          .from("config_garage")
+          .update({ repasse_ciclo_iniciado_em: novoMarco })
+          .eq("user_id", tenantId);
+        pendentes = await buscarPendentes(novoMarco);
+        if (pendentes.length > 0) {
+          console.log(`🔀 [repasse/${tenantId}] Ciclo completo — novo ciclo com ${pendentes.length} carros re-embaralhados`);
+        }
+      }
+
+      if (pendentes.length === 0) {
         console.log(`🚗 [repasse/${tenantId}] Sem carros disponíveis com preço — pulando`);
         continue;
       }
+
+      // Fisher-Yates: sorteio justo entre os pendentes do ciclo
+      for (let i = pendentes.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [pendentes[i], pendentes[j]] = [pendentes[j], pendentes[i]];
+      }
+      const carros = pendentes.slice(0, qtdPorEnvio);
 
       const avisaCreds = {
         baseUrl: cfg.avisa_base_url as string,

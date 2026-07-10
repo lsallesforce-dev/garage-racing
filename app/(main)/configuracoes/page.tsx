@@ -1892,7 +1892,7 @@ export default function ConfiguracoesPage() {
 
             {/* Nota explicativa */}
             <p className="text-[10px] text-gray-400 italic">
-              Apenas carros disponíveis com preço preenchido entram no rodízio — os há mais tempo sem anúncio vão primeiro.
+              Apenas carros disponíveis com preço preenchido entram no rodízio — a ordem é sorteada e nenhum carro repete antes de todos os outros saírem.
             </p>
 
             {/* Bom dia diário */}
