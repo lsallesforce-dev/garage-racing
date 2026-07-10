@@ -38,6 +38,27 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Nenhum campo válido para atualizar" }, { status: 400 });
   }
 
+  // Anti-duplicação no título do anúncio (ver lib/repasse.ts): se `versao`
+  // ficar contida em `modelo` após esta edição (mexeu em qualquer um dos dois),
+  // zera versao em vez de deixar salvar o texto repetido.
+  if ("modelo" in safeFields || "versao" in safeFields) {
+    let modeloFinal = safeFields.modelo as string | undefined;
+    let versaoFinal = safeFields.versao as string | undefined;
+    if (modeloFinal === undefined || versaoFinal === undefined) {
+      const { data: existing } = await supabaseAdmin
+        .from("veiculos")
+        .select("modelo, versao")
+        .eq("id", veiculoId)
+        .single();
+      if (modeloFinal === undefined) modeloFinal = existing?.modelo ?? "";
+      if (versaoFinal === undefined) versaoFinal = existing?.versao ?? "";
+    }
+    const v = (versaoFinal || "").trim();
+    if (v && (modeloFinal || "").toUpperCase().includes(v.toUpperCase())) {
+      safeFields.versao = "";
+    }
+  }
+
   const { error } = await supabaseAdmin
     .from("veiculos")
     .update(safeFields)

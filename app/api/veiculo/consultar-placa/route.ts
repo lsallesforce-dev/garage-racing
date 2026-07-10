@@ -166,6 +166,16 @@ export async function POST(req: NextRequest) {
 
   const trunc = (s: string, n: number) => (s ?? "").slice(0, n);
 
+  // A FIPE às vezes devolve VERSAO/SUBMODELO como quase-cópia do MODELO (ex.:
+  // modelo="Frontier S CD 4x4 2.3 TB Diesel Mec.", versao="S CD 4x4 2.3 TB
+  // Diesel Mec.") — sem essa checagem o texto do anúncio saía duplicado (ver
+  // lib/repasse.ts). Descarta a versão se ela já estiver contida no modelo.
+  const versaoSemDuplicar = (modelo: string, versao: string): string => {
+    const v = (versao || "").trim();
+    if (!v) return "";
+    return modelo.toUpperCase().includes(v.toUpperCase()) ? "" : v;
+  };
+
   // Normaliza campos — aceita camelCase (tipo "fipe" novo) e UPPER (legacy)
   const marcaRaw: string = trunc(fipeInfo.MARCA ?? fipeInfo.marca ?? "", 100);
   const modeloRaw: string = trunc(fipeInfo.MODELO ?? fipeInfo.modelo ?? "", 100);
@@ -280,7 +290,7 @@ export async function POST(req: NextRequest) {
     const updates: Record<string, any> = {};
     if (!existing.marca)              updates.marca = marcaRaw;
     if (!existing.modelo)             updates.modelo = modeloRaw;
-    if (!existing.versao)             updates.versao = geminiData.versao || versaoRaw || "";
+    if (!existing.versao)             updates.versao = versaoSemDuplicar(updates.modelo ?? existing.modelo ?? modeloRaw, geminiData.versao || versaoRaw || "");
     if (!existing.ano && anoFab)      updates.ano = anoFab;
     if (!existing.ano_modelo && anoMod) updates.ano_modelo = anoMod;
     if (!existing.cor && corRaw)      updates.cor = corRaw.toLowerCase();
@@ -321,14 +331,14 @@ export async function POST(req: NextRequest) {
     }
 
     console.log(`[consultar-placa] Enriqueceu veículo ${veiculoId} com ${Object.keys(updates).length} campos`);
-    return NextResponse.json({ id: veiculoId, marca: existing.marca || marcaRaw, modelo: existing.modelo || modeloRaw, versao: existing.versao || geminiData.versao, enriched: true, updatedFields: Object.keys(updates) });
+    return NextResponse.json({ id: veiculoId, marca: existing.marca || marcaRaw, modelo: existing.modelo || modeloRaw, versao: existing.versao || updates.versao || "", enriched: true, updatedFields: Object.keys(updates) });
   }
 
   // 3b. Criar veículo novo
   const insertPayload: Record<string, any> = {
     marca: marcaRaw,
     modelo: modeloRaw,
-    versao: geminiData.versao || versaoRaw || "",
+    versao: versaoSemDuplicar(modeloRaw, geminiData.versao || versaoRaw || ""),
     condicao: "USADO",
     local: "PÁTIO",
     user_id: userId,
