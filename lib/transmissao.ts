@@ -66,7 +66,7 @@ export async function gerarTransmissaoCompleto(
   // config_garage pode ter múltiplas linhas por user_id — nunca .single()
   const { data: cfgRows } = await supabaseAdmin
     .from("config_garage")
-    .select("vitrine_slug, cidade")
+    .select("vitrine_slug, cidade, estado")
     .eq("user_id", carro.user_id)
     .order("created_at", { ascending: false })
     .limit(1);
@@ -90,8 +90,12 @@ export async function gerarTransmissaoCompleto(
     }),
   ]);
 
+  // Cidade com UF ("São José do Rio Preto-SP") — o 📍 do anúncio sai completo
+  const cidadeUf = cfg?.cidade
+    ? [String(cfg.cidade).trim(), String(cfg.estado ?? "").trim()].filter(Boolean).join("-")
+    : null;
   // botPhone=null → sem "Falar com Vendedor". Vitrine mantida.
-  const texto = gerarTextoRepasse(carro, fipe, mediaWeb, null, "repasse", vitrineUrl, cfg?.cidade);
+  const texto = gerarTextoRepasse(carro, fipe, mediaWeb, null, "repasse", vitrineUrl, cidadeUf);
   const capaUrl: string | null = carro.capa_marketing_url || carro.fotos?.[0] || null;
 
   return { texto, capaUrl };

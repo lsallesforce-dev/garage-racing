@@ -233,7 +233,7 @@ export async function gerarRepasseCompleto(
   // config_garage pode ter múltiplas linhas por user_id — nunca usar .single()/.maybeSingle()
   const { data: cfgRows } = await supabaseAdmin
     .from("config_garage")
-    .select("whatsapp_agente, whatsapp, vitrine_slug, cidade")
+    .select("whatsapp_agente, whatsapp, vitrine_slug, cidade, estado")
     .eq("user_id", carro.user_id)
     .order("created_at", { ascending: false })
     .limit(1);
@@ -259,7 +259,11 @@ export async function gerarRepasseCompleto(
     }),
   ]);
 
-  const texto = gerarTextoRepasse(carro, fipe, mediaWeb, botPhone, tipo, vitrineUrl, cfg?.cidade);
+  // Cidade com UF ("São José do Rio Preto-SP") — o 📍 do anúncio sai completo
+  const cidadeUf = cfg?.cidade
+    ? [String(cfg.cidade).trim(), String(cfg.estado ?? "").trim()].filter(Boolean).join("-")
+    : null;
+  const texto = gerarTextoRepasse(carro, fipe, mediaWeb, botPhone, tipo, vitrineUrl, cidadeUf);
 
   // Foto na proporção ORIGINAL (sem normalizar pra quadrado/4:5). O cron envia a
   // foto como imagem SEPARADA, antes do texto — o WhatsApp mostra a foto inteira e
