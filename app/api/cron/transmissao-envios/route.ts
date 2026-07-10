@@ -256,12 +256,13 @@ export async function GET(req: NextRequest) {
 
         const msg = montarMensagemEnvio(contato.nome, campanha.texto);
 
+        const errorRef: { message?: string } = {};
         let ok: boolean;
         if (campanha.capa_url && String(campanha.capa_url).startsWith("http")) {
-          const resultado = await sendAvisaImage(contato.telefone, campanha.capa_url, msg, creds);
+          const resultado = await sendAvisaImage(contato.telefone, campanha.capa_url, msg, creds, errorRef);
           ok = resultado != null;
         } else {
-          ok = await sendAvisaMessage(contato.telefone, msg, creds, { typing: false });
+          ok = await sendAvisaMessage(contato.telefone, msg, creds, { typing: false }, errorRef);
         }
 
         if (ok) {
@@ -273,14 +274,19 @@ export async function GET(req: NextRequest) {
           falhasConsecutivas = 0;
           console.log(`📨 [transmissao/${tenantId}] Enviado para ${contato.telefone} (campanha ${campanha.id})`);
         } else {
+          // Número inválido/não-WhatsApp é problema de DADO do contato, não sinal
+          // de bloqueio do chip — não deve contar pro circuit breaker (senão uma
+          // lista com vários números ruins seguidos pausa a campanha à toa).
+          const motivo = errorRef.message || "falha no envio Avisa (motivo não identificado)";
+          const ehNumeroInvalido = /validate|invalid.*number|n[uú]mero.*inv[aá]lido/i.test(motivo);
           await supabaseAdmin
             .from("transmissao_envios")
-            .update({ status: "erro", erro: "falha no envio Avisa (possível 463)" })
+            .update({ status: "erro", erro: motivo })
             .eq("id", envio.id);
           erros++;
-          falhasConsecutivas++;
+          if (!ehNumeroInvalido) falhasConsecutivas++;
           console.warn(
-            `⚠️ [transmissao/${tenantId}] Falha no envio para ${contato.telefone} (${falhasConsecutivas} consecutiva(s))`,
+            `⚠️ [transmissao/${tenantId}] Falha no envio para ${contato.telefone}: ${motivo}${ehNumeroInvalido ? " (número inválido — não conta pro circuit breaker)" : ` (${falhasConsecutivas} consecutiva(s))`}`,
           );
 
           // Circuit breaker: 3 falhas seguidas = provável bloqueio do chip (463) —

@@ -184,6 +184,17 @@ export default function ProspeccaoPage() {
     }
   };
 
+  // Auto-refresh: enquanto tiver campanha ativa, o cron manda mensagens em
+  // background (a cada 5min) e o progresso na tela ficava parado até dar F5
+  // ou clicar no ícone de atualizar. Sondagem silenciosa a cada 15s.
+  const temCampanhaAtiva = campanhas.some((c) => c.status === "ativa");
+  useEffect(() => {
+    if (!temCampanhaAtiva) return;
+    const id = setInterval(carregarCampanhas, 15000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [temCampanhaAtiva]);
+
   // Trava de senha: já desbloqueada nesta sessão do navegador? (não repergunta
   // ao navegar entre páginas; some ao fechar o navegador)
   useEffect(() => {

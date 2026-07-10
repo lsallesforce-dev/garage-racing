@@ -134,7 +134,12 @@ function resolveCreds(creds?: Partial<AvisaCreds>): AvisaCreds | null {
 }
 
 
-async function sendWithRetry(url: string, payload: any, token: string, retries = 2): Promise<any> {
+// errorRef opcional: quem chama passa um objeto vazio e, se a Avisa recusar o
+// envio, ele fica preenchido com o motivo REAL (ex.: "Could not validate the
+// provided number") em vez do chamador só saber "deu falso". Usado pela
+// Prospecção pra gravar o erro certo em transmissao_envios.erro (antes gravava
+// um rótulo genérico "possível 463" mesmo quando o problema era outro).
+async function sendWithRetry(url: string, payload: any, token: string, retries = 2, errorRef?: { message?: string }): Promise<any> {
   for (let i = 0; i < retries; i++) {
     try {
       const isFormData = payload instanceof FormData;
@@ -162,12 +167,14 @@ async function sendWithRetry(url: string, payload: any, token: string, retries =
       const negocioFalhou = !!data && (data.status === false || data.success === false || !!data.error);
       if (!response.ok || negocioFalhou) {
         console.warn(`Avisa tentativa ${i + 1}: HTTP ${response.status} — ${text.slice(0, 300)}`);
+        if (errorRef) errorRef.message = data?.message || data?.error?.error || data?.error || `HTTP ${response.status}`;
         // 504/524 = timeout de GATEWAY (Cloudflare desistiu de esperar) — o backend
         // da Avisa pode ter ENVIADO a mensagem mesmo assim. Re-tentar aqui DUPLICA
         // a mensagem pro destinatário (caso real: repasse 3x no grupo, 08/07).
         // Estado desconhecido → não re-enviar; reporta falha e o chamador decide.
         if (response.status === 504 || response.status === 524) {
           console.warn(`Avisa: HTTP ${response.status} (gateway timeout) — SEM retry: a mensagem pode ter sido entregue.`);
+          if (errorRef) errorRef.message = "timeout de gateway (mensagem pode ter sido entregue)";
           return undefined;
         }
         if (i < retries - 1) await new Promise(r => setTimeout(r, 1500));
@@ -175,9 +182,11 @@ async function sendWithRetry(url: string, payload: any, token: string, retries =
       }
       if (data !== undefined) return data;
       console.warn(`Avisa tentativa ${i + 1}: HTTP ${response.status} — resposta não-JSON: ${text.slice(0, 200)}`);
+      if (errorRef) errorRef.message = `resposta não-JSON (HTTP ${response.status})`;
       if (i < retries - 1) await new Promise(r => setTimeout(r, 1500));
     } catch (err) {
       console.warn(`Avisa tentativa ${i + 1} falhou:`, err);
+      if (errorRef) errorRef.message = err instanceof Error ? err.message : "erro de rede";
       if (i < retries - 1) await new Promise(r => setTimeout(r, 1500));
     }
   }
@@ -231,9 +240,9 @@ async function sendAvisaTyping(baseUrl: string, token: string, phone: string, ac
 // Retorna TRUE só se a Avisa confirmou o envio. FALSE em 463/erro/sem-resposta ou
 // credenciais ausentes — assim quem chama (prospecção, cron) pode contar `bloqueios`
 // em vez de marcar como "enviada" e gravar resposta fantasma no histórico.
-export async function sendAvisaMessage(phone: string, message: string, creds?: Partial<AvisaCreds>, opts?: { typing?: boolean }): Promise<boolean> {
+export async function sendAvisaMessage(phone: string, message: string, creds?: Partial<AvisaCreds>, opts?: { typing?: boolean }, errorRef?: { message?: string }): Promise<boolean> {
   const c = resolveCreds(creds);
-  if (!c) { console.warn("Avisa credentials missing"); return false; }
+  if (!c) { if (errorRef) errorRef.message = "credenciais Avisa ausentes"; console.warn("Avisa credentials missing"); return false; }
 
   const target = buildTarget(phone);
 
@@ -253,7 +262,7 @@ export async function sendAvisaMessage(phone: string, message: string, creds?: P
   await markAgentEcho(phone, message);
 
   const payload = { ...target, message };
-  const resultado = await sendWithRetry(`${c.baseUrl}/actions/sendMessage`, payload, c.token);
+  const resultado = await sendWithRetry(`${c.baseUrl}/actions/sendMessage`, payload, c.token, 2, errorRef);
   return resultado != null; // sendWithRetry retorna undefined em falha (inclui 463)
 }
 
@@ -271,9 +280,9 @@ function isOwnStorageUrl(u: string): boolean {
   }
 }
 
-export async function sendAvisaImage(phone: string, imageUrlOrBase64: string, message?: string, creds?: Partial<AvisaCreds>) {
+export async function sendAvisaImage(phone: string, imageUrlOrBase64: string, message?: string, creds?: Partial<AvisaCreds>, errorRef?: { message?: string }) {
   const c = resolveCreds(creds);
-  if (!c) { console.warn("Avisa credentials missing"); return; }
+  if (!c) { if (errorRef) errorRef.message = "credenciais Avisa ausentes"; console.warn("Avisa credentials missing"); return; }
 
   const isHttp = imageUrlOrBase64.startsWith("http");
 
@@ -297,7 +306,7 @@ export async function sendAvisaImage(phone: string, imageUrlOrBase64: string, me
       if (meta.width && meta.height) { payload.width = meta.width; payload.height = meta.height; }
       if (message) payload.message = message;
       console.log(`🖼️ Avisa sendImage (${meta.width}x${meta.height}) → ${formatPhone(phone)}`);
-      return sendWithRetry(`${c.baseUrl}/actions/sendImage`, payload, c.token);
+      return sendWithRetry(`${c.baseUrl}/actions/sendImage`, payload, c.token, 2, errorRef);
     }
   } catch (e) {
     console.warn("🖼️ Avisa sendImage: preparo com dimensão falhou, fallback:", e);
@@ -308,11 +317,11 @@ export async function sendAvisaImage(phone: string, imageUrlOrBase64: string, me
     const payload: any = { ...buildTarget(phone), fileUrl: imageUrlOrBase64, type: "image", fileName: "foto.jpg" };
     if (message) payload.message = message;
     console.log(`🖼️ Avisa sendImage (URL fallback) → ${formatPhone(phone)}`);
-    return sendWithRetry(`${c.baseUrl}/actions/sendMedia`, payload, c.token);
+    return sendWithRetry(`${c.baseUrl}/actions/sendMedia`, payload, c.token, 2, errorRef);
   }
   const payload: any = { ...buildTarget(phone), image: imageUrlOrBase64 };
   if (message) payload.message = message;
-  return sendWithRetry(`${c.baseUrl}/actions/sendImage`, payload, c.token);
+  return sendWithRetry(`${c.baseUrl}/actions/sendImage`, payload, c.token, 2, errorRef);
 }
 
 export async function sendAvisaPreview(
