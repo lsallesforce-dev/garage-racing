@@ -9,31 +9,14 @@
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { buscarMediaWeb, resolverFipe, gerarTextoRepasse } from "@/lib/repasse";
 
-// ── Saudação personalizada por contato ────────────────────────────────────────
-// Aplicada NO ENVIO (não no texto congelado da campanha): cada mensagem sai
-// única — cara de mensagem pessoal E quebra o fingerprint de payload idêntico
-// em massa (lição do soft-ban 463 do chip da Mari).
-const SAUDACOES: ((nome: string) => string)[] = [
-  (n) => `Olá ${n}, tudo bem?`,
-  (n) => `Oi ${n}! Olha essa oportunidade:`,
-  (n) => `${n}, tudo certo? Chegou essa aqui:`,
-  (n) => `Opa ${n}, dá uma olhada nessa:`,
-  (n) => `${n}, olha o que acabou de chegar:`,
-  (n) => `Oi ${n}, tudo bom? Separei essa pra você:`,
-];
-
-/** Primeiro nome, capitalizado ("MARCOS silva" → "Marcos"). */
-export function primeiroNome(nome: string): string {
-  const p = (nome || "").trim().split(/\s+/)[0] || "";
-  return p ? p.charAt(0).toUpperCase() + p.slice(1).toLowerCase() : "";
-}
-
-/** Saudação sorteada + texto da campanha. Sem nome válido, vai só o texto. */
-export function montarMensagemEnvio(nomeContato: string, textoCampanha: string): string {
-  const nome = primeiroNome(nomeContato);
-  if (!nome) return textoCampanha;
-  const saudacao = SAUDACOES[Math.floor(Math.random() * SAUDACOES.length)](nome);
-  return `${saudacao}\n\n${textoCampanha}`;
+/**
+ * Mensagem de envio = texto puro do carro, sem saudação (pedido Marcos
+ * Repasse 10/07: nada de nome do contato em cima, só a ficha do anúncio).
+ * Mantida como função (em vez de usar campanha.texto direto no cron) pra
+ * dar um único ponto de ajuste se a formatação do envio precisar mudar de novo.
+ */
+export function montarMensagemEnvio(_nomeContato: string, textoCampanha: string): string {
+  return textoCampanha;
 }
 
 // ── Normalização de telefone (padrão BR, igual conceito do lib/avisa.ts) ─────
@@ -49,9 +32,10 @@ export function normalizarTelefone(raw: string): string | null {
 // ── Texto da campanha ─────────────────────────────────────────────────────────
 /**
  * Gera texto + capa pro disparo de transmissão de um veículo.
- * Reusa gerarTextoRepasse com botPhone=null → o bloco "💬 Falar com Vendedor"
- * NÃO entra (lista pessoal, sem direcionamento pro agente). Vitrine FICA
- * (decisão de produto 07/07). Retorna null se o veículo não existir.
+ * Reusa gerarTextoRepasse com botPhone=null (sem "💬 Falar com Vendedor") e
+ * vitrineUrl=null (sem "🚗 Veja nosso estoque completo") — lista pessoal, só
+ * o texto puro do carro (pedido Marcos Repasse 10/07, revoga a decisão de
+ * 07/07 de manter a vitrine). Retorna null se o veículo não existir.
  */
 export async function gerarTransmissaoCompleto(
   veiculoId: string,
@@ -66,14 +50,11 @@ export async function gerarTransmissaoCompleto(
   // config_garage pode ter múltiplas linhas por user_id — nunca .single()
   const { data: cfgRows } = await supabaseAdmin
     .from("config_garage")
-    .select("vitrine_slug, cidade, estado")
+    .select("cidade, estado")
     .eq("user_id", carro.user_id)
     .order("created_at", { ascending: false })
     .limit(1);
   const cfg = cfgRows?.[0] ?? null;
-  const vitrineUrl = cfg?.vitrine_slug
-    ? `${process.env.NEXT_PUBLIC_APP_URL || "https://www.autozap.digital"}/vitrine/${cfg.vitrine_slug}`
-    : null;
 
   const versaoRica = [carro.versao, carro.motor, carro.combustivel, carro.cambio]
     .filter(Boolean)
@@ -94,8 +75,9 @@ export async function gerarTransmissaoCompleto(
   const cidadeUf = cfg?.cidade
     ? [String(cfg.cidade).trim(), String(cfg.estado ?? "").trim()].filter(Boolean).join("-")
     : null;
-  // botPhone=null → sem "Falar com Vendedor". Vitrine mantida.
-  const texto = gerarTextoRepasse(carro, fipe, mediaWeb, null, "repasse", vitrineUrl, cidadeUf);
+  // botPhone=null → sem "Falar com Vendedor". vitrineUrl=null → sem o link do
+  // estoque completo no fim (pedido Marcos Repasse 10/07: só o texto do carro).
+  const texto = gerarTextoRepasse(carro, fipe, mediaWeb, null, "repasse", null, cidadeUf);
   const capaUrl: string | null = carro.capa_marketing_url || carro.fotos?.[0] || null;
 
   return { texto, capaUrl };
