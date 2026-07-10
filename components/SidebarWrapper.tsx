@@ -64,19 +64,21 @@ export function SidebarWrapper({
 }: SidebarWrapperProps) {
   const [open, setOpen] = useState(false);
 
-  // Flag do pacote Prospecção (transmissão) — feature do dono, admin-only.
-  // Buscada client-side porque o layout não repassa esse campo hoje.
+  // Flag do pacote Prospecção (transmissão) + senha de acesso — feature do dono,
+  // admin-only. Buscadas client-side porque o layout não repassa esses campos hoje.
   const [transmissaoHabilitada, setTransmissaoHabilitada] = useState(false);
+  const [transmissaoSenha, setTransmissaoSenha] = useState("");
   useEffect(() => {
     if (isVendedor || !effectiveUserId) return;
     supabase
       .from("config_garage")
-      .select("transmissao_habilitada")
+      .select("transmissao_habilitada, transmissao_senha")
       .eq("user_id", effectiveUserId)
       .order("created_at", { ascending: false })
       .limit(1)
       .then(({ data }) => {
         if (data?.[0]?.transmissao_habilitada) setTransmissaoHabilitada(true);
+        if (data?.[0]?.transmissao_senha) setTransmissaoSenha(data[0].transmissao_senha);
       });
   }, [isVendedor, effectiveUserId]);
 
@@ -102,6 +104,7 @@ export function SidebarWrapper({
             garageConfig={garageConfig}
             paginasPermitidas={paginasPermitidas}
             transmissaoHabilitada={transmissaoHabilitada}
+            transmissaoSenha={transmissaoSenha}
             onClose={() => setOpen(false)}
           />
         </div>

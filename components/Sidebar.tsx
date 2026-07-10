@@ -1,8 +1,9 @@
 "use client";
 
-import { LayoutDashboard, MessageSquare, DollarSign, Users, ShieldCheck, Car, Store, Settings, LogOut, X, UserCircle, Contact, FileSignature, AlertCircle, Megaphone, CalendarDays, Send } from "lucide-react";
+import { LayoutDashboard, MessageSquare, DollarSign, Users, ShieldCheck, Car, Store, Settings, LogOut, X, UserCircle, Contact, FileSignature, AlertCircle, Megaphone, CalendarDays, Send, Lock } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import type { GarageConfig } from "./SidebarWrapper";
 
@@ -42,6 +43,7 @@ interface SidebarProps {
   garageConfig?: GarageConfig;
   paginasPermitidas?: string[];
   transmissaoHabilitada?: boolean;
+  transmissaoSenha?: string;
 }
 
 export const Sidebar = ({
@@ -50,9 +52,40 @@ export const Sidebar = ({
   garageConfig,
   paginasPermitidas,
   transmissaoHabilitada = false,
+  transmissaoSenha = "",
 }: SidebarProps) => {
   const pathname = usePathname();
   const router   = useRouter();
+
+  // Modal de senha da Prospecção (config_garage.transmissao_senha, por tenant).
+  // Clicar no item abre o modal; senha certa → grava prospeccao_unlocked na
+  // sessão e navega. Sem senha configurada → navega direto.
+  const [senhaModal, setSenhaModal] = useState(false);
+  const [senhaInput, setSenhaInput] = useState("");
+  const [senhaErro, setSenhaErro] = useState(false);
+
+  const abrirProspeccao = () => {
+    setSenhaInput("");
+    setSenhaErro(false);
+    onClose?.();
+    if (!transmissaoSenha || sessionStorage.getItem("prospeccao_unlocked") === "1") {
+      router.push("/prospeccao");
+    } else {
+      setSenhaModal(true);
+    }
+  };
+
+  const confirmarSenha = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (senhaInput === transmissaoSenha) {
+      sessionStorage.setItem("prospeccao_unlocked", "1");
+      setSenhaModal(false);
+      setSenhaInput("");
+      router.push("/prospeccao");
+    } else {
+      setSenhaErro(true);
+    }
+  };
 
   const nomeUsuario  = garageConfig?.nomeUsuario  ?? "";
   const cargoUsuario = garageConfig?.cargoUsuario ?? "";
@@ -114,19 +147,27 @@ export const Sidebar = ({
       </div>
 
       <nav className="flex-1 space-y-0.5 overflow-y-auto">
-        {menuItems.map((item) => (
-          <Link
-            key={item.label}
-            href={item.href}
-            onClick={onClose}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
-              pathname === item.href ? "bg-white text-red-600 shadow-sm" : "text-gray-600 hover:bg-white/50"
-            }`}
-          >
-            <item.icon size={16} />
-            <span className="font-bold text-[11px] uppercase tracking-wider">{item.label}</span>
-          </Link>
-        ))}
+        {menuItems.map((item) => {
+          const ativo = pathname === item.href;
+          const classe = `flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all w-full text-left ${
+            ativo ? "bg-white text-red-600 shadow-sm" : "text-gray-600 hover:bg-white/50"
+          }`;
+          // Prospecção com senha → botão que abre o modal em vez de navegar direto
+          if (item.href === "/prospeccao") {
+            return (
+              <button key={item.label} type="button" onClick={abrirProspeccao} className={classe}>
+                <item.icon size={16} />
+                <span className="font-bold text-[11px] uppercase tracking-wider">{item.label}</span>
+              </button>
+            );
+          }
+          return (
+            <Link key={item.label} href={item.href} onClick={onClose} className={classe}>
+              <item.icon size={16} />
+              <span className="font-bold text-[11px] uppercase tracking-wider">{item.label}</span>
+            </Link>
+          );
+        })}
         {!isVendedor && (
           <a
             href={vitrineSlug ? `/vitrine/${vitrineSlug}` : "/vitrine"}
@@ -172,6 +213,52 @@ export const Sidebar = ({
           <LogOut size={16} />
         </button>
       </div>
+
+      {/* Modal de senha da Prospecção */}
+      {senhaModal && (
+        <div
+          className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4"
+          onClick={() => setSenhaModal(false)}
+        >
+          <form
+            onSubmit={confirmarSenha}
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-[2rem] shadow-2xl w-full max-w-xs p-8 flex flex-col items-center text-center gap-4"
+          >
+            <Lock size={26} className="text-gray-400" />
+            <div>
+              <h2 className="text-sm font-black uppercase tracking-widest text-gray-900">Prospecção</h2>
+              <p className="text-[11px] text-gray-500 mt-1">Digite a senha para acessar.</p>
+            </div>
+            <input
+              type="password"
+              autoFocus
+              value={senhaInput}
+              onChange={(e) => { setSenhaInput(e.target.value); setSenhaErro(false); }}
+              placeholder="Senha"
+              className={`w-full text-center bg-[#f5f5f3] border rounded-xl px-4 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-1 transition ${
+                senhaErro ? "border-red-300 focus:border-red-500 focus:ring-red-500" : "border-gray-200 focus:border-green-500 focus:ring-green-500"
+              }`}
+            />
+            {senhaErro && <p className="text-[11px] text-red-500 -mt-2">Senha incorreta.</p>}
+            <div className="flex gap-2 w-full">
+              <button
+                type="button"
+                onClick={() => setSenhaModal(false)}
+                className="flex-1 py-2.5 rounded-xl bg-gray-100 text-gray-500 text-[11px] font-black uppercase tracking-widest hover:bg-gray-200 transition"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                className="flex-1 py-2.5 rounded-xl bg-gray-900 text-white text-[11px] font-black uppercase tracking-widest hover:bg-green-600 transition"
+              >
+                Acessar
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </aside>
   );
 };

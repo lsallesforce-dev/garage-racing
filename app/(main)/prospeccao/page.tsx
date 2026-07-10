@@ -107,6 +107,16 @@ export default function ProspeccaoPage() {
   // Gate / config
   const [carregando, setCarregando] = useState(true);
   const [habilitado, setHabilitado] = useState(false);
+  // Trava de senha por tenant (config_garage.transmissao_senha). O caminho normal
+  // é o modal da sidebar (grava prospeccao_unlocked na sessão); este gate na
+  // página cobre o acesso por URL direta. Senha vazia = sem trava.
+  const [senhaConfig, setSenhaConfig] = useState<string>("");
+  const [desbloqueado, setDesbloqueado] = useState(false);
+  const [senhaInput, setSenhaInput] = useState("");
+  const [senhaErro, setSenhaErro] = useState(false);
+  const [senhaAtual, setSenhaAtual] = useState("");   // campo editável de troca de senha
+  const [salvandoSenha, setSalvandoSenha] = useState(false);
+  const [salvoSenha, setSalvoSenha] = useState(false);
   const [userId, setUserId] = useState("");
   const [canal, setCanal] = useState<CanalConfig>({
     id: null,
@@ -174,6 +184,24 @@ export default function ProspeccaoPage() {
     }
   };
 
+  // Trava de senha: já desbloqueada nesta sessão do navegador? (não repergunta
+  // ao navegar entre páginas; some ao fechar o navegador)
+  useEffect(() => {
+    if (sessionStorage.getItem("prospeccao_unlocked") === "1") setDesbloqueado(true);
+  }, []);
+
+  const tentarDesbloquear = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (senhaInput === senhaConfig) {
+      sessionStorage.setItem("prospeccao_unlocked", "1");
+      setDesbloqueado(true);
+      setSenhaErro(false);
+      setSenhaInput("");
+    } else {
+      setSenhaErro(true);
+    }
+  };
+
   // ── Load inicial: gate + config (padrão configuracoes) ─────────────────────
 
   useEffect(() => {
@@ -186,7 +214,7 @@ export default function ProspeccaoPage() {
       supabase
         .from("config_garage")
         .select(
-          "id, transmissao_habilitada, transmissao_avisa_base_url, transmissao_avisa_token, transmissao_cap_dia, transmissao_janela_inicio, transmissao_janela_fim, transmissao_ativada_em"
+          "id, transmissao_habilitada, transmissao_avisa_base_url, transmissao_avisa_token, transmissao_cap_dia, transmissao_janela_inicio, transmissao_janela_fim, transmissao_ativada_em, transmissao_senha"
         )
         .eq("user_id", user.id)
         .order("created_at", { ascending: false })
@@ -204,6 +232,10 @@ export default function ProspeccaoPage() {
               janelaFim: row.transmissao_janela_fim ?? 18,
               ativadaEm: row.transmissao_ativada_em ?? null,
             });
+            const senha = row.transmissao_senha ?? "";
+            setSenhaConfig(senha);
+            setSenhaAtual(senha); // preenche o campo de troca de senha
+            if (!senha) setDesbloqueado(true); // sem senha configurada = sem trava
             if (row.transmissao_habilitada) {
               setHabilitado(true);
               carregarContatos();
@@ -411,6 +443,30 @@ export default function ProspeccaoPage() {
     }
   };
 
+  // ── Senha de acesso: salvar (só o dono, já dentro da página, pode trocar) ────
+  const handleSalvarSenha = async () => {
+    setSalvandoSenha(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Usuário não autenticado");
+      const novaSenha = senhaAtual.trim();
+      const { error } = await supabase
+        .from("config_garage")
+        .upsert(
+          { ...(canal.id ? { id: canal.id } : {}), user_id: user.id, transmissao_senha: novaSenha || null },
+          { onConflict: "user_id" }
+        );
+      if (error) throw error;
+      setSenhaConfig(novaSenha);
+      setSalvoSenha(true);
+      setTimeout(() => setSalvoSenha(false), 3000);
+    } catch (err: any) {
+      alert("Erro ao salvar senha: " + err.message);
+    } finally {
+      setSalvandoSenha(false);
+    }
+  };
+
   // ── Derivados ───────────────────────────────────────────────────────────────
 
   const contatosFiltrados = contatos.filter(
@@ -456,6 +512,48 @@ export default function ProspeccaoPage() {
               Fale com o suporte AutoZap para ativar as listas de transmissão na sua conta.
             </p>
           </div>
+        </div>
+      </main>
+    );
+  }
+
+  // Trava de senha — só aparece o conteúdo depois de digitar a senha correta
+  if (!desbloqueado) {
+    return (
+      <main className="flex-1 p-4 sm:p-10 bg-[#efefed] min-h-screen">
+        {header}
+        <div className="max-w-md">
+          <form
+            onSubmit={tentarDesbloquear}
+            className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-10 flex flex-col items-center text-center gap-4"
+          >
+            <Lock size={28} className="text-gray-400" />
+            <h2 className="text-sm font-black uppercase tracking-widest text-gray-900">
+              Área protegida
+            </h2>
+            <p className="text-xs text-gray-500 -mt-2">
+              Digite a senha para acessar suas listas de transmissão.
+            </p>
+            <input
+              type="password"
+              autoFocus
+              value={senhaInput}
+              onChange={(e) => { setSenhaInput(e.target.value); setSenhaErro(false); }}
+              placeholder="Senha"
+              className={`w-full text-center bg-[#f5f5f3] border rounded-xl px-4 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-1 transition ${
+                senhaErro
+                  ? "border-red-300 focus:border-red-500 focus:ring-red-500"
+                  : "border-gray-200 focus:border-green-500 focus:ring-green-500"
+              }`}
+            />
+            {senhaErro && <p className="text-[11px] text-red-500 -mt-2">Senha incorreta.</p>}
+            <button
+              type="submit"
+              className="w-full py-2.5 rounded-xl bg-gray-900 text-white text-[11px] font-black uppercase tracking-widest hover:bg-green-600 transition"
+            >
+              Acessar
+            </button>
+          </form>
         </div>
       </main>
     );
@@ -884,6 +982,36 @@ export default function ProspeccaoPage() {
             <p className="text-[9px] text-gray-400">
               Nos primeiros 7 dias o sistema limita a 50 envios/dia automaticamente (aquecimento do chip).
             </p>
+          </div>
+        </div>
+
+        {/* ══ Card 5 — Senha de acesso ══════════════════════════════════════ */}
+        <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-8">
+          <h2 className="text-[11px] font-black uppercase tracking-widest text-gray-400 mb-1">
+            Senha de acesso
+          </h2>
+          <p className="text-[11px] text-gray-500 mb-5">
+            Pede esta senha ao abrir a Prospecção pela barra lateral. Deixe em branco para não pedir senha.
+          </p>
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">Senha</label>
+              <input
+                type="text"
+                value={senhaAtual}
+                onChange={(e) => setSenhaAtual(e.target.value)}
+                placeholder="Sem senha"
+                className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition"
+              />
+            </div>
+            <button
+              onClick={handleSalvarSenha}
+              disabled={salvandoSenha}
+              className={`${btnPrimario} self-start ${salvoSenha ? "!bg-green-600" : ""}`}
+            >
+              {salvandoSenha ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+              {salvoSenha ? "Salvo!" : "Salvar senha"}
+            </button>
           </div>
         </div>
       </div>
