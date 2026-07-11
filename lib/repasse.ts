@@ -86,31 +86,64 @@ export function formatarMoeda(valor: number): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(valor);
 }
 
+// Abreviações automotivas equivalentes que a comparação por prefixo não pega
+// (AT/Aut não são prefixo um do outro; TB/Turbo idem). Mapeadas pra uma forma
+// canônica ANTES do dedup, pra "Turbo AT Automático" cair quando o modelo já
+// diz "TB ... Aut".
+const ABREVIACOES_TITULO: Record<string, string> = {
+  AT: "AUT", AUTOMATICO: "AUT", AUTOMATICA: "AUT", AUTOMATIC: "AUT",
+  TB: "TURBO",
+  MT: "MEC", MANUAL: "MEC", MECANICO: "MEC", MECANICA: "MEC",
+  SEDAN: "SED", SEDA: "SED",
+};
+
 /**
  * Remove de `versao` as palavras que já aparecem em `modelo`, mantendo só o
  * que agrega informação nova ao título do anúncio.
  *
  * Alguns carros têm `versao` cadastrada como quase-cópia de `modelo`, só que
  * com abreviação/grafia diferente (ex.: modelo="ONIX SED. Plus PREM. 1.0 12V
- * TB Flex Aut", versao="Onix Plus Premier 1.0 Turbo AT") — uma checagem de
- * substring exata (só pega cópia literal) não detecta isso, e o título saía
- * com o carro descrito duas vezes. Comparar PALAVRA POR PALAVRA resolve sem
- * o risco de um corte "tudo ou nada": testado contra os ~75 carros reais do
- * Marcos Repasse, nenhum perdeu informação de trim genuína (ex.: "MPI",
- * "Plus", "CVT" continuam aparecendo quando só elas são novidade da versão).
+ * TB Flex Aut", versao="Onix Plus Premier 1.0 Turbo AT"). Três regras de
+ * equivalência, nessa ordem:
+ *   1. palavra idêntica (normalizada sem acento/pontuação);
+ *   2. abreviação canônica (ABREVIACOES_TITULO: TB≈Turbo, AT≈Aut≈Automático…);
+ *   3. prefixo: a mais curta tem ≥3 chars e é prefixo da mais longa
+ *      (PREM.≈Premier, Aut≈Automática) — o mínimo de 3 evita colisão de
+ *      trims reais curtos (GL≠GLS, LT≠LTZ, CD≠CDX).
+ * Testado contra o estoque real do Marcos Repasse: nenhum carro perde trim
+ * genuíno (ex.: "SR", "MPI", "CVT" continuam quando só eles são novidade).
  */
 export function versaoSemPalavrasRepetidas(modelo: string | null | undefined, versao: string | null | undefined): string {
   const v = (versao || "").trim();
   if (!v) return "";
 
-  const normalizar = (s: string) => s.toUpperCase().replace(/[^\p{L}\p{N}]/gu, "");
+  const normalizar = (s: string) => {
+    const limpa = s
+      .normalize("NFD")
+      .replace(/\p{M}/gu, "")
+      .toUpperCase()
+      .replace(/[^\p{L}\p{N}]/gu, "");
+    return ABREVIACOES_TITULO[limpa] ?? limpa;
+  };
+
   const palavrasModelo = new Set(
     (modelo || "").split(/\s+/).map(normalizar).filter(Boolean),
   );
 
+  const jaCoberta = (palavra: string): boolean => {
+    if (!palavra) return true;
+    if (palavrasModelo.has(palavra)) return true;
+    for (const m of palavrasModelo) {
+      const curta = m.length <= palavra.length ? m : palavra;
+      const longa = m.length <= palavra.length ? palavra : m;
+      if (curta.length >= 3 && longa.startsWith(curta)) return true;
+    }
+    return false;
+  };
+
   const palavrasNovas = v
     .split(/\s+/)
-    .filter((palavra) => !palavrasModelo.has(normalizar(palavra)));
+    .filter((palavra) => !jaCoberta(normalizar(palavra)));
 
   return palavrasNovas.join(" ").trim();
 }
@@ -182,11 +215,15 @@ export function gerarTextoRepasse(
   const linhas: string[] = [];
 
   const versaoParaTitulo = versaoSemPalavrasRepetidas(carro.modelo, carro.versao);
+  // O câmbio entra no fim do título só se ainda não estiver dito nele
+  // (modelo "…TB Flex Aut" + cambio "Automático" saía "…AUT AUTOMÁTICO").
+  const tituloBase = [carro.marca, carro.modelo, versaoParaTitulo].filter(Boolean).join(" ");
+  const cambioParaTitulo = versaoSemPalavrasRepetidas(tituloBase, cambio);
 
   linhas.push(`📍 ${cidade.toUpperCase()}`);
   linhas.push(``);
   linhas.push(
-    `🚘 ${[carro.marca, carro.modelo, versaoParaTitulo, cambio].filter(Boolean).map((s) => s!.toUpperCase()).join(" ")}`,
+    `🚘 ${[tituloBase, cambioParaTitulo].filter(Boolean).map((s) => s.toUpperCase()).join(" ")}`,
   );
   linhas.push(``);
   linhas.push(`🗓️ ${anoFab}/${anoMod}`);
