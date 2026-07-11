@@ -153,6 +153,10 @@ export default function ProspeccaoPage() {
   const [veiculoSelecionado, setVeiculoSelecionado] = useState<Veiculo | null>(null);
   const [listasSelecionadas, setListasSelecionadas] = useState<Lista[]>([]);
   const [disparando, setDisparando] = useState(false);
+  // Texto do anúncio editável no preview (igual ao repasse)
+  const [textoDisparo, setTextoDisparo] = useState("");
+  const [capaDisparo, setCapaDisparo] = useState<string | null>(null);
+  const [gerandoTexto, setGerandoTexto] = useState(false);
 
   // Campanhas
   const [campanhas, setCampanhas] = useState<Campanha[]>([]);
@@ -359,6 +363,33 @@ export default function ProspeccaoPage() {
     setCarregandoVeiculos(false);
   };
 
+  // Gera o texto do anúncio pro carro escolhido e joga no textarea editável.
+  // Mesmo endpoint que a campanha usa pra congelar — o que o usuário editar aqui
+  // é exatamente o que vai ser enviado.
+  const gerarPreviewTexto = async (v: Veiculo) => {
+    setGerandoTexto(true);
+    setTextoDisparo("");
+    setCapaDisparo(null);
+    try {
+      const res = await fetch("/api/transmissao/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ veiculoId: v.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setTextoDisparo(data.texto ?? "");
+        setCapaDisparo(data.capaUrl ?? null);
+      } else {
+        alert(data.error || "Erro ao gerar o texto do anúncio.");
+      }
+    } catch {
+      alert("Falha ao gerar o texto do anúncio. Tente novamente.");
+    } finally {
+      setGerandoTexto(false);
+    }
+  };
+
   const toggleListaDisparo = (l: Lista) =>
     setListasSelecionadas((prev) =>
       prev.includes(l) ? prev.filter((x) => x !== l) : [...prev, l]
@@ -373,6 +404,10 @@ export default function ProspeccaoPage() {
 
   const handleDisparar = async () => {
     if (!veiculoSelecionado || listasSelecionadas.length === 0) return;
+    if (!textoDisparo.trim()) {
+      alert("O texto do anúncio está vazio. Edite ou gere novamente.");
+      return;
+    }
     const nomeCarro = `${veiculoSelecionado.marca} ${veiculoSelecionado.modelo}`;
     const listasOrd = [...listasSelecionadas].sort();
     if (
@@ -386,7 +421,12 @@ export default function ProspeccaoPage() {
       const res = await fetch("/api/transmissao/campanhas", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ veiculoId: veiculoSelecionado.id, listas: listasOrd }),
+        body: JSON.stringify({
+          veiculoId: veiculoSelecionado.id,
+          listas: listasOrd,
+          texto: textoDisparo,
+          capaUrl: capaDisparo,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -396,6 +436,8 @@ export default function ProspeccaoPage() {
       alert(`Campanha criada! ${data.total} envios na fila — o disparo começa automaticamente, aos poucos.`);
       setVeiculoSelecionado(null);
       setListasSelecionadas([]);
+      setTextoDisparo("");
+      setCapaDisparo(null);
       carregarCampanhas();
     } catch {
       alert("Falha na conexão. Tente novamente.");
@@ -753,12 +795,35 @@ export default function ProspeccaoPage() {
                 </p>
               </div>
               <button
-                onClick={() => setVeiculoSelecionado(null)}
+                onClick={() => {
+                  setVeiculoSelecionado(null);
+                  setTextoDisparo("");
+                  setCapaDisparo(null);
+                }}
                 className="p-2 text-gray-300 hover:text-red-500 rounded-xl transition-all"
                 title="Remover seleção"
               >
                 <X size={14} />
               </button>
+            </div>
+          )}
+
+          {veiculoSelecionado && (
+            <div className="flex flex-col gap-1.5 mb-5">
+              <span className={labelCls}>Texto do anúncio (editável)</span>
+              {gerandoTexto ? (
+                <div className="flex items-center justify-center gap-2 py-8 text-xs font-bold text-gray-400 uppercase tracking-widest">
+                  <Loader2 size={14} className="animate-spin" /> Gerando o texto...
+                </div>
+              ) : (
+                <textarea
+                  value={textoDisparo}
+                  onChange={(e) => setTextoDisparo(e.target.value)}
+                  rows={12}
+                  placeholder="O texto do anúncio aparece aqui para você revisar e editar antes de disparar."
+                  className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition resize-y whitespace-pre-wrap"
+                />
+              )}
             </div>
           )}
 
@@ -789,7 +854,13 @@ export default function ProspeccaoPage() {
 
           <button
             onClick={handleDisparar}
-            disabled={!veiculoSelecionado || listasSelecionadas.length === 0 || disparando}
+            disabled={
+              !veiculoSelecionado ||
+              listasSelecionadas.length === 0 ||
+              disparando ||
+              gerandoTexto ||
+              !textoDisparo.trim()
+            }
             className={`${btnPrimario} w-full py-4`}
           >
             {disparando && <Loader2 size={14} className="animate-spin" />}
@@ -1106,7 +1177,10 @@ export default function ProspeccaoPage() {
                   : "Clique em um carro para selecionar"}
               </p>
               <button
-                onClick={() => setModalAberto(false)}
+                onClick={() => {
+                  setModalAberto(false);
+                  if (veiculoSelecionado) gerarPreviewTexto(veiculoSelecionado);
+                }}
                 disabled={!veiculoSelecionado}
                 className={btnPrimario}
               >

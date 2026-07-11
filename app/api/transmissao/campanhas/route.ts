@@ -119,6 +119,10 @@ export async function POST(req: NextRequest) {
   const listasRaw: string[] = Array.isArray(body?.listas)
     ? body.listas.map((l: unknown) => String(l).trim().toUpperCase())
     : [];
+  // Texto editado pelo usuário no preview (igual ao repasse). Se vier, é ele que
+  // congela — senão regenera (compat com chamada antiga sem preview).
+  const textoEditado = typeof body?.texto === "string" ? body.texto.trim() : "";
+  const capaEditada = typeof body?.capaUrl === "string" ? body.capaUrl.trim() : "";
 
   if (!veiculoId) {
     return NextResponse.json({ error: "veiculoId obrigatório" }, { status: 400 });
@@ -174,10 +178,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Nenhum contato nas listas selecionadas" }, { status: 400 });
   }
 
-  // Texto congelado da campanha (a saudação por contato entra só no envio, no cron)
-  const g = await gerarTransmissaoCompleto(veiculoId);
-  if (!g) {
-    return NextResponse.json({ error: "Veículo não encontrado" }, { status: 404 });
+  // Texto congelado da campanha (a saudação por contato entra só no envio, no cron).
+  // Prioriza o texto editado no preview; só regenera (Gemini/FIPE) se não veio nada.
+  let texto = textoEditado;
+  let capaUrl: string | null = capaEditada || null;
+  if (!texto) {
+    const g = await gerarTransmissaoCompleto(veiculoId);
+    if (!g) {
+      return NextResponse.json({ error: "Veículo não encontrado" }, { status: 404 });
+    }
+    texto = g.texto;
+    capaUrl = g.capaUrl;
+  } else if (!capaUrl) {
+    // Texto editado sem capa: busca só a capa do veículo (barato, sem Gemini)
+    const { data: vRows } = await supabaseAdmin
+      .from("veiculos")
+      .select("capa_marketing_url, fotos")
+      .eq("id", veiculoId)
+      .eq("user_id", userId)
+      .limit(1);
+    const vc = vRows?.[0];
+    capaUrl = vc?.capa_marketing_url || vc?.fotos?.[0] || null;
   }
 
   const { data: campRows, error: campErr } = await supabaseAdmin
@@ -186,8 +207,8 @@ export async function POST(req: NextRequest) {
       user_id: userId,
       veiculo_id: veiculoId,
       listas,
-      texto: g.texto,
-      capa_url: g.capaUrl,
+      texto,
+      capa_url: capaUrl,
       status: "ativa",
     })
     .select("id");
