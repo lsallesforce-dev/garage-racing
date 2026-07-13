@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Upload, CheckCircle2, Loader2, ImageIcon, Trash2, Sparkles, FileImage, Save, Copy, Eye, EyeOff, FileText, ShieldCheck, PauseCircle, PlayCircle } from "lucide-react";
+import { Upload, CheckCircle2, Loader2, ImageIcon, Trash2, Sparkles, FileImage, Save, Copy, Eye, EyeOff, FileText, ShieldCheck, PauseCircle, PlayCircle, Palette, Globe, ExternalLink } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 declare global {
@@ -13,6 +13,15 @@ declare global {
 }
 
 type Mode = "auto" | "manual";
+
+interface VitrineTema {
+  cor_primaria?: string;
+  cor_secundaria?: string;
+  capa_url?: string;
+  tagline?: string;
+  sobre?: string;
+  tema?: "claro" | "escuro";
+}
 
 interface NFConfig {
   regime_tributario: 1 | 2 | 3;
@@ -72,6 +81,53 @@ interface GarageConfig {
   repasse_link_comunidade?: string;
   repasse_link_instagram?: string;
   repasse_bomdia_logo_url?: string | null;
+  vitrine_tema?: VitrineTema;
+  dominio_custom?: string | null;
+}
+
+// Extrai a cor dominante de uma imagem (ex: logo) via canvas, client-side.
+// Ignora pixels quase-transparentes, quase-brancos e quase-pretos (fundo/contorno)
+// pra tentar pegar a cor "de marca". Se o canvas ficar tainted por CORS, falha
+// silenciosamente (é só uma sugestão de UI, nunca bloqueia o fluxo).
+function extractDominantColor(url: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    try {
+      const img = new window.Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        try {
+          const size = 40;
+          const canvas = document.createElement("canvas");
+          canvas.width = size;
+          canvas.height = size;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) return resolve(null);
+          ctx.drawImage(img, 0, 0, size, size);
+          const { data } = ctx.getImageData(0, 0, size, size);
+          const counts: Record<string, number> = {};
+          for (let i = 0; i < data.length; i += 4) {
+            const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
+            if (a < 200) continue;
+            const brightness = (r + g + b) / 3;
+            if (brightness > 235 || brightness < 20) continue;
+            const key = `${Math.round(r / 16) * 16},${Math.round(g / 16) * 16},${Math.round(b / 16) * 16}`;
+            counts[key] = (counts[key] || 0) + 1;
+          }
+          const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+          if (sorted.length === 0) return resolve(null);
+          const [r, g, b] = sorted[0][0].split(",").map(Number);
+          const hex = "#" + [r, g, b].map(v => Math.max(0, Math.min(255, v)).toString(16).padStart(2, "0")).join("");
+          resolve(hex);
+        } catch {
+          resolve(null); // canvas tainted (CORS) — ignora, é só sugestão
+        }
+      };
+      img.onerror = () => resolve(null);
+      img.src = url;
+    } catch {
+      resolve(null);
+    }
+  });
 }
 
 export default function ConfiguracoesPage() {
@@ -163,10 +219,35 @@ export default function ConfiguracoesPage() {
     repasse_link_comunidade: "",
     repasse_link_instagram: "",
     repasse_bomdia_logo_url: null,
+    vitrine_tema: {},
+    dominio_custom: "",
   });
   const fileRef = useRef<HTMLInputElement>(null);
   const bomdiaLogoRef = useRef<HTMLInputElement>(null);
   const [uploadingBomdiaLogo, setUploadingBomdiaLogo] = useState(false);
+  const capaRef = useRef<HTMLInputElement>(null);
+  const [uploadingCapa, setUploadingCapa] = useState(false);
+  const colorExtractAttempted = useRef(false);
+
+  const handleUploadCapa = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingCapa(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/vitrine/capa", { method: "POST", body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Falha no upload");
+      const url = `${data.url}?t=${Date.now()}`;
+      setConfig(c => ({ ...c, vitrine_tema: { ...c.vitrine_tema, capa_url: url } }));
+    } catch (err: any) {
+      alert("Erro ao subir capa: " + err.message);
+    } finally {
+      setUploadingCapa(false);
+      if (capaRef.current) capaRef.current.value = "";
+    }
+  };
 
   const handleUploadBomdiaLogo = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -571,6 +652,8 @@ export default function ConfiguracoesPage() {
               repasse_link_comunidade: row.repasse_link_comunidade ?? "",
               repasse_link_instagram: row.repasse_link_instagram ?? "",
               repasse_bomdia_logo_url: row.repasse_bomdia_logo_url ?? null,
+              vitrine_tema: row.vitrine_tema ?? {},
+              dominio_custom: row.dominio_custom ?? "",
             });
             if (row.logo_url) {
               setCurrentLogo(row.logo_url);
@@ -610,6 +693,19 @@ export default function ConfiguracoesPage() {
     // Remove o param da URL para não persistir o banner no F5
     router.replace("/configuracoes");
   }, [config.meta_ads_token, config.meta_access_token]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sugere cor primária da vitrine a partir da logo já cadastrada (só se ainda
+  // não houver cor salva). Tentativa única — falha silenciosa (CORS/tainted canvas).
+  useEffect(() => {
+    if (colorExtractAttempted.current) return;
+    if (!currentLogo) return;
+    if (config.vitrine_tema?.cor_primaria) { colorExtractAttempted.current = true; return; }
+    colorExtractAttempted.current = true;
+    extractDominantColor(currentLogo).then(hex => {
+      if (!hex) return;
+      setConfig(c => (c.vitrine_tema?.cor_primaria ? c : { ...c, vitrine_tema: { ...c.vitrine_tema, cor_primaria: hex } }));
+    });
+  }, [currentLogo, config.vitrine_tema?.cor_primaria]);
 
   const copyToClipboard = (text: string, key: string) => {
     navigator.clipboard.writeText(text);
@@ -841,6 +937,10 @@ export default function ConfiguracoesPage() {
             webmotors_usuario:    config.webmotors_usuario    || null,
             webmotors_senha:      config.webmotors_senha      || null,
             nf_cep:               config.nf_cep               || null,
+            vitrine_tema:         config.vitrine_tema && Object.keys(config.vitrine_tema).length > 0
+                                     ? config.vitrine_tema
+                                     : null,
+            dominio_custom:       config.dominio_custom || null,
           },
           { onConflict: "user_id" }
         )
@@ -2152,6 +2252,178 @@ export default function ConfiguracoesPage() {
               ) : "Salvar logo"}
             </button>
           )}
+        </div>
+
+        {/* ── Vitrine da loja ── */}
+        <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-8">
+          <h2 className="text-[11px] font-black uppercase tracking-widest text-gray-400 mb-1">
+            Vitrine da loja
+          </h2>
+          <p className="text-[11px] text-gray-500 mb-6">
+            Personalização visual da página pública onde os clientes veem seu estoque.
+          </p>
+
+          <div className="flex flex-col gap-5">
+            {/* Capa */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+                Imagem de capa
+              </label>
+              {config.vitrine_tema?.capa_url && (
+                <div className="h-32 bg-gray-50 rounded-xl border border-gray-100 overflow-hidden">
+                  <img src={config.vitrine_tema.capa_url} alt="Capa da vitrine" className="w-full h-full object-cover" />
+                </div>
+              )}
+              <label className="block cursor-pointer">
+                <div className="border-2 border-dashed border-gray-200 rounded-2xl p-5 flex items-center justify-center gap-2 hover:border-red-400 hover:bg-red-50/30 transition-all">
+                  {uploadingCapa ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin text-gray-400" />
+                      <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Enviando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Upload size={16} className="text-gray-400" />
+                      <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+                        {config.vitrine_tema?.capa_url ? "Trocar capa" : "Enviar capa"}
+                      </span>
+                    </>
+                  )}
+                </div>
+                <input ref={capaRef} type="file" accept="image/*" className="hidden" onChange={handleUploadCapa} disabled={uploadingCapa} />
+              </label>
+              <p className="text-[9px] text-gray-400 mt-0.5">
+                Recomendado: imagem horizontal, aprox. 1600 × 500px.
+              </p>
+            </div>
+
+            {/* Cores da marca */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 flex items-center gap-1.5">
+                <Palette size={12} /> Cores da marca
+              </label>
+              <div className="flex gap-3">
+                <div className="flex items-center gap-2 bg-[#f5f5f3] border border-gray-200 rounded-xl px-3 py-2 flex-1">
+                  <input
+                    type="color"
+                    value={config.vitrine_tema?.cor_primaria || "#dc2626"}
+                    onChange={e => setConfig(c => ({ ...c, vitrine_tema: { ...c.vitrine_tema, cor_primaria: e.target.value } }))}
+                    className="w-8 h-8 rounded-lg border-none cursor-pointer bg-transparent"
+                  />
+                  <div>
+                    <p className="text-[9px] font-black uppercase text-gray-400">Primária</p>
+                    <p className="text-xs text-gray-600 font-mono">{config.vitrine_tema?.cor_primaria || "—"}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 bg-[#f5f5f3] border border-gray-200 rounded-xl px-3 py-2 flex-1">
+                  <input
+                    type="color"
+                    value={config.vitrine_tema?.cor_secundaria || "#111827"}
+                    onChange={e => setConfig(c => ({ ...c, vitrine_tema: { ...c.vitrine_tema, cor_secundaria: e.target.value } }))}
+                    className="w-8 h-8 rounded-lg border-none cursor-pointer bg-transparent"
+                  />
+                  <div>
+                    <p className="text-[9px] font-black uppercase text-gray-400">Secundária</p>
+                    <p className="text-xs text-gray-600 font-mono">{config.vitrine_tema?.cor_secundaria || "—"}</p>
+                  </div>
+                </div>
+              </div>
+              <p className="text-[9px] text-gray-400 mt-0.5">
+                Sugerimos a cor primária a partir da sua logo — ajuste se quiser.
+              </p>
+            </div>
+
+            {/* Tagline */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+                Tagline <span className="text-gray-400 normal-case font-normal">({(config.vitrine_tema?.tagline || "").length}/80)</span>
+              </label>
+              <input
+                type="text"
+                value={config.vitrine_tema?.tagline || ""}
+                onChange={e => setConfig(c => ({ ...c, vitrine_tema: { ...c.vitrine_tema, tagline: e.target.value.slice(0, 80) } }))}
+                maxLength={80}
+                placeholder="Ex: O carro dos seus sonhos com a confiança que você merece"
+                className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
+              />
+            </div>
+
+            {/* Sobre a loja */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+                Sobre a loja <span className="text-gray-400 normal-case font-normal">({(config.vitrine_tema?.sobre || "").length}/500)</span>
+              </label>
+              <textarea
+                value={config.vitrine_tema?.sobre || ""}
+                onChange={e => setConfig(c => ({ ...c, vitrine_tema: { ...c.vitrine_tema, sobre: e.target.value.slice(0, 500) } }))}
+                maxLength={500}
+                rows={4}
+                placeholder="Conte a história da sua loja, diferenciais, tempo de mercado..."
+                className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition resize-none"
+              />
+            </div>
+
+            {/* Tema */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+                Tema
+              </label>
+              <select
+                value={config.vitrine_tema?.tema || "claro"}
+                onChange={e => setConfig(c => ({ ...c, vitrine_tema: { ...c.vitrine_tema, tema: e.target.value as "claro" | "escuro" } }))}
+                className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
+              >
+                <option value="claro">Claro</option>
+                <option value="escuro">Escuro</option>
+              </select>
+            </div>
+
+            {/* Domínio próprio */}
+            <div className="flex flex-col gap-1.5 pt-3 border-t border-gray-100">
+              <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 flex items-center gap-1.5">
+                <Globe size={12} /> Domínio próprio
+              </label>
+              <input
+                type="text"
+                value={config.dominio_custom || ""}
+                onChange={e => {
+                  const v = e.target.value.toLowerCase().trim().replace(/^https?:\/\//, "").replace(/\/+$/, "");
+                  setConfig(c => ({ ...c, dominio_custom: v }));
+                }}
+                placeholder="www.sualoja.com.br"
+                className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
+              />
+              <p className="text-[9px] text-gray-400 mt-0.5">
+                Aponte o DNS do seu domínio: CNAME www → cname.vercel-dns.com (ou registro A 76.76.21.21 para domínio raiz). Após configurar, avise o suporte para ativarmos o certificado.
+              </p>
+            </div>
+
+            {/* Ver vitrine */}
+            {config.vitrine_slug && (
+              <a
+                href={`/vitrine/${config.vitrine_slug}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 w-full py-3 rounded-2xl font-black uppercase text-[11px] tracking-widest transition-all flex items-center justify-center gap-2 border-2 border-gray-900 text-gray-900 hover:bg-gray-900 hover:text-white"
+              >
+                <ExternalLink size={16} /> Ver minha vitrine
+              </a>
+            )}
+
+            <button
+              onClick={handleSaveInfo}
+              disabled={savingInfo || savedInfo}
+              className={`mt-2 w-full py-3 rounded-2xl font-black uppercase text-[11px] tracking-widest transition-all flex items-center justify-center gap-2 ${
+                savedInfo ? "bg-green-500 text-white" : "bg-gray-900 text-white hover:bg-red-600"
+              }`}
+            >
+              {savingInfo ? (
+                <><Loader2 size={16} className="animate-spin" /> Salvando...</>
+              ) : savedInfo ? (
+                <><CheckCircle2 size={16} /> Salvo com sucesso!</>
+              ) : "Salvar"}
+            </button>
+          </div>
         </div>
 
         </> /* fim aba loja logo */}
