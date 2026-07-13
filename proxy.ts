@@ -55,6 +55,148 @@ async function isSlugValid(slug: string): Promise<boolean> {
   }
 }
 
+// ─── Domínio próprio do tenant (config_garage.dominio_custom) ─────────────────
+//
+// Fluxo:
+//   www.carmattiveiculos.com.br/
+//     → cache Redis (domain:custom:{host}) tem o slug?  → sim → usa
+//     → não → consulta config_garage.dominio_custom = host na REST API do Supabase
+//     → achou → cacheia (positivo) e faz rewrite pra /vitrine/{slug}
+//     → não achou → tenta variante com/sem "www." → cacheia (positivo OU negativo)
+//     → definitivamente não achou → redirect pra https://www.autozap.digital
+//
+// Mesmo estilo do isSlugValid: fetch() cru na REST API do Upstash (Edge safe).
+// A diferença é que aqui não existe pré-população externa do cache (não há
+// equivalente ao cacheVitrineSlug para domínio custom) — o próprio proxy faz
+// pull-through: lê o Supabase via REST (fetch + service role, mesma env var
+// usada por lib/supabase-admin.ts) e escreve o resultado no Redis.
+//
+const CUSTOM_DOMAIN_CACHE_PREFIX = "domain:custom:";
+const CUSTOM_DOMAIN_TTL_HIT = 3600; // 1h — domínio resolvido com sucesso
+const CUSTOM_DOMAIN_TTL_MISS = 300; // 5min — domínio não cadastrado (curto: cliente pode acabar de cadastrar)
+const CUSTOM_DOMAIN_NOT_FOUND = "__NOT_FOUND__";
+
+// Lê o cache. Retorna:
+//   string  → slug cacheado (hit positivo)
+//   null    → cache confirma que o domínio NÃO está cadastrado (hit negativo)
+//   undefined → cache miss (ou Redis indisponível) — precisa consultar o Supabase
+async function getCachedCustomDomain(host: string): Promise<string | null | undefined> {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return undefined;
+
+  try {
+    const res = await fetch(
+      `${url}/get/${encodeURIComponent(CUSTOM_DOMAIN_CACHE_PREFIX + host)}`,
+      {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      }
+    );
+    if (!res.ok) return undefined;
+
+    const data = (await res.json()) as { result: string | null };
+    if (data.result === null) return undefined;
+    return data.result === CUSTOM_DOMAIN_NOT_FOUND ? null : data.result;
+  } catch {
+    return undefined; // trata como cache miss — segue pro Supabase
+  }
+}
+
+// Grava o resultado (positivo OU negativo) no cache. Non-fatal: falha de escrita
+// no Redis não deve derrubar o rewrite/redirect que já foi decidido.
+async function setCachedCustomDomain(host: string, slug: string | null): Promise<void> {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return;
+
+  const value = slug ?? CUSTOM_DOMAIN_NOT_FOUND;
+  const ttl = slug ? CUSTOM_DOMAIN_TTL_HIT : CUSTOM_DOMAIN_TTL_MISS;
+  const key = CUSTOM_DOMAIN_CACHE_PREFIX + host;
+
+  try {
+    await fetch(
+      `${url}/setex/${encodeURIComponent(key)}/${ttl}/${encodeURIComponent(value)}`,
+      {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      }
+    );
+  } catch {
+    // non-fatal: cache é otimização, não critical path
+  }
+}
+
+// Consulta direta na REST API do Supabase (fetch puro — Edge Runtime não roda o
+// client Node do Supabase). Mesmas env vars de lib/supabase-admin.ts (service
+// role, ignora RLS). `ok: false` sinaliza erro/config ausente — DIFERENTE de
+// "não encontrado" — para não cachear negativo por causa de instabilidade.
+async function lookupDominioCustomInSupabase(
+  host: string
+): Promise<{ ok: boolean; slug: string | null }> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceKey) return { ok: false, slug: null };
+
+  try {
+    const res = await fetch(
+      `${supabaseUrl}/rest/v1/config_garage?dominio_custom=eq.${encodeURIComponent(host)}&select=vitrine_slug&limit=1`,
+      {
+        method: "GET",
+        headers: {
+          apikey: serviceKey,
+          Authorization: `Bearer ${serviceKey}`,
+        },
+        cache: "no-store",
+      }
+    );
+    if (!res.ok) return { ok: false, slug: null };
+
+    const rows = (await res.json()) as Array<{ vitrine_slug: string | null }>;
+    return { ok: true, slug: rows[0]?.vitrine_slug || null };
+  } catch {
+    return { ok: false, slug: null };
+  }
+}
+
+// Alterna o prefixo "www." — dominio_custom pode ter sido salvo com ou sem, e o
+// visitante pode chegar pela outra variante.
+function toggleWww(host: string): string {
+  return host.startsWith("www.") ? host.slice(4) : `www.${host}`;
+}
+
+// Resolve hostname externo → vitrine_slug, com cache pull-through (positivo E
+// negativo). Em erro de Supabase (não em "não encontrado"), retorna null SEM
+// cachear — prefere redirect passageiro pro domínio principal a bloquear um
+// domínio real por instabilidade temporária (não há como fazer fail-open pro
+// rewrite: sem slug não tem pra onde reescrever).
+async function resolveDominioCustom(host: string): Promise<string | null> {
+  const cached = await getCachedCustomDomain(host);
+  if (cached !== undefined) return cached;
+
+  const primary = await lookupDominioCustomInSupabase(host);
+  if (primary.ok && primary.slug) {
+    await setCachedCustomDomain(host, primary.slug);
+    return primary.slug;
+  }
+
+  if (!primary.ok) return null; // erro/config ausente — não cacheia, tenta de novo na próxima request
+
+  // Host exato não achou — tenta a variante com/sem "www."
+  const alt = await lookupDominioCustomInSupabase(toggleWww(host));
+  if (alt.ok && alt.slug) {
+    await setCachedCustomDomain(host, alt.slug);
+    return alt.slug;
+  }
+  if (!alt.ok) return null; // idem: erro na 2ª tentativa, não cacheia
+
+  // Supabase respondeu nas duas tentativas e não achou em nenhuma — confirmado
+  await setCachedCustomDomain(host, null);
+  return null;
+}
+
 // ─── Proxy Principal ──────────────────────────────────────────────────────────
 
 export async function proxy(request: NextRequest) {
@@ -69,7 +211,13 @@ export async function proxy(request: NextRequest) {
     hostname.startsWith("localhost") ||
     hostname.startsWith("127.0.0.1");
 
-  if (!isMainDomain) {
+  // Distingue subdomínio de {MAIN_DOMAIN} (fluxo já existente) de domínio
+  // externo próprio do tenant (fluxo novo, mais abaixo) — sem essa distinção,
+  // hostname.replace() num domínio externo não casa e sobra "lixo" no lugar
+  // do subdomain, que sempre falhava a validação de slug.
+  const isAutozapSubdomain = !isMainDomain && hostname.endsWith(`.${MAIN_DOMAIN}`);
+
+  if (isAutozapSubdomain) {
     const subdomain = hostname.replace(`.${MAIN_DOMAIN}`, "").split(":")[0];
 
     // Subdomínio `api` → rewrite para /api/* (ex: api.autozap.digital/health → /api/health)
@@ -107,6 +255,27 @@ export async function proxy(request: NextRequest) {
       response.headers.set("x-tenant-slug", subdomain);
       return response;
     }
+  }
+
+  // ── 1b. Domínio próprio do tenant (config_garage.dominio_custom) ──────────
+  // Roda ANTES do gate de auth (igual o subdomínio) — anônimo em domínio
+  // custom nunca pode cair em redirect pro /login.
+  if (!isMainDomain && !isAutozapSubdomain) {
+    const host = hostname.toLowerCase().split(":")[0];
+    const slug = await resolveDominioCustom(host);
+
+    if (!slug) {
+      // Domínio aponta pra nós (DNS) mas não está cadastrado em nenhum tenant
+      return NextResponse.redirect(`https://www.${MAIN_DOMAIN}`, { status: 302 });
+    }
+
+    // Rewrite silencioso: URL do usuário continua sendo o domínio próprio
+    const rewriteUrl = request.nextUrl.clone();
+    rewriteUrl.pathname = `/vitrine/${slug}${pathname === "/" ? "" : pathname}`;
+
+    const response = NextResponse.rewrite(rewriteUrl);
+    response.headers.set("x-tenant-slug", slug);
+    return response;
   }
 
   // ── 2. Auth Supabase (somente para domínio principal) ─────────────────────
