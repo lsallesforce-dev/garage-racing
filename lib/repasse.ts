@@ -214,10 +214,18 @@ export function gerarTextoRepasse(
 
   const linhas: string[] = [];
 
-  const versaoParaTitulo = versaoSemPalavrasRepetidas(carro.modelo, carro.versao);
-  // O câmbio entra no fim do título só se ainda não estiver dito nele
-  // (modelo "…TB Flex Aut" + cambio "Automático" saía "…AUT AUTOMÁTICO").
-  const tituloBase = [carro.marca, carro.modelo, versaoParaTitulo].filter(Boolean).join(" ");
+  // Título = marca + modelo + câmbio. A `versao` NÃO entra: no cadastro por
+  // placa/FIPE deste tenant o `modelo` já vem completo (trim + motor +
+  // combustível), e a `versao` é um eco redundante — ou pior, contraditório
+  // (ex.: L200 modelo "…GL 2.4 CD Diesel" + versao "GLS … Aut." + câmbio
+  // Manual → saía "GL AUT. MANUAL"). Nenhum dedup resolve dado contraditório;
+  // dropar a versão do título limpa todos os casos. A versão segue viva no
+  // banco pra busca FIPE textual e pra vitrine; quem quiser um trim que só
+  // exista nela (ex.: "SR") edita o próprio modelo (título é editável).
+  const tituloBase = [carro.marca, carro.modelo].filter(Boolean).join(" ");
+  // O câmbio entra no fim só se ainda não estiver dito no título
+  // (modelo "…Flex Aut" + câmbio "Automático" saía "…AUT AUTOMÁTICO";
+  // modelo "…Mec." + câmbio "Manual" saía "…MEC. MANUAL").
   const cambioParaTitulo = versaoSemPalavrasRepetidas(tituloBase, cambio);
 
   linhas.push(`📍 ${cidade.toUpperCase()}`);
