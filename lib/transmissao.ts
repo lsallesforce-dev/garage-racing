@@ -7,7 +7,7 @@
 // instância Avisa dedicada, com cadência anti-ban (ver cron/transmissao-envios).
 
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { buscarMediaWeb, resolverFipe, gerarTextoRepasse } from "@/lib/repasse";
+import { resolverFipe, gerarTextoRepasse } from "@/lib/repasse";
 
 /**
  * Mensagem de envio = texto puro do carro, sem saudação (pedido Marcos
@@ -61,15 +61,9 @@ export async function gerarTransmissaoCompleto(
     .join(" ")
     .trim();
 
-  // FIPE (valor_fipe do cadastro > parallelum) e média web em paralelo;
-  // se mediaWeb falhar (cota Gemini), gera sem ela — nunca aborta
-  const [fipe, mediaWeb] = await Promise.all([
-    resolverFipe(carro, versaoRica),
-    buscarMediaWeb(carro.marca, carro.modelo, versaoRica, carro.ano_modelo).catch((e) => {
-      console.warn("⚠️ gerarTransmissaoCompleto: buscarMediaWeb falhou, seguindo sem:", e);
-      return null;
-    }),
-  ]);
+  // FIPE (valor_fipe do cadastro > parallelum). A "Média da Web" é derivada da
+  // FIPE (+1%) dentro do gerarTextoRepasse — não busca mais preço na web.
+  const fipe = await resolverFipe(carro, versaoRica);
 
   // Cidade com UF ("São José do Rio Preto-SP") — o 📍 do anúncio sai completo
   const cidadeUf = cfg?.cidade
@@ -77,7 +71,7 @@ export async function gerarTransmissaoCompleto(
     : null;
   // botPhone=null → sem "Falar com Vendedor". vitrineUrl=null → sem o link do
   // estoque completo no fim (pedido Marcos Repasse 10/07: só o texto do carro).
-  const texto = gerarTextoRepasse(carro, fipe, mediaWeb, null, "repasse", null, cidadeUf);
+  const texto = gerarTextoRepasse(carro, fipe, null, null, "repasse", null, cidadeUf);
   const capaUrl: string | null = carro.capa_marketing_url || carro.fotos?.[0] || null;
 
   return { texto, capaUrl };

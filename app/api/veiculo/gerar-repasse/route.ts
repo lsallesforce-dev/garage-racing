@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireVehicleOwner } from "@/lib/api-auth";
-import { buscarMediaWeb, gerarTextoRepasse, resolverFipe } from "@/lib/repasse";
+import { gerarTextoRepasse, resolverFipe } from "@/lib/repasse";
 
 export const maxDuration = 60;
 
@@ -48,14 +48,12 @@ export async function POST(req: NextRequest) {
     carro.cambio,
   ].filter(Boolean).join(" ").trim();
 
-  // FIPE (valor_fipe do cadastro pela placa > parallelum) + média web via Gemini
-  const [fipe, mediaWeb] = await Promise.all([
-    resolverFipe(carro, versaoRica),
-    buscarMediaWeb(carro.marca, carro.modelo, versaoRica, carro.ano_modelo),
-  ]);
+  // FIPE (valor_fipe do cadastro pela placa > parallelum). A "Média da Web" é
+  // derivada da FIPE (+1%) dentro do gerarTextoRepasse — não busca mais na web.
+  const fipe = await resolverFipe(carro, versaoRica);
 
-  const texto = gerarTextoRepasse(carro, fipe, mediaWeb, botPhone, tipo, vitrineUrl, cfg?.cidade);
+  const texto = gerarTextoRepasse(carro, fipe, null, botPhone, tipo, vitrineUrl, cfg?.cidade);
   const capaUrl = carro.capa_marketing_url || carro.fotos?.[0] || null;
 
-  return NextResponse.json({ texto, capaUrl, fipe, mediaWeb, botPhone });
+  return NextResponse.json({ texto, capaUrl, fipe, botPhone });
 }

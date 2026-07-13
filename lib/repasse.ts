@@ -86,6 +86,21 @@ export function formatarMoeda(valor: number): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(valor);
 }
 
+// Sem centavos — pro valor de referência ("Média") ficar redondo tipo anúncio.
+function formatarMoedaInteira(valor: number): string {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency", currency: "BRL", maximumFractionDigits: 0,
+  }).format(valor);
+}
+
+// "R$ 76.454,00" → 76454. Null se não parsear um número > 0.
+export function parseMoedaBR(s: string | null | undefined): number | null {
+  if (!s) return null;
+  const limpo = String(s).replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", ".");
+  const n = Number(limpo);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 // Abreviações automotivas equivalentes que a comparação por prefixo não pega
 // (AT/Aut não são prefixo um do outro; TB/Turbo idem). Mapeadas pra uma forma
 // canônica ANTES do dedup, pra "Turbo AT Automático" cair quando o modelo já
@@ -239,8 +254,17 @@ export function gerarTextoRepasse(
   linhas.push(`⚙️ Km: ${km}`);
   linhas.push(``);
 
-  if (mediaWeb) {
-    linhas.push(`🛜 Média da Web: ${mediaWeb}`);
+  // "Média da Web" = FIPE + 1% (NÃO busca mais preço na web). A busca web às
+  // vezes vinha ABAIXO do preço do carro — e como é repasse (tem que parecer
+  // barato), o valor de referência precisa ficar sempre ACIMA do preço. FIPE+1%
+  // garante isso. Cai pro mediaWeb recebido só se a FIPE não parsear (raro).
+  const fipeNum = parseMoedaBR(fipe);
+  const mediaExibida = fipeNum != null
+    ? formatarMoedaInteira(Math.round(fipeNum * 1.01))
+    : mediaWeb;
+
+  if (mediaExibida) {
+    linhas.push(`🛜 Média da Web: ${mediaExibida}`);
     linhas.push(``);
   }
 
@@ -292,7 +316,7 @@ export function gerarTextoRepasse(
 /**
  * Gera texto + capaUrl de repasse para um veículo.
  * Retorna null se o veículo não existir.
- * Se buscarMediaWeb falhar (cota Gemini, timeout), gera o texto sem mediaWeb — nunca aborta.
+ * A "Média da Web" do anúncio é derivada da FIPE (+1%) — sem busca web.
  */
 export async function gerarRepasseCompleto(
   veiculoId: string,
@@ -325,21 +349,15 @@ export async function gerarRepasseCompleto(
     .join(" ")
     .trim();
 
-  // FIPE (valor_fipe do cadastro > parallelum) e média web em paralelo;
-  // se mediaWeb falhar, texto é gerado sem ela
-  const [fipe, mediaWeb] = await Promise.all([
-    resolverFipe(carro, versaoRica),
-    buscarMediaWeb(carro.marca, carro.modelo, versaoRica, carro.ano_modelo).catch((e) => {
-      console.warn("⚠️ gerarRepasseCompleto: buscarMediaWeb falhou, continuando sem mediaWeb:", e);
-      return null;
-    }),
-  ]);
+  // FIPE (valor_fipe do cadastro > parallelum). A "Média da Web" é derivada da
+  // FIPE (+1%) dentro do gerarTextoRepasse — não busca mais preço na web.
+  const fipe = await resolverFipe(carro, versaoRica);
 
   // Cidade com UF ("São José do Rio Preto-SP") — o 📍 do anúncio sai completo
   const cidadeUf = cfg?.cidade
     ? [String(cfg.cidade).trim(), String(cfg.estado ?? "").trim()].filter(Boolean).join("-")
     : null;
-  const texto = gerarTextoRepasse(carro, fipe, mediaWeb, botPhone, tipo, vitrineUrl, cidadeUf);
+  const texto = gerarTextoRepasse(carro, fipe, null, botPhone, tipo, vitrineUrl, cidadeUf);
 
   // Foto na proporção ORIGINAL (sem normalizar pra quadrado/4:5). O cron envia a
   // foto como imagem SEPARADA, antes do texto — o WhatsApp mostra a foto inteira e
