@@ -169,13 +169,13 @@ export default function VitrineClient({
           </>
         )}
 
-        <div className="relative max-w-7xl mx-auto px-5 py-12 sm:py-16 text-white">
+        <div className="relative max-w-7xl mx-auto px-5 py-9 sm:py-16 text-white">
           {logoUrl && (
-            <div className="inline-flex items-center bg-white rounded-2xl px-4 py-3 shadow-lg mb-5">
-              <img src={logoUrl} alt={nomeEmpresa} className="h-10 sm:h-12 w-auto max-w-[220px] object-contain" />
+            <div className="inline-flex items-center bg-white rounded-2xl px-3.5 py-2.5 sm:px-4 sm:py-3 shadow-lg mb-4 sm:mb-5">
+              <img src={logoUrl} alt={nomeEmpresa} className="h-9 sm:h-12 w-auto max-w-[180px] sm:max-w-[220px] object-contain" />
             </div>
           )}
-          <h1 className="font-black uppercase italic tracking-tight leading-[0.95]" style={{ fontSize: "clamp(32px,5.5vw,56px)" }}>
+          <h1 className="font-black uppercase italic tracking-tight leading-[0.95]" style={{ fontSize: "clamp(28px,5.5vw,56px)" }}>
             {nomeEmpresa}
           </h1>
           <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
@@ -285,9 +285,9 @@ export default function VitrineClient({
             <h2 className="text-[13px] font-black uppercase tracking-widest">Recém-chegados</h2>
             <span className="text-[11px] font-bold text-[var(--fg-faint)]">esta semana</span>
           </div>
-          <div className="flex gap-4 overflow-x-auto pb-2 -mx-5 px-5 snap-x">
+          <div className="flex gap-3 sm:gap-4 overflow-x-auto pb-2 -mx-5 px-5 snap-x">
             {recemChegados.map((c) => (
-              <div key={c.id} className="snap-start shrink-0 w-[260px]">
+              <div key={c.id} className="snap-start shrink-0 w-[200px] sm:w-[250px]">
                 <CarCard c={c} tenant={tenant} nomeEmpresa={nomeEmpresa} whatsapp={whatsapp} onSimular={setModalCarro} cardCls={cardCls} novo />
               </div>
             ))}
@@ -317,7 +317,7 @@ export default function VitrineClient({
         </div>
 
         {filtrados.length > 0 ? (
-          <div className="grid gap-5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-3 sm:gap-5 grid-cols-2 lg:grid-cols-3">
             {filtrados.map((c) => (
               <CarCard key={c.id} c={c} tenant={tenant} nomeEmpresa={nomeEmpresa} whatsapp={whatsapp} onSimular={setModalCarro} cardCls={cardCls} novo={isRecemChegado(c.created_at)} />
             ))}
@@ -415,21 +415,21 @@ function CarCard({
           <div className="w-full h-full flex items-center justify-center text-[var(--fg-faint)]"><Car size={30} /></div>
         )}
         {/* topo-esq: novo + vídeo */}
-        <div className="absolute top-3 left-3 flex flex-col items-start gap-1.5">
+        <div className="absolute top-2.5 left-2.5 flex flex-col items-start gap-1.5">
           {novo && (
-            <span className="flex items-center gap-1 bg-[var(--brand)] text-[var(--brand-fg)] px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest shadow">
-              <Sparkles size={9} /> Chegou essa semana
+            <span className="flex items-center gap-1 bg-[var(--brand)] text-[var(--brand-fg)] px-2 sm:px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest shadow">
+              <Sparkles size={9} /> <span className="sm:hidden">Novo</span><span className="hidden sm:inline">Chegou essa semana</span>
             </span>
           )}
           {c.video_url && (
-            <span className="flex items-center gap-1 bg-black/75 text-white px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest shadow backdrop-blur-sm">
+            <span className="flex items-center gap-1 bg-black/75 text-white px-2 sm:px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest shadow backdrop-blur-sm">
               <Play size={8} className="fill-white" /> Vídeo
             </span>
           )}
         </div>
         {/* base: selos */}
         {selos.length > 0 && (
-          <div className="absolute bottom-3 left-3 flex flex-wrap gap-1.5 max-w-[85%]">
+          <div className="absolute bottom-2.5 left-2.5 flex flex-wrap gap-1 max-w-[88%]">
             {selos.map((s) => (
               <span key={s.key} className={`${s.className} px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest`}>
                 {s.label}
@@ -439,26 +439,26 @@ function CarCard({
         )}
       </Link>
 
-      <div className="p-4 flex flex-col flex-1">
-        <Link href={href} className="min-w-0">
-          <h3 className="text-[16px] font-black uppercase italic tracking-tight leading-none truncate hover:text-[var(--brand)] transition-colors">{titulo}</h3>
+      <div className="p-3 sm:p-4 flex flex-col flex-1">
+        <Link href={href} className="min-w-0 block">
+          <h3 className="text-[13px] sm:text-[15px] font-black uppercase italic tracking-tight leading-tight truncate hover:text-[var(--brand)] transition-colors">{titulo}</h3>
+          <p className="text-[9px] sm:text-[10px] text-[var(--fg-faint)] font-bold uppercase tracking-widest mt-1 truncate">
+            {[c.versao, c.ano_modelo].filter(Boolean).join(" • ") || "—"}
+          </p>
+
+          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 mt-2 text-[10px] sm:text-[11px] text-[var(--fg-muted)] font-semibold">
+            {fmtKm(c.quilometragem_estimada) && <span className="flex items-center gap-1"><Gauge size={11} /> {fmtKm(c.quilometragem_estimada)}</span>}
+            {c.combustivel && <span className="hidden sm:flex items-center gap-1"><Fuel size={11} /> {c.combustivel}</span>}
+            {c.cambio && <span className="hidden sm:flex items-center gap-1"><Cog size={11} /> {c.cambio}</span>}
+          </div>
+
+          <div className="mt-3 pt-3 border-t border-[var(--border)]">
+            <p className="text-[8px] font-black uppercase tracking-widest text-[var(--fg-faint)] mb-0.5">Preço</p>
+            <p className="text-lg sm:text-2xl font-black tracking-tighter text-[var(--fg)]">{fmtBRL(c.preco_sugerido)}</p>
+          </div>
         </Link>
-        <p className="text-[10px] text-[var(--fg-faint)] font-bold uppercase tracking-widest mt-1.5 truncate">
-          {[c.versao, c.ano_modelo].filter(Boolean).join(" • ") || "—"}
-        </p>
 
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2.5 text-[11px] text-[var(--fg-muted)] font-semibold">
-          {fmtKm(c.quilometragem_estimada) && <span className="flex items-center gap-1"><Gauge size={11} /> {fmtKm(c.quilometragem_estimada)}</span>}
-          {c.combustivel && <span className="flex items-center gap-1"><Fuel size={11} /> {c.combustivel}</span>}
-          {c.cambio && <span className="flex items-center gap-1"><Cog size={11} /> {c.cambio}</span>}
-        </div>
-
-        <div className="mt-3.5 pt-3.5 border-t border-[var(--border)]">
-          <p className="text-[8px] font-black uppercase tracking-widest text-[var(--fg-faint)] mb-0.5">Preço</p>
-          <p className="text-2xl font-black tracking-tighter text-[var(--fg)]">{fmtBRL(c.preco_sugerido)}</p>
-        </div>
-
-        <div className="mt-4 grid grid-cols-2 gap-2">
+        <div className="mt-3 flex flex-col flex-1 justify-end gap-2">
           <a
             href={whatsappLink(whatsapp, msg)}
             target="_blank" rel="noopener noreferrer"
@@ -466,19 +466,13 @@ function CarCard({
           >
             <MessageCircle size={11} /> WhatsApp
           </a>
-          <Link
-            href={href}
-            className="flex items-center justify-center gap-1.5 bg-[var(--surface-2)] hover:border-[var(--brand)] border border-transparent text-[var(--fg)] py-2.5 rounded-xl font-black uppercase text-[9px] tracking-widest transition-colors"
+          <button
+            onClick={() => onSimular(c)}
+            className="text-[9px] font-black uppercase tracking-widest text-[var(--fg-faint)] hover:text-[var(--brand)] transition-colors w-full text-center"
           >
-            Ver detalhes
-          </Link>
+            Simular financiamento
+          </button>
         </div>
-        <button
-          onClick={() => onSimular(c)}
-          className="mt-2 text-[9px] font-black uppercase tracking-widest text-[var(--fg-faint)] hover:text-[var(--brand)] transition-colors w-full text-center"
-        >
-          Simular financiamento
-        </button>
       </div>
     </article>
   );
