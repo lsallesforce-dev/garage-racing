@@ -156,13 +156,37 @@ export async function GET(req: NextRequest) {
       // ── 2c. Campanha ativa mais antiga ────────────────────────────────────
       const { data: campRows } = await supabaseAdmin
         .from("transmissao_campanhas")
-        .select("id, texto, capa_url")
+        .select("id, texto, capa_url, veiculo_id")
         .eq("user_id", tenantId)
         .eq("status", "ativa")
         .order("criado_em", { ascending: true })
         .limit(1);
       const campanha = campRows?.[0] ?? null;
       if (!campanha) continue; // sem campanha ativa → skip silencioso
+
+      // ── 2c-bis. Veículo vendido ou removido → cancela a campanha ───────────
+      // O anúncio não pode continuar saindo pra um carro que saiu do estoque.
+      // Confere status_venda; se não achar o veículo (deletado) ou não estiver
+      // DISPONIVEL (vendido/reservado), cancela e pula — evita ter que cancelar
+      // na mão (pedido Marcos Repasse).
+      const { data: veicRows } = await supabaseAdmin
+        .from("veiculos")
+        .select("status_venda")
+        .eq("id", campanha.veiculo_id)
+        .eq("user_id", tenantId)
+        .limit(1);
+      const veic = veicRows?.[0] ?? null;
+      if (!veic || veic.status_venda !== "DISPONIVEL") {
+        await supabaseAdmin
+          .from("transmissao_campanhas")
+          .update({ status: "cancelada" })
+          .eq("id", campanha.id)
+          .eq("user_id", tenantId);
+        console.log(
+          `🚫 [transmissao/${tenantId}] Campanha ${campanha.id} cancelada — veículo ${!veic ? "removido" : `status ${veic.status_venda}`}`,
+        );
+        continue;
+      }
 
       // ── 2d. Recupera presos + lote de pendentes ───────────────────────────
       // Envio preso em 'enviando' = lambda que morreu entre o claim e o update
