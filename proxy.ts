@@ -197,6 +197,81 @@ async function resolveDominioCustom(host: string): Promise<string | null> {
   return null;
 }
 
+// ─── Fallback do slug de subdomínio (pull-through) ────────────────────────────
+//
+// O `vitrine:slug:{slug}` tem TTL de 24h e só é repopulado quando o tenant salva
+// as Configurações (seed-slug). Expirou → isSlugValid retornava false e o
+// subdomínio caía em /loja-nao-encontrada MESMO com a loja ativa (bug crônico,
+// pré-existente ao domínio custom). Aqui: EXISTS falhou → confere no Supabase e
+// re-cacheia no mesmo formato do cacheVitrineSlug (valor = userId, 24h).
+// Miss confirmado ganha cache negativo curto em chave SEPARADA
+// (vitrine:slug:miss:) — não pode poluir a chave que o EXISTS lê.
+//
+const SLUG_MISS_PREFIX = "vitrine:slug:miss:";
+const SLUG_MISS_TTL = 300; // 5min — protege o Supabase de bots sondando subdomínios
+
+async function revalidateSlug(slug: string): Promise<boolean> {
+  const redisUrl = process.env.UPSTASH_REDIS_REST_URL;
+  const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+
+  // Cache negativo: miss confirmado há menos de 5min? Nem vai ao Supabase.
+  if (redisUrl && redisToken) {
+    try {
+      const res = await fetch(
+        `${redisUrl}/exists/${encodeURIComponent(SLUG_MISS_PREFIX + slug)}`,
+        { method: "GET", headers: { Authorization: `Bearer ${redisToken}` }, cache: "no-store" }
+      );
+      if (res.ok) {
+        const data = (await res.json()) as { result: number };
+        if (data.result === 1) return false;
+      }
+    } catch {
+      // Redis instável — segue pro Supabase
+    }
+  }
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceKey) return true; // fail-open, mesma política do isSlugValid
+
+  try {
+    const res = await fetch(
+      `${supabaseUrl}/rest/v1/config_garage?vitrine_slug=eq.${encodeURIComponent(slug)}&select=user_id&limit=1`,
+      {
+        method: "GET",
+        headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` },
+        cache: "no-store",
+      }
+    );
+    if (!res.ok) return true; // fail-open em erro: a página resolve com notFound()
+
+    const rows = (await res.json()) as Array<{ user_id: string }>;
+    const userId = rows[0]?.user_id ?? null;
+
+    if (redisUrl && redisToken) {
+      try {
+        if (userId) {
+          await fetch(
+            `${redisUrl}/setex/${encodeURIComponent(`vitrine:slug:${slug}`)}/86400/${encodeURIComponent(userId)}`,
+            { method: "GET", headers: { Authorization: `Bearer ${redisToken}` }, cache: "no-store" }
+          );
+        } else {
+          await fetch(
+            `${redisUrl}/setex/${encodeURIComponent(SLUG_MISS_PREFIX + slug)}/${SLUG_MISS_TTL}/1`,
+            { method: "GET", headers: { Authorization: `Bearer ${redisToken}` }, cache: "no-store" }
+          );
+        }
+      } catch {
+        // cache é otimização, não critical path
+      }
+    }
+
+    return !!userId;
+  } catch {
+    return true; // fail-open
+  }
+}
+
 // ─── Proxy Principal ──────────────────────────────────────────────────────────
 
 export async function proxy(request: NextRequest) {
@@ -234,7 +309,11 @@ export async function proxy(request: NextRequest) {
 
     if (subdomain) {
       // Valida slug no Redis antes do rewrite
-      const valid = await isSlugValid(subdomain);
+      let valid = await isSlugValid(subdomain);
+
+      // Chave ausente ≠ loja inexistente: o TTL de 24h expira sem ninguém
+      // repopular. Confere no banco e re-cacheia antes de dar 404.
+      if (!valid) valid = await revalidateSlug(subdomain);
 
       if (!valid) {
         // Slug não cadastrado → página de erro personalizada
