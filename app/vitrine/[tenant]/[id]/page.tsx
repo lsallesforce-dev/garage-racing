@@ -132,7 +132,7 @@ export default async function VitrineDetalhePage({ params }: Props) {
         relacionados={relacionados ?? []}
         nomeEmpresa={garagem?.nome_empresa ?? ""}
         whatsapp={whatsapp}
-        logoUrl={garagem?.logo_url ?? null}
+        logoUrl={(garagem?.vitrine_tema?.logo_url as string | undefined)?.trim() || garagem?.logo_url || null}
         tenant={tenant}
         vitrineTema={garagem?.vitrine_tema ?? null}
         loja={{

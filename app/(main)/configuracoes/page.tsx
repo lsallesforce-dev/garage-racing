@@ -18,6 +18,7 @@ interface VitrineTema {
   cor_primaria?: string;
   cor_secundaria?: string;
   capa_url?: string;
+  logo_url?: string;
   tagline?: string;
   sobre?: string;
   tema?: "claro" | "escuro";
@@ -227,6 +228,8 @@ export default function ConfiguracoesPage() {
   const [uploadingBomdiaLogo, setUploadingBomdiaLogo] = useState(false);
   const capaRef = useRef<HTMLInputElement>(null);
   const [uploadingCapa, setUploadingCapa] = useState(false);
+  const vitrineLogoRef = useRef<HTMLInputElement>(null);
+  const [uploadingVitrineLogo, setUploadingVitrineLogo] = useState(false);
   const colorExtractAttempted = useRef(false);
 
   const handleUploadCapa = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -246,6 +249,26 @@ export default function ConfiguracoesPage() {
     } finally {
       setUploadingCapa(false);
       if (capaRef.current) capaRef.current.value = "";
+    }
+  };
+
+  const handleUploadVitrineLogo = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingVitrineLogo(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/vitrine/logo", { method: "POST", body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Falha no upload");
+      const url = `${data.url}?t=${Date.now()}`;
+      setConfig(c => ({ ...c, vitrine_tema: { ...c.vitrine_tema, logo_url: url } }));
+    } catch (err: any) {
+      alert("Erro ao subir logo: " + err.message);
+    } finally {
+      setUploadingVitrineLogo(false);
+      if (vitrineLogoRef.current) vitrineLogoRef.current.value = "";
     }
   };
 
@@ -2264,6 +2287,41 @@ export default function ConfiguracoesPage() {
           </p>
 
           <div className="flex flex-col gap-5">
+            {/* Logo da vitrine */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+                Logo da vitrine
+              </label>
+              {(config.vitrine_tema?.logo_url || currentLogo) && (
+                <div className="h-24 bg-gray-100 rounded-xl border border-gray-100 overflow-hidden flex items-center justify-center p-3">
+                  <img src={config.vitrine_tema?.logo_url || currentLogo!} alt="Logo da vitrine" className="max-h-full max-w-[220px] object-contain" />
+                </div>
+              )}
+              <label className="block cursor-pointer">
+                <div className="border-2 border-dashed border-gray-200 rounded-2xl p-5 flex items-center justify-center gap-2 hover:border-red-400 hover:bg-red-50/30 transition-all">
+                  {uploadingVitrineLogo ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin text-gray-400" />
+                      <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Enviando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Upload size={16} className="text-gray-400" />
+                      <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+                        {config.vitrine_tema?.logo_url ? "Trocar logo" : "Enviar logo"}
+                      </span>
+                    </>
+                  )}
+                </div>
+                <input ref={vitrineLogoRef} type="file" accept="image/*" className="hidden" onChange={handleUploadVitrineLogo} disabled={uploadingVitrineLogo} />
+              </label>
+              <p className="text-[9px] text-gray-400 mt-0.5">
+                {config.vitrine_tema?.logo_url
+                  ? "Logo exclusiva da vitrine. PNG com fundo transparente fica melhor."
+                  : "Sem logo própria, a vitrine usa a logo da loja. PNG transparente recomendado."}
+              </p>
+            </div>
+
             {/* Capa */}
             <div className="flex flex-col gap-1.5">
               <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">

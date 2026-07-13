@@ -101,13 +101,15 @@ export default async function VitrineTenantPage({ params }: Props) {
   const lista = estoque ?? [];
   const whatsapp = garagem.whatsapp_agente ?? garagem.whatsapp ?? process.env.NEXT_PUBLIC_ZAPI_PHONE ?? "";
   const dominio = (garagem.dominio_custom as string | undefined)?.trim() || null;
+  // Logo da vitrine tem precedência sobre a logo geral da loja.
+  const logoVitrine = (garagem.vitrine_tema?.logo_url as string | undefined)?.trim() || garagem.logo_url || null;
 
   // JSON-LD: AutoDealer com o estoque como ofertas.
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "AutoDealer",
     name: garagem.nome_empresa,
-    ...(garagem.logo_url ? { logo: garagem.logo_url, image: garagem.logo_url } : {}),
+    ...(logoVitrine ? { logo: logoVitrine, image: logoVitrine } : {}),
     ...(dominio ? { url: `https://${dominio}` } : {}),
     ...(whatsapp ? { telephone: `+${whatsapp.replace(/\D/g, "")}` } : {}),
     ...(garagem.endereco || garagem.cidade
@@ -142,7 +144,7 @@ export default async function VitrineTenantPage({ params }: Props) {
         nomeEmpresa={garagem.nome_empresa ?? ""}
         whatsapp={whatsapp}
         estoque={lista}
-        logoUrl={garagem.logo_url ?? null}
+        logoUrl={logoVitrine}
         vitrineTema={garagem.vitrine_tema ?? null}
         loja={{
           cidade: garagem.cidade ?? null,

@@ -12,6 +12,7 @@ export interface VitrineTema {
   cor_primaria?: string;
   cor_secundaria?: string;
   capa_url?: string;
+  logo_url?: string; // logo exclusiva da vitrine (fallback: config_garage.logo_url)
   tagline?: string;
   sobre?: string;
   tema?: "claro" | "escuro";
