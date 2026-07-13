@@ -844,6 +844,8 @@ export default function DetalheVeiculo() {
   // Título
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [nomeEditado, setNomeEditado] = useState("");
+  const [isEditingVersao, setIsEditingVersao] = useState(false);
+  const [versaoEditada, setVersaoEditada] = useState("");
 
   // Campos estruturados
   const [relatorioIA, setRelatorioIA] = useState("");
@@ -1029,6 +1031,14 @@ export default function DetalheVeiculo() {
     await patch({ marca: novaMarca, modelo: novoModelo, ia_verificada: true });
     setIsEditingTitle(false);
     setVeiculo((p: any) => ({ ...p, marca: novaMarca, modelo: novoModelo }));
+  };
+
+  const handleSalvarVersao = async () => {
+    if (!veiculo) return;
+    const nova = versaoEditada.trim();
+    await patch({ versao: nova, ia_verificada: true });
+    setIsEditingVersao(false);
+    setVeiculo((p: any) => ({ ...p, versao: nova }));
   };
 
   const handleSalvarRelatorio = async () => {
@@ -1402,14 +1412,54 @@ export default function DetalheVeiculo() {
               )}
             </div>
 
-            <p className="text-red-600 font-bold tracking-[0.3em] uppercase mt-4 text-xs flex items-center gap-2 italic">
-              {veiculo.versao} • {veiculo.ano_modelo}
-              {veiculo.ia_verificada && (
-                <span className="bg-green-100 text-green-600 text-[8px] px-2 py-0.5 rounded-full font-black not-italic">
-                  Verificado
-                </span>
+            <div className="mt-4 flex items-center gap-2 group/versao">
+              {isEditingVersao ? (
+                <div className="flex items-center gap-2 bg-white p-1.5 rounded-xl border border-gray-100 shadow-lg">
+                  <input
+                    type="text"
+                    value={versaoEditada}
+                    onChange={(e) => setVersaoEditada(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleSalvarVersao()}
+                    placeholder="Versão (ex: GLS 2.4 CD Diesel Mec.)"
+                    className="w-80 bg-transparent text-red-600 font-bold tracking-[0.2em] uppercase text-xs italic outline-none px-3 placeholder:text-gray-300 placeholder:tracking-normal placeholder:not-italic"
+                    autoFocus
+                  />
+                  <button
+                    onClick={handleSalvarVersao}
+                    className="p-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-all"
+                  >
+                    <Check size={14} />
+                  </button>
+                  <button
+                    onClick={() => setIsEditingVersao(false)}
+                    className="p-2 bg-gray-100 text-gray-400 rounded-lg hover:text-gray-900 transition-all"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <p className="text-red-600 font-bold tracking-[0.3em] uppercase text-xs flex items-center gap-2 italic">
+                    {veiculo.versao || "Sem versão"} • {veiculo.ano_modelo}
+                    {veiculo.ia_verificada && (
+                      <span className="bg-green-100 text-green-600 text-[8px] px-2 py-0.5 rounded-full font-black not-italic">
+                        Verificado
+                      </span>
+                    )}
+                  </p>
+                  <button
+                    onClick={() => {
+                      setVersaoEditada(veiculo.versao || "");
+                      setIsEditingVersao(true);
+                    }}
+                    className="p-1.5 bg-gray-50 text-gray-300 hover:text-red-600 rounded-lg transition-all shadow-sm opacity-0 group-hover/versao:opacity-100"
+                    title="Editar versão"
+                  >
+                    <Edit2 size={13} />
+                  </button>
+                </>
               )}
-            </p>
+            </div>
 
             {/* Vendedor responsável */}
             <div className="mt-6 flex items-center gap-4 bg-white/50 p-4 rounded-[1.5rem] border border-gray-100 w-fit shadow-sm">
