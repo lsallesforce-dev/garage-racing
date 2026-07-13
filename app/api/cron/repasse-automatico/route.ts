@@ -192,13 +192,14 @@ export async function GET(req: NextRequest) {
 
       const { data: ultimoEnvioRows } = await supabaseAdmin
         .from("veiculos")
-        .select("repasse_enviado_em")
+        .select("id, repasse_enviado_em")
         .eq("user_id", tenantId)
         .not("repasse_enviado_em", "is", null)
         .order("repasse_enviado_em", { ascending: false })
         .limit(1);
 
       const ultimoEnvio = ultimoEnvioRows?.[0]?.repasse_enviado_em ?? null;
+      const ultimoVeiculoId: string | null = ultimoEnvioRows?.[0]?.id ?? null;
 
       if (ultimoEnvio) {
         const diffMs = agora.getTime() - new Date(ultimoEnvio).getTime();
@@ -252,6 +253,15 @@ export async function GET(req: NextRequest) {
           .update({ repasse_ciclo_iniciado_em: novoMarco })
           .eq("user_id", tenantId);
         pendentes = await buscarPendentes(novoMarco);
+        // Anti-repetição na VIRADA do ciclo: o último carro enviado do ciclo
+        // anterior volta a ser elegível no marco novo e podia sair 2x seguidas,
+        // ~1 intervalo de diferença (incidente Master 13:10→14:10 BRT: last car
+        // do ciclo, ciclo esvaziou, reset re-sorteou o mesmo). Tira ele só do
+        // 1º sorteio do ciclo novo — segue no ciclo, entra num tick seguinte.
+        // (Só filtra se sobra mais de 1 carro; com estoque de 1 não há escolha.)
+        if (ultimoVeiculoId && pendentes.length > 1) {
+          pendentes = pendentes.filter((p) => p.id !== ultimoVeiculoId);
+        }
         if (pendentes.length > 0) {
           console.log(`🔀 [repasse/${tenantId}] Ciclo completo — novo ciclo com ${pendentes.length} carros re-embaralhados`);
         }
