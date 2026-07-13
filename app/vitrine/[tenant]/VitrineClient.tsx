@@ -171,9 +171,7 @@ export default function VitrineClient({
 
         <div className="relative max-w-7xl mx-auto px-5 py-9 sm:py-16 text-white">
           {logoUrl && (
-            <div className="inline-flex items-center bg-white rounded-2xl px-3.5 py-2.5 sm:px-4 sm:py-3 shadow-lg mb-4 sm:mb-5">
-              <img src={logoUrl} alt={nomeEmpresa} className="h-9 sm:h-12 w-auto max-w-[180px] sm:max-w-[220px] object-contain" />
-            </div>
+            <img src={logoUrl} alt={nomeEmpresa} className="h-16 sm:h-24 w-auto max-w-[200px] sm:max-w-[300px] object-contain object-left mb-4 sm:mb-5 drop-shadow-[0_2px_12px_rgba(0,0,0,0.35)]" />
           )}
           <h1 className="font-black uppercase italic tracking-tight leading-[0.95]" style={{ fontSize: "clamp(28px,5.5vw,56px)" }}>
             {nomeEmpresa}
