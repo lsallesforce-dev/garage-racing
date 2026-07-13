@@ -8,32 +8,46 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+// Rendering 100% dinâmico — "estoque em tempo real" é o argumento de venda.
+export const dynamic = "force-dynamic";
+
 interface Props {
   params: Promise<{ tenant: string }>;
 }
 
+const GARAGE_COLS =
+  "user_id, nome_empresa, whatsapp, whatsapp_agente, logo_url, vitrine_tema, dominio_custom, cidade, estado, endereco, endereco_complemento, horario_funcionamento, telefone_loja";
+
+// Resolve o tenant por vitrine_slug (curto) ou webhook_token (links antigos compartilhados).
+async function resolveGaragem(tenant: string) {
+  const bySlug = await supabaseAdmin
+    .from("config_garage")
+    .select(GARAGE_COLS)
+    .eq("vitrine_slug", tenant)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (bySlug.data?.[0]) return bySlug.data[0] as any;
+
+  const byToken = await supabaseAdmin
+    .from("config_garage")
+    .select(GARAGE_COLS)
+    .eq("webhook_token", tenant)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  return (byToken.data?.[0] as any) ?? null;
+}
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { tenant } = await params;
-
-  let garagem = (await supabaseAdmin
-    .from("config_garage")
-    .select("nome_empresa, logo_url, user_id")
-    .eq("vitrine_slug", tenant)
-    .maybeSingle()).data;
-
-  if (!garagem) {
-    garagem = (await supabaseAdmin
-      .from("config_garage")
-      .select("nome_empresa, logo_url, user_id")
-      .eq("webhook_token", tenant)
-      .maybeSingle()).data;
-  }
+  const garagem = await resolveGaragem(tenant);
 
   const nome = garagem?.nome_empresa ?? "Vitrine";
-  const desc = `Confira o estoque disponível da ${nome}. Veículos verificados com análise de IA.`;
+  const local = [garagem?.cidade, garagem?.estado].filter(Boolean).join(" - ");
+  const desc =
+    `Estoque disponível da ${nome}${local ? ` em ${local}` : ""}. Veículos com fotos, vídeo e atendimento na hora pelo WhatsApp.`;
 
-  // Usa logo da garagem como imagem; se não tiver, pega a capa do primeiro carro
-  let ogImage: string | null = garagem?.logo_url ?? null;
+  let ogImage: string | null =
+    (garagem?.vitrine_tema?.capa_url as string | undefined)?.trim() || garagem?.logo_url || null;
   if (!ogImage && garagem?.user_id) {
     const { data: carro } = await supabaseAdmin
       .from("veiculos")
@@ -46,9 +60,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     ogImage = carro?.capa_marketing_url ?? carro?.fotos?.[0] ?? null;
   }
 
+  const dominio = (garagem?.dominio_custom as string | undefined)?.trim();
+  const canonical = dominio ? `https://${dominio}` : undefined;
+
   return {
     title: `${nome} — Estoque`,
     description: desc,
+    ...(canonical ? { alternates: { canonical } } : {}),
     openGraph: {
       title: `${nome} — Estoque`,
       description: desc,
@@ -66,39 +84,75 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function VitrineTenantPage({ params }: Props) {
   const { tenant } = await params;
-
-  // Resolve tenant por vitrine_slug (curto) ou webhook_token (legado)
-  let { data: garagem } = await supabaseAdmin
-    .from("config_garage")
-    .select("user_id, nome_empresa, whatsapp, whatsapp_agente, logo_url")
-    .eq("vitrine_slug", tenant)
-    .single();
-
-  if (!garagem) {
-    const { data } = await supabaseAdmin
-      .from("config_garage")
-      .select("user_id, nome_empresa, whatsapp, whatsapp_agente, logo_url")
-      .eq("webhook_token", tenant)
-      .single();
-    garagem = data;
-  }
-
+  const garagem = await resolveGaragem(tenant);
   if (!garagem) notFound();
 
   const { data: estoque } = await supabaseAdmin
     .from("veiculos")
-    .select("id, marca, modelo, versao, ano_modelo, preco_sugerido, capa_marketing_url, fotos, video_url, segundo_dono, vistoriado, vistoria_cautelar, abaixo_fipe, de_repasse")
+    .select(
+      "id, marca, modelo, versao, ano_modelo, preco_sugerido, capa_marketing_url, fotos, video_url, " +
+        "segundo_dono, vistoriado, vistoria_cautelar, abaixo_fipe, de_repasse, " +
+        "created_at, quilometragem_estimada, cambio, combustivel, cor, categoria, valor_fipe"
+    )
     .eq("user_id", garagem.user_id)
     .eq("status_venda", "DISPONIVEL")
     .order("created_at", { ascending: false });
 
+  const lista = estoque ?? [];
+  const whatsapp = garagem.whatsapp_agente ?? garagem.whatsapp ?? process.env.NEXT_PUBLIC_ZAPI_PHONE ?? "";
+  const dominio = (garagem.dominio_custom as string | undefined)?.trim() || null;
+
+  // JSON-LD: AutoDealer com o estoque como ofertas.
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "AutoDealer",
+    name: garagem.nome_empresa,
+    ...(garagem.logo_url ? { logo: garagem.logo_url, image: garagem.logo_url } : {}),
+    ...(dominio ? { url: `https://${dominio}` } : {}),
+    ...(whatsapp ? { telephone: `+${whatsapp.replace(/\D/g, "")}` } : {}),
+    ...(garagem.endereco || garagem.cidade
+      ? {
+          address: {
+            "@type": "PostalAddress",
+            ...(garagem.endereco ? { streetAddress: garagem.endereco } : {}),
+            ...(garagem.cidade ? { addressLocality: garagem.cidade } : {}),
+            ...(garagem.estado ? { addressRegion: garagem.estado } : {}),
+            addressCountry: "BR",
+          },
+        }
+      : {}),
+    makesOffer: lista.slice(0, 50).map((c: any) => ({
+      "@type": "Offer",
+      priceCurrency: "BRL",
+      ...(c.preco_sugerido ? { price: c.preco_sugerido } : {}),
+      itemOffered: {
+        "@type": "Car",
+        name: [c.marca, c.modelo, c.versao].filter(Boolean).join(" "),
+        ...(c.marca ? { brand: c.marca } : {}),
+        ...(c.ano_modelo ? { modelDate: String(c.ano_modelo) } : {}),
+      },
+    })),
+  };
+
   return (
-    <VitrineClient
-      tenant={tenant}
-      nomeEmpresa={garagem.nome_empresa}
-      whatsapp={garagem.whatsapp_agente ?? garagem.whatsapp ?? process.env.NEXT_PUBLIC_ZAPI_PHONE ?? ""}
-      estoque={estoque ?? []}
-      logoUrl={garagem.logo_url ?? null}
-    />
+    <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }} />
+      <VitrineClient
+        tenant={tenant}
+        nomeEmpresa={garagem.nome_empresa ?? ""}
+        whatsapp={whatsapp}
+        estoque={lista}
+        logoUrl={garagem.logo_url ?? null}
+        vitrineTema={garagem.vitrine_tema ?? null}
+        loja={{
+          cidade: garagem.cidade ?? null,
+          estado: garagem.estado ?? null,
+          endereco: garagem.endereco ?? null,
+          enderecoComplemento: garagem.endereco_complemento ?? null,
+          horario: garagem.horario_funcionamento ?? null,
+          telefone: garagem.telefone_loja ?? null,
+        }}
+      />
+    </>
   );
 }
