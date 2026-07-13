@@ -234,7 +234,7 @@ export async function GET(req: NextRequest) {
       const buscarPendentes = async (marco: string | null) => {
         let q = supabaseAdmin
           .from("veiculos")
-          .select("id")
+          .select("id, repasse_enviado_em") // repasse_enviado_em: trava otimista do claim
           .eq("user_id", tenantId)
           .eq("status_venda", "DISPONIVEL")
           .gt("preco_sugerido", 0);
@@ -286,6 +286,7 @@ export async function GET(req: NextRequest) {
 
       for (let i = 0; i < carros.length; i++) {
         const veiculoId: string = carros[i].id;
+        const priorEnvio: string | null = carros[i].repasse_enviado_em ?? null;
 
         // ── 5. Gerar conteúdo do repasse ────────────────────────────────────
         console.log(`🔄 [repasse/${tenantId}] Gerando repasse ${i + 1}/${carros.length} para veículo ${veiculoId}...`);
@@ -302,16 +303,34 @@ export async function GET(req: NextRequest) {
         // Pausa entre anúncios consecutivos — evita burst e mantém ordem no grupo
         if (i > 0) await new Promise((r) => setTimeout(r, 4000));
 
-        // ── 6. Marcar ANTES de enviar + enviar para TODOS os grupos ─────────
+        // ── 6. CLAIM ATÔMICO antes de enviar + enviar para TODOS os grupos ──
         // repasse_enviado_em é gravado ANTES dos envios (claim do slot): se a
         // função morrer no meio (timeout/redeploy) e a Vercel re-executar o cron,
         // ou se a Avisa responder 504 ambíguo (entregou mas sem confirmação), o
         // carro JAMAIS é re-enviado — duplicata num grupo de 1.800 membros é bem
         // pior que um carro pular uma volta do rodízio (incidente do Uno 3x, 08/07).
-        await supabaseAdmin
+        //
+        // TRAVA OTIMISTA contra 2 invocações CONCORRENTES do cron (retry/overlap
+        // de deploy pegando o mesmo carro → duplicata, incidente S10 13/07): o
+        // UPDATE só casa se o repasse_enviado_em ainda for o valor que este tick
+        // leu (priorEnvio). A 1ª invocação grava agora e muda o valor; a 2ª não
+        // acha mais a linha (0 rows) → NÃO envia. (marcar incondicional só barrava
+        // re-invocação SEQUENCIAL, não corrida simultânea.)
+        const claimBase = supabaseAdmin
           .from("veiculos")
           .update({ repasse_enviado_em: agora.toISOString() })
-          .eq("id", veiculoId);
+          .eq("id", veiculoId)
+          .eq("user_id", tenantId);
+        const claimQ = priorEnvio == null
+          ? claimBase.is("repasse_enviado_em", null)
+          : claimBase.eq("repasse_enviado_em", priorEnvio);
+        const { data: claimed } = await claimQ.select("id");
+        if (!claimed || claimed.length === 0) {
+          console.log(
+            `⏭️ [repasse/${tenantId}] Veículo ${veiculoId} já enviado por outro tick concorrente — pulando (anti-duplicata)`,
+          );
+          continue;
+        }
 
         // sendAvisaImage manda a foto como base64 COM width/height (lê a dimensão
         // real) → o WhatsApp não corta a prévia. Foto + texto numa mensagem só.
