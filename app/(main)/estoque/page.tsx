@@ -390,7 +390,7 @@ export default function ListaEstoque() {
       {/* Modal Repasse */}
       {repasseCarroId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh]">
+          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg flex flex-col h-[85vh] max-h-[85vh]">
             {/* Header */}
             <div className="flex items-center justify-between px-8 pt-8 pb-4">
               <div>
