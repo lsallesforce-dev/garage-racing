@@ -86,6 +86,18 @@ export function formatarMoeda(valor: number): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(valor);
 }
 
+// URL da vitrine pro anúncio: domínio próprio do tenant (config_garage.dominio_custom,
+// ex.: "marcosrepasse.com.br") tem prioridade; senão o /vitrine/{slug} no domínio da
+// AutoZap. null se o tenant não tem vitrine configurada.
+export function urlVitrine(cfg: any): string | null {
+  const dom = String(cfg?.dominio_custom ?? "").trim().replace(/^https?:\/\//, "").replace(/\/+$/, "");
+  if (dom) return `https://${dom}`;
+  if (cfg?.vitrine_slug) {
+    return `${process.env.NEXT_PUBLIC_APP_URL || "https://www.autozap.digital"}/vitrine/${cfg.vitrine_slug}`;
+  }
+  return null;
+}
+
 // Sem centavos — pro valor de referência ("Média") ficar redondo tipo anúncio.
 function formatarMoedaInteira(valor: number): string {
   return new Intl.NumberFormat("pt-BR", {
@@ -340,15 +352,13 @@ export async function gerarRepasseCompleto(
   // config_garage pode ter múltiplas linhas por user_id — nunca usar .single()/.maybeSingle()
   const { data: cfgRows } = await supabaseAdmin
     .from("config_garage")
-    .select("whatsapp_agente, whatsapp, vitrine_slug, cidade, estado")
+    .select("whatsapp_agente, whatsapp, vitrine_slug, dominio_custom, cidade, estado")
     .eq("user_id", carro.user_id)
     .order("created_at", { ascending: false })
     .limit(1);
   const cfg = cfgRows?.[0] ?? null;
   const botPhone = cfg?.whatsapp_agente || cfg?.whatsapp || null;
-  const vitrineUrl = cfg?.vitrine_slug
-    ? `${process.env.NEXT_PUBLIC_APP_URL || "https://www.autozap.digital"}/vitrine/${cfg.vitrine_slug}`
-    : null;
+  const vitrineUrl = urlVitrine(cfg);
 
   // Versão rica: versao do banco, ou combinação de motor + combustivel + cambio
   const versaoRica = [carro.versao, carro.motor, carro.combustivel, carro.cambio]
