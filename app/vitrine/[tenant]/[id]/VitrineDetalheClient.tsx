@@ -113,10 +113,13 @@ export default function VitrineDetalheClient({
       </header>
 
       <div className="max-w-6xl mx-auto px-5 py-6">
-        <div className="grid lg:grid-cols-12 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
 
           {/* ── Mídia ── */}
-          <div className="lg:col-span-7">
+          {/* min-w-0: sem isso o item do grid (min-width:auto) cresce pra caber
+              a tira de miniaturas inteira → overflow horizontal → no mobile o
+              Samsung Internet expande o viewport e o layout desktop "estoura". */}
+          <div className="lg:col-span-7 min-w-0">
             <div className="relative aspect-[4/3] rounded-3xl overflow-hidden bg-[var(--surface-2)] border border-[var(--border)]">
               {sel === "video" && videoUrl ? (
                 <video src={videoUrl} controls autoPlay playsInline className="absolute inset-0 w-full h-full object-contain bg-black" />
@@ -165,7 +168,7 @@ export default function VitrineDetalheClient({
           </div>
 
           {/* ── Info (sticky) ── */}
-          <div className="lg:col-span-5">
+          <div className="lg:col-span-5 min-w-0">
             <div className="lg:sticky lg:top-24">
               <div className="flex flex-wrap items-center gap-1.5 mb-3">
                 {vendido && <Chip className="bg-[var(--surface-2)] text-[var(--fg-muted)] border border-[var(--border)]">Vendido</Chip>}
@@ -223,8 +226,8 @@ export default function VitrineDetalheClient({
         </div>
 
         {/* ── Ficha + opcionais + pontos ── */}
-        <div className="grid lg:grid-cols-12 gap-8 mt-12">
-          <div className="lg:col-span-7 flex flex-col gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mt-12">
+          <div className="lg:col-span-7 min-w-0 flex flex-col gap-8">
             {fichaPreenchida.length > 0 && (
               <section>
                 <h2 className="text-[11px] font-black uppercase tracking-widest text-[var(--fg-faint)] mb-4 flex items-center gap-2">
@@ -264,7 +267,7 @@ export default function VitrineDetalheClient({
             )}
           </div>
 
-          <div className="lg:col-span-5">
+          <div className="lg:col-span-5 min-w-0">
             {opcionais.length > 0 && (
               <section>
                 <h2 className="text-[11px] font-black uppercase tracking-widest text-[var(--fg-faint)] mb-4">Opcionais</h2>
