@@ -330,6 +330,13 @@ export async function gerarRepasseCompleto(
 
   if (!carro) return null;
 
+  // Texto congelado pelo dono (FIPE corrigida etc.): usa VERBATIM, não regenera.
+  // Fonte única da verdade pra grupo E prospecção (pedido Marcos Repasse).
+  if (tipo === "repasse" && typeof carro.repasse_texto === "string" && carro.repasse_texto.trim()) {
+    const capaUrl: string | null = carro.capa_marketing_url || carro.fotos?.[0] || null;
+    return { texto: carro.repasse_texto, capaUrl };
+  }
+
   // config_garage pode ter múltiplas linhas por user_id — nunca usar .single()/.maybeSingle()
   const { data: cfgRows } = await supabaseAdmin
     .from("config_garage")

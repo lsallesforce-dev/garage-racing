@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import { useUserRole } from "@/components/SidebarWrapper";
-import { Edit3, Plus, Car, Zap, Search, ArrowRight, Trash2, Share2, Copy, Check, X, Loader2, RotateCcw } from "lucide-react";
+import { Edit3, Plus, Car, Zap, Search, ArrowRight, Trash2, Share2, Copy, Check, X, Loader2, RotateCcw, Save } from "lucide-react";
 
 export default function ListaEstoque() {
   const { effectiveUserId, isVendedor } = useUserRole();
@@ -29,6 +29,9 @@ export default function ListaEstoque() {
   const [enviado, setEnviado] = useState(false);
   const [erroEnvio, setErroEnvio] = useState<string | null>(null);
   const [repasseTipo, setRepasseTipo] = useState<"repasse" | "promocao">("repasse");
+  const [salvando, setSalvando] = useState(false);
+  const [salvo, setSalvo] = useState(false);
+  const [textoSalvo, setTextoSalvo] = useState(false); // veículo já tem texto congelado
 
   const handleDelete = async (id: string) => {
     const res = await fetch("/api/veiculo/deletar", {
@@ -58,26 +61,51 @@ export default function ListaEstoque() {
     buscarEstoque();
   }, [effectiveUserId]);
 
-  const gerarRepasse = async (id: string, tipo: "repasse" | "promocao" = "repasse") => {
+  const gerarRepasse = async (id: string, tipo: "repasse" | "promocao" = "repasse", forcar = false) => {
     setRepasseTipo(tipo);
     setRepasseCarroId(id);
     setRepasseTexto("");
     setRepasseCapaUrl(null);
     setEnviado(false);
+    setSalvo(false);
     setRepasseLoading(true);
     try {
       const res = await fetch("/api/veiculo/gerar-repasse", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ veiculoId: id, tipo }),
+        // forcar=true ignora o texto salvo e regenera do zero (botão ↺)
+        body: JSON.stringify({ veiculoId: id, tipo, forcar }),
       });
       const data = await res.json();
       setRepasseTexto(data.texto ?? "");
       setRepasseCapaUrl(data.capaUrl ?? null);
+      setTextoSalvo(!!data.salvo); // veio do texto congelado?
     } catch {
       setRepasseTexto("Erro ao gerar. Tente novamente.");
     } finally {
       setRepasseLoading(false);
+    }
+  };
+
+  // Congela o texto atual no veículo. A partir daí grupo e prospecção usam ELE
+  // verbatim, sem regenerar (pedido Marcos: FIPE errada corrigida na mão não
+  // pode voltar no envio automático).
+  const salvarRepasse = async () => {
+    if (!repasseCarroId || !repasseTexto.trim()) return;
+    setSalvando(true);
+    try {
+      const res = await fetch("/api/veiculo/patch", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ veiculoId: repasseCarroId, fields: { repasse_texto: repasseTexto } }),
+      });
+      if (res.ok) {
+        setSalvo(true);
+        setTextoSalvo(true);
+        setTimeout(() => setSalvo(false), 3000);
+      }
+    } finally {
+      setSalvando(false);
     }
   };
 
@@ -408,6 +436,24 @@ export default function ListaEstoque() {
                   {erroEnvio && (
                     <p className="text-[11px] font-bold text-red-600 bg-red-50 rounded-xl px-4 py-2 text-center">{erroEnvio}</p>
                   )}
+                  <p className={`text-[10px] font-bold text-center rounded-xl px-4 py-2 ${textoSalvo ? "text-green-700 bg-green-50" : "text-amber-700 bg-amber-50"}`}>
+                    {textoSalvo
+                      ? "✓ Texto fixado — os envios de grupo e prospecção usam exatamente este texto."
+                      : "Corrigiu algo (ex: FIPE)? Clique em SALVAR pra fixar — senão o envio automático regenera e volta ao original."}
+                  </p>
+                  <button
+                    onClick={salvarRepasse}
+                    disabled={salvando || !repasseTexto.trim()}
+                    className="w-full flex items-center justify-center gap-2 py-4 bg-gray-900 text-white font-black uppercase italic text-[10px] tracking-widest rounded-2xl hover:bg-black transition-all disabled:opacity-60"
+                  >
+                    {salvando ? (
+                      <><Loader2 size={14} className="animate-spin" /> Salvando...</>
+                    ) : salvo ? (
+                      <><Check size={14} /> Texto fixado!</>
+                    ) : (
+                      <><Save size={14} /> Salvar texto (grupo + prospecção)</>
+                    )}
+                  </button>
                   <div className="flex gap-3">
                   <button
                     onClick={exportarRepasse}
@@ -430,9 +476,9 @@ export default function ListaEstoque() {
                     {copiado ? "Copiado" : "Copiar"}
                   </button>
                   <button
-                    onClick={() => gerarRepasse(repasseCarroId)}
+                    onClick={() => gerarRepasse(repasseCarroId, repasseTipo, true)}
                     className="px-4 py-4 bg-gray-100 text-gray-400 font-black uppercase italic text-[10px] tracking-widest rounded-2xl hover:bg-gray-200 transition-all"
-                    title="Gerar novamente"
+                    title="Regenerar do zero (descarta o texto salvo nesta prévia)"
                   >
                     ↺
                   </button>

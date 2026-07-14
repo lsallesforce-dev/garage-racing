@@ -47,6 +47,13 @@ export async function gerarTransmissaoCompleto(
     .single();
   if (!carro) return null;
 
+  // Texto congelado pelo dono (mesma fonte da verdade do repasse): usa VERBATIM.
+  // Assim grupo e prospecção mostram EXATAMENTE o texto salvo (pedido Marcos).
+  if (typeof carro.repasse_texto === "string" && carro.repasse_texto.trim()) {
+    const capaUrl: string | null = carro.capa_marketing_url || carro.fotos?.[0] || null;
+    return { texto: carro.repasse_texto, capaUrl };
+  }
+
   // config_garage pode ter múltiplas linhas por user_id — nunca .single()
   const { data: cfgRows } = await supabaseAdmin
     .from("config_garage")

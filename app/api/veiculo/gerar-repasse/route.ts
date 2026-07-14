@@ -11,7 +11,7 @@ import { gerarTextoRepasse, resolverFipe } from "@/lib/repasse";
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
-  const { veiculoId, tipo = "repasse" } = await req.json();
+  const { veiculoId, tipo = "repasse", forcar = false } = await req.json();
   if (!veiculoId) return NextResponse.json({ error: "veiculoId obrigatório" }, { status: 400 });
 
   const { error: authError } = await requireVehicleOwner(veiculoId);
@@ -24,6 +24,14 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (!carro) return NextResponse.json({ error: "Veículo não encontrado" }, { status: 404 });
+
+  // Texto congelado: se o dono já salvou uma versão editada (ex: FIPE corrigida),
+  // mostra ELA — é a mesma que os envios de grupo/prospecção usam. `forcar`=true
+  // (botão ↺) ignora e regenera do zero.
+  if (!forcar && tipo === "repasse" && typeof carro.repasse_texto === "string" && carro.repasse_texto.trim()) {
+    const capaSalva = carro.capa_marketing_url || carro.fotos?.[0] || null;
+    return NextResponse.json({ texto: carro.repasse_texto, capaUrl: capaSalva, salvo: true });
+  }
 
   // config_garage pode ter múltiplas linhas por user_id — nunca usar .single()/.maybeSingle()
   const { data: cfgRows } = await supabaseAdmin
