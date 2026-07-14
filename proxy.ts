@@ -348,9 +348,17 @@ export async function proxy(request: NextRequest) {
       return NextResponse.redirect(`https://www.${MAIN_DOMAIN}`, { status: 302 });
     }
 
-    // Rewrite silencioso: URL do usuário continua sendo o domínio próprio
+    // Rewrite silencioso: URL do usuário continua sendo o domínio próprio.
+    // As páginas internas linkam com o path ABSOLUTO /vitrine/{slug}/... (ex.:
+    // detalhe do carro), então no domínio próprio o path pode JÁ vir prefixado.
+    // Sem checar isso, o prefixo era aplicado 2x (/vitrine/{slug}/vitrine/{slug}/id)
+    // → 404 nas páginas de detalhe. Se já está prefixado, passa direto.
+    const base = `/vitrine/${slug}`;
+    const jaPrefixado = pathname === base || pathname.startsWith(`${base}/`);
     const rewriteUrl = request.nextUrl.clone();
-    rewriteUrl.pathname = `/vitrine/${slug}${pathname === "/" ? "" : pathname}`;
+    rewriteUrl.pathname = jaPrefixado
+      ? pathname
+      : `${base}${pathname === "/" ? "" : pathname}`;
 
     const response = NextResponse.rewrite(rewriteUrl);
     response.headers.set("x-tenant-slug", slug);
