@@ -70,7 +70,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     openGraph: {
       title: `${nome} — Estoque`,
       description: desc,
-      ...(ogImage ? { images: [{ url: ogImage, width: 1200, height: 630, alt: nome }] } : {}),
+      ...(canonical ? { url: canonical } : {}),
+      // Sem width/height fixos: a imagem é dinâmica (capa/logo/foto, cada uma de
+      // um tamanho). Declarar 1200x630 quando a real é outra (ex: capa 1600x496)
+      // faz o crawler do WhatsApp/Facebook rejeitar o card. Deixa ler a real.
+      ...(ogImage ? { images: [{ url: ogImage, alt: nome }] } : {}),
       type: "website",
     },
     twitter: {

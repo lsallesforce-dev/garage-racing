@@ -58,7 +58,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     openGraph: {
       title: `${titulo}${preco ? ` • ${preco}` : ""}`,
       description: "Fale com a loja agora pelo WhatsApp — sem formulário.",
-      images: imagem ? [{ url: imagem, width: 1200, height: 630 }] : [],
+      ...(canonical ? { url: canonical } : {}),
+      // Sem width/height fixos: a foto do carro raramente é 1200x630; declarar
+      // dimensão errada faz o WhatsApp/Facebook rejeitar a imagem do card.
+      images: imagem ? [{ url: imagem, alt: titulo }] : [],
       type: "website",
     },
   };
