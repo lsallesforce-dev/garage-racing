@@ -421,39 +421,20 @@ export default function ListaEstoque() {
                   </div>
                 )}
 
-                {/* Texto */}
-                <div className="flex-1 overflow-y-auto px-8 pb-4">
+                {/* Texto — preenche o espaço disponível do modal */}
+                <div className="flex-1 min-h-0 flex px-8 pb-4">
                   <textarea
                     value={repasseTexto}
                     onChange={e => setRepasseTexto(e.target.value)}
-                    className="w-full whitespace-pre-wrap font-sans text-sm text-gray-800 bg-gray-50 rounded-2xl p-5 leading-relaxed border border-gray-100 resize-none focus:outline-none focus:border-green-400 focus:ring-2 focus:ring-green-100 transition-all"
-                    rows={18}
+                    className="w-full flex-1 min-h-0 whitespace-pre-wrap font-sans text-sm text-gray-800 bg-gray-50 rounded-2xl p-5 leading-relaxed border border-gray-100 resize-none focus:outline-none focus:border-green-400 focus:ring-2 focus:ring-green-100 transition-all"
                   />
                 </div>
 
-                {/* Actions */}
+                {/* Actions — uma linha só: Exportar | Salvar (meio) | Copiar | ↺ */}
                 <div className="px-8 pb-8 pt-4 flex flex-col gap-3">
                   {erroEnvio && (
                     <p className="text-[11px] font-bold text-red-600 bg-red-50 rounded-xl px-4 py-2 text-center">{erroEnvio}</p>
                   )}
-                  <p className={`text-[10px] font-bold text-center rounded-xl px-4 py-2 ${textoSalvo ? "text-green-700 bg-green-50" : "text-amber-700 bg-amber-50"}`}>
-                    {textoSalvo
-                      ? "✓ Texto fixado — os envios de grupo e prospecção usam exatamente este texto."
-                      : "Corrigiu algo (ex: FIPE)? Clique em SALVAR pra fixar — senão o envio automático regenera e volta ao original."}
-                  </p>
-                  <button
-                    onClick={salvarRepasse}
-                    disabled={salvando || !repasseTexto.trim()}
-                    className="w-full flex items-center justify-center gap-2 py-4 bg-gray-900 text-white font-black uppercase italic text-[10px] tracking-widest rounded-2xl hover:bg-black transition-all disabled:opacity-60"
-                  >
-                    {salvando ? (
-                      <><Loader2 size={14} className="animate-spin" /> Salvando...</>
-                    ) : salvo ? (
-                      <><Check size={14} /> Texto fixado!</>
-                    ) : (
-                      <><Save size={14} /> Salvar texto (grupo + prospecção)</>
-                    )}
-                  </button>
                   <div className="flex gap-3">
                   <button
                     onClick={exportarRepasse}
@@ -463,9 +444,23 @@ export default function ListaEstoque() {
                     {enviando ? (
                       <><Loader2 size={14} className="animate-spin" /> Enviando...</>
                     ) : enviado ? (
-                      <><Check size={14} /> Enviado pro seu WhatsApp!</>
+                      <><Check size={14} /> Enviado!</>
                     ) : (
-                      <><Share2 size={14} /> Exportar pro WhatsApp</>
+                      <><Share2 size={14} /> Exportar</>
+                    )}
+                  </button>
+                  <button
+                    onClick={salvarRepasse}
+                    disabled={salvando || !repasseTexto.trim()}
+                    className="flex-1 flex items-center justify-center gap-2 py-4 bg-gray-900 text-white font-black uppercase italic text-[10px] tracking-widest rounded-2xl hover:bg-black transition-all disabled:opacity-60"
+                    title="Fixa este texto — grupo e prospecção passam a usar ele verbatim"
+                  >
+                    {salvando ? (
+                      <><Loader2 size={14} className="animate-spin" /> Salvando...</>
+                    ) : salvo ? (
+                      <><Check size={14} /> Fixado!</>
+                    ) : (
+                      <><Save size={14} /> {textoSalvo ? "Salvar (fixado)" : "Salvar"}</>
                     )}
                   </button>
                   <button
