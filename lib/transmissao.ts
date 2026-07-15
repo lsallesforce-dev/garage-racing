@@ -37,6 +37,25 @@ export function normalizarTelefone(raw: string): string | null {
  * o texto puro do carro (pedido Marcos Repasse 10/07, revoga a decisão de
  * 07/07 de manter a vitrine). Retorna null se o veículo não existir.
  */
+// Prospecção é lista PESSOAL: não leva o "💬 Falar com Vendedor" (wa.me do
+// agente) nem o "🚗 Veja nosso estoque completo" (vitrine). O texto congelado
+// (repasse_texto) é o do repasse, que TEM esses dois blocos — então removemos.
+// Cada bloco = linha do rótulo + linha da URL seguinte + a linha em branco antes.
+function semRodapesProspeccao(texto: string): string {
+  const linhas = texto.split("\n");
+  const out: string[] = [];
+  for (let i = 0; i < linhas.length; i++) {
+    const l = linhas[i];
+    if (l.startsWith("💬 Falar com Vendedor") || l.startsWith("🚗 Veja nosso estoque")) {
+      if (out.length && out[out.length - 1].trim() === "") out.pop(); // tira a linha em branco antes
+      if (i + 1 < linhas.length) i++; // pula a linha da URL
+      continue;
+    }
+    out.push(l);
+  }
+  return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 export async function gerarTransmissaoCompleto(
   veiculoId: string,
 ): Promise<{ texto: string; capaUrl: string | null } | null> {
@@ -51,7 +70,7 @@ export async function gerarTransmissaoCompleto(
   // Assim grupo e prospecção mostram EXATAMENTE o texto salvo (pedido Marcos).
   if (typeof carro.repasse_texto === "string" && carro.repasse_texto.trim()) {
     const capaUrl: string | null = carro.capa_marketing_url || carro.fotos?.[0] || null;
-    return { texto: carro.repasse_texto, capaUrl };
+    return { texto: semRodapesProspeccao(carro.repasse_texto), capaUrl };
   }
 
   // config_garage pode ter múltiplas linhas por user_id — nunca .single()
