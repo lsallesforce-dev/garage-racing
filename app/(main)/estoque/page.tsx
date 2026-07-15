@@ -28,7 +28,6 @@ export default function ListaEstoque() {
   const [enviando, setEnviando] = useState(false);
   const [enviado, setEnviado] = useState(false);
   const [erroEnvio, setErroEnvio] = useState<string | null>(null);
-  const [repasseTipo, setRepasseTipo] = useState<"repasse" | "promocao">("repasse");
   const [salvando, setSalvando] = useState(false);
   const [salvo, setSalvo] = useState(false);
   const [textoSalvo, setTextoSalvo] = useState(false); // veículo já tem texto congelado
@@ -61,8 +60,7 @@ export default function ListaEstoque() {
     buscarEstoque();
   }, [effectiveUserId]);
 
-  const gerarRepasse = async (id: string, tipo: "repasse" | "promocao" = "repasse", forcar = false) => {
-    setRepasseTipo(tipo);
+  const gerarRepasse = async (id: string, forcar = false) => {
     setRepasseCarroId(id);
     setRepasseTexto("");
     setRepasseCapaUrl(null);
@@ -74,7 +72,7 @@ export default function ListaEstoque() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         // forcar=true ignora o texto salvo e regenera do zero (botão ↺)
-        body: JSON.stringify({ veiculoId: id, tipo, forcar }),
+        body: JSON.stringify({ veiculoId: id, forcar }),
       });
       const data = await res.json();
       setRepasseTexto(data.texto ?? "");
@@ -351,20 +349,12 @@ export default function ListaEstoque() {
                             <RotateCcw size={14} /> Estornar Venda
                           </button>
                         ) : (
-                          <>
-                            <button
-                              onClick={() => gerarRepasse(carro.id, "promocao")}
-                              className="flex items-center gap-2 px-4 py-3 md:px-6 md:py-4 bg-blue-600 text-white text-[10px] font-black uppercase italic rounded-2xl hover:bg-blue-700 transition-all tracking-widest shadow-lg shadow-blue-200"
-                            >
-                              <Share2 size={14} /> Envio Whats
-                            </button>
-                            <button
-                              onClick={() => gerarRepasse(carro.id)}
-                              className="flex items-center gap-2 px-4 py-3 md:px-6 md:py-4 bg-green-600 text-white text-[10px] font-black uppercase italic rounded-2xl hover:bg-green-700 transition-all tracking-widest shadow-lg shadow-green-200"
-                            >
-                              <Share2 size={14} /> Repasse
-                            </button>
-                          </>
+                          <button
+                            onClick={() => gerarRepasse(carro.id)}
+                            className="flex items-center gap-2 px-4 py-3 md:px-6 md:py-4 bg-green-600 text-white text-[10px] font-black uppercase italic rounded-2xl hover:bg-green-700 transition-all tracking-widest shadow-lg shadow-green-200"
+                          >
+                            <Share2 size={14} /> Repasse
+                          </button>
                         )}
                         <Link
                             href={`/veiculo/${carro.id}`}
@@ -395,7 +385,7 @@ export default function ListaEstoque() {
             <div className="flex items-center justify-between px-8 pt-8 pb-4">
               <div>
                 <h2 className="text-xl font-black uppercase italic tracking-tight text-gray-900">
-                  {repasseTipo === "repasse" ? "Anúncio de Repasse" : "Envio Direto"}
+                  Anúncio de Repasse
                 </h2>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mt-0.5">Copie e cole no WhatsApp</p>
               </div>
@@ -471,7 +461,7 @@ export default function ListaEstoque() {
                     {copiado ? "Copiado" : "Copiar"}
                   </button>
                   <button
-                    onClick={() => gerarRepasse(repasseCarroId, repasseTipo, true)}
+                    onClick={() => gerarRepasse(repasseCarroId, true)}
                     className="px-4 py-4 bg-gray-100 text-gray-400 font-black uppercase italic text-[10px] tracking-widest rounded-2xl hover:bg-gray-200 transition-all"
                     title="Regenerar do zero (descarta o texto salvo nesta prévia)"
                   >
