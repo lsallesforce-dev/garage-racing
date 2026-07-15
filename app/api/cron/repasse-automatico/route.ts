@@ -225,6 +225,9 @@ export async function GET(req: NextRequest) {
       // ordem fixa deixa a agenda 100% previsível — lib/repasse-agenda calcula
       // exatamente o mesmo horário que aparece no board. (Substitui o sorteio
       // por ciclo de 09/07: agora a variação vem do Pausar manual, não do random.)
+      // Ordem: manual (repasse_ordem, arrastar no Fluxo Grupo) primeiro; quem não
+      // tem ordem cai no rodízio (mais antigo primeiro). Ao enviar, o carro tem a
+      // ordem zerada (abaixo) → rotaciona pro fim naturalmente.
       const qtdPorEnvio = Math.min(Math.max(cfg.repasse_qtd_por_envio ?? 1, 1), 5);
       const { data: fila } = await supabaseAdmin
         .from("veiculos")
@@ -233,6 +236,7 @@ export async function GET(req: NextRequest) {
         .eq("status_venda", "DISPONIVEL")
         .gt("preco_sugerido", 0)
         .eq("repasse_pausado", false)
+        .order("repasse_ordem", { ascending: true, nullsFirst: false })
         .order("repasse_enviado_em", { ascending: true, nullsFirst: true })
         .limit(qtdPorEnvio);
       const carros = fila ?? [];
@@ -281,7 +285,9 @@ export async function GET(req: NextRequest) {
         // re-invocação SEQUENCIAL, não corrida simultânea.)
         const claimBase = supabaseAdmin
           .from("veiculos")
-          .update({ repasse_enviado_em: agora.toISOString() })
+          // repasse_ordem: null → sai da fila manual (arrastar) e rotaciona pro
+          // fim naturalmente; a partir daí volta pro rodízio por repasse_enviado_em.
+          .update({ repasse_enviado_em: agora.toISOString(), repasse_ordem: null })
           .eq("id", veiculoId)
           .eq("user_id", tenantId);
         const claimQ = priorEnvio == null

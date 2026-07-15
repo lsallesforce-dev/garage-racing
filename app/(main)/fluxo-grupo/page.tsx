@@ -10,13 +10,13 @@ import { supabase } from "@/lib/supabase";
 import { useUserRole } from "@/components/SidebarWrapper";
 import { computarAgenda, baseDoProximoEnvio, type AgendaCfg } from "@/lib/repasse-agenda";
 import {
-  Car, Clock, Pause, Play, Loader2, CheckCircle2, Image as ImageIcon, Users, Radio,
+  Car, Clock, Pause, Play, Loader2, CheckCircle2, Image as ImageIcon, Users, Radio, GripVertical,
 } from "lucide-react";
 
 interface Veiculo {
   id: string; marca: string | null; modelo: string | null; ano_modelo: number | null;
   capa_marketing_url: string | null; fotos: string[] | null;
-  repasse_enviado_em: string | null; repasse_pausado: boolean;
+  repasse_enviado_em: string | null; repasse_pausado: boolean; repasse_ordem: number | null;
 }
 interface Cfg {
   id?: string;
@@ -76,7 +76,7 @@ export default function FluxoGrupo() {
         .select("id, repasse_grupos, repasse_auto_ativo, repasse_intervalo_min, repasse_qtd_por_envio, repasse_janela_inicio, repasse_janela_fim, repasse_janela_fim_sabado, repasse_bomdia_ativo, repasse_link_comunidade, repasse_link_instagram, repasse_bomdia_logo_url, avisa_base_url, avisa_token")
         .eq("user_id", effectiveUserId).order("created_at", { ascending: false }).limit(1),
       supabase.from("veiculos")
-        .select("id, marca, modelo, ano_modelo, capa_marketing_url, fotos, repasse_enviado_em, repasse_pausado")
+        .select("id, marca, modelo, ano_modelo, capa_marketing_url, fotos, repasse_enviado_em, repasse_pausado, repasse_ordem")
         .eq("user_id", effectiveUserId).eq("status_venda", "DISPONIVEL").gt("preco_sugerido", 0),
     ]);
     setConfig((cfgRows?.[0] as Cfg) ?? {});
@@ -94,14 +94,40 @@ export default function FluxoGrupo() {
     qtdPorEnvio: config.repasse_qtd_por_envio ?? 1,
   };
 
-  // Ordem do rodízio = mais antigo sem sair primeiro (NULL = nunca enviado vem antes)
+  // Ordem: manual (repasse_ordem, arrastar) primeiro; sem ordem cai no rodízio
+  // (mais antigo sem sair primeiro; NULL enviado = nunca enviado vem antes).
   const ativos = useMemo(() =>
     carros.filter(c => !c.repasse_pausado).sort((a, b) => {
+      const oa = a.repasse_ordem ?? Infinity, ob = b.repasse_ordem ?? Infinity;
+      if (oa !== ob) return oa - ob;
       const ta = a.repasse_enviado_em ? Date.parse(a.repasse_enviado_em) : 0;
       const tb = b.repasse_enviado_em ? Date.parse(b.repasse_enviado_em) : 0;
       return ta - tb;
     }), [carros]);
   const pausados = useMemo(() => carros.filter(c => c.repasse_pausado), [carros]);
+
+  // ── Arrastar pra reordenar a fila ──
+  const [dragId, setDragId] = useState<string | null>(null);
+  const reordenar = (fromId: string, sobreId: string) => {
+    if (fromId === sobreId) return;
+    const arr = [...ativos];
+    const from = arr.findIndex(c => c.id === fromId);
+    const to = arr.findIndex(c => c.id === sobreId);
+    if (from < 0 || to < 0) return;
+    const [moved] = arr.splice(from, 1);
+    arr.splice(to, 0, moved);
+    const pos = new Map(arr.map((c, i) => [c.id, i]));
+    setCarros(prev => prev.map(c => pos.has(c.id) ? { ...c, repasse_ordem: pos.get(c.id)! } : c));
+  };
+  const persistirOrdem = async () => {
+    setDragId(null);
+    try {
+      await fetch("/api/repasse/ordem", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: ativos.map(c => c.id) }),
+      });
+    } catch { /* silencioso — a ordem otimista já está na tela */ }
+  };
 
   const agenda = useMemo(() => {
     const ultimo = carros.reduce<number>((m, c) => {
@@ -217,7 +243,7 @@ export default function FluxoGrupo() {
             Fluxo <span className="text-red-600">Grupo</span>
           </h1>
           <p className="text-[11px] font-bold uppercase tracking-widest text-gray-400 mt-2">
-            Rodízio automático de carros pras comunidades — cada carro com o horário previsto
+            Rodízio automático pras comunidades — arraste pra reordenar a fila
           </p>
         </header>
 
@@ -239,8 +265,18 @@ export default function FluxoGrupo() {
             {ativos.map((v, i) => {
               const t = agenda.get(v.id);
               return (
-                <div key={v.id} className="flex items-center gap-4 bg-white rounded-2xl border border-gray-100 shadow-sm p-3 md:p-4">
-                  <span className="text-[10px] font-black text-gray-300 w-5 text-center shrink-0">{i + 1}</span>
+                <div
+                  key={v.id}
+                  draggable
+                  onDragStart={() => setDragId(v.id)}
+                  onDragOver={(e) => { e.preventDefault(); if (dragId && dragId !== v.id) reordenar(dragId, v.id); }}
+                  onDragEnd={persistirOrdem}
+                  className={`flex items-center gap-3 md:gap-4 bg-white rounded-2xl border shadow-sm p-3 md:p-4 transition ${dragId === v.id ? "border-green-400 opacity-50" : "border-gray-100"}`}
+                >
+                  <span className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 touch-none shrink-0" title="Arraste para reordenar">
+                    <GripVertical size={16} />
+                  </span>
+                  <span className="text-[10px] font-black text-gray-300 w-4 text-center shrink-0">{i + 1}</span>
                   <div className="w-16 h-12 md:w-20 md:h-14 rounded-xl overflow-hidden bg-gray-100 shrink-0 flex items-center justify-center">
                     {fotoDe(v) ? <img src={fotoDe(v)!} alt="" className="w-full h-full object-cover" /> : <Car size={18} className="text-gray-300" />}
                   </div>
