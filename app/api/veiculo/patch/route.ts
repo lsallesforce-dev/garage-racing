@@ -10,7 +10,7 @@ const ALLOWED_FIELDS = new Set([
   "vistoria_cautelar", "opcionais", "pontos_fortes_venda", "relatorio_ia",
   "detalhes_inspecao", "transcricao_vendedor", "roteiro_pitch", "tags_busca",
   "ia_verificada", "status_venda", "cambio", "vistoriado", "abaixo_fipe", "de_repasse",
-  "repasse_texto",
+  "repasse_texto", "repasse_pausado",
   "vendedor_responsavel_id",
   "preco_compra", "valor_fipe", "placa", "preco_venda_final", "data_venda", "vendedor_id",
   "renavam", "chassi",

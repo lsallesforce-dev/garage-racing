@@ -1,6 +1,6 @@
 "use client";
 
-import { LayoutDashboard, MessageSquare, DollarSign, Users, ShieldCheck, Car, Store, Settings, LogOut, X, UserCircle, Contact, FileSignature, AlertCircle, Megaphone, CalendarDays, Send, Lock } from "lucide-react";
+import { LayoutDashboard, MessageSquare, DollarSign, Users, ShieldCheck, Car, Store, Settings, LogOut, X, UserCircle, Contact, FileSignature, AlertCircle, Megaphone, CalendarDays, Send, Lock, Radio } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
@@ -17,6 +17,7 @@ const adminMenuItems = [
   { icon: CalendarDays,    label: "Agenda",               href: "/agenda" },
   { icon: Users,           label: "Equipe de Vendas",     href: "/vendedores" },
   { icon: Megaphone,       label: "Marketing",            href: "/marketing" },
+  { icon: Radio,           label: "Fluxo Grupo",          href: "/fluxo-grupo" },
   { icon: Settings,        label: "Configurações",        href: "/configuracoes" },
   { icon: UserCircle,      label: "Minha Conta",          href: "/minha-conta" },
 ];
