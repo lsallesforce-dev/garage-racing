@@ -192,14 +192,13 @@ export async function GET(req: NextRequest) {
 
       const { data: ultimoEnvioRows } = await supabaseAdmin
         .from("veiculos")
-        .select("id, repasse_enviado_em")
+        .select("repasse_enviado_em")
         .eq("user_id", tenantId)
         .not("repasse_enviado_em", "is", null)
         .order("repasse_enviado_em", { ascending: false })
         .limit(1);
 
       const ultimoEnvio = ultimoEnvioRows?.[0]?.repasse_enviado_em ?? null;
-      const ultimoVeiculoId: string | null = ultimoEnvioRows?.[0]?.id ?? null;
 
       if (ultimoEnvio) {
         const diffMs = agora.getTime() - new Date(ultimoEnvio).getTime();
@@ -219,65 +218,29 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      // ── 4. Próximos carros do rodízio — SORTEIO sem repetição por ciclo ────
-      // (pedido Marcos Repasse 09/07: a ordem fixa por repasse_enviado_em fazia
-      // os dias ficarem idênticos — sempre do 1º ao último carro na mesma sequência)
-      //
-      // Ciclo: repasse_ciclo_iniciado_em (migration 022) marca o início. Carro
-      // "pendente" = repasse_enviado_em NULL ou anterior ao marco. Sorteia entre
-      // os pendentes → nenhum carro repete antes de TODOS saírem; acabou o ciclo,
-      // grava novo marco e re-embaralha. Migration 022 pendente → o marco não
-      // persiste e degrada pra sorteio simples (pode repetir), sem parar o cron.
+      // ── 4. Próximos carros do rodízio — ORDEM DETERMINÍSTICA ──────────────
+      // Fluxo previsível/controlável (página "Fluxo Grupo"): o carro há mais
+      // tempo sem sair vai primeiro (repasse_enviado_em ASC NULLS FIRST); os
+      // PAUSADOS (repasse_pausado=true) ficam de fora até o dono despausar. A
+      // ordem fixa deixa a agenda 100% previsível — lib/repasse-agenda calcula
+      // exatamente o mesmo horário que aparece no board. (Substitui o sorteio
+      // por ciclo de 09/07: agora a variação vem do Pausar manual, não do random.)
       const qtdPorEnvio = Math.min(Math.max(cfg.repasse_qtd_por_envio ?? 1, 1), 5);
-      const cicloInicio: string | null = cfg.repasse_ciclo_iniciado_em ?? null;
+      const { data: fila } = await supabaseAdmin
+        .from("veiculos")
+        .select("id, repasse_enviado_em") // repasse_enviado_em: trava otimista do claim
+        .eq("user_id", tenantId)
+        .eq("status_venda", "DISPONIVEL")
+        .gt("preco_sugerido", 0)
+        .eq("repasse_pausado", false)
+        .order("repasse_enviado_em", { ascending: true, nullsFirst: true })
+        .limit(qtdPorEnvio);
+      const carros = fila ?? [];
 
-      const buscarPendentes = async (marco: string | null) => {
-        let q = supabaseAdmin
-          .from("veiculos")
-          .select("id, repasse_enviado_em") // repasse_enviado_em: trava otimista do claim
-          .eq("user_id", tenantId)
-          .eq("status_venda", "DISPONIVEL")
-          .gt("preco_sugerido", 0);
-        if (marco) q = q.or(`repasse_enviado_em.is.null,repasse_enviado_em.lt.${marco}`);
-        else q = q.is("repasse_enviado_em", null); // sem marco: só os nunca enviados
-        return (await q).data ?? [];
-      };
-
-      let pendentes = await buscarPendentes(cicloInicio);
-
-      if (pendentes.length === 0) {
-        // Ciclo completo (ou primeiro uso) → novo marco; todos voltam a ser pendentes
-        const novoMarco = agora.toISOString();
-        await supabaseAdmin
-          .from("config_garage")
-          .update({ repasse_ciclo_iniciado_em: novoMarco })
-          .eq("user_id", tenantId);
-        pendentes = await buscarPendentes(novoMarco);
-        // Anti-repetição na VIRADA do ciclo: o último carro enviado do ciclo
-        // anterior volta a ser elegível no marco novo e podia sair 2x seguidas,
-        // ~1 intervalo de diferença (incidente Master 13:10→14:10 BRT: last car
-        // do ciclo, ciclo esvaziou, reset re-sorteou o mesmo). Tira ele só do
-        // 1º sorteio do ciclo novo — segue no ciclo, entra num tick seguinte.
-        // (Só filtra se sobra mais de 1 carro; com estoque de 1 não há escolha.)
-        if (ultimoVeiculoId && pendentes.length > 1) {
-          pendentes = pendentes.filter((p) => p.id !== ultimoVeiculoId);
-        }
-        if (pendentes.length > 0) {
-          console.log(`🔀 [repasse/${tenantId}] Ciclo completo — novo ciclo com ${pendentes.length} carros re-embaralhados`);
-        }
-      }
-
-      if (pendentes.length === 0) {
-        console.log(`🚗 [repasse/${tenantId}] Sem carros disponíveis com preço — pulando`);
+      if (carros.length === 0) {
+        console.log(`🚗 [repasse/${tenantId}] Sem carros no fluxo (todos pausados/vendidos/sem preço) — pulando`);
         continue;
       }
-
-      // Fisher-Yates: sorteio justo entre os pendentes do ciclo
-      for (let i = pendentes.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [pendentes[i], pendentes[j]] = [pendentes[j], pendentes[i]];
-      }
-      const carros = pendentes.slice(0, qtdPorEnvio);
 
       const avisaCreds = {
         baseUrl: cfg.avisa_base_url as string,
