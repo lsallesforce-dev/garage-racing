@@ -15,6 +15,7 @@ import {
   Save,
   Upload,
   Lock,
+  AlertTriangle,
 } from "lucide-react";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -27,6 +28,7 @@ interface Contato {
   telefone: string;
   lista: Lista;
   created_at: string;
+  erro?: string | null;
 }
 
 interface Campanha {
@@ -734,7 +736,7 @@ export default function ProspeccaoPage() {
           ) : (
             <div className="max-h-80 overflow-y-auto divide-y divide-gray-50">
               {contatosFiltrados.map((c) => (
-                <div key={c.id} className="flex items-center gap-3 py-2.5">
+                <div key={c.id} className={`flex items-center gap-3 py-2.5 ${c.erro ? "bg-red-50/60 -mx-2 px-2 rounded-xl" : ""}`}>
                   <span
                     className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-black flex-shrink-0 ${badgeLista[c.lista]}`}
                   >
@@ -743,6 +745,11 @@ export default function ProspeccaoPage() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-gray-900 truncate">{c.nome}</p>
                     <p className="text-[11px] text-gray-400">{formatTelefone(c.telefone)}</p>
+                    {c.erro && (
+                      <p className="text-[10px] text-red-500 font-bold flex items-center gap-1 mt-0.5">
+                        <AlertTriangle size={10} /> {c.erro}
+                      </p>
+                    )}
                   </div>
                   <button
                     onClick={() => handleExcluir(c)}

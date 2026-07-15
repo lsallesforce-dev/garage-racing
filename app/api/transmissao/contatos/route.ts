@@ -57,7 +57,38 @@ export async function GET() {
     if (!data || data.length < PAGE) break;
   }
 
-  return NextResponse.json({ contatos });
+  // Enriquecer contatos com o último erro de envio (transmissao_envios.status='erro').
+  // Busca eficiente: um único .in() sobre os IDs já carregados.
+  const erroMap = new Map<string, string>();
+  if (contatos.length > 0) {
+    const ids = contatos.map((c) => c.id);
+    // PostgREST .in() tem limite prático de ~1000 itens — paginar se necessário
+    const CHUNK_IDS = 1000;
+    for (let i = 0; i < ids.length; i += CHUNK_IDS) {
+      const slice = ids.slice(i, i + CHUNK_IDS);
+      const { data: erros } = await supabaseAdmin
+        .from("transmissao_envios")
+        .select("contato_id, erro")
+        .in("contato_id", slice)
+        .eq("status", "erro")
+        .order("id", { ascending: false });
+      if (erros) {
+        for (const e of erros) {
+          // Primeiro resultado por contato_id é o mais recente (order id desc)
+          if (!erroMap.has(e.contato_id)) {
+            erroMap.set(e.contato_id, e.erro ?? "Erro desconhecido");
+          }
+        }
+      }
+    }
+  }
+
+  const contatosComErro = contatos.map((c) => ({
+    ...c,
+    erro: erroMap.get(c.id) ?? null,
+  }));
+
+  return NextResponse.json({ contatos: contatosComErro });
 }
 
 // ─── POST: adiciona 1 contato ou lote (máx 2000) ──────────────────────────────
