@@ -4,14 +4,18 @@
 // à fila de transmissao_envios, 1-a-1, numa instância Avisa DEDICADA por tenant
 // (config_garage.transmissao_avisa_base_url/token — NUNCA a instância do agente IA).
 //
-// Anti-ban (lição do soft-ban 463 do chip da Mari):
+// Anti-ban (lições: soft-ban 463 da Mari + BLOCK do chip do Marcos em 15/07,
+// que caiu com 152 envios/dia após 3 dias a 50/dia, em fluxo contínuo ~120/h):
 //   · tick a cada 2min (vercel.json), janela horária BRT por tenant:
-//     [transmissao_janela_inicio, transmissao_janela_fim)
-//   · cap diário (transmissao_cap_dia, default 150); RAMP-UP: chip com menos de
-//     7 dias de ativação (transmissao_ativada_em null ou recente) → máx 50/dia
-//   · máx 4 envios por tick + jitter 20–45s entre envios (cadência humana)
-//   · 3 falhas consecutivas → pausa a campanha + alerta o gerente (possível 463)
-//     — número inválido (erro "Could not validate...") NÃO conta pra isso
+//     [transmissao_janela_inicio, transmissao_janela_fim), com offset aleatório
+//     estável no dia pro 1º envio (nunca começar em rajada na hora cravada)
+//   · cap diário = min(config, TETO_SISTEMA_DIA, média 7d × 1,3 + 10, ramp-up)
+//     — o crescimento gradual também é o re-warm-up automático pós-ban
+//   · cap HORÁRIO (CAP_HORA) + ~25% dos ticks descansam aleatoriamente
+//   · máx 4 envios por tick + jitter 8–33s antes do 1º e 20–45s entre envios
+//   · 3 falhas (não-validate) consecutivas → pausa + alerta (possível 463)
+//   · BAN_STREAK erros "validate" SEGUIDOS = chip bloqueado (não número ruim):
+//     pausa, alerta e DEVOLVE os contatos do streak pra fila
 //
 // Corrida entre ticks: claim atômico por envio (pendente → enviando com
 // WHERE status='pendente'); se o UPDATE não retornar linha, outro tick pegou.
@@ -28,6 +32,12 @@ const MAX_ENVIOS_POR_TICK = 4;
 const RAMP_UP_DIAS = 7;
 const RAMP_UP_CAP = 50;
 const MAX_FALHAS_CONSECUTIVAS = 3;
+// ── Travas anti-ban (block do chip do Marcos em 15/07: 152 envios num dia,
+//    após 3 dias a 50/dia, em fluxo contínuo de ~120/h → banido às 11:40) ─────
+const TETO_SISTEMA_DIA = 100; // teto ABSOLUTO por chip/dia — ignora config maior
+const CAP_HORA = 15;          // espalha o dia inteiro; mata o burst de ~120/h
+const BAN_STREAK = 4;         // N erros "validate" SEGUIDOS = chip bloqueado (não número ruim)
+const CHANCE_DESCANSO = 0.25; // % de ticks pulados aleatoriamente (ritmo humano)
 
 // ─── Autenticação (idêntica ao padrão de app/api/cron/repasse-automatico) ─────
 function isAuthorized(req: NextRequest): boolean {
@@ -74,6 +84,10 @@ export async function GET(req: NextRequest) {
   // Hora atual em Brasília (numérico, 0–23)
   const horaBRT = parseInt(
     agora.toLocaleString("pt-BR", { hour: "numeric", hour12: false, timeZone: "America/Sao_Paulo" }),
+    10,
+  );
+  const minutoBRT = parseInt(
+    agora.toLocaleString("pt-BR", { minute: "numeric", timeZone: "America/Sao_Paulo" }),
     10,
   );
 
@@ -128,6 +142,27 @@ export async function GET(req: NextRequest) {
         continue;
       }
 
+      // Offset aleatório (estável no dia, por tenant) pro início da janela:
+      // nunca começar a disparar na hora cravada, todo dia igual (o padrão
+      // "08:00:31 em rajada" era assinatura robótica — block de 15/07).
+      const seedDia = (chaveDataBRT(agora) + tenantId)
+        .split("")
+        .reduce((a, c) => a + c.charCodeAt(0), 0);
+      const offsetMin = seedDia % 40;
+      if (horaBRT === inicio && minutoBRT < offsetMin) {
+        console.log(
+          `⏰ [transmissao/${tenantId}] Aguardando offset do dia (${minutoBRT}min < ${offsetMin}min) — pulando`,
+        );
+        continue;
+      }
+
+      // Descanso aleatório: ~25% dos ticks não enviam nada — quebra o ritmo
+      // metronômico de 1 msg a cada ~30s por 40min seguidos.
+      if (Math.random() < CHANCE_DESCANSO) {
+        console.log(`☕ [transmissao/${tenantId}] Tick de descanso aleatório — pulando`);
+        continue;
+      }
+
       // ── 2b. Cap diário (+ ramp-up de chip novo) ───────────────────────────
       // Meia-noite BRT de hoje em UTC: chaveDataBRT dá o dia calendário em
       // America/Sao_Paulo e o offset -03:00 fixa o instante certo.
@@ -144,11 +179,48 @@ export async function GET(req: NextRequest) {
       const ativadaEm = cfg.transmissao_ativada_em ? new Date(cfg.transmissao_ativada_em) : null;
       const emRampUp =
         !ativadaEm || agora.getTime() - ativadaEm.getTime() < RAMP_UP_DIAS * 24 * 60 * 60 * 1000;
-      const capEfetivo = emRampUp ? Math.min(capBase, RAMP_UP_CAP) : capBase;
+
+      // Crescimento gradual: no máx ~30% acima da média dos últimos 7 dias.
+      // O block de 15/07 veio de saltar 50/dia → 152 num dia (cap subiu 50→300
+      // no meio do dia). Também é o re-warm-up automático pós-ban: dias parados
+      // derrubam a média e o volume volta devagar sozinho.
+      const seteDiasAtras = new Date(meiaNoiteBRT.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const { count: enviados7dCount } = await supabaseAdmin
+        .from("transmissao_envios")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", tenantId)
+        .eq("status", "enviado")
+        .gte("enviado_em", seteDiasAtras.toISOString())
+        .lt("enviado_em", meiaNoiteBRT.toISOString());
+      const capCrescimento = Math.ceil(((enviados7dCount ?? 0) / 7) * 1.3) + 10;
+
+      const capEfetivo = Math.min(
+        capBase,
+        TETO_SISTEMA_DIA,
+        capCrescimento,
+        emRampUp ? RAMP_UP_CAP : Infinity,
+      );
 
       if (enviadosHoje >= capEfetivo) {
         console.log(
-          `🧢 [transmissao/${tenantId}] Cap diário atingido (${enviadosHoje}/${capEfetivo}${emRampUp ? ", ramp-up chip novo" : ""}) — pulando`,
+          `🧢 [transmissao/${tenantId}] Cap diário atingido (${enviadosHoje}/${capEfetivo} = min[config ${capBase}, teto ${TETO_SISTEMA_DIA}, crescimento ${capCrescimento}${emRampUp ? `, ramp-up ${RAMP_UP_CAP}` : ""}]) — pulando`,
+        );
+        continue;
+      }
+
+      // Cap HORÁRIO: nada de rajada — no block de 15/07 o chip caiu mandando
+      // ~120/h em fluxo contínuo. 15/h espalha o cap do dia pelo dia inteiro.
+      const umaHoraAtras = new Date(agora.getTime() - 60 * 60_000).toISOString();
+      const { count: enviadosHoraCount } = await supabaseAdmin
+        .from("transmissao_envios")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", tenantId)
+        .eq("status", "enviado")
+        .gte("enviado_em", umaHoraAtras);
+      const enviadosHora = enviadosHoraCount ?? 0;
+      if (enviadosHora >= CAP_HORA) {
+        console.log(
+          `🕐 [transmissao/${tenantId}] Cap horário atingido (${enviadosHora}/${CAP_HORA} na última hora) — descansando`,
         );
         continue;
       }
@@ -201,7 +273,11 @@ export async function GET(req: NextRequest) {
         .eq("status", "enviando")
         .lt("claimed_em", cutoffPresos);
 
-      const limite = Math.min(MAX_ENVIOS_POR_TICK, capEfetivo - enviadosHoje);
+      const limite = Math.min(
+        MAX_ENVIOS_POR_TICK,
+        capEfetivo - enviadosHoje,
+        CAP_HORA - enviadosHora,
+      );
       const { data: pendentes } = await supabaseAdmin
         .from("transmissao_envios")
         .select("id, contato_id")
@@ -231,6 +307,26 @@ export async function GET(req: NextRequest) {
         continue;
       }
 
+      // ── Detector de ban: semente do streak de erros "validate" ─────────────
+      // Quando o chip é BLOQUEADO, a Avisa devolve "Could not validate the
+      // provided number" pra TODO envio — igualzinho a número inexistente. Um
+      // streak de BAN_STREAK seguidos é estatisticamente impossível numa lista
+      // normal (no block de 15/07 foram 31 seguidos; o cron martelou o chip
+      // morto por 15min porque o breaker ignorava esse erro). O streak precisa
+      // atravessar ticks (cada tick manda só 4) — então semeia do banco.
+      const { data: ultimosFinalizados } = await supabaseAdmin
+        .from("transmissao_envios")
+        .select("id, status, erro")
+        .eq("campanha_id", campanha.id)
+        .in("status", ["enviado", "erro"])
+        .order("claimed_em", { ascending: false, nullsFirst: false })
+        .limit(BAN_STREAK);
+      let validateStreakIds: string[] = [];
+      for (const u of ultimosFinalizados ?? []) {
+        if (u.status === "erro" && /validate/i.test(u.erro ?? "")) validateStreakIds.push(u.id);
+        else break;
+      }
+
       const creds = {
         baseUrl: cfg.transmissao_avisa_base_url as string,
         token: cfg.transmissao_avisa_token as string,
@@ -241,9 +337,11 @@ export async function GET(req: NextRequest) {
       for (let i = 0; i < pendentes.length; i++) {
         const envio = pendentes[i];
 
-        // Jitter 20–45s entre envios (exceto antes do primeiro) — cadência humana,
-        // nunca burst (lição do 463)
-        if (i > 0) await new Promise((r) => setTimeout(r, 20000 + Math.random() * 25000));
+        // Jitter entre envios — cadência humana, nunca burst (lição do 463).
+        // TAMBÉM antes do 1º envio do tick: sem isso, tick sobreposto ao
+        // anterior colava envios com 1–2s de gap (visto no block de 15/07).
+        const jitterMs = i === 0 ? 8000 + Math.random() * 17000 : 20000 + Math.random() * 25000;
+        await new Promise((r) => setTimeout(r, jitterMs));
 
         // CLAIM ATÔMICO anti-corrida entre ticks: só processa se ainda estiver
         // pendente. UPDATE sem linha retornada = outro tick pegou primeiro.
@@ -296,6 +394,7 @@ export async function GET(req: NextRequest) {
             .eq("id", envio.id);
           enviados++;
           falhasConsecutivas = 0;
+          validateStreakIds = [];
           console.log(`📨 [transmissao/${tenantId}] Enviado para ${contato.telefone} (campanha ${campanha.id})`);
         } else {
           // Número inválido/não-WhatsApp é problema de DADO do contato, não sinal
@@ -308,13 +407,41 @@ export async function GET(req: NextRequest) {
             .update({ status: "erro", erro: motivo })
             .eq("id", envio.id);
           erros++;
-          if (!ehNumeroInvalido) falhasConsecutivas++;
+          if (ehNumeroInvalido) {
+            validateStreakIds.push(envio.id);
+          } else {
+            falhasConsecutivas++;
+            validateStreakIds = [];
+          }
           console.warn(
-            `⚠️ [transmissao/${tenantId}] Falha no envio para ${contato.telefone}: ${motivo}${ehNumeroInvalido ? " (número inválido — não conta pro circuit breaker)" : ` (${falhasConsecutivas} consecutiva(s))`}`,
+            `⚠️ [transmissao/${tenantId}] Falha no envio para ${contato.telefone}: ${motivo}${ehNumeroInvalido ? ` (erro de validação — ${validateStreakIds.length} seguido(s))` : ` (${falhasConsecutivas} consecutiva(s))`}`,
           );
 
-          // Circuit breaker: 3 falhas seguidas = provável bloqueio do chip (463) —
-          // insistir só piora o ban. Pausa a campanha e avisa o gerente.
+          // Detector de BAN: BAN_STREAK erros "validate" seguidos = chip
+          // bloqueado, não número ruim. Os contatos do streak NUNCA receberam —
+          // voltam pra fila em vez de morrer como "erro" (no block de 15/07,
+          // 31 contatos foram queimados assim). Pausa e alerta.
+          if (validateStreakIds.length >= BAN_STREAK) {
+            await supabaseAdmin
+              .from("transmissao_envios")
+              .update({ status: "pendente", claimed_em: null, erro: null })
+              .in("id", validateStreakIds);
+            await supabaseAdmin
+              .from("transmissao_campanhas")
+              .update({ status: "pausada" })
+              .eq("id", campanha.id)
+              .eq("user_id", tenantId);
+            await alertarGerente(
+              `🚨 Chip de PROSPECÇÃO provavelmente BLOQUEADO (${validateStreakIds.length} erros de validação seguidos). Campanha pausada e contatos devolvidos pra fila. Deixar o chip em SILÊNCIO 24–48h antes de reativar. Tenant ${tenantId}`,
+            );
+            console.error(
+              `🛑 [transmissao/${tenantId}] Campanha ${campanha.id} pausada — provável BAN do chip (${validateStreakIds.length} erros de validação seguidos; contatos re-enfileirados)`,
+            );
+            break;
+          }
+
+          // Circuit breaker clássico: 3 falhas (não-validate) seguidas = problema
+          // no chip/instância — insistir só piora. Pausa a campanha e avisa.
           if (falhasConsecutivas >= MAX_FALHAS_CONSECUTIVAS) {
             await supabaseAdmin
               .from("transmissao_campanhas")
