@@ -336,8 +336,11 @@ async function fuzzyCorrectTokens(tokens: string[], tenantUserId: string): Promi
   return tokens.map((token) => {
     if (isYearToken(token)) return token;
 
-    // Tolerância: palavras curtas (≤4 chars) → distância 1; mais longas → distância 2
-    const maxDist = token.length <= 4 ? 1 : 2;
+    // Tolerância: sempre distância 1. distância 2 corrigia palavras comuns do
+    // português pra nome de carro por coincidência de edição — "preto" (cidade
+    // "Rio Preto") virou "creta" e "manda" virou "manual", trocando o carro em
+    // foco no meio da conversa (caso real: lead b13a7fc7, 16/07).
+    const maxDist = 1;
     let bestMatch = token;
     let bestDist = Infinity;
 
