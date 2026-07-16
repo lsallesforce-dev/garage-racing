@@ -22,9 +22,10 @@ function fmt(v: number) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-function maskInput(value: string, type: "cpf" | "phone" | "cep") {
+function maskInput(value: string, type: "cpf" | "cnpj" | "phone" | "cep") {
   const d = value.replace(/\D/g, "");
   if (type === "cpf")   return d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4").slice(0, 14);
+  if (type === "cnpj")  return d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5").slice(0, 18);
   if (type === "phone") return d.replace(/(\d{2})(\d{5})(\d{4})/, "($1) $2-$3").slice(0, 15);
   if (type === "cep")   return d.replace(/(\d{5})(\d{3})/, "$1-$2").slice(0, 9);
   return value;
@@ -38,7 +39,7 @@ type Parcelamento = "mensal" | "anual12x";
 type Step = "form" | "pix" | "boleto";
 
 interface Customer {
-  nome: string; email: string; cpf: string; telefone: string;
+  nome: string; email: string; documento: string; tipoDocumento: "cpf" | "cnpj"; telefone: string;
   cep: string; logradouro: string; numero: string; bairro: string; cidade: string; estado: string;
 }
 interface PixResult    { order_id: string; qr_code: string; qr_code_text: string }
@@ -53,6 +54,10 @@ function AssinarContent() {
   const [planoId,      setPlanoId]      = useState(params.get("plano") ?? "pro");
   const plano = PLANOS[planoId] ?? PLANOS.pro;
 
+  // Renovação de cliente fechado: mostra só o plano dele + desconto negociado.
+  const renovacao = params.get("renovacao") === "1";
+  const [descNegMes, setDescNegMes] = useState(0); // desconto negociado em R$/mês (lido do tenant)
+
   const [metodo,       setMetodo]       = useState<Metodo>("pix");
   const [parcelamento, setParcelamento] = useState<Parcelamento>("mensal");
   const [step,         setStep]         = useState<Step>("form");
@@ -64,17 +69,33 @@ function AssinarContent() {
   const [pixStatus,    setPixStatus]    = useState<"pendente" | "pago">("pendente");
 
   const [customer, setCustomer] = useState<Customer>({
-    nome: "", email: "", cpf: "", telefone: "",
+    nome: "", email: "", documento: "", tipoDocumento: "cpf", telefone: "",
     cep: "", logradouro: "", numero: "", bairro: "", cidade: "", estado: "",
   });
 
   useEffect(() => {
     import("@/lib/supabase").then(({ supabase }) => {
       supabase.auth.getUser().then(({ data }) => {
-        if (data.user?.email)               setCustomer(c => ({ ...c, email: data.user!.email! }));
-        if (data.user?.user_metadata?.nome) setCustomer(c => ({ ...c, nome:  data.user!.user_metadata.nome }));
+        if (!data.user) return;
+        if (data.user.email)               setCustomer(c => ({ ...c, email: data.user!.email! }));
+        if (data.user.user_metadata?.nome) setCustomer(c => ({ ...c, nome:  data.user!.user_metadata.nome }));
+        // Plano contratado + desconto negociado do tenant
+        supabase
+          .from("config_garage")
+          .select("plano, plano_desconto")
+          .eq("user_id", data.user.id)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .then(({ data: rows }) => {
+            const row = rows?.[0];
+            if (!row) return;
+            if (row.plano && PLANOS[row.plano] && !params.get("plano")) setPlanoId(row.plano);
+            if (renovacao && row.plano && PLANOS[row.plano]) setPlanoId(row.plano);
+            setDescNegMes(Math.max(0, Number(row.plano_desconto) || 0));
+          });
       });
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function fetchCep(cep: string) {
@@ -234,7 +255,12 @@ function AssinarContent() {
   }
 
   // ── Formulário ────────────────────────────────────────────────────────────────
-  const valorExibido = metodo === "cartao" && parcelamento === "anual12x" ? plano.parcela12x : plano.mensal;
+  // Valores com desconto negociado (R$/mês) abatido — espelham o cálculo do servidor.
+  const temDesconto  = descNegMes > 0;
+  const mensalLiq    = Math.max(1, plano.mensal - descNegMes);
+  const anualLiq     = Math.round(mensalLiq * 12 * 0.9);
+  const parcelaLiq   = Math.round(anualLiq / 12);
+  const valorExibido = metodo === "cartao" && parcelamento === "anual12x" ? parcelaLiq : mensalLiq;
 
   return (
     <div className="min-h-screen bg-[#efefed] py-12 px-4">
@@ -248,14 +274,42 @@ function AssinarContent() {
             </span>
           </div>
           <h1 className="text-3xl font-black uppercase tracking-tighter italic text-gray-900">
-            Assinar plano {plano.nome}
+            {renovacao ? "Renovar plano " : "Assinar plano "}{plano.nome}
           </h1>
-          <p className="text-gray-400 text-sm mt-2">Trial grátis de 30 dias · Cancele quando quiser</p>
+          <p className="text-gray-400 text-sm mt-2">
+            {renovacao ? "Renovação da sua assinatura · cancele quando quiser" : "Trial grátis de 30 dias · Cancele quando quiser"}
+          </p>
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-5">
 
-          {/* Seletor de plano */}
+          {/* Seletor de plano — na renovação, fica travado no plano do cliente */}
+          {renovacao ? (
+            <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-6">
+              <p className={labelCls}>Seu plano</p>
+              <div className="mt-2 flex items-center justify-between p-4 rounded-2xl border-2 border-gray-900 bg-gray-900 text-white">
+                <div>
+                  <p className="text-sm font-black uppercase tracking-widest">{plano.nome}</p>
+                  <p className="text-[11px] text-white/60 mt-0.5">Plano contratado</p>
+                </div>
+                <div className="text-right">
+                  {temDesconto ? (
+                    <>
+                      <p className="text-xs text-white/40 line-through">{fmt(plano.mensal)}/mês</p>
+                      <p className="text-lg font-black italic">{fmt(mensalLiq)}<span className="text-[10px] font-normal text-white/50">/mês</span></p>
+                    </>
+                  ) : (
+                    <p className="text-lg font-black italic">{fmt(plano.mensal)}<span className="text-[10px] font-normal text-white/50">/mês</span></p>
+                  )}
+                </div>
+              </div>
+              {temDesconto && (
+                <div className="mt-2 flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-emerald-600">
+                  <Tag size={12} /> Desconto negociado −{fmt(descNegMes)}/mês
+                </div>
+              )}
+            </div>
+          ) : (
           <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-6">
             <p className={labelCls}>Plano escolhido</p>
             <div className="grid grid-cols-3 gap-2 mt-2">
@@ -287,6 +341,7 @@ function AssinarContent() {
               })}
             </div>
           </div>
+          )}
 
           {/* Método de pagamento */}
           <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-6">
@@ -312,8 +367,8 @@ function AssinarContent() {
             {metodo === "cartao" && (
               <div className="mt-4 flex gap-2">
                 {([
-                  { id: "mensal",   label: `Mensal`,        sub: fmt(plano.mensal) + "/mês",     tag: null },
-                  { id: "anual12x", label: `Anual 12x`,     sub: fmt(plano.parcela12x) + "/mês", tag: "10% OFF" },
+                  { id: "mensal",   label: `Mensal`,        sub: fmt(mensalLiq) + "/mês",   tag: null },
+                  { id: "anual12x", label: `Anual 12x`,     sub: fmt(parcelaLiq) + "/mês", tag: "10% OFF" },
                 ] as const).map(({ id, label, sub, tag }) => (
                   <button key={id} type="button" onClick={() => setParcelamento(id)}
                     className={`flex-1 flex flex-col items-center gap-0.5 py-3 rounded-2xl border-2 transition ${
@@ -342,11 +397,19 @@ function AssinarContent() {
               <p className="text-[10px] font-black uppercase tracking-widest text-white/50">Plano {plano.nome}</p>
               <p className="text-[11px] text-white/40 mt-0.5">
                 {metodo === "cartao" && parcelamento === "anual12x"
-                  ? `12x · Total ${fmt(plano.anual12x)} · economia de ${fmt(plano.mensal * 12 - plano.anual12x)}`
+                  ? `12x · Total ${fmt(anualLiq)} · economia de ${fmt(mensalLiq * 12 - anualLiq)}`
                   : "Renovação mensal · cancele quando quiser"}
               </p>
+              {temDesconto && (
+                <p className="text-[11px] text-emerald-400 font-black mt-1 flex items-center gap-1">
+                  <Tag size={10} /> Desconto negociado −{fmt(descNegMes)}/mês
+                </p>
+              )}
             </div>
             <div className="text-right">
+              {temDesconto && metodo !== "cartao" && (
+                <p className="text-xs text-white/30 line-through">{fmt(plano.mensal)}</p>
+              )}
               <p className="text-2xl font-black text-white italic">{fmt(valorExibido)}</p>
               <p className="text-[10px] text-white/40">/mês</p>
             </div>
@@ -371,10 +434,24 @@ function AssinarContent() {
                   className={inputCls} placeholder="joao@email.com" />
               </div>
               <div>
-                <label className={labelCls}>CPF</label>
-                <input required value={customer.cpf}
-                  onChange={e => setCustomer(c => ({ ...c, cpf: maskInput(e.target.value, "cpf") }))}
-                  className={inputCls} placeholder="000.000.000-00" />
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className={labelCls + " mb-0"}>{customer.tipoDocumento === "cnpj" ? "CNPJ" : "CPF"}</label>
+                  <div className="flex gap-1">
+                    {(["cpf", "cnpj"] as const).map(tipo => (
+                      <button key={tipo} type="button"
+                        onClick={() => setCustomer(c => ({ ...c, tipoDocumento: tipo, documento: "" }))}
+                        className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full transition ${
+                          customer.tipoDocumento === tipo ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-400"
+                        }`}>
+                        {tipo}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <input required value={customer.documento}
+                  onChange={e => setCustomer(c => ({ ...c, documento: maskInput(e.target.value, c.tipoDocumento) }))}
+                  className={inputCls}
+                  placeholder={customer.tipoDocumento === "cnpj" ? "00.000.000/0000-00" : "000.000.000-00"} />
               </div>
               <div className="sm:col-span-2">
                 <label className={labelCls}>Telefone / WhatsApp</label>

@@ -36,6 +36,7 @@ interface Tenant {
   status: "ativo" | "sem_estoque" | "sem_webhook";
   plano_ativo: boolean;
   plano?: string;
+  plano_desconto?: number;
   bloqueado?: boolean;
   trial_ends_at?: string | null;
   plano_vence_em?: string | null;
@@ -536,6 +537,7 @@ export default function AdminPage() {
   const [editPag, setEditPag]               = useState<Pagamento | null>(null);
   const [mostrarTestes, setMostrarTestes]   = useState(false);
   const [refCodInput, setRefCodInput]       = useState("");
+  const [descInput, setDescInput]           = useState("");
   const [acaoLoading, setAcaoLoading]       = useState<string | null>(null);
   const [expandido, setExpandido]           = useState<string | null>(null);
 
@@ -1280,6 +1282,25 @@ export default function AdminPage() {
                                       </button>
                                     ))}
                                   </div>
+                                  {/* Desconto negociado (R$/mês) — só faz sentido em plano pago */}
+                                  {(t.plano ?? "pro") !== "demo" && (
+                                    <div className="mt-3 flex items-center gap-2">
+                                      <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 whitespace-nowrap">Desconto R$/mês</span>
+                                      <input type="number" min={0} inputMode="numeric"
+                                        value={descInput}
+                                        onChange={e => setDescInput(e.target.value)}
+                                        placeholder={t.plano_desconto ? `atual: ${t.plano_desconto}` : "0"}
+                                        className="w-28 px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs font-mono focus:outline-none focus:border-gray-400" />
+                                      <button onClick={() => { acao(t.user_id, "set_desconto", descInput === "" ? "0" : descInput); setDescInput(""); }}
+                                        disabled={acaoLoading === `${t.user_id}-set_desconto`}
+                                        className="px-4 py-2 bg-gray-900 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-red-600 disabled:opacity-50 transition">
+                                        Salvar
+                                      </button>
+                                      {(t.plano_desconto ?? 0) > 0 && (
+                                        <span className="text-[10px] text-emerald-600 font-black">−{fmtBRL(t.plano_desconto!)}/mês</span>
+                                      )}
+                                    </div>
+                                  )}
                                 </div>
                                 <div>
                                   <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2.5">Indicação</p>

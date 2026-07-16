@@ -89,6 +89,11 @@ export async function POST(req: NextRequest) {
       update = { plano_ativo: true, plano_vence_em: valor };
       break;
 
+    case "set_desconto":
+      // valor = desconto negociado em R$/mês (0 = sem desconto, valor de tabela)
+      update = { plano_desconto: Math.max(0, Math.round(Number(valor) || 0)) };
+      break;
+
     case "set_indicado_por": {
       // valor = código de indicação do indicador (vazio = limpar)
       const code = String(valor ?? "").trim().toUpperCase();

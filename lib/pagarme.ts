@@ -14,7 +14,8 @@ function parsePhone(telefone: string) {
 export interface PagarmeCustomer {
   nome: string;
   email: string;
-  cpf: string;
+  documento: string;
+  tipoDocumento?: "cpf" | "cnpj";
   telefone: string;
   cep?: string;
   logradouro?: string;
@@ -25,12 +26,13 @@ export interface PagarmeCustomer {
 }
 
 function buildCustomer(c: PagarmeCustomer, withAddress = false) {
+  const isCnpj = c.tipoDocumento === "cnpj";
   const customer: Record<string, unknown> = {
     name: c.nome,
     email: c.email,
-    type: "individual",
-    document: c.cpf.replace(/\D/g, ""),
-    document_type: "CPF",
+    type: isCnpj ? "company" : "individual",
+    document: c.documento.replace(/\D/g, ""),
+    document_type: isCnpj ? "CNPJ" : "CPF",
     phones: { mobile_phone: parsePhone(c.telefone) },
   };
   if (withAddress && c.cep) {

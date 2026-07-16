@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/api-auth";
+import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import {
   createPixOrder,
@@ -23,8 +23,10 @@ const DESCRICOES: Record<string, string> = {
   premium: "AutoZap Premium",
 };
 
-function calcAmount(plano: string, parcelamento: "mensal" | "anual12x") {
-  const base = VALORES[plano];
+// descontoMes = desconto negociado em R$/mês (0 = valor de tabela). Abatido do mensal
+// ANTES de aplicar a lógica anual; piso de R$1 (mínimo do gateway).
+function calcAmount(plano: string, parcelamento: "mensal" | "anual12x", descontoMes = 0) {
+  const base = Math.max(100, VALORES[plano] - Math.round(descontoMes * 100)); // centavos
   if (parcelamento === "anual12x") {
     // 12 meses com 10% de desconto, cobrado de uma vez — dividido em 12x no cartão
     return Math.round(base * 12 * 0.9);
@@ -51,7 +53,17 @@ export async function POST(req: NextRequest) {
   if (!plano || !metodo || !customer)
     return NextResponse.json({ error: "Parâmetros inválidos" }, { status: 400 });
 
-  const amountBruto = calcAmount(plano, parcelamento as "mensal" | "anual12x");
+  // ── Desconto negociado do tenant ───────────────────────────────────────────
+  // Lido do banco (nunca do cliente): clientes fechados têm valor de tabela abatido.
+  const { data: cfgRows } = await supabaseAdmin
+    .from("config_garage")
+    .select("plano_desconto")
+    .eq("user_id", getEffectiveUserId(user!))
+    .order("created_at", { ascending: false })
+    .limit(1);
+  const descontoNegMes = Math.max(0, Number(cfgRows?.[0]?.plano_desconto) || 0);
+
+  const amountBruto = calcAmount(plano, parcelamento as "mensal" | "anual12x", descontoNegMes);
 
   // ── Desconto de indicação ──────────────────────────────────────────────────
   // Abate créditos disponíveis do tenant, garantindo cobrança mínima de R$1.
@@ -103,7 +115,7 @@ export async function POST(req: NextRequest) {
       metodo,
       status: "pendente",
       vencimento,
-      notas: `pagarme:${result.order_id}:${parcelamento}`,
+      notas: `pagarme:${result.order_id}:${parcelamento}${descontoNegMes > 0 ? `:descneg${descontoNegMes}` : ""}`,
       desconto_indicacao: descontoReais,
     });
 
