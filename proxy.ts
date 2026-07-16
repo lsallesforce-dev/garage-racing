@@ -424,7 +424,13 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith("/api/health") ||
     pathname.startsWith("/api/cron") ||
     pathname.startsWith("/api/pagarme/webhook") ||
-    pathname.startsWith("/assinar/sucesso");
+    // Fluxo de cobrança sem login: a página /assinar (link tokenizado ?t= da
+    // régua) e as rotas que ela consome. Checkout/status se auto-protegem
+    // (requireAuth quando não há cobranca_token; posse validada pelo token).
+    pathname.startsWith("/assinar") ||
+    pathname.startsWith("/api/assinar") ||
+    pathname.startsWith("/api/pagarme/checkout") ||
+    pathname.startsWith("/api/pagarme/status");
 
   if (!user && !isPublic) {
     const loginUrl = request.nextUrl.clone();

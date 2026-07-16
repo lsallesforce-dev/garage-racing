@@ -142,14 +142,17 @@ function AssinarContent() {
   const pollPix = useCallback(async (orderId: string) => {
     if (pixStatus === "pago") return;
     try {
-      const res  = await fetch(`/api/pagarme/status/${orderId}`);
+      // ?t= = prova de posse do pagador anônimo do link de cobrança (sem sessão)
+      const res  = await fetch(
+        `/api/pagarme/status/${orderId}${cobrancaToken ? `?t=${encodeURIComponent(cobrancaToken)}` : ""}`
+      );
       const data = await res.json();
       if (data.status === "paid" || data.status === "pago") {
         setPixStatus("pago");
         setTimeout(() => router.push(`/assinar/sucesso?plano=${planoId}`), 1500);
       }
     } catch { /* silencioso */ }
-  }, [pixStatus, planoId, router]);
+  }, [pixStatus, planoId, router, cobrancaToken]);
 
   useEffect(() => {
     if (step !== "pix" || !pixResult || pixStatus === "pago") return;
