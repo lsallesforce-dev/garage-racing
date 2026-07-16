@@ -1,14 +1,25 @@
 // app/api/cron/cobranca-vencimento/route.ts
 //
-// Cron diário (9h BRT): avisa o financeiro da revenda — via WhatsApp, pela Avisa
-// do PRÓPRIO tenant — que a assinatura está perto de vencer, com link de renovação.
-// Régua de marcos: 7, 3, 1, 0 dias e vencido (-1). Idempotente por `cobranca_ultimo_marco`.
+// Cron diário (9h BRT): avisa o financeiro da revenda — pelo chip do tenant AutoZap,
+// com fallback pra Avisa do próprio tenant — que a assinatura está perto de vencer,
+// com link de renovação TOKENIZADO (/assinar?t=<cobranca_token>&renovacao=1).
+// Régua de marcos v2: 2, 0 dias e vencido (-1). Idempotente por `cobranca_ultimo_marco`.
 // Só processa tenants com `cobranca_automatica = true` (opt-in) e plano ativo.
+// Suspensão automática (opt-in `suspensao_automatica`): 5+ dias de atraso → plano_ativo=false.
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendAvisaMessage } from "@/lib/avisa";
-import { calcularDescontoIndicacao } from "@/lib/indicacao";
+import { logEventoAdmin } from "@/lib/admin-eventos";
+import {
+  diasAteBrt,
+  ymdBrt,
+  marcoDe,
+  fmtBRL,
+  calcularValorCobranca,
+  enviarCobranca,
+  resolverRemetente,
+} from "@/lib/cobranca";
 
 export const maxDuration = 60;
 
@@ -18,59 +29,25 @@ function isAuthorized(req: NextRequest): boolean {
   return req.headers.get("authorization") === `Bearer ${secret}`;
 }
 
-const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.autozap.digital";
-
-// Preço mensal por plano (R$) — espelha VALORES de lib/pagarme (em reais, p/ exibição).
-const PRECO_MENSAL: Record<string, number> = { starter: 1150, pro: 1500, premium: 2135 };
-
-const fmtBRL = (v: number) =>
-  v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-
-// Diferença em DIAS DE CALENDÁRIO no fuso de Brasília (-03), sem libs de timezone.
-// Evita o off-by-one de comparar instantes de 24h quando o vencimento é "fim do dia".
-function diasAteBrt(venceISO: string): number {
-  const OFFSET = 3 * 3_600_000; // BRT = UTC-3
-  const soData = (ms: number) => {
-    const d = new Date(ms - OFFSET);
-    return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-  };
-  return Math.round((soData(new Date(venceISO).getTime()) - soData(Date.now())) / 86_400_000);
-}
-
-// Data (YYYY-MM-DD) do vencimento no fuso de Brasília — usada como chave da conta a receber.
-function ymdBrt(iso: string): string {
-  const d = new Date(new Date(iso).getTime() - 3 * 3_600_000);
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
-}
-
-// Mapeia dias-até-vencer → marco da régua (7,3,1,0,-1). null = ainda fora da janela.
-function marcoDe(dias: number): number | null {
-  if (dias < 0)  return -1; // vencido
-  if (dias === 0) return 0; // vence hoje
-  if (dias <= 1) return 1;
-  if (dias <= 3) return 3;
-  if (dias <= 7) return 7;
-  return null;              // ainda longe
-}
-
-function corpoMensagem(nome: string, plano: string, dias: number, venceISO: string, link: string): string {
-  const preco = PRECO_MENSAL[plano] ?? PRECO_MENSAL.starter;
-  const planoNome = plano.charAt(0).toUpperCase() + plano.slice(1);
-  const dataBR = new Date(venceISO).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
-  const quando =
-    dias < 0    ? `*venceu* em ${dataBR}` :
-    dias === 0  ? `vence *hoje* (${dataBR})` :
-    dias === 1  ? `vence *amanhã* (${dataBR})` :
-                  `vence em *${dias} dias* (${dataBR})`;
-
-  return (
-    `💳 *AutoZap — Renovação de assinatura*\n\n` +
-    `Olá! A assinatura *${planoNome}* da ${nome} ${quando}.\n\n` +
-    `Pra manter o atendimento automático no ar, é só renovar aqui 👇\n` +
-    `${link}\n\n` +
-    `Valor do plano: *${fmtBRL(preco)}/mês*.\n` +
-    `Qualquer dúvida, é só chamar. 🚗`
-  );
+// Alerta interno pro Lucas (AUTOZAP_ALERT_WHATSAPP) — mesmo padrão do
+// healthcheck-agentes, mas preferindo as credenciais do remetente AutoZap
+// (config_garage) com fallback pras envs AUTOZAP_AVISA_*.
+async function alertarInterno(texto: string): Promise<boolean> {
+  const alvo = process.env.AUTOZAP_ALERT_WHATSAPP;
+  if (!alvo) {
+    console.warn("⚠️ [cobranca-vencimento] AUTOZAP_ALERT_WHATSAPP ausente — alerta não enviado.");
+    return false;
+  }
+  const creds =
+    (await resolverRemetente()) ??
+    (process.env.AUTOZAP_AVISA_BASE_URL && process.env.AUTOZAP_AVISA_TOKEN
+      ? { baseUrl: process.env.AUTOZAP_AVISA_BASE_URL, token: process.env.AUTOZAP_AVISA_TOKEN }
+      : null);
+  if (!creds) {
+    console.warn("⚠️ [cobranca-vencimento] sem credenciais Avisa do remetente AutoZap — alerta não enviado.");
+    return false;
+  }
+  return sendAvisaMessage(alvo, texto, creds, { typing: false });
 }
 
 export async function GET(req: NextRequest) {
@@ -81,7 +58,7 @@ export async function GET(req: NextRequest) {
   const { data: tenants, error } = await supabaseAdmin
     .from("config_garage")
     .select(
-      "user_id, nome_empresa, nome_fantasia, plano, plano_vence_em, whatsapp, whatsapp_financeiro, avisa_base_url, avisa_token, cobranca_ultimo_marco"
+      "user_id, nome_empresa, nome_fantasia, plano, plano_vence_em, whatsapp, whatsapp_financeiro, avisa_base_url, avisa_token, plano_desconto, cobranca_token, cobranca_ultimo_marco, suspensao_automatica"
     )
     .eq("plano_ativo", true)
     .eq("cobranca_automatica", true);
@@ -109,10 +86,13 @@ export async function GET(req: NextRequest) {
         .like("notas", "auto:%")
         .maybeSingle();
       if (!jaTem) {
-        const preco = PRECO_MENSAL[t.plano] ?? PRECO_MENSAL.starter;
-        // Abate créditos de indicação disponíveis (5% das indicações pagas)
-        const desconto = await calcularDescontoIndicacao(t.user_id, preco);
-        const valor = Math.round((preco - desconto) * 100) / 100;
+        // Valor REAL: preço − desconto negociado (plano_desconto) − créditos de
+        // indicação, piso R$1 — antes o desconto negociado era ignorado aqui (bug).
+        const { valor, descontoNegociado, descontoIndicacao } = await calcularValorCobranca(
+          t.user_id,
+          t.plano,
+          t.plano_desconto
+        );
         await supabaseAdmin.from("pagamentos").insert({
           user_id: t.user_id,
           valor,
@@ -120,64 +100,82 @@ export async function GET(req: NextRequest) {
           metodo: "mensalidade",
           status: "pendente",
           vencimento: venceYmd,
-          notas: desconto > 0 ? "auto:mensalidade (credito indicacao)" : "auto:mensalidade",
-          desconto_indicacao: desconto,
+          notas: descontoIndicacao > 0 ? "auto:mensalidade (credito indicacao)" : "auto:mensalidade",
+          desconto_indicacao: descontoIndicacao,
         });
-        resultados.push({ tenant: t.nome_empresa, status: "conta_gerada", vencimento: venceYmd, valor, desconto });
+        await logEventoAdmin(
+          t.user_id,
+          "conta_gerada",
+          `Conta a receber gerada — ${fmtBRL(valor)} (venc. ${venceYmd.split("-").reverse().join("/")})`,
+          { vencimento: venceYmd, valor, desconto_negociado: descontoNegociado, desconto_indicacao: descontoIndicacao }
+        );
+        resultados.push({ tenant: t.nome_empresa, status: "conta_gerada", vencimento: venceYmd, valor, desconto: descontoIndicacao });
       }
     }
 
     const dias = diasAteBrt(t.plano_vence_em);
     const marco = marcoDe(dias);
 
-    // Fora da janela (renovou ou ainda longe): zera o controle p/ o próximo ciclo.
     if (marco === null) {
+      // Fora da janela (renovou ou ainda longe): zera o controle p/ o próximo ciclo.
       if (t.cobranca_ultimo_marco !== null) {
         await supabaseAdmin
           .from("config_garage")
           .update({ cobranca_ultimo_marco: null })
           .eq("user_id", t.user_id);
       }
-      continue;
-    }
-
-    // Idempotência: só dispara ao ENTRAR num marco mais próximo do que o último enviado.
-    if (t.cobranca_ultimo_marco !== null && marco >= t.cobranca_ultimo_marco) {
+    } else if (t.cobranca_ultimo_marco !== null && marco >= t.cobranca_ultimo_marco) {
+      // Idempotência: só dispara ao ENTRAR num marco mais próximo do que o último enviado.
       resultados.push({ tenant: t.nome_empresa, dias, marco, status: "ja_avisado" });
-      continue;
+    } else {
+      const r = await enviarCobranca(t, dias);
+
+      if (r.ok) {
+        await supabaseAdmin
+          .from("config_garage")
+          .update({ cobranca_ultimo_marco: marco, cobranca_ultimo_aviso_em: new Date().toISOString() })
+          .eq("user_id", t.user_id);
+      }
+
+      resultados.push({
+        tenant: t.nome_empresa,
+        dias,
+        marco,
+        destino: r.destino,
+        status: r.ok ? "enviado" : (r.motivo ?? "falha_envio"),
+      });
     }
 
-    const destino = t.whatsapp_financeiro || t.whatsapp;
-    if (!destino || !t.avisa_base_url || !t.avisa_token) {
-      resultados.push({ tenant: t.nome_empresa, dias, marco, status: "sem_canal" });
-      continue;
-    }
-
-    const nome = t.nome_fantasia || t.nome_empresa || "sua revenda";
-    const link = `${SITE}/assinar?plano=${t.plano ?? "starter"}&renovacao=1`;
-    const corpo = corpoMensagem(nome, t.plano ?? "starter", dias, t.plano_vence_em, link);
-
-    const enviou = await sendAvisaMessage(
-      destino,
-      corpo,
-      { baseUrl: t.avisa_base_url, token: t.avisa_token },
-      { typing: false }
-    );
-
-    if (enviou) {
-      await supabaseAdmin
+    // ── Suspensão automática (opt-in) ─────────────────────────────────────────
+    // 5+ dias de atraso → pausa a IA (plano_ativo=false). Só tenants que optaram
+    // (`suspensao_automatica`); o select já garante plano_ativo=true aqui.
+    if (t.suspensao_automatica === true && dias <= -5) {
+      const { error: errSusp } = await supabaseAdmin
         .from("config_garage")
-        .update({ cobranca_ultimo_marco: marco, cobranca_ultimo_aviso_em: new Date().toISOString() })
+        .update({ plano_ativo: false })
         .eq("user_id", t.user_id);
-    }
 
-    resultados.push({
-      tenant: t.nome_empresa,
-      dias,
-      marco,
-      destino,
-      status: enviou ? "enviado" : "falha_envio",
-    });
+      if (!errSusp) {
+        const nome = t.nome_fantasia || t.nome_empresa || t.user_id;
+        const dataBR = new Date(t.plano_vence_em).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+        await logEventoAdmin(
+          t.user_id,
+          "suspensao",
+          `Plano suspenso automaticamente (${-dias} dias de atraso)`,
+          { dias, plano: t.plano, plano_vence_em: t.plano_vence_em }
+        );
+        await alertarInterno(
+          `⛔ *Suspensão automática — AutoZap*\n\n` +
+            `O tenant *${nome}* foi suspenso (plano_ativo = false) por atraso de *${-dias} dias* ` +
+            `no plano ${t.plano ?? "?"} (venceu em ${dataBR}).\n\n` +
+            `Reativação: painel admin → Ativar.`
+        );
+        resultados.push({ tenant: t.nome_empresa, dias, status: "suspenso" });
+      } else {
+        console.error(`❌ [cobranca-vencimento] falha ao suspender ${t.nome_empresa}:`, errSusp.message);
+        resultados.push({ tenant: t.nome_empresa, dias, status: "falha_suspensao" });
+      }
+    }
   }
 
   console.log(`💳 [cobranca-vencimento] ${JSON.stringify(resultados)}`);

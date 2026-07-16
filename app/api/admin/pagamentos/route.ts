@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireAdminSecret } from "@/lib/api-auth";
 import { gerarCreditoIndicacao, consumirCreditoIndicacao } from "@/lib/indicacao";
+import { logEventoAdmin } from "@/lib/admin-eventos";
+
+const fmtBRL = (v: number) =>
+  (Number(v) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 export async function GET(req: NextRequest) {
   const authError = await requireAdminSecret(req);
@@ -36,10 +40,24 @@ export async function POST(req: NextRequest) {
       .eq("id", id);
 
     if (!error) {
-      // Ativa o plano por 30 dias
+      // FIX +30d: pagar adiantado não pode roubar dias — estende a partir do
+      // MAIOR entre agora e o vencimento atual (antes era sempre agora + 30d).
+      // config_garage pode ter múltiplas linhas por user_id — pega a mais recente.
+      const { data: cfgRows } = await supabaseAdmin
+        .from("config_garage")
+        .select("plano_vence_em")
+        .eq("user_id", user_id)
+        .order("created_at", { ascending: false })
+        .limit(1);
+      const venceAtual = cfgRows?.[0]?.plano_vence_em;
+      const base = venceAtual && new Date(venceAtual) > new Date()
+        ? new Date(venceAtual).getTime()
+        : Date.now();
+
+      // Ativa o plano por +30 dias
       await supabaseAdmin.from("config_garage").update({
         plano_ativo: true,
-        plano_vence_em: new Date(Date.now() + 30 * 86400000).toISOString(),
+        plano_vence_em: new Date(base + 30 * 86400000).toISOString(),
       }).eq("user_id", user_id);
 
       // ── Indicação ──────────────────────────────────────────────────────────
@@ -54,6 +72,13 @@ export async function POST(req: NextRequest) {
         beneficiarioUserId: pagadorId,
         desconto: Number(pag?.desconto_indicacao) || 0,
       }).catch(e => console.warn("[admin/pagamentos] consumirCredito:", e));
+
+      await logEventoAdmin(
+        pagadorId,
+        "pagamento_pago",
+        `Pagamento marcado como pago — ${fmtBRL(pag?.valor)}`,
+        { pagamento_id: id, valor: pag?.valor ?? null }
+      );
     }
 
     return error
@@ -71,6 +96,14 @@ export async function POST(req: NextRequest) {
       status: "pendente",
       notas,
     });
+    if (!error) {
+      await logEventoAdmin(
+        user_id,
+        "pagamento_criado",
+        `Cobrança criada — ${fmtBRL(valor)} (venc. ${vencimento ? new Date(vencimento).toLocaleDateString("pt-BR", { timeZone: "UTC" }) : "?"})`,
+        { valor, plano, vencimento, metodo: metodo ?? "manual" }
+      );
+    }
     return error
       ? NextResponse.json({ error: error.message }, { status: 500 })
       : NextResponse.json({ ok: true });
@@ -101,6 +134,22 @@ export async function POST(req: NextRequest) {
       upd.pago_em = status === "pago" ? new Date().toISOString() : null;
     }
     const { error } = await supabaseAdmin.from("pagamentos").update(upd).eq("id", id);
+    if (!error) {
+      // user_id não vem no body da edição — busca do próprio registro pro evento
+      const { data: pagEdit } = await supabaseAdmin
+        .from("pagamentos")
+        .select("user_id")
+        .eq("id", id)
+        .maybeSingle();
+      if (pagEdit?.user_id) {
+        await logEventoAdmin(
+          pagEdit.user_id,
+          "pagamento_editado",
+          `Cobrança editada (${Object.keys(upd).filter(k => k !== "pago_em").join(", ")})`,
+          { pagamento_id: id, campos: upd }
+        );
+      }
+    }
     return error
       ? NextResponse.json({ error: error.message }, { status: 500 })
       : NextResponse.json({ ok: true });
@@ -108,7 +157,21 @@ export async function POST(req: NextRequest) {
 
   if (acao === "deletar") {
     if (!id) return NextResponse.json({ error: "id obrigatório" }, { status: 400 });
+    // Lê ANTES de deletar pra registrar quem/quanto na timeline
+    const { data: pagDel } = await supabaseAdmin
+      .from("pagamentos")
+      .select("user_id, valor")
+      .eq("id", id)
+      .maybeSingle();
     const { error } = await supabaseAdmin.from("pagamentos").delete().eq("id", id);
+    if (!error && pagDel?.user_id) {
+      await logEventoAdmin(
+        pagDel.user_id,
+        "pagamento_excluido",
+        `Cobrança excluída — ${fmtBRL(pagDel.valor)}`,
+        { pagamento_id: id, valor: pagDel.valor ?? null }
+      );
+    }
     return error
       ? NextResponse.json({ error: error.message }, { status: 500 })
       : NextResponse.json({ ok: true });

@@ -58,6 +58,13 @@ function AssinarContent() {
   const renovacao = params.get("renovacao") === "1";
   const [descNegMes, setDescNegMes] = useState(0); // desconto negociado em R$/mês (lido do tenant)
 
+  // Link de cobrança tokenizado (/assinar?t=<token>): resolve o tenant SEM login
+  // via /api/assinar/info — trava o seletor no plano dele, aplica o desconto
+  // negociado e manda o token no checkout (o servidor amarra o pagamento ao tenant).
+  const cobrancaToken = params.get("t");
+  const [empresaCobranca, setEmpresaCobranca] = useState<string | null>(null);
+  const modoTravado = renovacao || !!cobrancaToken;
+
   const [metodo,       setMetodo]       = useState<Metodo>("pix");
   const [parcelamento, setParcelamento] = useState<Parcelamento>("mensal");
   const [step,         setStep]         = useState<Step>("form");
@@ -79,6 +86,9 @@ function AssinarContent() {
         if (!data.user) return;
         if (data.user.email)               setCustomer(c => ({ ...c, email: data.user!.email! }));
         if (data.user.user_metadata?.nome) setCustomer(c => ({ ...c, nome:  data.user!.user_metadata.nome }));
+        // Com link tokenizado, plano/desconto vêm do token (efeito abaixo) — a
+        // sessão logada não pode sobrescrever com dados de OUTRO tenant.
+        if (cobrancaToken) return;
         // Plano contratado + desconto negociado do tenant
         supabase
           .from("config_garage")
@@ -97,6 +107,21 @@ function AssinarContent() {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Link de cobrança tokenizado: busca nome/plano/desconto do tenant pelo token
+  useEffect(() => {
+    if (!cobrancaToken) return;
+    fetch(`/api/assinar/info?t=${encodeURIComponent(cobrancaToken)}`)
+      .then(r => r.json())
+      .then(d => {
+        if (!d?.ok) return;
+        if (d.nome_empresa) setEmpresaCobranca(d.nome_empresa);
+        if (d.plano && PLANOS[d.plano]) setPlanoId(d.plano);
+        setDescNegMes(Math.max(0, Number(d.desconto_mes) || 0));
+      })
+      .catch(() => { /* silencioso — sem info, a página segue no modo padrão */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cobrancaToken]);
 
   async function fetchCep(cep: string) {
     const digits = cep.replace(/\D/g, "");
@@ -140,7 +165,11 @@ function AssinarContent() {
       const res  = await fetch("/api/pagarme/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plano: planoId, metodo, parcelamento, customer }),
+        body: JSON.stringify({
+          plano: planoId, metodo, parcelamento, customer,
+          // Link tokenizado: o servidor resolve o tenant pelo token (sem login)
+          ...(cobrancaToken ? { cobranca_token: cobrancaToken } : {}),
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Erro ao processar");
@@ -274,23 +303,25 @@ function AssinarContent() {
             </span>
           </div>
           <h1 className="text-3xl font-black uppercase tracking-tighter italic text-gray-900">
-            {renovacao ? "Renovar plano " : "Assinar plano "}{plano.nome}
+            {modoTravado ? "Renovar plano " : "Assinar plano "}{plano.nome}
           </h1>
           <p className="text-gray-400 text-sm mt-2">
-            {renovacao ? "Renovação da sua assinatura · cancele quando quiser" : "Trial grátis de 30 dias · Cancele quando quiser"}
+            {modoTravado
+              ? `Renovação da ${empresaCobranca ? `assinatura da ${empresaCobranca}` : "sua assinatura"} · cancele quando quiser`
+              : "Trial grátis de 30 dias · Cancele quando quiser"}
           </p>
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-5">
 
-          {/* Seletor de plano — na renovação, fica travado no plano do cliente */}
-          {renovacao ? (
+          {/* Seletor de plano — na renovação/link de cobrança, fica travado no plano do cliente */}
+          {modoTravado ? (
             <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-6">
               <p className={labelCls}>Seu plano</p>
               <div className="mt-2 flex items-center justify-between p-4 rounded-2xl border-2 border-gray-900 bg-gray-900 text-white">
                 <div>
                   <p className="text-sm font-black uppercase tracking-widest">{plano.nome}</p>
-                  <p className="text-[11px] text-white/60 mt-0.5">Plano contratado</p>
+                  <p className="text-[11px] text-white/60 mt-0.5">{empresaCobranca ?? "Plano contratado"}</p>
                 </div>
                 <div className="text-right">
                   {temDesconto ? (

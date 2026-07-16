@@ -3,6 +3,7 @@ import { Resend } from "resend";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getOrderStatus } from "@/lib/pagarme";
 import { gerarCreditoIndicacao, consumirCreditoIndicacao } from "@/lib/indicacao";
+import { logEventoAdmin } from "@/lib/admin-eventos";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -67,8 +68,22 @@ export async function POST(req: NextRequest) {
   // Detecta se é plano anual (12x) pelo campo notas
   const isAnual = pagamento.notas?.includes("anual");
 
+  // FIX +30d: pagar/renovar adiantado não pode roubar dias — estende a partir do
+  // MAIOR entre agora e o vencimento atual (antes era sempre agora + 30/365d).
+  // config_garage pode ter múltiplas linhas por user_id — pega a mais recente.
+  const { data: cfgRows } = await supabaseAdmin
+    .from("config_garage")
+    .select("plano_vence_em")
+    .eq("user_id", pagamento.user_id)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  const venceAtual = cfgRows?.[0]?.plano_vence_em;
+  const baseVence = venceAtual && new Date(venceAtual) > new Date()
+    ? new Date(venceAtual).getTime()
+    : Date.now();
+
   const planoVenceEm = new Date(
-    Date.now() + (isAnual ? 365 : 30) * 86400000
+    baseVence + (isAnual ? 365 : 30) * 86400000
   ).toISOString();
 
   // Atualiza pagamento → pago
@@ -82,6 +97,14 @@ export async function POST(req: NextRequest) {
     .from("config_garage")
     .update({ plano_ativo: true, plano_vence_em: planoVenceEm })
     .eq("user_id", pagamento.user_id);
+
+  // Timeline do tenant: pagamento confirmado no gateway
+  await logEventoAdmin(
+    pagamento.user_id,
+    "pagamento_confirmado",
+    `Pagamento confirmado no Pagar.me — ${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(pagamento.valor ?? 0)} (${(pagamento.plano ?? "?")}${isAnual ? " anual" : ""})`,
+    { order_id: orderId, valor: pagamento.valor, plano: pagamento.plano, metodo: pagamento.metodo, plano_vence_em: planoVenceEm }
+  );
 
   // ── Indicação ──────────────────────────────────────────────────────────────
   // 1) gera 5% de crédito pro indicador deste pagador

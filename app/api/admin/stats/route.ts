@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
   ] = await Promise.all([
     supabaseAdmin
       .from("config_garage")
-      .select("user_id, nome_empresa, nome_agente, whatsapp, endereco, vitrine_slug, webhook_token, logo_url, created_at, plano_ativo, plano, plano_desconto, trial_ends_at, plano_vence_em, codigo_indicacao, indicado_por")
+      .select("user_id, nome_empresa, nome_agente, whatsapp, endereco, vitrine_slug, webhook_token, logo_url, created_at, plano_ativo, plano, plano_desconto, trial_ends_at, plano_vence_em, codigo_indicacao, indicado_por, cobranca_automatica, cobranca_ultimo_marco, cobranca_ultimo_aviso_em, whatsapp_financeiro, cobranca_token, suspensao_automatica")
       .order("created_at", { ascending: false }),
 
     supabaseAdmin
