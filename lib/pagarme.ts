@@ -71,6 +71,9 @@ export async function createPixOrder(params: {
       items: [{ code: itemCode(params.description), amount: params.amount, description: params.description, quantity: 1 }],
       customer: buildCustomer(params.customer),
       payments: [{ payment_method: "pix", pix: { expires_in: 3600 } }],
+      // Marca o pedido como AutoZap: a conta Pagar.me é compartilhada com o
+      // Amigo Racing; o painel admin filtra por isso (ver pagarme-financeiro).
+      metadata: { app: "autozap" },
     }),
   });
   const data = await res.json();
@@ -113,6 +116,7 @@ export async function createBoletoOrder(params: {
           },
         },
       ],
+      metadata: { app: "autozap" }, // conta Pagar.me compartilhada — ver pagarme-financeiro
     }),
   });
   const data = await res.json();
@@ -158,6 +162,7 @@ export async function createCardCheckout(params: {
           },
         },
       ],
+      metadata: { app: "autozap" }, // conta Pagar.me compartilhada — ver pagarme-financeiro
     }),
   });
   const data = await res.json();

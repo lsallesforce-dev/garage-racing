@@ -17,13 +17,14 @@ import {
 type FiltroStatus = "todos" | "pendente" | "pago" | "atrasado" | "cancelado";
 
 export default function FinanceiroTab({
-  tenants, pagamentos, pagarmeBalance, pagarmeOrders, secret, acaoLoading,
+  tenants, pagamentos, pagarmeBalance, pagarmeOrders, pagarmeOcultos = 0, secret, acaoLoading,
   marcarPago, excluirPagamento, onEditarPagamento, onNovaCobranca, onReload,
 }: {
   tenants: Tenant[];
   pagamentos: Pagamento[];
   pagarmeBalance: PagarmeBalance | null;
   pagarmeOrders: PagarmeOrder[];
+  pagarmeOcultos?: number;
   secret: string;
   acaoLoading: string | null;
   marcarPago: (p: Pagamento) => void;
@@ -107,6 +108,7 @@ export default function FinanceiroTab({
 
       {/* ── Saldo PagarMe ── */}
       {pagarmeBalance && (
+        <div className="flex flex-col gap-2">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {[
             { label: "Disponível para Saque", value: pagarmeBalance.available_amount / 100, icon: Wallet,          color: "text-green-600",  bg: "bg-green-50"  },
@@ -124,6 +126,10 @@ export default function FinanceiroTab({
             </div>
           ))}
         </div>
+        <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest px-1">
+          Saldo da conta Pagar.me inteira — inclui outros produtos (ex.: Amigo Racing). O Pagar.me não separa saldo por produto.
+        </p>
+        </div>
       )}
 
       {/* ── Transações PagarMe ── */}
@@ -132,7 +138,13 @@ export default function FinanceiroTab({
           <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <CreditCard size={13} className="text-gray-400" />
-              <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">Últimas Transações PagarMe</p>
+              <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">Últimas Transações AutoZap</p>
+              {pagarmeOcultos > 0 && (
+                <span className="text-[9px] font-bold uppercase tracking-widest text-gray-300 whitespace-nowrap"
+                  title="Pedidos de outros produtos na mesma conta Pagar.me (ex.: Amigo Racing), filtrados do painel">
+                  · {pagarmeOcultos} de outros produtos oculto{pagarmeOcultos > 1 ? "s" : ""}
+                </span>
+              )}
             </div>
             {(pagarmeTestesOcultos > 0 || mostrarTestes) && (
               <button onClick={() => setMostrarTestes(v => !v)}

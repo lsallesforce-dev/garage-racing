@@ -39,6 +39,8 @@ export default function AdminPage() {
   const [loading, setLoading]       = useState(false);
   const [pagarmeBalance, setPagarmeBalance] = useState<PagarmeBalance | null>(null);
   const [pagarmeOrders, setPagarmeOrders]   = useState<PagarmeOrder[]>([]);
+  // Quantos pedidos da conta Pagar.me compartilhada NÃO são do AutoZap (Amigo Racing etc.)
+  const [pagarmeOcultos, setPagarmeOcultos] = useState(0);
   const [showNovoTenant, setShowNovoTenant] = useState(false);
   const [showNovoPag, setShowNovoPag]       = useState(false);
   const [editPag, setEditPag]               = useState<Pagamento | null>(null);
@@ -84,6 +86,7 @@ export default function AdminPage() {
     if (ok) {
       if (data?.balance) setPagarmeBalance(data.balance);
       setPagarmeOrders(data?.orders ?? []);
+      setPagarmeOcultos(data?.orders_ocultos ?? 0);
     }
   }, []);
 
@@ -451,6 +454,7 @@ export default function AdminPage() {
             pagamentos={pagamentos}
             pagarmeBalance={pagarmeBalance}
             pagarmeOrders={pagarmeOrders}
+            pagarmeOcultos={pagarmeOcultos}
             secret={secret}
             acaoLoading={acaoLoading}
             marcarPago={marcarPago}
