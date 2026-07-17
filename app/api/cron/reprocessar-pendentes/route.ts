@@ -33,7 +33,7 @@ const FIELDS_GARAGE = [
   "user_id", "nome_empresa", "nome_fantasia", "nome_agente",
   "endereco", "endereco_complemento", "whatsapp", "whatsapp_financeiro", "whatsapp_posvenda", "vitrine_slug",
   "avisa_base_url", "avisa_token", "meta_phone_id", "meta_access_token",
-  "tom_venda", "instrucoes_adicionais", "oferta_especial", "horario_funcionamento",
+  "tom_venda", "instrucoes_adicionais", "oferta_especial", "horario_funcionamento", "modo_repasse",
   "plano_ativo", "trial_ends_at", "plano_vence_em",
 ].join(", ");
 

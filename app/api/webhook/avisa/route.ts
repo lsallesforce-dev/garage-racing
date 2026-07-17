@@ -303,7 +303,7 @@ export async function POST(req: NextRequest) {
       bearerToken ||
       null;
 
-    const FIELDS = "user_id, nome_empresa, nome_fantasia, nome_agente, endereco, endereco_complemento, cidade, whatsapp, whatsapp_financeiro, whatsapp_posvenda, telefone_loja, vitrine_slug, webhook_token, avisa_base_url, avisa_token, tom_venda, instrucoes_adicionais, oferta_especial, horario_funcionamento, plano_ativo, trial_ends_at, plano_vence_em, ia_so_responde_anuncio, agente_pausado";
+    const FIELDS = "user_id, nome_empresa, nome_fantasia, nome_agente, endereco, endereco_complemento, cidade, whatsapp, whatsapp_financeiro, whatsapp_posvenda, telefone_loja, vitrine_slug, webhook_token, avisa_base_url, avisa_token, tom_venda, instrucoes_adicionais, oferta_especial, horario_funcionamento, modo_repasse, plano_ativo, trial_ends_at, plano_vence_em, ia_so_responde_anuncio, agente_pausado";
     let tenantUserId: string | null = null;
     let garageConfig: any = null;
 

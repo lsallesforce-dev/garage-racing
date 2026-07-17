@@ -162,6 +162,7 @@ export interface GarageConfig {
   instrucoes_adicionais?: string;   // bloco livre de instruções do dono
   horario_funcionamento?: string;   // ex: "Seg a Sex das 8h às 18h"
   oferta_especial?: string;         // oferta ativa do mês para mencionar na negociação
+  modo_repasse?: boolean;           // tenant de repasse: cliente é lojista, fala de vários carros
 }
 
 export interface WhatsAppJobPayload {
@@ -242,6 +243,7 @@ interface BuildPromptParams {
   instrucoesAdicionais?: string | null;
   ofertaEspecial?: string | null;
   horarioFuncionamento?: string | null;
+  modoRepasse?: boolean | null;
 }
 
 function buildSystemInstruction(p: BuildPromptParams): string {
@@ -260,10 +262,24 @@ function buildSystemInstruction(p: BuildPromptParams): string {
     ? `\n[OFERTA ESPECIAL ATIVA ESTE MÊS — mencione naturalmente quando o lead perguntar sobre preço, entrada ou financiamento]\n${p.ofertaEspecial}\n`
     : "";
 
+  // ── Layer 6: Modo repasse (cliente é lojista, fala de vários carros) ──────────
+  // Tenant de repasse: o cliente é OUTRO lojista varrendo o estoque, então uma
+  // mesma conversa pula entre carros diferentes o tempo todo. Sem isso o agente
+  // trata o "carro em foco" como grudento e responde do carro errado quando o
+  // cliente muda de assunto sem repetir o modelo por extenso.
+  const repasseBlock = p.modoRepasse
+    ? `\n[MODO REPASSE — LEIA COM ATENÇÃO]
+Este cliente é um LOJISTA/COMPRADOR que revende carros — não um consumidor final. Numa mesma conversa ele vai perguntar sobre VÁRIOS carros diferentes, pulando de um pro outro.
+- SEMPRE trate cada pergunta como podendo ser sobre um carro DIFERENTE do anterior. NÃO assuma que ele ainda fala do último carro.
+- Quando ele citar um carro (marca, modelo, cor ou ano), é SOBRE ESSE que ele quer falar agora — mude o foco na hora.
+- Se a mensagem for vaga ("manda foto", "qual valor", "tem esse") e NÃO der pra saber com CERTEZA de qual carro ele fala, PERGUNTE qual carro antes de responder ou mandar mídia. É melhor confirmar do que mandar a foto/preço errados.
+- Foco em agilidade e informação seca: lojista quer preço, km, ano e estado rápido, sem papo de venda emocional.\n`
+    : "";
+
   return `
 Você é ${p.nomeAgente}, vendedor(a) de veículos da ${p.nomeEmpresa}, atendendo pelo WhatsApp. Você é uma PESSOA de verdade, não um robô: conhece o estoque na ponta da língua, é objetivo e simpático na medida, e fala como gente fala no zap: frase curta, natural, sem floreio e SEM GÍRIA. Profissional e relaxado ao mesmo tempo; nunca formal/corporativo, nunca caricato, nunca animadinho de call center.
 Seu objetivo é vender conduzindo um papo natural e direto, indistinguível de um humano.
-${tomBlock}
+${tomBlock}${repasseBlock}
 [DIRETRIZES DE PERSONALIDADE E TOM]
 - Comporte-se como um vendedor profissional: ágil, educado e direto ao ponto.
 - LINGUAGEM: tom natural e comercial, português informal porém correto. NUNCA caricato. ⛔ PROIBIDO GÍRIA: nada de "blz", "mano", "tá ligado", "firmeza", "suave", "de boa", "tmj", "kkk". Mesmo que o cliente use gíria, você responde natural mas SEM gíria.
@@ -2448,6 +2464,7 @@ Responda apenas com o JSON, sem markdown.`;
       instrucoesAdicionais: garageConfig?.instrucoes_adicionais,
       ofertaEspecial: garageConfig?.oferta_especial,
       horarioFuncionamento: garageConfig?.horario_funcionamento,
+      modoRepasse: garageConfig?.modo_repasse,
     });
 
     const partsToGenerate: any[] = [{ text: userMessage }];

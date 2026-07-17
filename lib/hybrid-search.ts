@@ -546,11 +546,27 @@ export async function hybridVehicleSearch(
   }
 
   // Se não achou nada, tenta corrigir typos ("gom" → "gol") e refaz a busca
+  let hitsFromFuzzy = false;
   if (hitsTextuais.length === 0 && tokens.length > 0) {
     const tokensFuzzy = await fuzzyCorrectTokens(tokens, tenantUserId);
     if (tokensFuzzy.some((t, i) => t !== tokens[i])) {
-      hitsTextuais = await textSearch(tokensFuzzy, tenantUserId, veiculoPrincipal?.modelo, veiculoPrincipal?.marca);
+      const fuzzyHits = await textSearch(tokensFuzzy, tenantUserId, veiculoPrincipal?.modelo, veiculoPrincipal?.marca);
+      if (fuzzyHits.length > 0) {
+        hitsTextuais = fuzzyHits;
+        hitsFromFuzzy = true;
+      }
     }
+  }
+
+  // Anti-troca espúria: com um carro JÁ em foco, uma correção de typo NÃO pode
+  // trocar o carro. Mensagem que não bate EXATO num modelo provavelmente ainda
+  // é sobre o carro atual — o fuzzy só deve resolver carro quando não há foco.
+  // Caso real (lead b13a7fc7, 16/07): "manda foto dele" com Argo em foco virava
+  // "manual"→L200 e mandava a foto errada. Descarta os hits fuzzy nesse caso —
+  // cai no fluxo normal do veiculoPrincipal. Sem foco, o fuzzy segue ajudando.
+  if (hitsFromFuzzy && veiculoPrincipal) {
+    hitsTextuais = [];
+    hitsFromFuzzy = false;
   }
   const temHitsTextuais = hitsTextuais.length > 0;
 
