@@ -27,6 +27,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendAvisaMessage, sendAvisaImage } from "@/lib/avisa";
 import { gerarRepasseCompleto, gerarTextoBomDia, gruposDoConfig } from "@/lib/repasse";
 import { chaveDataBRT } from "@/lib/frases-motivacionais";
+import { outboundLiberado } from "@/lib/assinatura-outbound";
 
 // 300s (era 120): com múltiplos grupos + retries de Avisa lenta, o tick das
 // 17:10 de 08/07 estourou os 120s no MEIO dos envios → morreu antes de marcar
@@ -78,6 +79,7 @@ export async function GET(req: NextRequest) {
        repasse_janela_fim_sabado, repasse_qtd_por_envio,
        repasse_bomdia_ativo, repasse_bomdia_enviado_em,
        repasse_link_comunidade, repasse_link_instagram, repasse_bomdia_logo_url,
+       plano_ativo, plano_vence_em, trial_ends_at, bloqueado,
        nome_fantasia, nome_empresa`;
 
   // any[]: o shape muda entre o select com/sem as colunas novas (fallback abaixo)
@@ -133,6 +135,15 @@ export async function GET(req: NextRequest) {
     const tenantId = cfg.user_id;
 
     try {
+      // ── Gate de assinatura (fail-closed) ──────────────────────────────────
+      // Serviço pausado por falta de pagamento (plano_ativo=false) ou bloqueado
+      // → NÃO dispara nada no grupo (nem carro nem bom dia). Volta sozinho quando
+      // o plano for reativado, sem mexer no repasse_auto_ativo do tenant.
+      if (!outboundLiberado(cfg, agora)) {
+        console.log(`🔒 [repasse/${tenantId}] Assinatura inativa (plano pausado/expirado) — pulando`);
+        continue;
+      }
+
       // ── 2. Grupos de destino + gate de janela horária ─────────────────────
       const grupos = gruposDoConfig(cfg);
       if (grupos.length === 0) {

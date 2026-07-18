@@ -25,6 +25,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendAvisaMessage, sendAvisaImage } from "@/lib/avisa";
 import { montarMensagemEnvio } from "@/lib/transmissao";
 import { chaveDataBRT } from "@/lib/frases-motivacionais";
+import { outboundLiberado } from "@/lib/assinatura-outbound";
 
 export const maxDuration = 300;
 
@@ -97,7 +98,8 @@ export async function GET(req: NextRequest) {
     .select(
       `user_id, transmissao_avisa_base_url, transmissao_avisa_token,
        transmissao_cap_dia, transmissao_janela_inicio, transmissao_janela_fim,
-       transmissao_ativada_em`,
+       transmissao_ativada_em,
+       plano_ativo, plano_vence_em, trial_ends_at, bloqueado`,
     )
     .eq("transmissao_habilitada", true)
     .not("transmissao_avisa_base_url", "is", null)
@@ -132,6 +134,14 @@ export async function GET(req: NextRequest) {
     const tenantId = cfg.user_id;
 
     try {
+      // ── Gate de assinatura (fail-closed) ──────────────────────────────────
+      // Serviço pausado (plano_ativo=false) ou bloqueado → não dispara. Volta
+      // sozinho ao reativar o plano, sem mexer no transmissao_habilitada.
+      if (!outboundLiberado(cfg, agora)) {
+        console.log(`🔒 [transmissao/${tenantId}] Assinatura inativa — pulando`);
+        continue;
+      }
+
       // ── 2a. Janela horária BRT ────────────────────────────────────────────
       const inicio: number = cfg.transmissao_janela_inicio ?? 8;
       const fim: number = cfg.transmissao_janela_fim ?? 18;
