@@ -1,5 +1,7 @@
 // Render da capa do Kit de Postagem (1080x1350, next/og ImageResponse + Montserrat local).
 // Compartilhado entre /api/marketing/pacote (produção) e /api/marketing/capa-dev (preview local).
+// Layout DIVIDIDO: foto ocupa o topo inteirinha (nenhum texto por cima do carro) e o
+// painel de informações fica sólido embaixo — evita "cortar" o carro atrás do texto.
 // No F2 este layout vira a cena de intro do template Remotion — manter os tokens
 // (cor primária, Montserrat Black, faixa + título + chips de specs) espelhados lá.
 
@@ -7,6 +9,10 @@ import { ImageResponse } from "next/og";
 import { promises as fs } from "fs";
 import path from "path";
 import { linhaSpecs, precoFormatado, tituloVeiculo, type MarketingCfg } from "@/lib/marketing-kit";
+
+const W = 1080;
+const H = 1350;
+const FOTO_H = 860; // área exclusiva da foto; o restante é o painel de infos
 
 // Anti-SSRF: só baixamos imagens do nosso próprio storage (regra do CLAUDE.md).
 export function isOwnStorage(url: string): boolean {
@@ -50,7 +56,7 @@ export function renderCapa(opts: {
   const { fotoUri, logoUri, cfg, veiculo, fontData } = opts;
   const cor = cfg.corPrimaria;
   const nomeCurto = [veiculo?.marca, veiculo?.modelo].filter(Boolean).join(" ").toUpperCase() || tituloVeiculo(veiculo);
-  const tituloSize = nomeCurto.length > 24 ? 46 : nomeCurto.length > 16 ? 56 : 66;
+  const tituloSize = nomeCurto.length > 24 ? 44 : nomeCurto.length > 16 ? 54 : 64;
   const anos = [veiculo?.ano, veiculo?.ano_modelo].filter(Boolean);
   const anoStr = anos.length === 2 && anos[0] !== anos[1] ? `${anos[0]}/${anos[1]}` : anos.length ? String(anos[anos.length - 1]) : "";
   const subtitulo = [veiculo?.versao, anoStr].filter(Boolean).join(" • ").toUpperCase();
@@ -70,98 +76,121 @@ export function renderCapa(opts: {
           position: "relative",
         }}
       >
-        {fotoUri ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={fotoUri}
-            alt=""
-            style={{ position: "absolute", top: 0, left: 0, width: 1080, height: 1350, objectFit: "cover" }}
-          />
-        ) : null}
+        {/* ── Área da foto (topo) — o carro tem esse espaço inteiro, sem texto por cima ── */}
         <div
           style={{
-            position: "absolute",
-            bottom: 0,
-            left: 0,
-            width: 1080,
-            height: 700,
-            backgroundImage:
-              "linear-gradient(to top, rgba(0,0,0,0.93) 18%, rgba(0,0,0,0.6) 55%, rgba(0,0,0,0) 100%)",
-          }}
-        />
-        <div
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            width: 1080,
-            height: 200,
-            backgroundImage: "linear-gradient(to bottom, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 100%)",
-          }}
-        />
-
-        {/* Topo: logo (chip branco) ou nome da loja */}
-        <div style={{ position: "absolute", top: 44, left: 48, display: "flex", alignItems: "center" }}>
-          {logoUri ? (
-            <div
-              style={{
-                display: "flex",
-                backgroundColor: "rgba(255,255,255,0.94)",
-                borderRadius: 20,
-                padding: "14px 22px",
-              }}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={logoUri} alt="" style={{ width: 170, height: 84, objectFit: "contain" }} />
-            </div>
-          ) : (
-            <div
-              style={{
-                display: "flex",
-                color: "#FFFFFF",
-                fontSize: 34,
-                fontWeight: 900,
-                letterSpacing: 3,
-                textTransform: "uppercase",
-                textShadow: "0 2px 8px rgba(0,0,0,0.6)",
-              }}
-            >
-              {cfg.nome}
-            </div>
-          )}
-        </div>
-
-        {/* Selo */}
-        <div
-          style={{
-            position: "absolute",
-            top: 52,
-            right: 48,
             display: "flex",
-            backgroundColor: cor,
-            color: "#FFFFFF",
-            padding: "14px 28px",
-            borderRadius: 999,
-            fontSize: 26,
-            fontWeight: 900,
-            letterSpacing: 3,
+            width: W,
+            height: FOTO_H,
+            overflow: "hidden",
+            position: "relative",
           }}
         >
-          DISPONÍVEL
+          {fotoUri ? (
+            // objectPosition com viés pra baixo: quando a foto é retrato, o corte
+            // come o CÉU, não o carro (carro + chão ficam na metade de baixo).
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={fotoUri}
+              alt=""
+              style={{
+                width: W,
+                height: FOTO_H,
+                objectFit: "cover",
+                objectPosition: "50% 62%",
+              }}
+            />
+          ) : (
+            <div style={{ display: "flex", width: W, height: FOTO_H, backgroundColor: "#16161C" }} />
+          )}
+
+          {/* Sombra sutil no topo pra segurar logo/selo */}
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              width: W,
+              height: 180,
+              backgroundImage: "linear-gradient(to bottom, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 100%)",
+            }}
+          />
+
+          {/* Logo (chip branco) ou nome da loja */}
+          <div style={{ position: "absolute", top: 40, left: 48, display: "flex", alignItems: "center" }}>
+            {logoUri ? (
+              <div
+                style={{
+                  display: "flex",
+                  backgroundColor: "rgba(255,255,255,0.94)",
+                  borderRadius: 20,
+                  padding: "12px 20px",
+                }}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={logoUri} alt="" style={{ width: 160, height: 78, objectFit: "contain" }} />
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: "flex",
+                  color: "#FFFFFF",
+                  fontSize: 32,
+                  fontWeight: 900,
+                  letterSpacing: 3,
+                  textTransform: "uppercase",
+                  textShadow: "0 2px 8px rgba(0,0,0,0.6)",
+                }}
+              >
+                {cfg.nome}
+              </div>
+            )}
+          </div>
+
+          {/* Selo */}
+          <div
+            style={{
+              position: "absolute",
+              top: 48,
+              right: 48,
+              display: "flex",
+              backgroundColor: cor,
+              color: "#FFFFFF",
+              padding: "12px 26px",
+              borderRadius: 999,
+              fontSize: 25,
+              fontWeight: 900,
+              letterSpacing: 3,
+            }}
+          >
+            DISPONÍVEL
+          </div>
+
+          {/* Transição suave foto → painel */}
+          <div
+            style={{
+              position: "absolute",
+              bottom: 0,
+              left: 0,
+              width: W,
+              height: 120,
+              backgroundImage: "linear-gradient(to top, rgba(11,11,15,1) 0%, rgba(11,11,15,0) 100%)",
+            }}
+          />
         </div>
 
-        {/* Bloco inferior */}
+        {/* ── Painel de informações (base sólida — nunca cobre o carro) ── */}
         <div
           style={{
-            position: "absolute",
-            bottom: 56,
-            left: 48,
-            right: 48,
             display: "flex",
             flexDirection: "column",
+            width: W,
+            height: H - FOTO_H,
+            padding: "8px 48px 44px 48px",
+            backgroundColor: "#0B0B0F",
           }}
         >
-          <div style={{ display: "flex", width: 130, height: 12, backgroundColor: cor, marginBottom: 26, borderRadius: 6 }} />
+          <div style={{ display: "flex", width: 130, height: 12, backgroundColor: cor, marginBottom: 22, borderRadius: 6 }} />
           <div
             style={{
               display: "flex",
@@ -179,8 +208,8 @@ export function renderCapa(opts: {
             <div
               style={{
                 display: "flex",
-                marginTop: 10,
-                fontSize: 32,
+                marginTop: 8,
+                fontSize: 30,
                 color: "rgba(255,255,255,0.88)",
                 letterSpacing: 2,
               }}
@@ -190,7 +219,7 @@ export function renderCapa(opts: {
           ) : null}
 
           {specs.length ? (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 14, marginTop: 26 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 24 }}>
               {specs.map((s) => (
                 <div
                   key={s}
@@ -198,8 +227,8 @@ export function renderCapa(opts: {
                     display: "flex",
                     border: "2px solid rgba(255,255,255,0.4)",
                     borderRadius: 999,
-                    padding: "10px 24px",
-                    fontSize: 26,
+                    padding: "9px 22px",
+                    fontSize: 25,
                     color: "#FFFFFF",
                     textTransform: "uppercase",
                     letterSpacing: 1,
@@ -211,44 +240,44 @@ export function renderCapa(opts: {
             </div>
           ) : null}
 
-          {preco ? (
-            <div style={{ display: "flex", marginTop: 30 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 28, marginTop: 28 }}>
+            {preco ? (
               <div
                 style={{
                   display: "flex",
                   backgroundColor: cor,
                   color: "#FFFFFF",
-                  padding: "12px 34px",
+                  padding: "10px 32px",
                   borderRadius: 18,
-                  fontSize: 58,
+                  fontSize: 54,
                   fontWeight: 900,
                 }}
               >
                 {preco}
               </div>
-            </div>
-          ) : null}
-
-          {cfg.claim ? (
-            <div
-              style={{
-                display: "flex",
-                marginTop: 24,
-                fontSize: 24,
-                color: "rgba(255,255,255,0.85)",
-                letterSpacing: 2,
-                textTransform: "uppercase",
-              }}
-            >
-              ✅ {cfg.claim}
-            </div>
-          ) : null}
+            ) : null}
+            {cfg.claim ? (
+              <div
+                style={{
+                  display: "flex",
+                  flex: 1,
+                  fontSize: 22,
+                  color: "rgba(255,255,255,0.85)",
+                  letterSpacing: 1.5,
+                  textTransform: "uppercase",
+                  lineHeight: 1.35,
+                }}
+              >
+                ✅ {cfg.claim}
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
     ),
     {
-      width: 1080,
-      height: 1350,
+      width: W,
+      height: H,
       fonts: [{ name: "Montserrat", data: fontData, weight: 900, style: "normal" }],
     }
   );
