@@ -420,6 +420,8 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith("/api/webhook") ||
     pathname.startsWith("/api/marketing/worker") ||
     pathname.startsWith("/api/marketing/webhook") ||
+    // Preview local do template de capa — a própria rota 404a em produção
+    (process.env.NODE_ENV !== "production" && pathname.startsWith("/api/marketing/capa-dev")) ||
     pathname.startsWith("/api/assumir") ||
     pathname.startsWith("/api/health") ||
     pathname.startsWith("/api/cron") ||

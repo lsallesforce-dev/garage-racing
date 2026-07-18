@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { GenerateMarketingVideoButton } from "@/components/GenerateMarketingVideoButton";
 import PublicarMetaButton from "@/components/PublicarMetaButton";
+import KitPostagem from "@/components/KitPostagem";
 import { ArquivarDocumentos } from "@/components/ArquivarDocumentos";
 import dynamic from "next/dynamic";
 import { toVideoUrl } from "@/lib/r2-url";
@@ -2231,6 +2232,14 @@ export default function DetalheVeiculo() {
 
               {/* Takes de vídeo */}
               <TakesVideo veiculoId={veiculo.id} takesIniciais={veiculo.video_takes ?? []} />
+
+              {/* Kit de Postagem (captura guiada + capa templatada + legenda) */}
+              <KitPostagem
+                veiculoId={veiculo.id}
+                capturasIniciais={veiculo.marketing_capturas ?? null}
+                capaInicial={veiculo.marketing_capa_url ?? null}
+                legendaInicial={veiculo.marketing_legenda ?? null}
+              />
 
               {/* Gerador de Vídeo IA */}
               <div className="mt-6 pt-6 border-t border-black/10 relative z-10">
