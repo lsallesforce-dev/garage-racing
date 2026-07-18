@@ -18,6 +18,7 @@ import {
   Check,
   ChevronDown,
   Copy,
+  Images,
   Loader2,
   Send,
   Sparkles,
@@ -39,6 +40,7 @@ export default function KitPostagem({ veiculoId, capturasIniciais, capaInicial, 
   const [capa, setCapa] = useState<string | null>(capaInicial);
   const [legenda, setLegenda] = useState<string>(legendaInicial ?? "");
   const [gerando, setGerando] = useState(false);
+  const [classificando, setClassificando] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [msg, setMsg] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
 
@@ -107,6 +109,31 @@ export default function KitPostagem({ veiculoId, capturasIniciais, capaInicial, 
       setErroSlot((p) => ({ ...p, [shot.tag]: e.message ?? "Erro no upload" }));
     } finally {
       setSubindo(null);
+    }
+  }
+
+  async function puxarFotosDoAnuncio() {
+    setClassificando(true);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/marketing/classificar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ veiculoId }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error ?? `HTTP ${res.status}`);
+      setCapturas(d.marketing_capturas);
+      setMsg({
+        tipo: "ok",
+        texto: d.novas > 0
+          ? `${d.novas} foto(s) da galeria etiquetada(s) automaticamente ✅`
+          : "Nenhuma foto nova pra etiquetar — shot list já preenchida ou galeria sem ângulos que faltam.",
+      });
+    } catch (e: any) {
+      setMsg({ tipo: "erro", texto: e.message ?? "Erro ao classificar fotos" });
+    } finally {
+      setClassificando(false);
     }
   }
 
@@ -238,10 +265,21 @@ export default function KitPostagem({ veiculoId, capturasIniciais, capaInicial, 
           Fotos {fotosOk}/{SHOT_FOTOS.length} · Takes {takesOk}/{SHOT_TAKES.length}
         </span>
       </div>
-      <p className="text-xs text-gray-400 mb-4 leading-relaxed">
-        Siga o roteiro de captura (segure o dedo num slot pra ver a dica). Com a Frente 3/4 no lugar,
-        o kit já sai: capa com a identidade da loja + legenda pronta.
+      <p className="text-xs text-gray-400 mb-3 leading-relaxed">
+        As fotos que o carro já tem são aproveitadas: a IA etiqueta a galeria sozinha
+        (também roda automático no Gerar kit). Use os slots só pro que faltar — segure o
+        dedo num slot pra ver a dica de enquadramento.
       </p>
+
+      <button
+        type="button"
+        onClick={puxarFotosDoAnuncio}
+        disabled={classificando}
+        className="mb-4 flex items-center gap-2 rounded-xl bg-gray-100 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-gray-600 hover:bg-gray-200 disabled:opacity-50"
+      >
+        {classificando ? <Loader2 size={14} className="animate-spin" /> : <Images size={14} />}
+        {classificando ? "Etiquetando galeria..." : "Puxar fotos do anúncio"}
+      </button>
 
       <div className="grid grid-cols-4 gap-2 mb-2">
         {SHOT_FOTOS.map((s) => (

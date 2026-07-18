@@ -8,6 +8,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireVehicleOwner } from "@/lib/api-auth";
 import { cfgFromRow, gerarLegenda } from "@/lib/marketing-kit";
 import { loadCapaFont, renderCapa, toDataUri } from "@/lib/marketing-capa";
+import { completarCapturas } from "@/lib/marketing-classificar";
 import type { MarketingCapturas } from "@/lib/marketing-shotlist";
 
 export const dynamic = "force-dynamic";
@@ -36,8 +37,16 @@ export async function POST(req: NextRequest) {
       .limit(1);
     const cfg = cfgFromRow(cfgRows?.[0] ?? null);
 
-    // Foto de fundo: captura guiada "frente-3-4" > primeira foto do carro
-    const capturas: MarketingCapturas = veiculo.marketing_capturas ?? {};
+    // Fotos: se a shot list ainda não está preenchida, o Gemini Vision etiqueta a
+    // galeria existente automaticamente (kit se monta sozinho a partir do anúncio).
+    let capturas: MarketingCapturas = veiculo.marketing_capturas ?? {};
+    const semFrente = !capturas.fotos?.some((f) => f.tag === "frente-3-4");
+    if (semFrente && veiculo.fotos?.length) {
+      capturas = await completarCapturas(veiculo);
+      await supabaseAdmin.from("veiculos").update({ marketing_capturas: capturas }).eq("id", veiculoId);
+    }
+
+    // Foto de fundo da capa: "frente-3-4" etiquetada > primeira foto do carro
     const fotoUrl: string | null =
       capturas.fotos?.find((f) => f.tag === "frente-3-4")?.url ?? veiculo.fotos?.[0] ?? null;
     if (!fotoUrl) {
