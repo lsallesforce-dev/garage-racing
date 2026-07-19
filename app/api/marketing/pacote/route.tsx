@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireVehicleOwner } from "@/lib/api-auth";
 import { cfgFromRow, gerarLegenda } from "@/lib/marketing-kit";
-import { loadCapaFont, renderCapa, toDataUri } from "@/lib/marketing-capa";
+import { fotoParaCapa, loadCapaFont, renderCapa, toDataUri } from "@/lib/marketing-capa";
 import { completarCapturas } from "@/lib/marketing-classificar";
 import { montarCarrossel, type MarketingCapturas } from "@/lib/marketing-shotlist";
 
@@ -60,19 +60,19 @@ export async function POST(req: NextRequest) {
       .from("configuracoes")
       .getPublicUrl(`logos/${veiculo.user_id}.png`).data.publicUrl;
 
-    const [fotoUri, logoUri, fontData] = await Promise.all([
-      toDataUri(fotoUrl),
+    const [foto, logoUri, fontData] = await Promise.all([
+      fotoParaCapa(fotoUrl),
       toDataUri(logoPublic),
       loadCapaFont(),
     ]);
-    if (!fotoUri) {
+    if (!foto) {
       return NextResponse.json({ error: "Não consegui baixar a foto do veículo" }, { status: 502 });
     }
 
     // Capa em dois formatos: feed 4:5 (slide 1 do carrossel) e story 9:16
     const ts = Date.now();
     async function renderEUpload(formato: "feed" | "story"): Promise<string> {
-      const img = renderCapa({ fotoUri, logoUri, cfg, veiculo, fontData, formato });
+      const img = renderCapa({ foto, logoUri, cfg, veiculo, fontData, formato });
       const png = Buffer.from(await img.arrayBuffer());
       const key = `marketing/${veiculoId}/${formato}-${ts}.png`;
       const { error: upErr } = await supabaseAdmin.storage

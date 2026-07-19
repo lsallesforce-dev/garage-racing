@@ -4,7 +4,7 @@
 // Params opcionais: ?preco=0 esconde preço; ?claim=... ; ?cor=%23HEX ; ?foto=<url do nosso storage>.
 
 import { NextRequest, NextResponse } from "next/server";
-import { loadCapaFont, renderCapa, toDataUri } from "@/lib/marketing-capa";
+import { fotoParaCapa, loadCapaFont, renderCapa } from "@/lib/marketing-capa";
 import { gerarLegenda, type MarketingCfg } from "@/lib/marketing-kit";
 
 export const dynamic = "force-dynamic";
@@ -64,7 +64,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ legenda });
   }
 
-  const [fotoUri, fontData] = await Promise.all([toDataUri(p.get("foto")), loadCapaFont()]);
+  const [foto, fontData] = await Promise.all([fotoParaCapa(p.get("foto")), loadCapaFont()]);
   const formato = p.get("formato") === "story" ? ("story" as const) : ("feed" as const);
-  return renderCapa({ fotoUri, logoUri: null, cfg, veiculo, fontData, formato });
+  return renderCapa({ foto, logoUri: null, cfg, veiculo, fontData, formato });
 }

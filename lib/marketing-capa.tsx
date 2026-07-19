@@ -51,17 +51,43 @@ export async function loadCapaFont(): Promise<ArrayBuffer> {
   return f.buffer.slice(f.byteOffset, f.byteOffset + f.byteLength) as ArrayBuffer;
 }
 
+// Foto da capa com dimensões (via sharp) — o render decide cover×contain por formato.
+export interface FotoCapa { uri: string; w: number; h: number }
+
+export async function fotoParaCapa(url: string | null): Promise<FotoCapa | null> {
+  const uri = await toDataUri(url);
+  if (!uri) return null;
+  try {
+    const sharp = (await import("sharp")).default;
+    const buf = Buffer.from(uri.split(",")[1], "base64");
+    const meta = await sharp(buf).metadata();
+    if (!meta.width || !meta.height) return { uri, w: 4, h: 3 };
+    return { uri, w: meta.width, h: meta.height };
+  } catch {
+    return { uri, w: 4, h: 3 };
+  }
+}
+
 export function renderCapa(opts: {
-  fotoUri: string | null;
+  foto: FotoCapa | null;
   logoUri: string | null;
   cfg: MarketingCfg;
   veiculo: any;
   fontData: ArrayBuffer;
   formato?: CapaFormato;
 }): ImageResponse {
-  const { fotoUri, logoUri, cfg, veiculo, fontData } = opts;
+  const { foto, logoUri, cfg, veiculo, fontData } = opts;
   const { W, H, FOTO_H, PAD_BOTTOM } = DIMS[opts.formato ?? "feed"];
   const cor = cfg.corPrimaria;
+
+  // cover × contain: corte VERTICAL (foto mais alta que a janela) é seguro — o viés
+  // 62% come céu, não carro. Corte HORIZONTAL (foto deitada em janela alta, típico
+  // no story) come a frente/traseira do carro: acima de 10%, mostra a foto inteira
+  // (contain) sobre fundo escuro em vez de dar zoom.
+  const windowAR = W / FOTO_H;
+  const fotoAR = foto ? foto.w / foto.h : windowAR;
+  const cortariaHorizontal = fotoAR > windowAR && 1 - windowAR / fotoAR > 0.1;
+  const fotoFit: "cover" | "contain" = cortariaHorizontal ? "contain" : "cover";
   const nomeCurto = [veiculo?.marca, veiculo?.modelo].filter(Boolean).join(" ").toUpperCase() || tituloVeiculo(veiculo);
   const tituloSize = nomeCurto.length > 24 ? 44 : nomeCurto.length > 16 ? 54 : 64;
   const anos = [veiculo?.ano, veiculo?.ano_modelo].filter(Boolean);
@@ -93,18 +119,17 @@ export function renderCapa(opts: {
             position: "relative",
           }}
         >
-          {fotoUri ? (
-            // objectPosition com viés pra baixo: quando a foto é retrato, o corte
-            // come o CÉU, não o carro (carro + chão ficam na metade de baixo).
+          {foto ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={fotoUri}
+              src={foto.uri}
               alt=""
               style={{
                 width: W,
                 height: FOTO_H,
-                objectFit: "cover",
-                objectPosition: "50% 62%",
+                objectFit: fotoFit,
+                objectPosition: fotoFit === "cover" ? "50% 62%" : "50% 50%",
+                backgroundColor: "#16161C",
               }}
             />
           ) : (
