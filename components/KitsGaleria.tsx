@@ -30,6 +30,8 @@ interface CarroKit {
   fotos: string[] | null;
   status_venda: string | null;
   marketing_capa_url: string | null;
+  marketing_story_url: string | null;
+  marketing_carrossel: string[] | null;
   marketing_legenda: string | null;
 }
 
@@ -47,7 +49,7 @@ export default function KitsGaleria() {
     if (!effectiveUserId) return;
     supabase
       .from("veiculos")
-      .select("id, marca, modelo, versao, ano, ano_modelo, fotos, status_venda, marketing_capa_url, marketing_legenda")
+      .select("id, marca, modelo, versao, ano, ano_modelo, fotos, status_venda, marketing_capa_url, marketing_story_url, marketing_carrossel, marketing_legenda")
       .eq("user_id", effectiveUserId)
       .order("created_at", { ascending: false })
       .then(({ data }) => {
@@ -78,7 +80,15 @@ export default function KitsGaleria() {
       if (!res.ok) throw new Error(d.error ?? `HTTP ${res.status}`);
       setCarros((prev) =>
         prev.map((c) =>
-          c.id === id ? { ...c, marketing_capa_url: d.capaUrl, marketing_legenda: d.legenda } : c
+          c.id === id
+            ? {
+                ...c,
+                marketing_capa_url: d.capaUrl,
+                marketing_story_url: d.storyUrl ?? null,
+                marketing_carrossel: d.carrossel ?? null,
+                marketing_legenda: d.legenda,
+              }
+            : c
         )
       );
       return true;
@@ -124,19 +134,37 @@ export default function KitsGaleria() {
     });
   }
 
-  async function baixar(c: CarroKit) {
-    if (!c.marketing_capa_url) return;
+  async function baixarUrl(url: string, nome: string) {
+    const r = await fetch(url);
+    const blob = await r.blob();
+    const objUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = objUrl;
+    a.download = nome;
+    a.click();
+    URL.revokeObjectURL(objUrl);
+  }
+
+  function slugCarro(c: CarroKit) {
+    return titulo(c).toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+  }
+
+  async function baixar(c: CarroKit, tipo: "capa" | "story" | "carrossel") {
     try {
-      const r = await fetch(c.marketing_capa_url);
-      const blob = await r.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `capa-${titulo(c).toLowerCase().replace(/\s+/g, "-")}.png`;
-      a.click();
-      URL.revokeObjectURL(url);
+      if (tipo === "capa" && c.marketing_capa_url) {
+        await baixarUrl(c.marketing_capa_url, `feed-${slugCarro(c)}.png`);
+      } else if (tipo === "story" && c.marketing_story_url) {
+        await baixarUrl(c.marketing_story_url, `story-${slugCarro(c)}.png`);
+      } else if (tipo === "carrossel" && c.marketing_carrossel?.length) {
+        // Sequencial com respiro — navegador bloqueia downloads em rajada
+        for (let i = 0; i < c.marketing_carrossel.length; i++) {
+          const ext = c.marketing_carrossel[i].includes(".png") ? "png" : "jpg";
+          await baixarUrl(c.marketing_carrossel[i], `${String(i + 1).padStart(2, "0")}-${slugCarro(c)}.${ext}`);
+          await new Promise((r) => setTimeout(r, 400));
+        }
+      }
     } catch {
-      setErro((p) => ({ ...p, [c.id]: "Erro ao baixar a capa" }));
+      setErro((p) => ({ ...p, [c.id]: "Erro ao baixar" }));
     }
   }
 
@@ -210,6 +238,21 @@ export default function KitsGaleria() {
                 alt={titulo(c)}
                 className="w-full rounded-2xl border border-gray-100 object-cover"
               />
+              {/* Carrossel do feed: ordem final dos slides (1 = capa) */}
+              {(c.marketing_carrossel?.length ?? 0) > 1 && (
+                <div className="flex gap-1.5 overflow-x-auto pb-1" title="Post de feed: publique como carrossel nesta ordem">
+                  {c.marketing_carrossel!.map((u, i) => (
+                    <div key={u} className="relative flex-shrink-0">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={u} alt={`Slide ${i + 1}`} className="w-12 h-12 rounded-lg object-cover border border-gray-100" />
+                      <span className="absolute -top-1 -left-1 w-4 h-4 rounded-full bg-gray-900 text-white text-[8px] font-black flex items-center justify-center">
+                        {i + 1}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <div className="flex items-center justify-between gap-2">
                 <p className="text-sm font-black uppercase italic text-gray-900 truncate">
                   {titulo(c)} {c.ano_modelo ?? c.ano ?? ""}
@@ -244,18 +287,36 @@ export default function KitsGaleria() {
                   {copiado === c.id ? "Copiada!" : "Copiar legenda"}
                 </button>
                 <button
-                  onClick={() => baixar(c)}
-                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gray-100 py-2.5 text-[9px] font-black uppercase tracking-widest text-gray-600 hover:bg-gray-200"
-                >
-                  <Download size={12} /> Baixar capa
-                </button>
-                <button
                   onClick={() => gerar(c.id)}
                   disabled={gerando[c.id]}
-                  title="Regerar capa e legenda"
+                  title="Regerar kit (capa, story, carrossel e legenda)"
                   className="flex items-center justify-center rounded-xl bg-gray-900 px-3 py-2.5 text-white hover:bg-red-600 disabled:opacity-50"
                 >
                   {gerando[c.id] ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                </button>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => baixar(c, "carrossel")}
+                  title="Baixa todos os slides do post de feed, numerados na ordem"
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gray-100 py-2.5 text-[9px] font-black uppercase tracking-widest text-gray-600 hover:bg-gray-200"
+                >
+                  <Download size={12} /> Feed ({c.marketing_carrossel?.length ?? 1})
+                </button>
+                <button
+                  onClick={() => baixar(c, "story")}
+                  disabled={!c.marketing_story_url}
+                  title="Versão 9:16 pro Stories"
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gray-100 py-2.5 text-[9px] font-black uppercase tracking-widest text-gray-600 hover:bg-gray-200 disabled:opacity-40"
+                >
+                  <Download size={12} /> Story
+                </button>
+                <button
+                  onClick={() => baixar(c, "capa")}
+                  title="Só a capa do feed"
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gray-100 py-2.5 text-[9px] font-black uppercase tracking-widest text-gray-600 hover:bg-gray-200"
+                >
+                  <Download size={12} /> Capa
                 </button>
               </div>
 

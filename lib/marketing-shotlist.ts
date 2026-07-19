@@ -42,3 +42,40 @@ export interface MarketingCapturas {
   fotos?: CapturaRegistro[];
   takes?: CapturaRegistro[];
 }
+
+// Ordem narrativa do carrossel de feed (slide 1 é a capa templatada; a
+// frente-3-4 crua fica de fora — ela já é o fundo da capa). Máx 10 slides (IG).
+export const CARROSSEL_ORDEM = [
+  "lateral",
+  "traseira-3-4",
+  "painel",
+  "bancos",
+  "porta-malas",
+  "roda",
+  "motor",
+];
+export const CARROSSEL_MAX = 10;
+
+export function montarCarrossel(
+  capaUrl: string,
+  capturas: MarketingCapturas,
+  galeria: string[] | null | undefined
+): string[] {
+  const slides: string[] = [capaUrl];
+  const usadas = new Set<string>([capturas.fotos?.find((f) => f.tag === "frente-3-4")?.url ?? ""]);
+  for (const tag of CARROSSEL_ORDEM) {
+    const url = capturas.fotos?.find((f) => f.tag === tag)?.url;
+    if (url && !usadas.has(url)) {
+      slides.push(url);
+      usadas.add(url);
+    }
+  }
+  for (const url of galeria ?? []) {
+    if (slides.length >= CARROSSEL_MAX) break;
+    if (!usadas.has(url)) {
+      slides.push(url);
+      usadas.add(url);
+    }
+  }
+  return slides.slice(0, CARROSSEL_MAX);
+}

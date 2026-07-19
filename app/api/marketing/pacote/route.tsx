@@ -9,7 +9,7 @@ import { requireVehicleOwner } from "@/lib/api-auth";
 import { cfgFromRow, gerarLegenda } from "@/lib/marketing-kit";
 import { loadCapaFont, renderCapa, toDataUri } from "@/lib/marketing-capa";
 import { completarCapturas } from "@/lib/marketing-classificar";
-import type { MarketingCapturas } from "@/lib/marketing-shotlist";
+import { montarCarrossel, type MarketingCapturas } from "@/lib/marketing-shotlist";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -69,25 +69,37 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Não consegui baixar a foto do veículo" }, { status: 502 });
     }
 
-    const img = renderCapa({ fotoUri, logoUri, cfg, veiculo, fontData });
-    const png = Buffer.from(await img.arrayBuffer());
+    // Capa em dois formatos: feed 4:5 (slide 1 do carrossel) e story 9:16
+    const ts = Date.now();
+    async function renderEUpload(formato: "feed" | "story"): Promise<string> {
+      const img = renderCapa({ fotoUri, logoUri, cfg, veiculo, fontData, formato });
+      const png = Buffer.from(await img.arrayBuffer());
+      const key = `marketing/${veiculoId}/${formato}-${ts}.png`;
+      const { error: upErr } = await supabaseAdmin.storage
+        .from("fotos-veiculos")
+        .upload(key, png, { contentType: "image/png", upsert: true });
+      if (upErr) throw new Error(`Upload da capa (${formato}) falhou: ${upErr.message}`);
+      return supabaseAdmin.storage.from("fotos-veiculos").getPublicUrl(key).data.publicUrl;
+    }
+    const [capaUrl, storyUrl] = await Promise.all([renderEUpload("feed"), renderEUpload("story")]);
 
-    const key = `marketing/${veiculoId}/capa-${Date.now()}.png`;
-    const { error: upErr } = await supabaseAdmin.storage
-      .from("fotos-veiculos")
-      .upload(key, png, { contentType: "image/png", upsert: true });
-    if (upErr) throw new Error(`Upload da capa falhou: ${upErr.message}`);
-    const capaUrl = supabaseAdmin.storage.from("fotos-veiculos").getPublicUrl(key).data.publicUrl;
+    // Carrossel de feed: capa + fotos etiquetadas em ordem narrativa + resto da galeria
+    const carrossel = montarCarrossel(capaUrl, capturas, veiculo.fotos);
 
     const legenda = await gerarLegenda(veiculo, cfg);
 
     const { error: dbErr } = await supabaseAdmin
       .from("veiculos")
-      .update({ marketing_capa_url: capaUrl, marketing_legenda: legenda })
+      .update({
+        marketing_capa_url: capaUrl,
+        marketing_story_url: storyUrl,
+        marketing_carrossel: carrossel,
+        marketing_legenda: legenda,
+      })
       .eq("id", veiculoId);
     if (dbErr) throw new Error(dbErr.message);
 
-    return NextResponse.json({ ok: true, capaUrl, legenda });
+    return NextResponse.json({ ok: true, capaUrl, storyUrl, carrossel, legenda });
   } catch (e: any) {
     console.error("❌ [marketing/pacote]", e?.message ?? e);
     return NextResponse.json({ error: e?.message ?? "Erro ao gerar kit" }, { status: 500 });

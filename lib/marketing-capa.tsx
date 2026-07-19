@@ -10,9 +10,14 @@ import { promises as fs } from "fs";
 import path from "path";
 import { linhaSpecs, precoFormatado, tituloVeiculo, type MarketingCfg } from "@/lib/marketing-kit";
 
-const W = 1080;
-const H = 1350;
-const FOTO_H = 860; // área exclusiva da foto; o restante é o painel de infos
+// Formatos de saída: feed 4:5 (post/carrossel) e story 9:16 (Stories/status).
+// FOTO_H = área exclusiva da foto; o restante é o painel de infos.
+// No story, o painel ganha respiro extra embaixo (barra de resposta do IG).
+export type CapaFormato = "feed" | "story";
+const DIMS: Record<CapaFormato, { W: number; H: number; FOTO_H: number; PAD_BOTTOM: number }> = {
+  feed:  { W: 1080, H: 1350, FOTO_H: 860,  PAD_BOTTOM: 44 },
+  story: { W: 1080, H: 1920, FOTO_H: 1230, PAD_BOTTOM: 150 },
+};
 
 // Anti-SSRF: só baixamos imagens do nosso próprio storage (regra do CLAUDE.md).
 export function isOwnStorage(url: string): boolean {
@@ -52,8 +57,10 @@ export function renderCapa(opts: {
   cfg: MarketingCfg;
   veiculo: any;
   fontData: ArrayBuffer;
+  formato?: CapaFormato;
 }): ImageResponse {
   const { fotoUri, logoUri, cfg, veiculo, fontData } = opts;
+  const { W, H, FOTO_H, PAD_BOTTOM } = DIMS[opts.formato ?? "feed"];
   const cor = cfg.corPrimaria;
   const nomeCurto = [veiculo?.marca, veiculo?.modelo].filter(Boolean).join(" ").toUpperCase() || tituloVeiculo(veiculo);
   const tituloSize = nomeCurto.length > 24 ? 44 : nomeCurto.length > 16 ? 54 : 64;
@@ -186,7 +193,7 @@ export function renderCapa(opts: {
             flexDirection: "column",
             width: W,
             height: H - FOTO_H,
-            padding: "8px 48px 44px 48px",
+            padding: `8px 48px ${PAD_BOTTOM}px 48px`,
             backgroundColor: "#0B0B0F",
           }}
         >

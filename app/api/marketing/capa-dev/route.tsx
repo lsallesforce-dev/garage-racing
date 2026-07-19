@@ -65,5 +65,6 @@ export async function GET(req: NextRequest) {
   }
 
   const [fotoUri, fontData] = await Promise.all([toDataUri(p.get("foto")), loadCapaFont()]);
-  return renderCapa({ fotoUri, logoUri: null, cfg, veiculo, fontData });
+  const formato = p.get("formato") === "story" ? ("story" as const) : ("feed" as const);
+  return renderCapa({ fotoUri, logoUri: null, cfg, veiculo, fontData, formato });
 }
