@@ -13,14 +13,15 @@ import {
   type MarketingCapturas,
   type ShotItem,
 } from "@/lib/marketing-shotlist";
+import Link from "next/link";
 import {
   Camera,
   Check,
   ChevronDown,
   Copy,
+  ExternalLink,
   Images,
   Loader2,
-  Send,
   Sparkles,
   Video,
 } from "lucide-react";
@@ -41,7 +42,6 @@ export default function KitPostagem({ veiculoId, capturasIniciais, capaInicial, 
   const [legenda, setLegenda] = useState<string>(legendaInicial ?? "");
   const [gerando, setGerando] = useState(false);
   const [classificando, setClassificando] = useState(false);
-  const [enviando, setEnviando] = useState(false);
   const [msg, setMsg] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
 
   // Config do tenant (colapsável)
@@ -150,30 +150,11 @@ export default function KitPostagem({ veiculoId, capturasIniciais, capaInicial, 
       if (!res.ok) throw new Error(d.error ?? `HTTP ${res.status}`);
       setCapa(`${d.capaUrl}?t=${Date.now()}`);
       setLegenda(d.legenda);
-      setMsg({ tipo: "ok", texto: "Kit gerado! Revise a capa e a legenda abaixo." });
+      setMsg({ tipo: "ok", texto: "Kit gerado! Revise abaixo ou na aba Kits da página Marketing." });
     } catch (e: any) {
       setMsg({ tipo: "erro", texto: e.message ?? "Erro ao gerar kit" });
     } finally {
       setGerando(false);
-    }
-  }
-
-  async function enviarKit() {
-    setEnviando(true);
-    setMsg(null);
-    try {
-      const res = await fetch("/api/marketing/enviar", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ veiculoId }),
-      });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.error ?? `HTTP ${res.status}`);
-      setMsg({ tipo: "ok", texto: "Kit enviado pro WhatsApp do gerente ✅" });
-    } catch (e: any) {
-      setMsg({ tipo: "erro", texto: e.message ?? "Erro ao enviar" });
-    } finally {
-      setEnviando(false);
     }
   }
 
@@ -349,15 +330,12 @@ export default function KitPostagem({ veiculoId, capturasIniciais, capaInicial, 
           {gerando ? "Gerando..." : capa ? "Regerar kit" : "Gerar kit"}
         </button>
         {capa && legenda ? (
-          <button
-            type="button"
-            onClick={enviarKit}
-            disabled={enviando}
-            className="flex items-center justify-center gap-2 rounded-2xl bg-green-600 px-6 font-black uppercase italic text-white transition-all hover:bg-green-700 disabled:opacity-50"
+          <Link
+            href="/marketing?tab=kits"
+            className="flex items-center justify-center gap-2 rounded-2xl bg-gray-100 px-5 font-black uppercase italic text-gray-600 transition-all hover:bg-gray-200 text-xs"
           >
-            {enviando ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
-            Enviar
-          </button>
+            <ExternalLink size={14} /> Ver na aba Kits
+          </Link>
         ) : null}
       </div>
 

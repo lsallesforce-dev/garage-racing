@@ -8,6 +8,7 @@ import { useUserRole } from "@/components/SidebarWrapper";
 import { Megaphone, LayoutList } from "lucide-react";
 import PublicarMetaButton from "@/components/PublicarMetaButton";
 import PublicarPortaisModal from "@/components/PublicarPortaisModal";
+import KitsGaleria from "@/components/KitsGaleria";
 
 // ─── Ícones de plataforma ─────────────────────────────────────────────────────
 
@@ -265,6 +266,9 @@ function MarketingPageInner() {
   const [carros, setCarros] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtro, setFiltro] = useState<"todos" | "disponiveis">("disponiveis");
+  const [aba, setAba] = useState<"portais" | "kits">(
+    searchParams.get("tab") === "kits" ? "kits" : "portais"
+  );
   const [wmConfigurado, setWmConfigurado] = useState(false);
   const [olxConectado, setOlxConectado]   = useState(false);
   const [mlConectado, setMlConectado]     = useState(false);
@@ -345,24 +349,43 @@ function MarketingPageInner() {
             <LayoutList size={14} /> Ver Anúncios Ativos
           </Link>
 
-          {/* Filtro */}
-          <div className="flex items-center gap-1 bg-white rounded-2xl p-1 border border-gray-100 shadow-sm self-start sm:self-auto">
-            {(["disponiveis", "todos"] as const).map((f) => (
-              <button
-                key={f}
-                onClick={() => setFiltro(f)}
-                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
-                  filtro === f ? "bg-gray-900 text-white shadow" : "text-gray-400 hover:text-gray-700"
-                }`}
-              >
-                {f === "disponiveis" ? "Disponíveis" : "Todos"}
-              </button>
-            ))}
-          </div>
+          {/* Filtro (só na aba Portais) */}
+          {aba === "portais" && (
+            <div className="flex items-center gap-1 bg-white rounded-2xl p-1 border border-gray-100 shadow-sm self-start sm:self-auto">
+              {(["disponiveis", "todos"] as const).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setFiltro(f)}
+                  className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
+                    filtro === f ? "bg-gray-900 text-white shadow" : "text-gray-400 hover:text-gray-700"
+                  }`}
+                >
+                  {f === "disponiveis" ? "Disponíveis" : "Todos"}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
+        {/* Abas: Portais | Kits de Postagem */}
+        <div className="flex items-center gap-1 bg-white rounded-2xl p-1 border border-gray-100 shadow-sm self-start w-fit mb-8">
+          {([["portais", "Portais"], ["kits", "Kits de Postagem"]] as const).map(([id, label]) => (
+            <button
+              key={id}
+              onClick={() => setAba(id)}
+              className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
+                aba === id ? "bg-gray-900 text-white shadow" : "text-gray-400 hover:text-gray-700"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {aba === "kits" && <KitsGaleria />}
+
         {/* Grid de veículos */}
-        {loading ? (
+        {aba === "portais" && (loading ? (
           <div className="py-32 flex items-center justify-center">
             <div className="w-8 h-8 border-4 border-gray-100 border-t-red-600 rounded-full animate-spin" />
           </div>
@@ -376,27 +399,29 @@ function MarketingPageInner() {
               <VeiculoMarketingCard key={carro.id} carro={carro} wmConfigurado={wmConfigurado} olxConectado={olxConectado} mlConectado={mlConectado} />
             ))}
           </div>
-        )}
+        ))}
 
         {/* Plataformas em breve */}
-        <div className="mt-10 bg-white rounded-3xl border border-gray-100 p-6 shadow-sm">
-          <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-4">Integrações planejadas</p>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {[
-              { nome: "OLX", cor: "bg-purple-50 border-purple-100", corText: "text-purple-600", status: olxConectado ? "Conectado" : "Clique para conectar", icon: <IconOLX className="w-6 h-6" /> },
-              { nome: "Webmotors", cor: "bg-red-50 border-red-100", corText: "text-red-600", status: wmConfigurado ? "Webhook ativo" : "Configure em Configurações", icon: <IconWebmotors className="w-6 h-6" /> },
-              { nome: "iCarros", cor: "bg-orange-50 border-orange-100", corText: "text-orange-600", status: "Planejado", icon: <span className="text-[10px] font-black text-orange-600">iCarros</span> },
-            ].map((p) => (
-              <div key={p.nome} className={`flex items-center gap-3 p-3 rounded-2xl border ${p.cor}`}>
-                <div className="w-8 h-8 flex items-center justify-center flex-shrink-0">{p.icon}</div>
-                <div>
-                  <p className={`text-[10px] font-black uppercase ${p.corText}`}>{p.nome}</p>
-                  <p className="text-[9px] text-gray-400">{p.status}</p>
+        {aba === "portais" && (
+          <div className="mt-10 bg-white rounded-3xl border border-gray-100 p-6 shadow-sm">
+            <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-4">Integrações planejadas</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { nome: "OLX", cor: "bg-purple-50 border-purple-100", corText: "text-purple-600", status: olxConectado ? "Conectado" : "Clique para conectar", icon: <IconOLX className="w-6 h-6" /> },
+                { nome: "Webmotors", cor: "bg-red-50 border-red-100", corText: "text-red-600", status: wmConfigurado ? "Webhook ativo" : "Configure em Configurações", icon: <IconWebmotors className="w-6 h-6" /> },
+                { nome: "iCarros", cor: "bg-orange-50 border-orange-100", corText: "text-orange-600", status: "Planejado", icon: <span className="text-[10px] font-black text-orange-600">iCarros</span> },
+              ].map((p) => (
+                <div key={p.nome} className={`flex items-center gap-3 p-3 rounded-2xl border ${p.cor}`}>
+                  <div className="w-8 h-8 flex items-center justify-center flex-shrink-0">{p.icon}</div>
+                  <div>
+                    <p className={`text-[10px] font-black uppercase ${p.corText}`}>{p.nome}</p>
+                    <p className="text-[9px] text-gray-400">{p.status}</p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
       </div>
     </div>
