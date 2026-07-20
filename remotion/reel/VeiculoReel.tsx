@@ -2,7 +2,7 @@ import React from "react";
 import { AbsoluteFill, Audio, Sequence, useVideoConfig } from "remotion";
 import { DUR, REEL } from "../theme";
 import { ensureMontserrat } from "../loadFont";
-import type { ReelProps } from "../types";
+import type { ReelClip, ReelProps } from "../types";
 import { Intro } from "./Intro";
 import { ClipScene } from "./ClipScene";
 import { Endcard } from "./Endcard";
@@ -17,7 +17,7 @@ export function duracaoReel(nClips: number): number {
 export const VeiculoReel: React.FC<ReelProps> = (dados) => {
   ensureMontserrat();
   const { fps } = useVideoConfig();
-  const clips = dados.clips.length ? dados.clips : [{ label: "" }];
+  const clips: ReelClip[] = dados.clips.length ? dados.clips : [{}];
 
   let cursor = 0;
   const introFrom = cursor;
@@ -31,7 +31,8 @@ export const VeiculoReel: React.FC<ReelProps> = (dados) => {
     // Sobrepõe um pouco pra crossfade (a cena começa antes da anterior sair)
     const from = cursor - (i === 0 ? 0 : DUR.transicao);
     cursor = from + dur;
-    const callout = callouts.length ? callouts[i % callouts.length] : undefined;
+    // callout editado no clip vence; senão distribui os opcionais.
+    const callout = clip.callout ?? (callouts.length ? callouts[i % callouts.length] : undefined);
     return { clip, from, dur, callout };
   });
 

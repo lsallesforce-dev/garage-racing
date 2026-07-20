@@ -11,6 +11,7 @@ import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { cfgFromRow, formatFone, linhaSpecs, precoFormatado } from "@/lib/marketing-kit";
 import { fotoParaCapa } from "@/lib/marketing-capa";
+import { calloutsDoVeiculo } from "@/lib/reel-callouts";
 import { SHOT_TAKES, type MarketingCapturas } from "@/lib/marketing-shotlist";
 import type { ReelProps, ReelClip } from "@/remotion/types";
 
@@ -46,72 +47,40 @@ function cleanModelo(m: string | null | undefined): string {
   return out.join(" ") || m.split(/\s+/)[0] || "";
 }
 
-// Opcionais viram callouts curtos e vendáveis sobre os clipes do reel. Um mapa de
-// palavras-chave dá rótulos limpos ("Central multimídia VW Play 10,1..." → "MULTIMÍDIA");
-// o que não casar é encurtado (sem parênteses, ≤3 palavras).
-const PRETTY_OPCIONAL: [RegExp, string][] = [
-  [/multim[íi]dia|carplay|android auto|vw play|tela touch/i, "CENTRAL MULTIMÍDIA"],
-  [/c[âa]mera de r[ée]/i, "CÂMERA DE RÉ"],
-  [/airbag/i, "AIRBAGS"],
-  [/couro/i, "BANCOS EM COURO"],
-  [/full led|far[óo]is? (full )?led|led/i, "FARÓIS DE LED"],
-  [/roda.*liga|liga leve/i, "RODAS DE LIGA LEVE"],
-  [/(adaptativo|acc|piloto autom|cruise)/i, "PILOTO AUTOMÁTICO"],
-  [/frenagem|aeb/i, "FRENAGEM AUTOMÁTICA"],
-  [/climat|dual zone|ar-condicionado autom|ar condicionado digital/i, "AR-CONDICIONADO DIGITAL"],
-  [/sensor.*estacion|sensor de r[ée]|sensor dianteiro|park/i, "SENSOR DE ESTACIONAMENTO"],
-  [/(kessy|presencial|keyless|push start|partida por bot)/i, "CHAVE PRESENCIAL"],
-  [/active info|painel.*digital|tft|instrumentos digital/i, "PAINEL DIGITAL"],
-  [/teto solar|panor[âa]mico/i, "TETO SOLAR"],
-  [/vidros? el[ée]tricos?/i, "VIDROS ELÉTRICOS"],
-  [/dire[çc][ãa]o el[ée]trica/i, "DIREÇÃO ELÉTRICA"],
-  [/freio.*disco|freio abs|\babs\b/i, "FREIOS ABS"],
-  [/controle de (estabilidade|tra[çc][ãa]o)|esp/i, "CONTROLE DE ESTABILIDADE"],
-  [/engate|reboque/i, "ENGATE REBOQUE"],
-  [/rack de teto/i, "RACK DE TETO"],
-  [/pneus? novos?/i, "PNEUS NOVOS"],
-];
-
-function curtaOpcional(s: string): string {
-  for (const [re, label] of PRETTY_OPCIONAL) if (re.test(s)) return label;
-  let t = s.split("(")[0].split(/[,–-]/)[0].trim();
-  const words = t.split(/\s+/);
-  if (words.length > 3) t = words.slice(0, 3).join(" ");
-  return t.toUpperCase();
-}
-
-// Lista de callouts únicos (sem repetir) a partir dos opcionais → pontos fortes.
-function calloutsDoVeiculo(veiculo: any): string[] {
-  const fontes: string[] = [...(veiculo?.opcionais ?? []), ...(veiculo?.pontos_fortes_venda ?? [])];
-  const vistos = new Set<string>();
-  const out: string[] = [];
-  for (const f of fontes) {
-    const c = curtaOpcional(String(f));
-    if (c && c.length >= 3 && !vistos.has(c)) {
-      vistos.add(c);
-      out.push(c);
-    }
-  }
-  return out;
-}
-
 // Monta os ReelProps a partir do veículo + config do tenant.
 export async function buildReelProps(veiculo: any, cfgRow: any): Promise<ReelProps> {
   const cfg = cfgFromRow(cfgRow);
   const capturas: MarketingCapturas = veiculo.marketing_capturas ?? {};
 
-  // Clips: ordena os takes pela ordem da shot list. O callout de cada clip é um
-  // OPCIONAL vendável do carro (não o rótulo do ângulo, que é jargão interno).
+  // Takes ordenados pela shot list (com a tag pra casar com a edição manual).
   const takesEtiquetados = capturas.takes ?? [];
   const ordemTag = SHOT_TAKES.map((s) => s.tag);
-  let clips: ReelClip[] = [];
-  if (takesEtiquetados.length) {
-    clips = [...takesEtiquetados]
-      .sort((a, b) => ordemTag.indexOf(a.tag) - ordemTag.indexOf(b.tag))
-      .map((t) => ({ src: t.url }));
-  } else {
-    clips = (veiculo.video_takes ?? []).map((src: string) => ({ src }));
-  }
+  const ordered: { src: string; tag?: string }[] = takesEtiquetados.length
+    ? [...takesEtiquetados]
+        .sort((a, b) => ordemTag.indexOf(a.tag) - ordemTag.indexOf(b.tag))
+        .map((t) => ({ src: t.url, tag: t.tag }))
+    : (veiculo.video_takes ?? []).map((src: string) => ({ src }));
+
+  // Edição manual (estilo CapCut): duração + legenda por take. Casa por tag, senão índice.
+  const edit: any[] | null = Array.isArray(veiculo.marketing_reel_edit?.clips)
+    ? veiculo.marketing_reel_edit.clips
+    : null;
+  const callouts = calloutsDoVeiculo(veiculo);
+  const clips: ReelClip[] = ordered.map((t, i) => {
+    const e = edit ? (edit.find((x) => x?.tag && x.tag === t.tag) ?? edit[i]) : null;
+    const seg = typeof e?.segundos === "number" ? Math.min(Math.max(e.segundos, 1), 6) : null;
+    const callout =
+      e && typeof e.callout === "string"
+        ? e.callout.trim().toUpperCase() || undefined
+        : callouts.length
+          ? callouts[i % callouts.length]
+          : undefined;
+    return {
+      src: t.src,
+      durationInFrames: seg ? Math.round(seg * 30) : undefined,
+      callout,
+    };
+  });
 
   const anos = [veiculo.ano, veiculo.ano_modelo].filter(Boolean);
   const anoLabel =

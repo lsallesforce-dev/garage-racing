@@ -5,6 +5,7 @@ export interface ReelClip {
   src?: string;             // URL do take (R2) ou vídeo bruto; ausente = só no preview
   startFrom?: number;       // segundo de início do trecho aproveitado
   durationInFrames?: number;// duração da cena (default DUR.porClip)
+  callout?: string;         // legenda sobre o take (editável; default = opcional)
 }
 
 export interface ReelProps {

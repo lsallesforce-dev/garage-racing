@@ -11,6 +11,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useUserRole } from "@/components/SidebarWrapper";
 import CapturaGuiada from "@/components/CapturaGuiada";
+import ReelEditor from "@/components/ReelEditor";
 import type { MarketingCapturas } from "@/lib/marketing-shotlist";
 import {
   Check,
@@ -22,6 +23,7 @@ import {
   Loader2,
   RefreshCw,
   Sparkles,
+  Wand2,
 } from "lucide-react";
 
 interface CarroKit {
@@ -59,6 +61,7 @@ export default function KitsGaleria() {
   const [gerandoTodos, setGerandoTodos] = useState<{ atual: number; total: number } | null>(null);
   const [reelBusy, setReelBusy] = useState<Record<string, boolean>>({});
   const [aberto, setAberto] = useState<Record<string, boolean>>({});
+  const [editando, setEditando] = useState<Record<string, boolean>>({});
 
   // Config da loja (nível tenant)
   const [cfgAberta, setCfgAberta] = useState(false);
@@ -438,6 +441,27 @@ export default function KitsGaleria() {
                     <p className="text-center text-[9px] font-bold uppercase tracking-widest text-gray-400 py-1">
                       Suba os takes na captura guiada acima pra liberar o reel
                     </p>
+                  )}
+
+                  {/* Editor estilo CapCut: duração + legenda de cada take */}
+                  {temTakes(c) && c.marketing_reel_status !== "processando" && (
+                    <>
+                      <button
+                        onClick={() => setEditando((p) => ({ ...p, [c.id]: !p[c.id] }))}
+                        className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white py-2 text-[9px] font-black uppercase tracking-widest text-gray-500 hover:bg-gray-100"
+                      >
+                        <Wand2 size={12} /> {editando[c.id] ? "Fechar editor" : "Editar takes e legendas"}
+                      </button>
+                      {editando[c.id] && (
+                        <ReelEditor
+                          veiculoId={c.id}
+                          onGerar={() => {
+                            setEditando((p) => ({ ...p, [c.id]: false }));
+                            gerarReel(c.id);
+                          }}
+                        />
+                      )}
+                    </>
                   )}
                 </div>
 
