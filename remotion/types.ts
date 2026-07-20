@@ -22,6 +22,7 @@ export interface ReelProps {
   capaW?: number | null;    // dimensões da foto → intro decide cover×contain
   capaH?: number | null;
   logoUrl: string | null;
+  semMarca?: boolean;       // fotos já têm marca d'água → intro não sobrepõe logo/nome
   whatsapp: string | null;  // exibido no endcard
   clips: ReelClip[];
   trilhaUrl: string | null;

@@ -18,6 +18,7 @@ export interface MarketingCfg {
   whatsapp: string | null;
   site: string | null;
   corPrimaria: string;
+  fotoComMarca: boolean; // fotos já têm marca d'água da loja → não sobrepor logo
 }
 
 // Monta o MarketingCfg a partir da row de config_garage (mais recente do tenant).
@@ -41,6 +42,7 @@ export function cfgFromRow(row: any): MarketingCfg {
     whatsapp: row?.whatsapp || null,
     site,
     corPrimaria: row?.vitrine_tema?.cor_primaria || "#DC2626",
+    fotoComMarca: row?.marketing_foto_com_marca === true,
   };
 }
 

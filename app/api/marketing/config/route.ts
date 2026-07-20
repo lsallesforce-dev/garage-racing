@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 async function latestCfgRow(userId: string) {
   const { data } = await supabaseAdmin
     .from("config_garage")
-    .select("id, marketing_mostrar_preco, marketing_claim, marketing_hashtags")
+    .select("id, marketing_mostrar_preco, marketing_claim, marketing_hashtags, marketing_foto_com_marca")
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(1);
@@ -25,6 +25,7 @@ export async function GET() {
     mostrar_preco: row?.marketing_mostrar_preco !== false,
     claim: row?.marketing_claim ?? "",
     hashtags: row?.marketing_hashtags ?? "",
+    foto_com_marca: row?.marketing_foto_com_marca === true,
   });
 }
 
@@ -38,6 +39,7 @@ export async function POST(req: NextRequest) {
   if (typeof body.mostrar_preco === "boolean") updates.marketing_mostrar_preco = body.mostrar_preco;
   if (typeof body.claim === "string") updates.marketing_claim = body.claim.trim().slice(0, 140) || null;
   if (typeof body.hashtags === "string") updates.marketing_hashtags = body.hashtags.trim().slice(0, 300) || null;
+  if (typeof body.foto_com_marca === "boolean") updates.marketing_foto_com_marca = body.foto_com_marca;
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: "Nada pra atualizar" }, { status: 400 });
   }

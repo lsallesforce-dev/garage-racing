@@ -48,7 +48,8 @@ export const Intro: React.FC<{ dados: ReelProps }> = ({ dados }) => {
         }}
       />
 
-      {/* Logo / nome da loja no topo */}
+      {/* Logo / nome da loja no topo — some quando a foto já tem marca d'água */}
+      {!dados.semMarca && (
       <div style={{ position: "absolute", top: 70, left: 64, opacity: logoOp }}>
         {dados.logoUrl ? (
           <div style={{ background: "rgba(255,255,255,0.94)", borderRadius: 24, padding: "16px 26px", display: "inline-flex" }}>
@@ -60,6 +61,7 @@ export const Intro: React.FC<{ dados: ReelProps }> = ({ dados }) => {
           </span>
         )}
       </div>
+      )}
 
       {/* Bloco inferior: faixa + título */}
       <div style={{ position: "absolute", bottom: 210, left: 64, right: 64 }}>

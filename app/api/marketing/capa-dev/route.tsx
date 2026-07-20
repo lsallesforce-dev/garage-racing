@@ -28,6 +28,7 @@ export async function GET(req: NextRequest) {
     whatsapp: null,
     site: null,
     corPrimaria: p.get("cor") ?? "#DC2626",
+    fotoComMarca: p.get("marca_dagua") === "1",
   };
   const veiculo = {
     marca: p.get("marca") ?? "Volkswagen",

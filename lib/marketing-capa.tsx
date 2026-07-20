@@ -76,9 +76,12 @@ export function renderCapa(opts: {
   fontData: ArrayBuffer;
   formato?: CapaFormato;
 }): ImageResponse {
-  const { foto, logoUri, cfg, veiculo, fontData } = opts;
+  const { foto, cfg, veiculo, fontData } = opts;
   const { W, H, FOTO_H, PAD_BOTTOM } = DIMS[opts.formato ?? "feed"];
   const cor = cfg.corPrimaria;
+  // Se as fotos já têm marca d'água da loja, não sobrepõe logo/nome (marca dupla).
+  const logoUri = cfg.fotoComMarca ? null : opts.logoUri;
+  const mostraBranding = !cfg.fotoComMarca;
 
   // cover × contain: corte VERTICAL (foto mais alta que a janela) é seguro — o viés
   // 62% come céu, não carro. Corte HORIZONTAL (foto deitada em janela alta, típico
@@ -148,36 +151,38 @@ export function renderCapa(opts: {
             }}
           />
 
-          {/* Logo (chip branco) ou nome da loja */}
-          <div style={{ position: "absolute", top: 40, left: 48, display: "flex", alignItems: "center" }}>
-            {logoUri ? (
-              <div
-                style={{
-                  display: "flex",
-                  backgroundColor: "rgba(255,255,255,0.94)",
-                  borderRadius: 20,
-                  padding: "12px 20px",
-                }}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={logoUri} alt="" style={{ width: 160, height: 78, objectFit: "contain" }} />
-              </div>
-            ) : (
-              <div
-                style={{
-                  display: "flex",
-                  color: "#FFFFFF",
-                  fontSize: 32,
-                  fontWeight: 900,
-                  letterSpacing: 3,
-                  textTransform: "uppercase",
-                  textShadow: "0 2px 8px rgba(0,0,0,0.6)",
-                }}
-              >
-                {cfg.nome}
-              </div>
-            )}
-          </div>
+          {/* Logo (chip branco) ou nome da loja — some quando a foto já tem marca d'água */}
+          {mostraBranding && (
+            <div style={{ position: "absolute", top: 40, left: 48, display: "flex", alignItems: "center" }}>
+              {logoUri ? (
+                <div
+                  style={{
+                    display: "flex",
+                    backgroundColor: "rgba(255,255,255,0.94)",
+                    borderRadius: 20,
+                    padding: "12px 20px",
+                  }}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={logoUri} alt="" style={{ width: 160, height: 78, objectFit: "contain" }} />
+                </div>
+              ) : (
+                <div
+                  style={{
+                    display: "flex",
+                    color: "#FFFFFF",
+                    fontSize: 32,
+                    fontWeight: 900,
+                    letterSpacing: 3,
+                    textTransform: "uppercase",
+                    textShadow: "0 2px 8px rgba(0,0,0,0.6)",
+                  }}
+                >
+                  {cfg.nome}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Selo */}
           <div

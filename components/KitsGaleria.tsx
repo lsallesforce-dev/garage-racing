@@ -66,6 +66,7 @@ export default function KitsGaleria() {
   const [mostrarPreco, setMostrarPreco] = useState(true);
   const [claim, setClaim] = useState("");
   const [hashtags, setHashtags] = useState("");
+  const [fotoComMarca, setFotoComMarca] = useState(false);
   const [salvandoCfg, setSalvandoCfg] = useState(false);
 
   useEffect(() => {
@@ -90,6 +91,7 @@ export default function KitsGaleria() {
         setMostrarPreco(d.mostrar_preco !== false);
         setClaim(d.claim ?? "");
         setHashtags(d.hashtags ?? "");
+        setFotoComMarca(d.foto_com_marca === true);
         setCfgCarregada(true);
       })
       .catch(() => setCfgCarregada(true));
@@ -131,7 +133,7 @@ export default function KitsGaleria() {
       await fetch("/api/marketing/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mostrar_preco: mostrarPreco, claim, hashtags }),
+        body: JSON.stringify({ mostrar_preco: mostrarPreco, claim, hashtags, foto_com_marca: fotoComMarca }),
       });
     } finally {
       setSalvandoCfg(false);
@@ -285,6 +287,10 @@ export default function KitsGaleria() {
           <label className="flex items-center gap-3 text-xs font-bold text-gray-600">
             <input type="checkbox" checked={mostrarPreco} onChange={(e) => setMostrarPreco(e.target.checked)} className="h-4 w-4 accent-red-600" />
             Mostrar preço na capa e na legenda
+          </label>
+          <label className="flex items-center gap-3 text-xs font-bold text-gray-600">
+            <input type="checkbox" checked={fotoComMarca} onChange={(e) => setFotoComMarca(e.target.checked)} className="h-4 w-4 accent-red-600" />
+            Minhas fotos já têm a marca d&apos;água da loja (não sobrepor o logo)
           </label>
           <input value={claim} onChange={(e) => setClaim(e.target.value)} placeholder="Claim da loja (ex.: Pegamos seu carro na troca e financiamos a diferença)" className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs" maxLength={140} />
           <input value={hashtags} onChange={(e) => setHashtags(e.target.value)} placeholder="Hashtags fixas (ex.: #minhaloja #riopreto)" className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs" maxLength={300} />

@@ -137,6 +137,7 @@ export async function buildReelProps(veiculo: any, cfgRow: any): Promise<ReelPro
     capaW: medida?.w ?? null,
     capaH: medida?.h ?? null,
     logoUrl: supabaseAdmin.storage.from("configuracoes").getPublicUrl(`logos/${veiculo.user_id}.png`).data.publicUrl,
+    semMarca: cfg.fotoComMarca,
     whatsapp: formatFone(cfg.telefoneLoja || cfg.whatsapp),
     clips,
     trilhaUrl: `${R2_PUBLIC_URL}/musicas/animado.mp3`,
