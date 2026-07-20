@@ -1,3 +1,15 @@
+# Railway build do worker. O render do reel usa o Chrome headless do Remotion
+# (@remotion/renderer) — precisa das libs de sistema do Chromium no ambiente.
+[phases.setup]
+nixPkgs = ["nodejs", "chromium"]
+nixLibs = [
+  "glib", "nss", "nspr", "at-spi2-core", "cups", "dbus",
+  "libdrm", "expat", "libxkbcommon", "mesa",
+  "xorg.libX11", "xorg.libXcomposite", "xorg.libXdamage",
+  "xorg.libXext", "xorg.libXfixes", "xorg.libXrandr", "xorg.libxcb",
+  "alsa-lib", "pango", "cairo", "atk", "gtk3",
+]
+
 [phases.build]
 cmds = ["npm install"]
 

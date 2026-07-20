@@ -14,6 +14,7 @@ import {
   Copy,
   Download,
   ExternalLink,
+  Film,
   Images,
   Loader2,
   RefreshCw,
@@ -33,6 +34,16 @@ interface CarroKit {
   marketing_story_url: string | null;
   marketing_carrossel: string[] | null;
   marketing_legenda: string | null;
+  marketing_reel_url: string | null;
+  marketing_reel_status: string | null;
+  video_takes: string[] | null;
+  marketing_capturas: { takes?: unknown[] } | null;
+}
+
+function reelToProxy(url: string): string {
+  // pub-xxx.r2.dev → /api/r2/<key> (evita rate-limit e CORS no <video>)
+  const m = url.match(/https?:\/\/[^/]+\/(.+)$/);
+  return m && url.includes(".r2.dev") ? `/api/r2/${m[1]}` : url;
 }
 
 export default function KitsGaleria() {
@@ -44,12 +55,13 @@ export default function KitsGaleria() {
   const [copiado, setCopiado] = useState<string | null>(null);
   const [erro, setErro] = useState<Record<string, string>>({});
   const [gerandoTodos, setGerandoTodos] = useState<{ atual: number; total: number } | null>(null);
+  const [reelBusy, setReelBusy] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (!effectiveUserId) return;
     supabase
       .from("veiculos")
-      .select("id, marca, modelo, versao, ano, ano_modelo, fotos, status_venda, marketing_capa_url, marketing_story_url, marketing_carrossel, marketing_legenda")
+      .select("id, marca, modelo, versao, ano, ano_modelo, fotos, status_venda, marketing_capa_url, marketing_story_url, marketing_carrossel, marketing_legenda, marketing_reel_url, marketing_reel_status, video_takes, marketing_capturas")
       .eq("user_id", effectiveUserId)
       .order("created_at", { ascending: false })
       .then(({ data }) => {
@@ -57,6 +69,48 @@ export default function KitsGaleria() {
         setLoading(false);
       });
   }, [effectiveUserId]);
+
+  // Polling do status do reel enquanto algum estiver "processando"
+  useEffect(() => {
+    const processando = carros.filter((c) => c.marketing_reel_status === "processando").map((c) => c.id);
+    if (!processando.length) return;
+    const t = setInterval(async () => {
+      await Promise.all(
+        processando.map(async (id) => {
+          const r = await fetch(`/api/marketing/reel?veiculoId=${id}`).then((x) => x.json()).catch(() => null);
+          if (r && r.status && r.status !== "processando") {
+            setCarros((prev) =>
+              prev.map((c) => (c.id === id ? { ...c, marketing_reel_status: r.status, marketing_reel_url: r.url } : c))
+            );
+          }
+        })
+      );
+    }, 8000);
+    return () => clearInterval(t);
+  }, [carros]);
+
+  function temTakes(c: CarroKit) {
+    return (c.video_takes?.length ?? 0) > 0 || (c.marketing_capturas?.takes?.length ?? 0) > 0;
+  }
+
+  async function gerarReel(id: string) {
+    setReelBusy((p) => ({ ...p, [id]: true }));
+    setErro((p) => ({ ...p, [id]: "" }));
+    try {
+      const res = await fetch("/api/marketing/reel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ veiculoId: id }),
+      });
+      const d = await res.json();
+      if (!res.ok && res.status !== 202) throw new Error(d.error ?? `HTTP ${res.status}`);
+      setCarros((prev) => prev.map((c) => (c.id === id ? { ...c, marketing_reel_status: "processando" } : c)));
+    } catch (e: any) {
+      setErro((p) => ({ ...p, [id]: e.message ?? "Erro ao gerar reel" }));
+    } finally {
+      setReelBusy((p) => ({ ...p, [id]: false }));
+    }
+  }
 
   const comKit = carros.filter((c) => c.marketing_capa_url);
   const semKit = carros.filter(
@@ -318,6 +372,61 @@ export default function KitsGaleria() {
                 >
                   <Download size={12} /> Capa
                 </button>
+              </div>
+
+              {/* ── Reel (vídeo) ── */}
+              <div className="rounded-2xl border border-gray-100 bg-gray-50 p-3">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <Film size={12} className="text-gray-400" />
+                  <span className="text-[9px] font-black uppercase tracking-widest text-gray-500">Reel (vídeo)</span>
+                </div>
+
+                {c.marketing_reel_status === "pronto" && c.marketing_reel_url ? (
+                  <>
+                    {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                    <video
+                      src={reelToProxy(c.marketing_reel_url)}
+                      controls
+                      className="w-full rounded-xl border border-gray-100 bg-black mb-2"
+                    />
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => baixarUrl(reelToProxy(c.marketing_reel_url!), `reel-${slugCarro(c)}.mp4`)}
+                        className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gray-100 py-2.5 text-[9px] font-black uppercase tracking-widest text-gray-600 hover:bg-gray-200"
+                      >
+                        <Download size={12} /> Baixar reel
+                      </button>
+                      <button
+                        onClick={() => gerarReel(c.id)}
+                        disabled={reelBusy[c.id]}
+                        title="Regerar reel"
+                        className="flex items-center justify-center rounded-xl bg-gray-900 px-3 py-2.5 text-white hover:bg-red-600 disabled:opacity-50"
+                      >
+                        {reelBusy[c.id] ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                      </button>
+                    </div>
+                  </>
+                ) : c.marketing_reel_status === "processando" ? (
+                  <div className="flex items-center gap-2 py-2 text-[10px] font-bold text-gray-500">
+                    <Loader2 size={13} className="animate-spin" /> Renderizando o vídeo... (pode levar alguns minutos)
+                  </div>
+                ) : temTakes(c) ? (
+                  <button
+                    onClick={() => gerarReel(c.id)}
+                    disabled={reelBusy[c.id]}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-gray-900 py-2.5 text-[10px] font-black uppercase tracking-widest text-white hover:bg-red-600 disabled:opacity-50"
+                  >
+                    {reelBusy[c.id] ? <Loader2 size={12} className="animate-spin" /> : <Film size={12} />}
+                    {c.marketing_reel_status === "erro" ? "Tentar de novo" : "Gerar reel"}
+                  </button>
+                ) : (
+                  <Link
+                    href={`/veiculo/${c.id}`}
+                    className="block rounded-xl bg-gray-100 py-2.5 text-center text-[9px] font-bold uppercase tracking-widest text-gray-400 hover:bg-gray-200"
+                  >
+                    Grave os takes no veículo pra liberar o reel
+                  </Link>
+                )}
               </div>
 
               <div className="flex items-center justify-between min-h-[14px]">
