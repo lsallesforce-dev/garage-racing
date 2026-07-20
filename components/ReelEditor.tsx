@@ -1,15 +1,17 @@
 "use client";
 
-// Editor do reel (estilo CapCut) — por take: duração na timeline + legenda (callout)
-// que aparece sobre o clipe. "Salvar e gerar" persiste e dispara o render.
+// Editor do reel (estilo CapCut). Por take: ponto de corte (scrubber que move o
+// vídeo — arrasta pra escolher de onde começa), duração, legenda; + reordenar e
+// escolher a trilha. "Salvar e gerar" persiste e dispara o render.
 
-import React, { useEffect, useState } from "react";
-import { Loader2, Film, Save, ChevronUp, ChevronDown, Music } from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
+import { Loader2, Film, Save, ChevronUp, ChevronDown, Music, Scissors } from "lucide-react";
 
 interface Linha {
   tag: string | null;
   label: string;
   url: string;
+  inicio: number;
   segundos: number;
   callout: string;
 }
@@ -24,6 +26,117 @@ const TRILHAS: { id: string; nome: string }[] = [
 function toProxy(url: string): string {
   const m = url.match(/https?:\/\/[^/]+\/(.+)$/);
   return m && url.includes(".r2.dev") ? `/api/r2/${m[1]}` : url;
+}
+
+// Uma linha = um take, com scrubber que move o vídeo pra escolher o ponto de corte.
+function TakeRow({
+  l,
+  i,
+  total,
+  onChange,
+  onMover,
+}: {
+  l: Linha;
+  i: number;
+  total: number;
+  onChange: (patch: Partial<Linha>) => void;
+  onMover: (dir: -1 | 1) => void;
+}) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [dur, setDur] = useState(0);
+
+  // Move o preview pro ponto de início escolhido (dá o "movimento" na imagem).
+  function seek(t: number) {
+    const v = videoRef.current;
+    if (v && Number.isFinite(t)) v.currentTime = Math.min(t, Math.max(dur - 0.05, 0));
+  }
+
+  const maxInicio = dur > 0 ? Math.max(dur - 0.5, 0) : 10;
+
+  return (
+    <div className="rounded-xl border border-gray-100 bg-white p-2">
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">
+          {i + 1}. {l.label}
+        </span>
+        <div className="flex items-center gap-1">
+          <button onClick={() => onMover(-1)} disabled={i === 0} className="text-gray-400 hover:text-gray-800 disabled:opacity-25" title="Subir">
+            <ChevronUp size={16} />
+          </button>
+          <button onClick={() => onMover(1)} disabled={i === total - 1} className="text-gray-400 hover:text-gray-800 disabled:opacity-25" title="Descer">
+            <ChevronDown size={16} />
+          </button>
+        </div>
+      </div>
+
+      <div className="flex gap-3">
+        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+        <video
+          ref={videoRef}
+          src={toProxy(l.url)}
+          muted
+          playsInline
+          preload="metadata"
+          onLoadedMetadata={(e) => {
+            const d = e.currentTarget.duration;
+            if (Number.isFinite(d)) setDur(d);
+            seek(l.inicio);
+          }}
+          className="w-20 h-32 rounded-lg object-cover bg-black flex-shrink-0"
+        />
+
+        <div className="flex-1 min-w-0 flex flex-col justify-center gap-2">
+          {/* Ponto de corte — arrasta e o vídeo se move */}
+          <div>
+            <div className="flex items-center justify-between mb-0.5">
+              <span className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-gray-400">
+                <Scissors size={10} /> Início do corte
+              </span>
+              <span className="text-[10px] font-black text-gray-700">{l.inicio.toFixed(1)}s</span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={maxInicio}
+              step={0.1}
+              value={Math.min(l.inicio, maxInicio)}
+              onChange={(e) => {
+                const t = Number(e.target.value);
+                onChange({ inicio: t });
+                seek(t);
+              }}
+              className="w-full accent-gray-900"
+            />
+          </div>
+
+          {/* Duração do clipe */}
+          <div>
+            <div className="flex items-center justify-between mb-0.5">
+              <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Duração</span>
+              <span className="text-[10px] font-black text-gray-700">{l.segundos.toFixed(1)}s</span>
+            </div>
+            <input
+              type="range"
+              min={1}
+              max={6}
+              step={0.5}
+              value={l.segundos}
+              onChange={(e) => onChange({ segundos: Number(e.target.value) })}
+              className="w-full accent-red-600"
+            />
+          </div>
+        </div>
+      </div>
+
+      <input
+        value={l.callout}
+        onChange={(e) => onChange({ callout: e.target.value })}
+        maxLength={40}
+        placeholder="Legenda sobre o take (ex.: CÂMERA DE RÉ)"
+        className="mt-2 w-full rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px] font-bold uppercase"
+      />
+    </div>
+  );
 }
 
 export default function ReelEditor({
@@ -74,7 +187,7 @@ export default function ReelEditor({
         body: JSON.stringify({
           veiculoId,
           trilha,
-          clips: linhas.map((l) => ({ tag: l.tag, url: l.url, segundos: l.segundos, callout: l.callout })),
+          clips: linhas.map((l) => ({ tag: l.tag, url: l.url, inicio: l.inicio, segundos: l.segundos, callout: l.callout })),
         }),
       });
       if (!res.ok) throw new Error((await res.json()).error ?? `HTTP ${res.status}`);
@@ -103,46 +216,19 @@ export default function ReelEditor({
   return (
     <div className="mt-2 space-y-2">
       <p className="text-[9px] font-bold text-gray-400">
-        Ajuste a duração e a legenda de cada take. Total dos takes: ~{totalSeg.toFixed(1)}s (+ abertura e final).
+        Arraste o corte pra escolher de onde cada take começa; ajuste a duração e a legenda.
+        Total dos takes: ~{totalSeg.toFixed(1)}s (+ abertura e final).
       </p>
 
       {linhas.map((l, i) => (
-        <div key={i} className="flex items-center gap-2 rounded-xl border border-gray-100 bg-white p-2">
-          {/* Reordenar */}
-          <div className="flex flex-col gap-0.5 flex-shrink-0">
-            <button onClick={() => mover(i, -1)} disabled={i === 0} className="text-gray-400 hover:text-gray-800 disabled:opacity-25" title="Subir">
-              <ChevronUp size={16} />
-            </button>
-            <span className="text-[9px] font-black text-gray-400 text-center">{i + 1}</span>
-            <button onClick={() => mover(i, 1)} disabled={i === linhas.length - 1} className="text-gray-400 hover:text-gray-800 disabled:opacity-25" title="Descer">
-              <ChevronDown size={16} />
-            </button>
-          </div>
-          {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-          <video src={toProxy(l.url)} muted preload="metadata" className="w-14 h-20 rounded-lg object-cover bg-black flex-shrink-0" />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">{l.label}</span>
-              <span className="text-[10px] font-black text-gray-700">{l.segundos.toFixed(1)}s</span>
-            </div>
-            <input
-              type="range"
-              min={1}
-              max={6}
-              step={0.5}
-              value={l.segundos}
-              onChange={(e) => set(i, { segundos: Number(e.target.value) })}
-              className="w-full accent-red-600 mb-2"
-            />
-            <input
-              value={l.callout}
-              onChange={(e) => set(i, { callout: e.target.value })}
-              maxLength={40}
-              placeholder="Legenda sobre o take (ex.: CÂMERA DE RÉ)"
-              className="w-full rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px] font-bold uppercase"
-            />
-          </div>
-        </div>
+        <TakeRow
+          key={l.url}
+          l={l}
+          i={i}
+          total={linhas.length}
+          onChange={(patch) => set(i, patch)}
+          onMover={(dir) => mover(i, dir)}
+        />
       ))}
 
       {/* Trilha */}

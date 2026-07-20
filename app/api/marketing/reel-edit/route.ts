@@ -17,6 +17,7 @@ interface LinhaEdit {
   tag: string | null;
   label: string;   // rótulo do ângulo (referência interna)
   url: string;
+  inicio: number;  // ponto de corte (segundo em que o clipe começa)
   segundos: number;
   callout: string; // legenda editável
 }
@@ -52,6 +53,7 @@ export async function GET(req: NextRequest) {
       tag: t.tag,
       label: t.tag ? LABEL_TAKE[t.tag] ?? "Take" : `Take ${i + 1}`,
       url: t.url,
+      inicio: typeof e?.inicio === "number" ? e.inicio : 0,
       segundos: typeof e?.segundos === "number" ? e.segundos : DEFAULT_SEG,
       callout: typeof e?.callout === "string" ? e.callout : (callouts[i % Math.max(callouts.length, 1)] ?? ""),
     };
@@ -79,6 +81,7 @@ export async function POST(req: NextRequest) {
     .map((c: any) => ({
       tag: typeof c?.tag === "string" ? c.tag : null,
       url: c.url,
+      inicio: Math.max(Number(c?.inicio) || 0, 0),
       segundos: Math.min(Math.max(Number(c?.segundos) || DEFAULT_SEG, 1), 6),
       callout: String(c?.callout ?? "").trim().slice(0, 40),
     }));
