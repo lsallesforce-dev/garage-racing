@@ -12,7 +12,6 @@ import {
 } from "lucide-react";
 import { GenerateMarketingVideoButton } from "@/components/GenerateMarketingVideoButton";
 import PublicarMetaButton from "@/components/PublicarMetaButton";
-import KitPostagem from "@/components/KitPostagem";
 import { ArquivarDocumentos } from "@/components/ArquivarDocumentos";
 import dynamic from "next/dynamic";
 import { toVideoUrl } from "@/lib/r2-url";
@@ -233,162 +232,6 @@ function capturarFrame(file: File): Promise<string> {
     };
     video.onerror = () => { URL.revokeObjectURL(objUrl); resolve(""); };
   });
-}
-
-function TakesVideo({ veiculoId, takesIniciais }: { veiculoId: string; takesIniciais: string[] }) {
-  const [takes, setTakes]         = useState<string[]>(takesIniciais);
-  const [thumbs, setThumbs]       = useState<Record<string, string>>({});
-  const [fila, setFila]           = useState<{ name: string; prog: number; erro?: string }[]>([]);
-  const [dragOver, setDragOver]   = useState<number | null>(null);
-  const dragIdx = React.useRef<number | null>(null);
-  const inputRef = React.useRef<HTMLInputElement>(null);
-
-  async function uploadFile(file: File, idx: number, thumb: string): Promise<string | null> {
-    const atualizar = (patch: Partial<{ prog: number; erro: string }>) =>
-      setFila(prev => prev.map((f, i) => i === idx ? { ...f, ...patch } : f));
-    try {
-      atualizar({ prog: 10 });
-      const fd = new FormData();
-      fd.append("veiculoId", veiculoId);
-      fd.append("arquivo", file);
-      const res = await fetch("/api/veiculo/takes", { method: "POST", body: fd });
-      if (!res.ok) throw new Error((await res.json()).error ?? `HTTP ${res.status}`);
-      const { publicUrl, video_takes } = await res.json();
-      atualizar({ prog: 100 });
-      setTakes(video_takes);
-      if (thumb) setThumbs(prev => ({ ...prev, [publicUrl]: thumb }));
-      return publicUrl as string;
-    } catch (e: any) {
-      atualizar({ erro: e.message ?? "Erro" });
-      return null;
-    }
-  }
-
-  async function handleFiles(files: FileList) {
-    const arr    = Array.from(files);
-    const base   = fila.length;
-    const frames = await Promise.all(arr.map(f => capturarFrame(f)));
-    setFila(prev => [...prev, ...arr.map(f => ({ name: f.name, prog: 0 }))]);
-    for (let i = 0; i < arr.length; i++) await uploadFile(arr[i], base + i, frames[i]);
-    setTimeout(() => setFila([]), 2000);
-  }
-
-  async function remover(url: string) {
-    const res = await fetch("/api/veiculo/takes", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ veiculoId, publicUrl: url }),
-    });
-    if (res.ok) { const { video_takes } = await res.json(); setTakes(video_takes); }
-  }
-
-  async function persistirOrdem(nova: string[]) {
-    await fetch("/api/veiculo/takes/reorder", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ veiculoId, video_takes: nova }),
-    });
-  }
-
-  function onDragStart(i: number) { dragIdx.current = i; }
-  function onDragEnter(i: number) { setDragOver(i); }
-  function onDragEnd() {
-    const from = dragIdx.current;
-    const to   = dragOver;
-    dragIdx.current = null;
-    setDragOver(null);
-    if (from === null || to === null || from === to) return;
-    const nova = [...takes];
-    const [item] = nova.splice(from, 1);
-    nova.splice(to, 0, item);
-    setTakes(nova);
-    persistirOrdem(nova);
-  }
-
-  const nomeArquivo = (url: string) =>
-    decodeURIComponent(url.split("/").pop() ?? url).replace(/^\d+_/, "").replace(/\.[^.]+$/, "");
-
-  const uploading = fila.some(f => !f.erro && f.prog < 100);
-
-  return (
-    <div className="mt-6 pt-6 border-t border-black/10 relative z-10">
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-[9px] font-black uppercase tracking-widest text-gray-500">
-          Takes de Vídeo ({takes.length})
-        </p>
-        <button onClick={() => inputRef.current?.click()} disabled={uploading}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 hover:bg-red-600 active:scale-95 disabled:opacity-50 text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all">
-          {uploading ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
-          {uploading ? "Enviando..." : "Adicionar Takes"}
-        </button>
-        <input ref={inputRef} type="file" accept="video/*" multiple className="hidden"
-          onChange={e => { if (e.target.files?.length) handleFiles(e.target.files); e.target.value = ""; }} />
-      </div>
-
-      {/* Lista de takes salvos — drag to reorder */}
-      {takes.length > 0 && (
-        <div className="space-y-1.5 mb-3">
-          {takes.map((url, i) => (
-            <div key={url}
-              draggable
-              onDragStart={() => onDragStart(i)}
-              onDragEnter={() => onDragEnter(i)}
-              onDragOver={e => e.preventDefault()}
-              onDragEnd={onDragEnd}
-              className={`flex items-center gap-2 px-3 py-2 rounded-xl cursor-grab active:cursor-grabbing transition-all select-none
-                ${dragOver === i ? "bg-red-100 border border-red-300 scale-[1.02]" : "bg-black/5"}`}>
-              <span className="text-[8px] font-black text-gray-400 w-4 shrink-0 text-center">{i + 1}</span>
-              {/* grip */}
-              <svg width="10" height="14" viewBox="0 0 10 14" className="text-gray-400 shrink-0" fill="currentColor">
-                <circle cx="2.5" cy="2.5" r="1.5"/><circle cx="7.5" cy="2.5" r="1.5"/>
-                <circle cx="2.5" cy="7" r="1.5"/><circle cx="7.5" cy="7" r="1.5"/>
-                <circle cx="2.5" cy="11.5" r="1.5"/><circle cx="7.5" cy="11.5" r="1.5"/>
-              </svg>
-              {/* thumbnail ou ícone */}
-              {thumbs[url]
-                ? <img src={thumbs[url]} className="w-14 h-8 rounded object-cover shrink-0 border border-black/10" />
-                : <div className="w-14 h-8 rounded bg-black/10 flex items-center justify-center shrink-0">
-                    <Video size={11} className="text-gray-400" />
-                  </div>
-              }
-              <span className="text-[10px] font-bold text-gray-700 truncate flex-1">{nomeArquivo(url)}</span>
-              <button onClick={() => remover(url)} className="p-1.5 hover:bg-red-100 rounded-lg transition-colors shrink-0">
-                <Trash2 size={11} className="text-red-400" />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Fila de upload em andamento */}
-      {fila.length > 0 && (
-        <div className="space-y-1.5 mb-3">
-          {fila.map((f, i) => (
-            <div key={i} className="px-3 py-2 bg-black/5 rounded-xl">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-[9px] font-bold text-gray-600 truncate max-w-[180px]">{f.name.replace(/\.[^.]+$/, "")}</span>
-                {f.erro
-                  ? <span className="text-[9px] font-black text-red-500">{f.erro}</span>
-                  : <span className="text-[9px] font-black text-gray-400">{f.prog === 100 ? "✓" : `${f.prog}%`}</span>
-                }
-              </div>
-              {!f.erro && (
-                <div className="w-full h-1 bg-black/10 rounded-full overflow-hidden">
-                  <div className="h-full bg-gray-900 transition-all duration-150 rounded-full" style={{ width: `${f.prog}%` }} />
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {takes.length === 0 && fila.length === 0 && (
-        <p className="text-[10px] text-gray-400 text-center py-2">
-          Selecione múltiplos vídeos — a IA junta na ordem antes de gerar o Reel
-        </p>
-      )}
-    </div>
-  );
 }
 
 interface DadosCRLV {
@@ -2230,16 +2073,22 @@ export default function DetalheVeiculo() {
                 </div>
               )}
 
-              {/* Takes de vídeo */}
-              <TakesVideo veiculoId={veiculo.id} takesIniciais={veiculo.video_takes ?? []} />
-
-              {/* Kit de Postagem (captura guiada + capa templatada + legenda) */}
-              <KitPostagem
-                veiculoId={veiculo.id}
-                capturasIniciais={veiculo.marketing_capturas ?? null}
-                capaInicial={veiculo.marketing_capa_url ?? null}
-                legendaInicial={veiculo.marketing_legenda ?? null}
-              />
+              {/* Kit de Postagem — agora centralizado em Marketing → Kits de Postagem */}
+              <div className="mt-6 pt-6 border-t border-black/10 relative z-10">
+                <p className="text-[9px] font-black uppercase tracking-widest text-gray-500 mb-2">
+                  Kit de Postagem (Fotos, Takes e Reel)
+                </p>
+                <Link
+                  href="/marketing?tab=kits"
+                  className="flex items-center justify-center gap-2 rounded-2xl bg-gray-900 py-4 font-black uppercase italic text-white transition-all hover:bg-red-600 text-sm"
+                >
+                  <Video size={16} /> Abrir na aba Kits de Postagem
+                </Link>
+                <p className="text-[10px] text-gray-400 mt-2 leading-relaxed">
+                  A captura guiada (fotos + takes), a geração do post e o reel ficam
+                  agora em Marketing → Kits de Postagem, com todos os carros num lugar só.
+                </p>
+              </div>
 
               {/* Gerador de Vídeo IA */}
               <div className="mt-6 pt-6 border-t border-black/10 relative z-10">
