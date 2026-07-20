@@ -1,0 +1,21 @@
+{
+  "marca": "Fiat",
+  "modelo": "Argo Drive",
+  "versao": "1.0",
+  "anoLabel": "2024/2025",
+  "specs": ["Automático", "Branco", "Flex", "37.209 km"],
+  "preco": "R$ 67.990",
+  "claim": "Pegamos seu carro na troca e financiamos a diferença",
+  "loja": "APROVE Multimarcas",
+  "corPrimaria": "#4B2CB3",
+  "capaUrl": "https://rjcdkasnipxcdrlmkskm.supabase.co/storage/v1/object/public/fotos-veiculos/foto-1777636413548-vw1tluv6xtm.jpg",
+  "logoUrl": null,
+  "whatsapp": "(17) 98152-4169",
+  "clips": [
+    { "label": "Frente" },
+    { "label": "Lateral" },
+    { "label": "Traseira" },
+    { "label": "Interior" }
+  ],
+  "trilhaUrl": null
+}
