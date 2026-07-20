@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { toVideoUrl } from "@/lib/r2-url";
 import VitrineDetalheClient from "./VitrineDetalheClient";
+import VitrineIndisponivel from "../../VitrineIndisponivel";
+import { assinaturaAtiva } from "@/lib/assinatura";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -17,7 +19,7 @@ interface Props {
 }
 
 const GARAGE_COLS =
-  "user_id, nome_empresa, whatsapp, whatsapp_agente, logo_url, vitrine_tema, dominio_custom, cidade, estado, endereco, endereco_complemento, horario_funcionamento, telefone_loja";
+  "user_id, nome_empresa, whatsapp, whatsapp_agente, logo_url, vitrine_tema, dominio_custom, cidade, estado, endereco, endereco_complemento, horario_funcionamento, telefone_loja, plano_ativo, plano_vence_em, trial_ends_at, bloqueado";
 
 async function resolveGaragem(tenant: string) {
   const bySlug = await supabaseAdmin
@@ -83,6 +85,11 @@ export default async function VitrineDetalhePage({ params }: Props) {
   // Carro tem que pertencer ao tenant da URL — senão dá pra renderizar carro de
   // outra loja com a marca/WhatsApp desta (furo herdado da versão antiga).
   if (!garagem || veiculo.user_id !== garagem.user_id) notFound();
+
+  // Assinatura inativa → vitrine fora do ar (mesmo comportamento da listagem).
+  if (!assinaturaAtiva(garagem)) {
+    return <VitrineIndisponivel nomeEmpresa={garagem.nome_empresa} />;
+  }
 
   const { data: relacionados } = await supabaseAdmin
     .from("veiculos")

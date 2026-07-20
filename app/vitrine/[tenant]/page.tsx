@@ -2,6 +2,8 @@ import { createClient } from "@supabase/supabase-js";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import VitrineClient from "./VitrineClient";
+import VitrineIndisponivel from "../VitrineIndisponivel";
+import { assinaturaAtiva } from "@/lib/assinatura";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -16,7 +18,7 @@ interface Props {
 }
 
 const GARAGE_COLS =
-  "user_id, nome_empresa, whatsapp, whatsapp_agente, logo_url, vitrine_tema, dominio_custom, cidade, estado, endereco, endereco_complemento, horario_funcionamento, telefone_loja";
+  "user_id, nome_empresa, whatsapp, whatsapp_agente, logo_url, vitrine_tema, dominio_custom, cidade, estado, endereco, endereco_complemento, horario_funcionamento, telefone_loja, plano_ativo, plano_vence_em, trial_ends_at, bloqueado";
 
 // Resolve o tenant por vitrine_slug (curto) ou webhook_token (links antigos compartilhados).
 async function resolveGaragem(tenant: string) {
@@ -90,6 +92,12 @@ export default async function VitrineTenantPage({ params }: Props) {
   const { tenant } = await params;
   const garagem = await resolveGaragem(tenant);
   if (!garagem) notFound();
+
+  // Assinatura inativa (serviço pausado / falta de pagamento) → tira a vitrine do
+  // ar sem vazar estoque. Reativar o plano religa sozinho.
+  if (!assinaturaAtiva(garagem)) {
+    return <VitrineIndisponivel nomeEmpresa={garagem.nome_empresa} />;
+  }
 
   const { data: estoque } = await supabaseAdmin
     .from("veiculos")

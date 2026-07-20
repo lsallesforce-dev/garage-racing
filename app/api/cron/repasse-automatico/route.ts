@@ -27,7 +27,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendAvisaMessage, sendAvisaImage } from "@/lib/avisa";
 import { gerarRepasseCompleto, gerarTextoBomDia, gruposDoConfig } from "@/lib/repasse";
 import { chaveDataBRT } from "@/lib/frases-motivacionais";
-import { outboundLiberado } from "@/lib/assinatura-outbound";
+import { outboundLiberado } from "@/lib/assinatura";
 
 // 300s (era 120): com múltiplos grupos + retries de Avisa lenta, o tick das
 // 17:10 de 08/07 estourou os 120s no MEIO dos envios → morreu antes de marcar

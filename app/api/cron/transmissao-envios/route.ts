@@ -25,7 +25,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendAvisaMessage, sendAvisaImage } from "@/lib/avisa";
 import { montarMensagemEnvio } from "@/lib/transmissao";
 import { chaveDataBRT } from "@/lib/frases-motivacionais";
-import { outboundLiberado } from "@/lib/assinatura-outbound";
+import { outboundLiberado } from "@/lib/assinatura";
 
 export const maxDuration = 300;
 
