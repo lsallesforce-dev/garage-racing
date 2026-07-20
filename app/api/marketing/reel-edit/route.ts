@@ -17,8 +17,8 @@ interface LinhaEdit {
   tag: string | null;
   label: string;   // rótulo do ângulo (referência interna)
   url: string;
-  inicio: number;  // ponto de corte (segundo em que o clipe começa)
-  segundos: number;
+  inicio: number;  // corte de início (segundo em que o clipe começa)
+  fim: number;     // corte de fim (segundo em que o clipe termina)
   callout: string; // legenda editável
 }
 
@@ -49,12 +49,17 @@ export async function GET(req: NextRequest) {
 
   const linhas: LinhaEdit[] = ordered.map((t, i) => {
     const e = salvos.find((x) => x?.tag && x.tag === t.tag) ?? salvos[i];
+    const inicio = typeof e?.inicio === "number" ? e.inicio : 0;
+    const fim =
+      typeof e?.fim === "number" ? e.fim
+        : typeof e?.segundos === "number" ? inicio + e.segundos
+          : inicio + DEFAULT_SEG;
     return {
       tag: t.tag,
       label: t.tag ? LABEL_TAKE[t.tag] ?? "Take" : `Take ${i + 1}`,
       url: t.url,
-      inicio: typeof e?.inicio === "number" ? e.inicio : 0,
-      segundos: typeof e?.segundos === "number" ? e.segundos : DEFAULT_SEG,
+      inicio,
+      fim,
       callout: typeof e?.callout === "string" ? e.callout : (callouts[i % Math.max(callouts.length, 1)] ?? ""),
     };
   });
@@ -78,13 +83,21 @@ export async function POST(req: NextRequest) {
   const limpos = clips
     .slice(0, 20)
     .filter((c: any) => typeof c?.url === "string" && c.url.startsWith("https://"))
-    .map((c: any) => ({
-      tag: typeof c?.tag === "string" ? c.tag : null,
-      url: c.url,
-      inicio: Math.max(Number(c?.inicio) || 0, 0),
-      segundos: Math.min(Math.max(Number(c?.segundos) || DEFAULT_SEG, 1), 6),
-      callout: String(c?.callout ?? "").trim().slice(0, 40),
-    }));
+    .map((c: any) => {
+      const inicio = Math.max(Number(c?.inicio) || 0, 0);
+      // fim ao menos 1s depois do início; máx 8s de trecho
+      const fimBruto = Number(c?.fim);
+      const fim = Number.isFinite(fimBruto)
+        ? Math.min(Math.max(fimBruto, inicio + 1), inicio + 8)
+        : inicio + DEFAULT_SEG;
+      return {
+        tag: typeof c?.tag === "string" ? c.tag : null,
+        url: c.url,
+        inicio,
+        fim,
+        callout: String(c?.callout ?? "").trim().slice(0, 40),
+      };
+    });
 
   const trilhaOk = typeof trilha === "string" && TRILHAS_OK.has(trilha) ? trilha : "animado";
 

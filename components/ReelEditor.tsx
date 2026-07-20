@@ -12,7 +12,7 @@ interface Linha {
   label: string;
   url: string;
   inicio: number;
-  segundos: number;
+  fim: number;
   callout: string;
 }
 
@@ -51,13 +51,14 @@ function TakeRow({
     if (v && Number.isFinite(t)) v.currentTime = Math.min(t, Math.max(dur - 0.05, 0));
   }
 
-  const maxInicio = dur > 0 ? Math.max(dur - 0.5, 0) : 10;
+  const maxVid = dur > 0 ? dur : 12;
+  const trecho = Math.max(l.fim - l.inicio, 0);
 
   return (
     <div className="rounded-xl border border-gray-100 bg-white p-2">
       <div className="flex items-center justify-between mb-1.5">
         <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">
-          {i + 1}. {l.label}
+          {i + 1}. {l.label} <span className="text-gray-300">· {trecho.toFixed(1)}s</span>
         </span>
         <div className="flex items-center gap-1">
           <button onClick={() => onMover(-1)} disabled={i === 0} className="text-gray-400 hover:text-gray-800 disabled:opacity-25" title="Subir">
@@ -86,7 +87,7 @@ function TakeRow({
         />
 
         <div className="flex-1 min-w-0 flex flex-col justify-center gap-2">
-          {/* Ponto de corte — arrasta e o vídeo se move */}
+          {/* Corte de início — arrasta e o vídeo se move até o começo do clipe */}
           <div>
             <div className="flex items-center justify-between mb-0.5">
               <span className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-gray-400">
@@ -97,31 +98,39 @@ function TakeRow({
             <input
               type="range"
               min={0}
-              max={maxInicio}
+              max={maxVid}
               step={0.1}
-              value={Math.min(l.inicio, maxInicio)}
+              value={Math.min(l.inicio, maxVid)}
               onChange={(e) => {
                 const t = Number(e.target.value);
-                onChange({ inicio: t });
+                // início nunca ultrapassa o fim (mantém ao menos 1s de trecho)
+                const novoFim = Math.max(l.fim, t + 1);
+                onChange({ inicio: t, fim: Math.min(novoFim, maxVid) });
                 seek(t);
               }}
               className="w-full accent-gray-900"
             />
           </div>
 
-          {/* Duração do clipe */}
+          {/* Corte de fim — arrasta e o vídeo se move até o fim do clipe */}
           <div>
             <div className="flex items-center justify-between mb-0.5">
-              <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Duração</span>
-              <span className="text-[10px] font-black text-gray-700">{l.segundos.toFixed(1)}s</span>
+              <span className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-gray-400">
+                <Scissors size={10} /> Cortar final
+              </span>
+              <span className="text-[10px] font-black text-gray-700">{l.fim.toFixed(1)}s</span>
             </div>
             <input
               type="range"
-              min={1}
-              max={6}
-              step={0.5}
-              value={l.segundos}
-              onChange={(e) => onChange({ segundos: Number(e.target.value) })}
+              min={0}
+              max={maxVid}
+              step={0.1}
+              value={Math.min(l.fim, maxVid)}
+              onChange={(e) => {
+                const t = Math.max(Number(e.target.value), l.inicio + 1);
+                onChange({ fim: Math.min(t, maxVid) });
+                seek(t);
+              }}
               className="w-full accent-red-600"
             />
           </div>
@@ -187,7 +196,7 @@ export default function ReelEditor({
         body: JSON.stringify({
           veiculoId,
           trilha,
-          clips: linhas.map((l) => ({ tag: l.tag, url: l.url, inicio: l.inicio, segundos: l.segundos, callout: l.callout })),
+          clips: linhas.map((l) => ({ tag: l.tag, url: l.url, inicio: l.inicio, fim: l.fim, callout: l.callout })),
         }),
       });
       if (!res.ok) throw new Error((await res.json()).error ?? `HTTP ${res.status}`);
@@ -211,7 +220,7 @@ export default function ReelEditor({
     return <p className="text-[10px] font-bold text-gray-400 py-2">Nenhum take gravado ainda.</p>;
   }
 
-  const totalSeg = linhas.reduce((s, l) => s + l.segundos, 0);
+  const totalSeg = linhas.reduce((s, l) => s + Math.max(l.fim - l.inicio, 0), 0);
 
   return (
     <div className="mt-2 space-y-2">

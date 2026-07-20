@@ -66,15 +66,20 @@ export async function buildReelProps(veiculo: any, cfgRow: any): Promise<ReelPro
       .map((e, i) => {
         const src = typeof e?.url === "string" ? e.url : undefined;
         if (!src) return null;
-        const seg = typeof e?.segundos === "number" ? Math.min(Math.max(e.segundos, 1), 6) : null;
         const inicio = typeof e?.inicio === "number" ? Math.max(e.inicio, 0) : 0;
+        // fim (novo) ou, retrocompat, inicio + segundos (edições antigas)
+        const fim =
+          typeof e?.fim === "number" ? e.fim
+            : typeof e?.segundos === "number" ? inicio + e.segundos
+              : null;
+        const dur = fim != null ? Math.min(Math.max(fim - inicio, 1), 8) : null;
         const callout =
           typeof e?.callout === "string" && e.callout.trim()
             ? e.callout.trim().toUpperCase()
             : callouts.length
               ? callouts[i % callouts.length]
               : undefined;
-        return { src, startFrom: inicio, durationInFrames: seg ? Math.round(seg * 30) : undefined, callout };
+        return { src, startFrom: inicio, durationInFrames: dur ? Math.round(dur * 30) : undefined, callout };
       })
       .filter(Boolean) as ReelClip[];
   } else {
