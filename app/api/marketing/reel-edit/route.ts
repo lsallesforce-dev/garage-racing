@@ -65,15 +65,21 @@ export async function GET(req: NextRequest) {
   });
 
   const trilha = typeof veiculo.marketing_reel_edit?.trilha === "string" ? veiculo.marketing_reel_edit.trilha : "animado";
-  return NextResponse.json({ clips: linhas, trilha });
+  const transicao = typeof veiculo.marketing_reel_edit?.transicao === "string" ? veiculo.marketing_reel_edit.transicao : "fade";
+  return NextResponse.json({ clips: linhas, trilha, transicao });
 }
 
 const TRILHAS_OK = new Set(["animado", "elegante", "emocional", "nenhuma"]);
 
+const TRANSICOES_OK = new Set(["fade", "corte", "deslizar"]);
+
 export async function POST(req: NextRequest) {
-  const { veiculoId, clips, trilha } = await req.json();
+  const { veiculoId, clips, trilha, transicao } = await req.json();
   if (!veiculoId || !Array.isArray(clips)) {
     return NextResponse.json({ error: "veiculoId e clips obrigatórios" }, { status: 400 });
+  }
+  if (clips.length === 0) {
+    return NextResponse.json({ error: "O reel precisa de pelo menos um take" }, { status: 400 });
   }
 
   const { error: authError } = await requireVehicleOwner(veiculoId);
@@ -88,7 +94,7 @@ export async function POST(req: NextRequest) {
       // fim ao menos 1s depois do início; máx 8s de trecho
       const fimBruto = Number(c?.fim);
       const fim = Number.isFinite(fimBruto)
-        ? Math.min(Math.max(fimBruto, inicio + 1), inicio + 8)
+        ? Math.min(Math.max(fimBruto, inicio + 1), inicio + 15)
         : inicio + DEFAULT_SEG;
       return {
         tag: typeof c?.tag === "string" ? c.tag : null,
@@ -100,10 +106,11 @@ export async function POST(req: NextRequest) {
     });
 
   const trilhaOk = typeof trilha === "string" && TRILHAS_OK.has(trilha) ? trilha : "animado";
+  const transicaoOk = typeof transicao === "string" && TRANSICOES_OK.has(transicao) ? transicao : "fade";
 
   const { error: dbErr } = await supabaseAdmin
     .from("veiculos")
-    .update({ marketing_reel_edit: { clips: limpos, trilha: trilhaOk } })
+    .update({ marketing_reel_edit: { clips: limpos, trilha: trilhaOk, transicao: transicaoOk } })
     .eq("id", veiculoId);
   if (dbErr) return NextResponse.json({ error: dbErr.message }, { status: 500 });
 

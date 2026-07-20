@@ -1,27 +1,40 @@
 import React from "react";
 import { AbsoluteFill, interpolate, OffthreadVideo, useCurrentFrame, useVideoConfig } from "remotion";
 import { REEL } from "../theme";
-import type { ReelClip } from "../types";
+import type { ReelClip, TipoTransicao } from "../types";
 
-// Cena de um take: vídeo com leve zoom + lower-third com um OPCIONAL do carro
-// (callout vendável). Fade-in/out nas bordas pra crossfade suave entre cenas.
-export const ClipScene: React.FC<{ clip: ReelClip; callout?: string; cor: string; total: number }> = ({
-  clip,
-  callout,
-  cor,
-  total,
-}) => {
+// Cena de um take: vídeo com leve zoom + lower-third com um OPCIONAL do carro.
+// A entrada/saída depende da transição escolhida (fade | corte | deslizar).
+export const ClipScene: React.FC<{
+  clip: ReelClip;
+  callout?: string;
+  cor: string;
+  total: number;
+  transicao?: TipoTransicao;
+  overlap?: number;
+}> = ({ clip, callout, cor, total, transicao = "fade", overlap = 12 }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
-  const fadeIn = interpolate(frame, [0, 8], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
-  const fadeOut = interpolate(frame, [total - 8, total], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
-  const op = Math.min(fadeIn, fadeOut);
+  const t = Math.max(overlap, 1);
+  // Opacidade e deslocamento da cena conforme a transição
+  let op = 1;
+  let slideX = 0;
+  if (transicao === "fade") {
+    const fadeIn = interpolate(frame, [0, t], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+    const fadeOut = interpolate(frame, [total - t, total], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+    op = Math.min(fadeIn, fadeOut);
+  } else if (transicao === "deslizar") {
+    slideX = interpolate(frame, [0, t], [100, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+    op = interpolate(frame, [total - t, total], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  }
+  // "corte": op=1, slideX=0 (nada) — a sobreposição já é 0, então é corte seco.
+
   const zoom = interpolate(frame, [0, total], [1.04, 1.12]);
   const lowerY = interpolate(frame, [4, 16], [40, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
 
   return (
-    <AbsoluteFill style={{ backgroundColor: REEL.bgFoto, opacity: op }}>
+    <AbsoluteFill style={{ backgroundColor: REEL.bgFoto, opacity: op, transform: `translateX(${slideX}%)` }}>
       {clip.src ? (
         <OffthreadVideo
           src={clip.src}

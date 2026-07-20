@@ -5,7 +5,7 @@
 // escolher a trilha. "Salvar e gerar" persiste e dispara o render.
 
 import React, { useEffect, useRef, useState } from "react";
-import { Loader2, Film, Save, ChevronUp, ChevronDown, Music, Scissors } from "lucide-react";
+import { Loader2, Film, Save, ChevronUp, ChevronDown, Music, Scissors, Trash2, Sparkles } from "lucide-react";
 
 interface Linha {
   tag: string | null;
@@ -23,6 +23,24 @@ const TRILHAS: { id: string; nome: string }[] = [
   { id: "nenhuma", nome: "Sem música" },
 ];
 
+const TRANSICOES: { id: string; nome: string }[] = [
+  { id: "fade", nome: "Fade suave" },
+  { id: "corte", nome: "Corte seco" },
+  { id: "deslizar", nome: "Deslizar" },
+];
+
+// Espelha duracaoReel do Remotion: intro 75f + clipes (com overlap) + endcard 96f.
+function segundosVideo(linhas: { inicio: number; fim: number }[], transicao: string): number {
+  const ov = transicao === "corte" ? 0 : 12;
+  let cursor = 75;
+  linhas.forEach((l, i) => {
+    const dur = Math.round(Math.min(Math.max(l.fim - l.inicio, 1), 15) * 30);
+    const from = cursor - (i === 0 ? 0 : ov);
+    cursor = from + dur;
+  });
+  return (cursor + 96) / 30;
+}
+
 function toProxy(url: string): string {
   const m = url.match(/https?:\/\/[^/]+\/(.+)$/);
   return m && url.includes(".r2.dev") ? `/api/r2/${m[1]}` : url;
@@ -35,12 +53,14 @@ function TakeRow({
   total,
   onChange,
   onMover,
+  onDelete,
 }: {
   l: Linha;
   i: number;
   total: number;
   onChange: (patch: Partial<Linha>) => void;
   onMover: (dir: -1 | 1) => void;
+  onDelete: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [dur, setDur] = useState(0);
@@ -66,6 +86,14 @@ function TakeRow({
           </button>
           <button onClick={() => onMover(1)} disabled={i === total - 1} className="text-gray-400 hover:text-gray-800 disabled:opacity-25" title="Descer">
             <ChevronDown size={16} />
+          </button>
+          <button
+            onClick={onDelete}
+            disabled={total <= 1}
+            className="text-gray-300 hover:text-red-500 disabled:opacity-25 ml-1"
+            title={total <= 1 ? "O reel precisa de ao menos um take" : "Remover este take do reel"}
+          >
+            <Trash2 size={15} />
           </button>
         </div>
       </div>
@@ -127,8 +155,9 @@ function TakeRow({
               step={0.1}
               value={Math.min(l.fim, maxVid)}
               onChange={(e) => {
-                const t = Math.max(Number(e.target.value), l.inicio + 1);
-                onChange({ fim: Math.min(t, maxVid) });
+                const teto = Math.min(maxVid, l.inicio + 15);
+                const t = Math.min(Math.max(Number(e.target.value), l.inicio + 1), teto);
+                onChange({ fim: t });
                 seek(t);
               }}
               className="w-full accent-red-600"
@@ -157,6 +186,7 @@ export default function ReelEditor({
 }) {
   const [linhas, setLinhas] = useState<Linha[] | null>(null);
   const [trilha, setTrilha] = useState("animado");
+  const [transicao, setTransicao] = useState("fade");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -166,12 +196,17 @@ export default function ReelEditor({
       .then((d) => {
         setLinhas(d.clips ?? []);
         if (d.trilha) setTrilha(d.trilha);
+        if (d.transicao) setTransicao(d.transicao);
       })
       .catch(() => setErro("Erro ao carregar os takes"));
   }, [veiculoId]);
 
   function set(i: number, patch: Partial<Linha>) {
     setLinhas((prev) => (prev ? prev.map((l, j) => (j === i ? { ...l, ...patch } : l)) : prev));
+  }
+
+  function deletar(i: number) {
+    setLinhas((prev) => (prev && prev.length > 1 ? prev.filter((_, j) => j !== i) : prev));
   }
 
   function mover(i: number, dir: -1 | 1) {
@@ -196,6 +231,7 @@ export default function ReelEditor({
         body: JSON.stringify({
           veiculoId,
           trilha,
+          transicao,
           clips: linhas.map((l) => ({ tag: l.tag, url: l.url, inicio: l.inicio, fim: l.fim, callout: l.callout })),
         }),
       });
@@ -220,13 +256,20 @@ export default function ReelEditor({
     return <p className="text-[10px] font-bold text-gray-400 py-2">Nenhum take gravado ainda.</p>;
   }
 
-  const totalSeg = linhas.reduce((s, l) => s + Math.max(l.fim - l.inicio, 0), 0);
+  const videoSeg = segundosVideo(linhas, transicao);
 
   return (
     <div className="mt-2 space-y-2">
+      {/* Tempo final do vídeo à mostra */}
+      <div className="flex items-center justify-between rounded-xl bg-gray-900 px-4 py-2.5 text-white">
+        <span className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest">
+          <Film size={12} /> Vídeo final
+        </span>
+        <span className="text-sm font-black">{videoSeg.toFixed(1)}s</span>
+      </div>
       <p className="text-[9px] font-bold text-gray-400">
-        Arraste o corte pra escolher de onde cada take começa; ajuste a duração e a legenda.
-        Total dos takes: ~{totalSeg.toFixed(1)}s (+ abertura e final).
+        Arraste os cortes de início e fim pra escolher o trecho de cada take. A lixeira remove
+        o take do reel.
       </p>
 
       {linhas.map((l, i) => (
@@ -237,8 +280,30 @@ export default function ReelEditor({
           total={linhas.length}
           onChange={(patch) => set(i, patch)}
           onMover={(dir) => mover(i, dir)}
+          onDelete={() => deletar(i)}
         />
       ))}
+
+      {/* Transição */}
+      <div className="rounded-xl border border-gray-100 bg-white p-2.5">
+        <div className="flex items-center gap-1.5 mb-2">
+          <Sparkles size={12} className="text-gray-400" />
+          <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Transição entre cenas</span>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {TRANSICOES.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTransicao(t.id)}
+              className={`rounded-lg px-3 py-1.5 text-[9px] font-black uppercase tracking-widest transition-all ${
+                transicao === t.id ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+              }`}
+            >
+              {t.nome}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* Trilha */}
       <div className="rounded-xl border border-gray-100 bg-white p-2.5">

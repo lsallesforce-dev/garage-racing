@@ -72,7 +72,7 @@ export async function buildReelProps(veiculo: any, cfgRow: any): Promise<ReelPro
           typeof e?.fim === "number" ? e.fim
             : typeof e?.segundos === "number" ? inicio + e.segundos
               : null;
-        const dur = fim != null ? Math.min(Math.max(fim - inicio, 1), 8) : null;
+        const dur = fim != null ? Math.min(Math.max(fim - inicio, 1), 15) : null;
         const callout =
           typeof e?.callout === "string" && e.callout.trim()
             ? e.callout.trim().toUpperCase()
@@ -99,6 +99,10 @@ export async function buildReelProps(veiculo: any, cfgRow: any): Promise<ReelPro
   const TRILHAS = ["animado", "elegante", "emocional"];
   const trilhaEsc = typeof edit?.trilha === "string" ? edit.trilha : "animado";
   const trilhaUrl = trilhaEsc === "nenhuma" ? null : `${R2_PUBLIC_URL}/musicas/${TRILHAS.includes(trilhaEsc) ? trilhaEsc : "animado"}.mp3`;
+
+  // Transição entre cenas
+  const TRANSICOES = ["fade", "corte", "deslizar"];
+  const transicao = TRANSICOES.includes(edit?.transicao) ? edit.transicao : "fade";
 
   const anos = [veiculo.ano, veiculo.ano_modelo].filter(Boolean);
   const anoLabel =
@@ -127,6 +131,7 @@ export async function buildReelProps(veiculo: any, cfgRow: any): Promise<ReelPro
     semMarca: cfg.fotoComMarca,
     whatsapp: formatFone(cfg.telefoneLoja || cfg.whatsapp),
     clips,
+    transicao,
     trilhaUrl,
   };
 }

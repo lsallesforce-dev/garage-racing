@@ -1,6 +1,8 @@
 // Props do reel — o que a rota/worker passa pro Remotion renderizar.
 // Espelha os dados do veículo + config do tenant (mesma fonte da capa).
 
+export type TipoTransicao = "fade" | "corte" | "deslizar";
+
 export interface ReelClip {
   src?: string;             // URL do take (R2) ou vídeo bruto; ausente = só no preview
   startFrom?: number;       // segundo de início do trecho aproveitado
@@ -26,6 +28,7 @@ export interface ReelProps {
   semMarca?: boolean;       // fotos já têm marca d'água → intro não sobrepõe logo/nome
   whatsapp: string | null;  // exibido no endcard
   clips: ReelClip[];
+  transicao?: TipoTransicao;// transição entre cenas (default "fade")
   trilhaUrl: string | null;
 }
 
