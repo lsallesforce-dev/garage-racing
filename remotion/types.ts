@@ -2,10 +2,9 @@
 // Espelha os dados do veículo + config do tenant (mesma fonte da capa).
 
 export interface ReelClip {
-  src: string;              // URL do take (R2) ou vídeo bruto
+  src?: string;             // URL do take (R2) ou vídeo bruto; ausente = só no preview
   startFrom?: number;       // segundo de início do trecho aproveitado
   durationInFrames?: number;// duração da cena (default DUR.porClip)
-  label?: string;           // rótulo do ângulo (ex.: "Interior", "Traseira")
 }
 
 export interface ReelProps {
@@ -14,11 +13,14 @@ export interface ReelProps {
   versao: string;
   anoLabel: string;         // "2024/2025" já formatado
   specs: string[];          // ["Automático", "Prata", "Flex", "51.000 km"]
+  opcionais: string[];      // callouts vendáveis sobre os clipes ("CÂMERA DE RÉ"...)
   preco: string | null;     // "R$ 124.900" ou null (mostrar_preco off)
   claim: string | null;
   loja: string;
   corPrimaria: string;
   capaUrl: string | null;   // fundo da intro (foto frente-3-4)
+  capaW?: number | null;    // dimensões da foto → intro decide cover×contain
+  capaH?: number | null;
   logoUrl: string | null;
   whatsapp: string | null;  // exibido no endcard
   clips: ReelClip[];
@@ -31,6 +33,7 @@ export const REEL_PROPS_EXEMPLO: ReelProps = {
   versao: "1.0",
   anoLabel: "2024/2025",
   specs: ["Automático", "Branco", "Flex", "37.209 km"],
+  opcionais: ["CENTRAL MULTIMÍDIA", "CÂMERA DE RÉ", "AIRBAGS", "FARÓIS DE LED"],
   preco: "R$ 67.990",
   claim: "Pegamos seu carro na troca e financiamos a diferença",
   loja: "APROVE Multimarcas",
@@ -38,11 +41,6 @@ export const REEL_PROPS_EXEMPLO: ReelProps = {
   capaUrl: null,
   logoUrl: null,
   whatsapp: "(17) 98152-4169",
-  clips: [
-    { label: "Frente" },
-    { label: "Lateral" },
-    { label: "Traseira" },
-    { label: "Interior" },
-  ],
+  clips: [{}, {}, {}, {}],
   trilhaUrl: null,
 };

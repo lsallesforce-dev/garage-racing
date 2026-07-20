@@ -10,7 +10,15 @@ export const Intro: React.FC<{ dados: ReelProps }> = ({ dados }) => {
   const { fps } = useVideoConfig();
   const cor = dados.corPrimaria;
 
-  const zoom = interpolate(frame, [0, 75], [1.08, 1.16], { extrapolateRight: "clamp" });
+  // cover×contain: foto deitada em quadro 9:16 cortaria o carro nas laterais →
+  // mostra inteira (contain) sobre fundo escuro. Zoom suave só quando dá pra preencher.
+  const fotoAR = dados.capaW && dados.capaH ? dados.capaW / dados.capaH : 9 / 16;
+  const janelaAR = 1080 / 1920;
+  const usaContain = fotoAR > janelaAR && 1 - janelaAR / fotoAR > 0.1;
+  const fit: "cover" | "contain" = usaContain ? "contain" : "cover";
+  const zoom = usaContain
+    ? interpolate(frame, [0, 75], [1.0, 1.03], { extrapolateRight: "clamp" })
+    : interpolate(frame, [0, 75], [1.04, 1.1], { extrapolateRight: "clamp" });
   const faixa = spring({ frame, fps, config: { damping: 200 }, durationInFrames: 22 });
   const tituloY = interpolate(spring({ frame: frame - 8, fps, config: { damping: 200 } }), [0, 1], [60, 0]);
   const tituloOp = interpolate(frame, [8, 26], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
@@ -26,8 +34,8 @@ export const Intro: React.FC<{ dados: ReelProps }> = ({ dados }) => {
           style={{
             width: "100%",
             height: "100%",
-            objectFit: "cover",
-            objectPosition: "50% 55%",
+            objectFit: fit,
+            objectPosition: fit === "cover" ? "50% 55%" : "50% 42%",
             transform: `scale(${zoom})`,
           }}
         />

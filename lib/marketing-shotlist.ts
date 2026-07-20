@@ -32,6 +32,10 @@ export const SHOT_TAKES: ShotItem[] = [
   { tag: "traseira",        label: "Traseira",            dica: "Contorne a traseira devagar, de um farol ao outro.",               tipo: "take", obrigatoria: true },
   { tag: "interior",        label: "Interior",            dica: "Da porta aberta: painel → central → bancos, movimento lento.",     tipo: "take", obrigatoria: true },
   { tag: "detalhe-roda",    label: "Detalhe da roda",     dica: "Close na roda subindo até o retrovisor.",                          tipo: "take", obrigatoria: false },
+  { tag: "multimidia",      label: "Multimídia",          dica: "Central ligada mostrando a tela; toque em algo pra dar vida.",     tipo: "take", obrigatoria: false },
+  { tag: "painel-digital",  label: "Painel",              dica: "Painel de instrumentos ligado, do banco do motorista.",           tipo: "take", obrigatoria: false },
+  { tag: "porta-malas-take",label: "Porta-malas",         dica: "Abrindo o porta-malas devagar, mostrando o espaço.",               tipo: "take", obrigatoria: false },
+  { tag: "farol-detalhe",   label: "Faróis",              dica: "Close no farol de LED / detalhe da frente.",                       tipo: "take", obrigatoria: false },
   { tag: "assinatura",      label: "Assinatura",          dica: "O melhor ângulo do carro, parado 5s. Vira o encerramento.",        tipo: "take", obrigatoria: false },
 ];
 

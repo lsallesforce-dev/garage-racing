@@ -10,6 +10,7 @@ import { promises as fs } from "fs";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { cfgFromRow, formatFone, linhaSpecs, precoFormatado } from "@/lib/marketing-kit";
+import { fotoParaCapa } from "@/lib/marketing-capa";
 import { SHOT_TAKES, type MarketingCapturas } from "@/lib/marketing-shotlist";
 import type { ReelProps, ReelClip } from "@/remotion/types";
 
@@ -24,10 +25,6 @@ const r2 = new S3Client({
     secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
   },
 });
-
-const LABEL_TAKE: Record<string, string> = Object.fromEntries(
-  SHOT_TAKES.map((s) => [s.tag, s.label])
-);
 
 // Marca costuma vir "VW - VolksWagen" → pega o nome depois do hífen.
 function cleanMarca(m: string | null | undefined): string {
@@ -49,27 +46,81 @@ function cleanModelo(m: string | null | undefined): string {
   return out.join(" ") || m.split(/\s+/)[0] || "";
 }
 
+// Opcionais viram callouts curtos e vendáveis sobre os clipes do reel. Um mapa de
+// palavras-chave dá rótulos limpos ("Central multimídia VW Play 10,1..." → "MULTIMÍDIA");
+// o que não casar é encurtado (sem parênteses, ≤3 palavras).
+const PRETTY_OPCIONAL: [RegExp, string][] = [
+  [/multim[íi]dia|carplay|android auto|vw play|tela touch/i, "CENTRAL MULTIMÍDIA"],
+  [/c[âa]mera de r[ée]/i, "CÂMERA DE RÉ"],
+  [/airbag/i, "AIRBAGS"],
+  [/couro/i, "BANCOS EM COURO"],
+  [/full led|far[óo]is? (full )?led|led/i, "FARÓIS DE LED"],
+  [/roda.*liga|liga leve/i, "RODAS DE LIGA LEVE"],
+  [/(adaptativo|acc|piloto autom|cruise)/i, "PILOTO AUTOMÁTICO"],
+  [/frenagem|aeb/i, "FRENAGEM AUTOMÁTICA"],
+  [/climat|dual zone|ar-condicionado autom|ar condicionado digital/i, "AR-CONDICIONADO DIGITAL"],
+  [/sensor.*estacion|sensor de r[ée]|sensor dianteiro|park/i, "SENSOR DE ESTACIONAMENTO"],
+  [/(kessy|presencial|keyless|push start|partida por bot)/i, "CHAVE PRESENCIAL"],
+  [/active info|painel.*digital|tft|instrumentos digital/i, "PAINEL DIGITAL"],
+  [/teto solar|panor[âa]mico/i, "TETO SOLAR"],
+  [/vidros? el[ée]tricos?/i, "VIDROS ELÉTRICOS"],
+  [/dire[çc][ãa]o el[ée]trica/i, "DIREÇÃO ELÉTRICA"],
+  [/freio.*disco|freio abs|\babs\b/i, "FREIOS ABS"],
+  [/controle de (estabilidade|tra[çc][ãa]o)|esp/i, "CONTROLE DE ESTABILIDADE"],
+  [/engate|reboque/i, "ENGATE REBOQUE"],
+  [/rack de teto/i, "RACK DE TETO"],
+  [/pneus? novos?/i, "PNEUS NOVOS"],
+];
+
+function curtaOpcional(s: string): string {
+  for (const [re, label] of PRETTY_OPCIONAL) if (re.test(s)) return label;
+  let t = s.split("(")[0].split(/[,–-]/)[0].trim();
+  const words = t.split(/\s+/);
+  if (words.length > 3) t = words.slice(0, 3).join(" ");
+  return t.toUpperCase();
+}
+
+// Lista de callouts únicos (sem repetir) a partir dos opcionais → pontos fortes.
+function calloutsDoVeiculo(veiculo: any): string[] {
+  const fontes: string[] = [...(veiculo?.opcionais ?? []), ...(veiculo?.pontos_fortes_venda ?? [])];
+  const vistos = new Set<string>();
+  const out: string[] = [];
+  for (const f of fontes) {
+    const c = curtaOpcional(String(f));
+    if (c && c.length >= 3 && !vistos.has(c)) {
+      vistos.add(c);
+      out.push(c);
+    }
+  }
+  return out;
+}
+
 // Monta os ReelProps a partir do veículo + config do tenant.
-export function buildReelProps(veiculo: any, cfgRow: any): ReelProps {
+export async function buildReelProps(veiculo: any, cfgRow: any): Promise<ReelProps> {
   const cfg = cfgFromRow(cfgRow);
   const capturas: MarketingCapturas = veiculo.marketing_capturas ?? {};
 
-  // Clips: ordena os takes pela ordem da shot list; usa o rótulo do ângulo.
-  // Se não há etiquetagem, cai pra video_takes na ordem crua.
+  // Clips: ordena os takes pela ordem da shot list. O callout de cada clip é um
+  // OPCIONAL vendável do carro (não o rótulo do ângulo, que é jargão interno).
   const takesEtiquetados = capturas.takes ?? [];
   const ordemTag = SHOT_TAKES.map((s) => s.tag);
   let clips: ReelClip[] = [];
   if (takesEtiquetados.length) {
     clips = [...takesEtiquetados]
       .sort((a, b) => ordemTag.indexOf(a.tag) - ordemTag.indexOf(b.tag))
-      .map((t) => ({ src: t.url, label: LABEL_TAKE[t.tag] ?? "" }));
+      .map((t) => ({ src: t.url }));
   } else {
-    clips = (veiculo.video_takes ?? []).map((src: string) => ({ src, label: "" }));
+    clips = (veiculo.video_takes ?? []).map((src: string) => ({ src }));
   }
 
   const anos = [veiculo.ano, veiculo.ano_modelo].filter(Boolean);
   const anoLabel =
     anos.length === 2 && anos[0] !== anos[1] ? `${anos[0]}/${anos[1]}` : anos.length ? String(anos[anos.length - 1]) : "";
+
+  // Fundo da intro = FOTO CRUA (nunca a capa montada, que já tem texto embutido).
+  const capaUrl = capturas.fotos?.find((f) => f.tag === "frente-3-4")?.url ?? veiculo.fotos?.[0] ?? null;
+  // Mede a foto pra intro decidir cover×contain (não cortar o carro em foto deitada).
+  const medida = capaUrl ? await fotoParaCapa(capaUrl) : null;
 
   return {
     marca: cleanMarca(veiculo.marca),
@@ -77,12 +128,14 @@ export function buildReelProps(veiculo: any, cfgRow: any): ReelProps {
     versao: veiculo.versao ?? "",
     anoLabel,
     specs: linhaSpecs(veiculo).split(" | ").filter(Boolean),
+    opcionais: calloutsDoVeiculo(veiculo),
     preco: cfg.mostrarPreco ? precoFormatado(veiculo) : null,
     claim: cfg.claim,
     loja: cfg.nome,
     corPrimaria: cfg.corPrimaria,
-    // Fundo da intro = FOTO CRUA (nunca a capa montada, que já tem texto embutido).
-    capaUrl: capturas.fotos?.find((f) => f.tag === "frente-3-4")?.url ?? veiculo.fotos?.[0] ?? null,
+    capaUrl,
+    capaW: medida?.w ?? null,
+    capaH: medida?.h ?? null,
     logoUrl: supabaseAdmin.storage.from("configuracoes").getPublicUrl(`logos/${veiculo.user_id}.png`).data.publicUrl,
     whatsapp: formatFone(cfg.telefoneLoja || cfg.whatsapp),
     clips,
@@ -119,7 +172,7 @@ export async function renderReel(veiculoId: string): Promise<string> {
     .order("created_at", { ascending: false })
     .limit(1);
 
-  const inputProps = buildReelProps(veiculo, cfgRows?.[0] ?? null);
+  const inputProps = await buildReelProps(veiculo, cfgRows?.[0] ?? null);
 
   const { selectComposition, renderMedia, ensureBrowser } = await import("@remotion/renderer");
 

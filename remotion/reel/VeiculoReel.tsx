@@ -23,12 +23,16 @@ export const VeiculoReel: React.FC<ReelProps> = (dados) => {
   const introFrom = cursor;
   cursor += DUR.intro;
 
+  // Callouts = opcionais do carro, um por clipe (sem repetir enquanto houver);
+  // se acabarem, cai pros specs. 1º clipe entra sem callout (deixa a intro respirar).
+  const callouts = dados.opcionais?.length ? dados.opcionais : dados.specs;
   const cenas = clips.map((clip, i) => {
     const dur = clip.durationInFrames ?? DUR.porClip;
     // Sobrepõe um pouco pra crossfade (a cena começa antes da anterior sair)
     const from = cursor - (i === 0 ? 0 : DUR.transicao);
     cursor = from + dur;
-    return { clip, from, dur, spec: dados.specs[i % dados.specs.length] };
+    const callout = callouts.length ? callouts[i % callouts.length] : undefined;
+    return { clip, from, dur, callout };
   });
 
   const endFrom = cursor - DUR.transicao;
@@ -41,7 +45,7 @@ export const VeiculoReel: React.FC<ReelProps> = (dados) => {
 
       {cenas.map((c, i) => (
         <Sequence key={i} from={c.from} durationInFrames={c.dur + DUR.transicao}>
-          <ClipScene clip={c.clip} spec={c.spec} cor={dados.corPrimaria} total={c.dur + DUR.transicao} />
+          <ClipScene clip={c.clip} callout={c.callout} cor={dados.corPrimaria} total={c.dur + DUR.transicao} />
         </Sequence>
       ))}
 
