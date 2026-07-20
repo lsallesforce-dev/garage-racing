@@ -9,7 +9,7 @@ import os from "os";
 import { promises as fs } from "fs";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { cfgFromRow, linhaSpecs, precoFormatado, tituloVeiculo } from "@/lib/marketing-kit";
+import { cfgFromRow, formatFone, linhaSpecs, precoFormatado } from "@/lib/marketing-kit";
 import { SHOT_TAKES, type MarketingCapturas } from "@/lib/marketing-shotlist";
 import type { ReelProps, ReelClip } from "@/remotion/types";
 
@@ -28,6 +28,26 @@ const r2 = new S3Client({
 const LABEL_TAKE: Record<string, string> = Object.fromEntries(
   SHOT_TAKES.map((s) => [s.tag, s.label])
 );
+
+// Marca costuma vir "VW - VolksWagen" → pega o nome depois do hífen.
+function cleanMarca(m: string | null | undefined): string {
+  if (!m) return "";
+  return (m.includes("-") ? m.split("-").pop()! : m).trim();
+}
+
+// Modelo costuma trazer a versão inteira ("Nivus Highline 1.0 200 TSI Flex Aut.")
+// — corta no primeiro token de motor/versão e limita a 2 palavras pro título do reel.
+const STOP_MODELO = /^(\d|TSI|TDI|MSI|FLEX|AUT|MEC|8V|16V|12V|V6|V8|4X4|4X2|4P|5P|2P|CV|TB|POWER|FIRE|TOTAL)/i;
+function cleanModelo(m: string | null | undefined): string {
+  if (!m) return "";
+  const out: string[] = [];
+  for (const w of m.split(/\s+/)) {
+    if (STOP_MODELO.test(w)) break;
+    out.push(w);
+    if (out.length >= 2) break;
+  }
+  return out.join(" ") || m.split(/\s+/)[0] || "";
+}
 
 // Monta os ReelProps a partir do veículo + config do tenant.
 export function buildReelProps(veiculo: any, cfgRow: any): ReelProps {
@@ -52,8 +72,8 @@ export function buildReelProps(veiculo: any, cfgRow: any): ReelProps {
     anos.length === 2 && anos[0] !== anos[1] ? `${anos[0]}/${anos[1]}` : anos.length ? String(anos[anos.length - 1]) : "";
 
   return {
-    marca: veiculo.marca ?? "",
-    modelo: veiculo.modelo ?? "",
+    marca: cleanMarca(veiculo.marca),
+    modelo: cleanModelo(veiculo.modelo),
     versao: veiculo.versao ?? "",
     anoLabel,
     specs: linhaSpecs(veiculo).split(" | ").filter(Boolean),
@@ -61,9 +81,10 @@ export function buildReelProps(veiculo: any, cfgRow: any): ReelProps {
     claim: cfg.claim,
     loja: cfg.nome,
     corPrimaria: cfg.corPrimaria,
-    capaUrl: veiculo.marketing_capa_url ?? capturas.fotos?.find((f) => f.tag === "frente-3-4")?.url ?? veiculo.fotos?.[0] ?? null,
+    // Fundo da intro = FOTO CRUA (nunca a capa montada, que já tem texto embutido).
+    capaUrl: capturas.fotos?.find((f) => f.tag === "frente-3-4")?.url ?? veiculo.fotos?.[0] ?? null,
     logoUrl: supabaseAdmin.storage.from("configuracoes").getPublicUrl(`logos/${veiculo.user_id}.png`).data.publicUrl,
-    whatsapp: cfg.telefoneLoja || cfg.whatsapp || null,
+    whatsapp: formatFone(cfg.telefoneLoja || cfg.whatsapp),
     clips,
     trilhaUrl: `${R2_PUBLIC_URL}/musicas/animado.mp3`,
   };

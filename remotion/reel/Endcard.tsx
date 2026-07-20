@@ -49,7 +49,7 @@ export const Endcard: React.FC<{ dados: ReelProps }> = ({ dados }) => {
 
       {dados.claim ? (
         <span style={{ color: REEL.brancoSuave, fontFamily: REEL.fonte, fontWeight: 900, fontSize: 30, letterSpacing: 1.5, textAlign: "center", textTransform: "uppercase", marginTop: 40, maxWidth: 820, lineHeight: 1.35 }}>
-          ✅ {dados.claim}
+          {dados.claim}
         </span>
       ) : null}
 
@@ -68,7 +68,7 @@ export const Endcard: React.FC<{ dados: ReelProps }> = ({ dados }) => {
         }}
       >
         <span style={{ color: REEL.branco, fontFamily: REEL.fonte, fontWeight: 900, fontSize: 40, letterSpacing: 2 }}>
-          {dados.whatsapp ? `📲 ${dados.whatsapp}` : "📲 CHAMA NO WHATSAPP"}
+          {dados.whatsapp ? `WHATSAPP  ${dados.whatsapp}` : "CHAMA NO WHATSAPP"}
         </span>
       </div>
     </AbsoluteFill>
