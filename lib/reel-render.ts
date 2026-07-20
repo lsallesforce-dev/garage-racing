@@ -52,35 +52,47 @@ export async function buildReelProps(veiculo: any, cfgRow: any): Promise<ReelPro
   const cfg = cfgFromRow(cfgRow);
   const capturas: MarketingCapturas = veiculo.marketing_capturas ?? {};
 
-  // Takes ordenados pela shot list (com a tag pra casar com a edição manual).
-  const takesEtiquetados = capturas.takes ?? [];
-  const ordemTag = SHOT_TAKES.map((s) => s.tag);
-  const ordered: { src: string; tag?: string }[] = takesEtiquetados.length
-    ? [...takesEtiquetados]
-        .sort((a, b) => ordemTag.indexOf(a.tag) - ordemTag.indexOf(b.tag))
-        .map((t) => ({ src: t.url, tag: t.tag }))
-    : (veiculo.video_takes ?? []).map((src: string) => ({ src }));
-
-  // Edição manual (estilo CapCut): duração + legenda por take. Casa por tag, senão índice.
-  const edit: any[] | null = Array.isArray(veiculo.marketing_reel_edit?.clips)
-    ? veiculo.marketing_reel_edit.clips
-    : null;
   const callouts = calloutsDoVeiculo(veiculo);
-  const clips: ReelClip[] = ordered.map((t, i) => {
-    const e = edit ? (edit.find((x) => x?.tag && x.tag === t.tag) ?? edit[i]) : null;
-    const seg = typeof e?.segundos === "number" ? Math.min(Math.max(e.segundos, 1), 6) : null;
-    const callout =
-      e && typeof e.callout === "string"
-        ? e.callout.trim().toUpperCase() || undefined
-        : callouts.length
-          ? callouts[i % callouts.length]
-          : undefined;
-    return {
+
+  // Edição manual (estilo CapCut). Quando existe, a ORDEM do array editado é a
+  // ordem final dos clipes (reorder), o `url` é a fonte, `segundos` a duração e
+  // `callout` a legenda. Sem edição = ordem da shot list + defaults.
+  const edit = veiculo.marketing_reel_edit ?? null;
+  const editClips: any[] | null = Array.isArray(edit?.clips) ? edit.clips : null;
+
+  let clips: ReelClip[];
+  if (editClips && editClips.length) {
+    clips = editClips
+      .map((e, i) => {
+        const src = typeof e?.url === "string" ? e.url : undefined;
+        if (!src) return null;
+        const seg = typeof e?.segundos === "number" ? Math.min(Math.max(e.segundos, 1), 6) : null;
+        const callout =
+          typeof e?.callout === "string" && e.callout.trim()
+            ? e.callout.trim().toUpperCase()
+            : callouts.length
+              ? callouts[i % callouts.length]
+              : undefined;
+        return { src, durationInFrames: seg ? Math.round(seg * 30) : undefined, callout };
+      })
+      .filter(Boolean) as ReelClip[];
+  } else {
+    const ordemTag = SHOT_TAKES.map((s) => s.tag);
+    const ordered: { src: string }[] = capturas.takes?.length
+      ? [...capturas.takes]
+          .sort((a, b) => ordemTag.indexOf(a.tag) - ordemTag.indexOf(b.tag))
+          .map((t) => ({ src: t.url }))
+      : (veiculo.video_takes ?? []).map((src: string) => ({ src }));
+    clips = ordered.map((t, i) => ({
       src: t.src,
-      durationInFrames: seg ? Math.round(seg * 30) : undefined,
-      callout,
-    };
-  });
+      callout: callouts.length ? callouts[i % callouts.length] : undefined,
+    }));
+  }
+
+  // Trilha: escolha do editor (animado|elegante|emocional|nenhuma), default animado.
+  const TRILHAS = ["animado", "elegante", "emocional"];
+  const trilhaEsc = typeof edit?.trilha === "string" ? edit.trilha : "animado";
+  const trilhaUrl = trilhaEsc === "nenhuma" ? null : `${R2_PUBLIC_URL}/musicas/${TRILHAS.includes(trilhaEsc) ? trilhaEsc : "animado"}.mp3`;
 
   const anos = [veiculo.ano, veiculo.ano_modelo].filter(Boolean);
   const anoLabel =
@@ -109,7 +121,7 @@ export async function buildReelProps(veiculo: any, cfgRow: any): Promise<ReelPro
     semMarca: cfg.fotoComMarca,
     whatsapp: formatFone(cfg.telefoneLoja || cfg.whatsapp),
     clips,
-    trilhaUrl: `${R2_PUBLIC_URL}/musicas/animado.mp3`,
+    trilhaUrl,
   };
 }
 

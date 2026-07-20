@@ -4,7 +4,7 @@
 // que aparece sobre o clipe. "Salvar e gerar" persiste e dispara o render.
 
 import React, { useEffect, useState } from "react";
-import { Loader2, Film, Save } from "lucide-react";
+import { Loader2, Film, Save, ChevronUp, ChevronDown, Music } from "lucide-react";
 
 interface Linha {
   tag: string | null;
@@ -13,6 +13,13 @@ interface Linha {
   segundos: number;
   callout: string;
 }
+
+const TRILHAS: { id: string; nome: string }[] = [
+  { id: "animado", nome: "Animado" },
+  { id: "elegante", nome: "Elegante" },
+  { id: "emocional", nome: "Emocional" },
+  { id: "nenhuma", nome: "Sem música" },
+];
 
 function toProxy(url: string): string {
   const m = url.match(/https?:\/\/[^/]+\/(.+)$/);
@@ -27,18 +34,33 @@ export default function ReelEditor({
   onGerar: () => void;
 }) {
   const [linhas, setLinhas] = useState<Linha[] | null>(null);
+  const [trilha, setTrilha] = useState("animado");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
   useEffect(() => {
     fetch(`/api/marketing/reel-edit?veiculoId=${veiculoId}`)
       .then((r) => r.json())
-      .then((d) => setLinhas(d.clips ?? []))
+      .then((d) => {
+        setLinhas(d.clips ?? []);
+        if (d.trilha) setTrilha(d.trilha);
+      })
       .catch(() => setErro("Erro ao carregar os takes"));
   }, [veiculoId]);
 
   function set(i: number, patch: Partial<Linha>) {
     setLinhas((prev) => (prev ? prev.map((l, j) => (j === i ? { ...l, ...patch } : l)) : prev));
+  }
+
+  function mover(i: number, dir: -1 | 1) {
+    setLinhas((prev) => {
+      if (!prev) return prev;
+      const j = i + dir;
+      if (j < 0 || j >= prev.length) return prev;
+      const arr = [...prev];
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+      return arr;
+    });
   }
 
   async function salvar(gerar: boolean) {
@@ -51,7 +73,8 @@ export default function ReelEditor({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           veiculoId,
-          clips: linhas.map((l) => ({ tag: l.tag, segundos: l.segundos, callout: l.callout })),
+          trilha,
+          clips: linhas.map((l) => ({ tag: l.tag, url: l.url, segundos: l.segundos, callout: l.callout })),
         }),
       });
       if (!res.ok) throw new Error((await res.json()).error ?? `HTTP ${res.status}`);
@@ -84,7 +107,17 @@ export default function ReelEditor({
       </p>
 
       {linhas.map((l, i) => (
-        <div key={i} className="flex items-center gap-3 rounded-xl border border-gray-100 bg-white p-2">
+        <div key={i} className="flex items-center gap-2 rounded-xl border border-gray-100 bg-white p-2">
+          {/* Reordenar */}
+          <div className="flex flex-col gap-0.5 flex-shrink-0">
+            <button onClick={() => mover(i, -1)} disabled={i === 0} className="text-gray-400 hover:text-gray-800 disabled:opacity-25" title="Subir">
+              <ChevronUp size={16} />
+            </button>
+            <span className="text-[9px] font-black text-gray-400 text-center">{i + 1}</span>
+            <button onClick={() => mover(i, 1)} disabled={i === linhas.length - 1} className="text-gray-400 hover:text-gray-800 disabled:opacity-25" title="Descer">
+              <ChevronDown size={16} />
+            </button>
+          </div>
           {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
           <video src={toProxy(l.url)} muted preload="metadata" className="w-14 h-20 rounded-lg object-cover bg-black flex-shrink-0" />
           <div className="flex-1 min-w-0">
@@ -111,6 +144,27 @@ export default function ReelEditor({
           </div>
         </div>
       ))}
+
+      {/* Trilha */}
+      <div className="rounded-xl border border-gray-100 bg-white p-2.5">
+        <div className="flex items-center gap-1.5 mb-2">
+          <Music size={12} className="text-gray-400" />
+          <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Trilha</span>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {TRILHAS.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTrilha(t.id)}
+              className={`rounded-lg px-3 py-1.5 text-[9px] font-black uppercase tracking-widest transition-all ${
+                trilha === t.id ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+              }`}
+            >
+              {t.nome}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {erro ? <p className="text-[10px] font-bold text-red-500">{erro}</p> : null}
 

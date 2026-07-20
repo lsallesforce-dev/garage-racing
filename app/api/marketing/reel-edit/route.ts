@@ -57,11 +57,14 @@ export async function GET(req: NextRequest) {
     };
   });
 
-  return NextResponse.json({ clips: linhas });
+  const trilha = typeof veiculo.marketing_reel_edit?.trilha === "string" ? veiculo.marketing_reel_edit.trilha : "animado";
+  return NextResponse.json({ clips: linhas, trilha });
 }
 
+const TRILHAS_OK = new Set(["animado", "elegante", "emocional", "nenhuma"]);
+
 export async function POST(req: NextRequest) {
-  const { veiculoId, clips } = await req.json();
+  const { veiculoId, clips, trilha } = await req.json();
   if (!veiculoId || !Array.isArray(clips)) {
     return NextResponse.json({ error: "veiculoId e clips obrigatórios" }, { status: 400 });
   }
@@ -69,16 +72,22 @@ export async function POST(req: NextRequest) {
   const { error: authError } = await requireVehicleOwner(veiculoId);
   if (authError) return authError;
 
-  // Sanitiza: só tag (string|null), segundos (1..6), callout (≤40 chars)
-  const limpos = clips.slice(0, 20).map((c: any) => ({
-    tag: typeof c?.tag === "string" ? c.tag : null,
-    segundos: Math.min(Math.max(Number(c?.segundos) || DEFAULT_SEG, 1), 6),
-    callout: String(c?.callout ?? "").trim().slice(0, 40),
-  }));
+  // Sanitiza. A ORDEM do array é a ordem final dos clipes (reorder). url = fonte.
+  const limpos = clips
+    .slice(0, 20)
+    .filter((c: any) => typeof c?.url === "string" && c.url.startsWith("https://"))
+    .map((c: any) => ({
+      tag: typeof c?.tag === "string" ? c.tag : null,
+      url: c.url,
+      segundos: Math.min(Math.max(Number(c?.segundos) || DEFAULT_SEG, 1), 6),
+      callout: String(c?.callout ?? "").trim().slice(0, 40),
+    }));
+
+  const trilhaOk = typeof trilha === "string" && TRILHAS_OK.has(trilha) ? trilha : "animado";
 
   const { error: dbErr } = await supabaseAdmin
     .from("veiculos")
-    .update({ marketing_reel_edit: { clips: limpos } })
+    .update({ marketing_reel_edit: { clips: limpos, trilha: trilhaOk } })
     .eq("id", veiculoId);
   if (dbErr) return NextResponse.json({ error: dbErr.message }, { status: 500 });
 
