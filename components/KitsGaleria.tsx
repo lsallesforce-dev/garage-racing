@@ -60,6 +60,7 @@ export default function KitsGaleria() {
   const [erro, setErro] = useState<Record<string, string>>({});
   const [gerandoTodos, setGerandoTodos] = useState<{ atual: number; total: number } | null>(null);
   const [reelBusy, setReelBusy] = useState<Record<string, boolean>>({});
+  const [baixando, setBaixando] = useState<Record<string, "capa" | "story" | "carrossel" | "reel">>({});
   const [aberto, setAberto] = useState<Record<string, boolean>>({});
   const [editando, setEditando] = useState<Record<string, boolean>>({});
 
@@ -215,6 +216,8 @@ export default function KitsGaleria() {
   }
 
   async function baixar(c: CarroKit, tipo: "capa" | "story" | "carrossel") {
+    if (baixando[c.id]) return;
+    setBaixando((p) => ({ ...p, [c.id]: tipo }));
     try {
       if (tipo === "capa" && c.marketing_capa_url) {
         await baixarUrl(c.marketing_capa_url, `feed-${slugCarro(c)}.png`);
@@ -229,6 +232,20 @@ export default function KitsGaleria() {
       }
     } catch {
       setErro((p) => ({ ...p, [c.id]: "Erro ao baixar" }));
+    } finally {
+      setBaixando((p) => { const n = { ...p }; delete n[c.id]; return n; });
+    }
+  }
+
+  async function baixarReel(c: CarroKit) {
+    if (baixando[c.id] || !c.marketing_reel_url) return;
+    setBaixando((p) => ({ ...p, [c.id]: "reel" }));
+    try {
+      await baixarUrl(reelToProxy(c.marketing_reel_url), `reel-${slugCarro(c)}.mp4`);
+    } catch {
+      setErro((p) => ({ ...p, [c.id]: "Erro ao baixar" }));
+    } finally {
+      setBaixando((p) => { const n = { ...p }; delete n[c.id]; return n; });
     }
   }
 
@@ -399,11 +416,11 @@ export default function KitsGaleria() {
                         {copiado === c.id ? <Check size={12} className="text-green-600" /> : <Copy size={12} />}
                         {copiado === c.id ? "Copiada!" : "Copiar legenda"}
                       </button>
-                      <button onClick={() => baixar(c, "carrossel")} className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gray-100 py-2.5 text-[9px] font-black uppercase tracking-widest text-gray-600 hover:bg-gray-200">
-                        <Download size={12} /> Feed ({c.marketing_carrossel?.length ?? 1})
+                      <button onClick={() => baixar(c, "carrossel")} disabled={!!baixando[c.id]} className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gray-100 py-2.5 text-[9px] font-black uppercase tracking-widest text-gray-600 hover:bg-gray-200 disabled:opacity-40">
+                        {baixando[c.id] === "carrossel" ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} Feed ({c.marketing_carrossel?.length ?? 1})
                       </button>
-                      <button onClick={() => baixar(c, "story")} disabled={!c.marketing_story_url} className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gray-100 py-2.5 text-[9px] font-black uppercase tracking-widest text-gray-600 hover:bg-gray-200 disabled:opacity-40">
-                        <Download size={12} /> Story
+                      <button onClick={() => baixar(c, "story")} disabled={!c.marketing_story_url || !!baixando[c.id]} className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gray-100 py-2.5 text-[9px] font-black uppercase tracking-widest text-gray-600 hover:bg-gray-200 disabled:opacity-40">
+                        {baixando[c.id] === "story" ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} Story
                       </button>
                     </div>
                   </>
@@ -420,8 +437,8 @@ export default function KitsGaleria() {
                       {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
                       <video src={reelToProxy(c.marketing_reel_url)} controls className="w-full rounded-xl border border-gray-100 bg-black mb-2" />
                       <div className="flex items-center gap-2">
-                        <button onClick={() => baixarUrl(reelToProxy(c.marketing_reel_url!), `reel-${slugCarro(c)}.mp4`)} className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gray-100 py-2.5 text-[9px] font-black uppercase tracking-widest text-gray-600 hover:bg-gray-200">
-                          <Download size={12} /> Baixar reel
+                        <button onClick={() => baixarReel(c)} disabled={!!baixando[c.id]} className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gray-100 py-2.5 text-[9px] font-black uppercase tracking-widest text-gray-600 hover:bg-gray-200 disabled:opacity-40">
+                          {baixando[c.id] === "reel" ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} {baixando[c.id] === "reel" ? "Baixando..." : "Baixar reel"}
                         </button>
                         <button onClick={() => gerarReel(c.id)} disabled={reelBusy[c.id]} title="Regerar reel" className="flex items-center justify-center rounded-xl bg-gray-900 px-3 py-2.5 text-white hover:bg-red-600 disabled:opacity-50">
                           {reelBusy[c.id] ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
