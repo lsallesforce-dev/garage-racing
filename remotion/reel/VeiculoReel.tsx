@@ -44,7 +44,7 @@ export const VeiculoReel: React.FC<ReelProps> = (dados) => {
     const from = cursor - (i === 0 ? 0 : ov);
     cursor = from + dur;
     const callout = clip.callout ?? (callouts.length ? callouts[i % callouts.length] : undefined);
-    return { clip, from, dur, callout };
+    return { clip, from, dur, callout, subCallout: clip.subCallout };
   });
 
   const endFrom = cursor - ov;
@@ -60,6 +60,7 @@ export const VeiculoReel: React.FC<ReelProps> = (dados) => {
           <ClipScene
             clip={c.clip}
             callout={c.callout}
+            subCallout={c.subCallout}
             cor={dados.corPrimaria}
             total={c.dur + ov}
             transicao={transicao}

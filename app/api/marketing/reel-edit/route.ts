@@ -20,6 +20,7 @@ interface LinhaEdit {
   inicio: number;  // corte de início (segundo em que o clipe começa)
   fim: number;     // corte de fim (segundo em que o clipe termina)
   callout: string; // legenda editável
+  subCallout: string; // sublegenda menor, abaixo do callout (editável, opcional)
 }
 
 export async function GET(req: NextRequest) {
@@ -73,6 +74,7 @@ export async function GET(req: NextRequest) {
           inicio,
           fim,
           callout: typeof e.callout === "string" ? e.callout : defaultCallout(i),
+          subCallout: typeof e.subCallout === "string" ? e.subCallout : "",
         };
       });
   } else {
@@ -84,6 +86,7 @@ export async function GET(req: NextRequest) {
       inicio: 0,
       fim: DEFAULT_SEG,
       callout: defaultCallout(i),
+      subCallout: "",
     }));
   }
 
@@ -125,6 +128,7 @@ export async function POST(req: NextRequest) {
         inicio,
         fim,
         callout: String(c?.callout ?? "").trim().slice(0, 40),
+        subCallout: String(c?.subCallout ?? "").trim().slice(0, 60),
       };
     });
 

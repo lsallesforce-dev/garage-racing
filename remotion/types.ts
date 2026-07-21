@@ -8,6 +8,7 @@ export interface ReelClip {
   startFrom?: number;       // segundo de início do trecho aproveitado
   durationInFrames?: number;// duração da cena (default DUR.porClip)
   callout?: string;         // legenda sobre o take (editável; default = opcional)
+  subCallout?: string;      // sublegenda menor, abaixo do callout (editável; opcional)
 }
 
 export interface ReelProps {

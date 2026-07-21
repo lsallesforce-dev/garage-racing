@@ -14,6 +14,7 @@ interface Linha {
   inicio: number;
   fim: number;
   callout: string;
+  subCallout: string;
 }
 
 const TRILHAS: { id: string; nome: string }[] = [
@@ -175,6 +176,13 @@ function TakeRow({
         placeholder="Legenda sobre o take (ex.: CÂMERA DE RÉ)"
         className="mt-2 w-full rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px] font-bold uppercase"
       />
+      <input
+        value={l.subCallout}
+        onChange={(e) => onChange({ subCallout: e.target.value })}
+        maxLength={60}
+        placeholder="Sublegenda menor (opcional, ex.: Sensor de estacionamento)"
+        className="mt-1.5 w-full rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-[10px] font-medium"
+      />
     </div>
   );
 }
@@ -234,7 +242,7 @@ export default function ReelEditor({
           veiculoId,
           trilha,
           transicao,
-          clips: linhas.map((l) => ({ tag: l.tag, url: l.url, inicio: l.inicio, fim: l.fim, callout: l.callout })),
+          clips: linhas.map((l) => ({ tag: l.tag, url: l.url, inicio: l.inicio, fim: l.fim, callout: l.callout, subCallout: l.subCallout })),
         }),
       });
       if (!res.ok) throw new Error((await res.json()).error ?? `HTTP ${res.status}`);

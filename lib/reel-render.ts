@@ -79,7 +79,8 @@ export async function buildReelProps(veiculo: any, cfgRow: any): Promise<ReelPro
             : callouts.length
               ? callouts[i % callouts.length]
               : undefined;
-        return { src, startFrom: inicio, durationInFrames: dur ? Math.round(dur * 30) : undefined, callout };
+        const subCallout = typeof e?.subCallout === "string" && e.subCallout.trim() ? e.subCallout.trim() : undefined;
+        return { src, startFrom: inicio, durationInFrames: dur ? Math.round(dur * 30) : undefined, callout, subCallout };
       })
       .filter(Boolean) as ReelClip[];
   } else {

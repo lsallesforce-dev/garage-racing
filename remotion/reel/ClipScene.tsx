@@ -8,11 +8,12 @@ import type { ReelClip, TipoTransicao } from "../types";
 export const ClipScene: React.FC<{
   clip: ReelClip;
   callout?: string;
+  subCallout?: string;
   cor: string;
   total: number;
   transicao?: TipoTransicao;
   overlap?: number;
-}> = ({ clip, callout, cor, total, transicao = "fade", overlap = 12 }) => {
+}> = ({ clip, callout, subCallout, cor, total, transicao = "fade", overlap = 12 }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
@@ -85,6 +86,23 @@ export const ClipScene: React.FC<{
               {callout}
             </span>
           </div>
+          {subCallout ? (
+            <div
+              style={{
+                marginTop: 8,
+                marginLeft: 34,
+                color: REEL.brancoSuave,
+                fontFamily: REEL.fonte,
+                fontWeight: 600,
+                fontSize: 26,
+                letterSpacing: 0.5,
+                lineHeight: 1.2,
+                textShadow: "0 2px 10px rgba(0,0,0,0.7)",
+              }}
+            >
+              {subCallout}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </AbsoluteFill>
