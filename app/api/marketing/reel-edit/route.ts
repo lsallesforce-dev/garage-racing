@@ -94,7 +94,7 @@ export async function GET(req: NextRequest) {
 
 const TRILHAS_OK = new Set(["animado", "elegante", "emocional", "nenhuma"]);
 
-const TRANSICOES_OK = new Set(["fade", "corte", "deslizar"]);
+const TRANSICOES_OK = new Set(["fade", "corte", "deslizar", "zoom", "desfoque"]);
 
 export async function POST(req: NextRequest) {
   const { veiculoId, clips, trilha, transicao } = await req.json();

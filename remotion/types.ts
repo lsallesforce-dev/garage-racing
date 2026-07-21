@@ -1,7 +1,7 @@
 // Props do reel — o que a rota/worker passa pro Remotion renderizar.
 // Espelha os dados do veículo + config do tenant (mesma fonte da capa).
 
-export type TipoTransicao = "fade" | "corte" | "deslizar";
+export type TipoTransicao = "fade" | "corte" | "deslizar" | "zoom" | "desfoque";
 
 export interface ReelClip {
   src?: string;             // URL do take (R2) ou vídeo bruto; ausente = só no preview

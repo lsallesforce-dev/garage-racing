@@ -17,9 +17,11 @@ export const ClipScene: React.FC<{
   const { fps } = useVideoConfig();
 
   const t = Math.max(overlap, 1);
-  // Opacidade e deslocamento da cena conforme a transição
+  // Opacidade, deslocamento, escala e desfoque da cena conforme a transição
   let op = 1;
   let slideX = 0;
+  let sceneScale = 1;
+  let blurPx = 0;
   if (transicao === "fade") {
     const fadeIn = interpolate(frame, [0, t], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
     const fadeOut = interpolate(frame, [total - t, total], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
@@ -27,14 +29,30 @@ export const ClipScene: React.FC<{
   } else if (transicao === "deslizar") {
     slideX = interpolate(frame, [0, t], [100, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
     op = interpolate(frame, [total - t, total], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  } else if (transicao === "zoom") {
+    sceneScale = interpolate(frame, [0, t], [1.3, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+    const fadeIn = interpolate(frame, [0, t], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+    const fadeOut = interpolate(frame, [total - t, total], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+    op = Math.min(fadeIn, fadeOut);
+  } else if (transicao === "desfoque") {
+    const blurIn = interpolate(frame, [0, t], [22, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+    const blurOut = interpolate(frame, [total - t, total], [0, 22], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+    blurPx = Math.max(blurIn, blurOut);
   }
-  // "corte": op=1, slideX=0 (nada) — a sobreposição já é 0, então é corte seco.
+  // "corte": op=1, slideX=0, sceneScale=1, blurPx=0 — a sobreposição já é 0, então é corte seco.
 
   const zoom = interpolate(frame, [0, total], [1.04, 1.12]);
   const lowerY = interpolate(frame, [4, 16], [40, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
 
   return (
-    <AbsoluteFill style={{ backgroundColor: REEL.bgFoto, opacity: op, transform: `translateX(${slideX}%)` }}>
+    <AbsoluteFill
+      style={{
+        backgroundColor: REEL.bgFoto,
+        opacity: op,
+        transform: `translateX(${slideX}%) scale(${sceneScale})`,
+        filter: blurPx > 0.05 ? `blur(${blurPx}px)` : undefined,
+      }}
+    >
       {clip.src ? (
         <OffthreadVideo
           src={clip.src}

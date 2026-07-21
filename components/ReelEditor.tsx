@@ -27,6 +27,8 @@ const TRANSICOES: { id: string; nome: string }[] = [
   { id: "fade", nome: "Fade suave" },
   { id: "corte", nome: "Corte seco" },
   { id: "deslizar", nome: "Deslizar" },
+  { id: "zoom", nome: "Zoom" },
+  { id: "desfoque", nome: "Desfoque" },
 ];
 
 // Espelha duracaoReel do Remotion: intro 75f + clipes (com overlap) + endcard 96f.

@@ -101,7 +101,7 @@ export async function buildReelProps(veiculo: any, cfgRow: any): Promise<ReelPro
   const trilhaUrl = trilhaEsc === "nenhuma" ? null : `${R2_PUBLIC_URL}/musicas/${TRILHAS.includes(trilhaEsc) ? trilhaEsc : "animado"}.mp3`;
 
   // Transição entre cenas
-  const TRANSICOES = ["fade", "corte", "deslizar"];
+  const TRANSICOES = ["fade", "corte", "deslizar", "zoom", "desfoque"];
   const transicao = TRANSICOES.includes(edit?.transicao) ? edit.transicao : "fade";
 
   const anos = [veiculo.ano, veiculo.ano_modelo].filter(Boolean);
