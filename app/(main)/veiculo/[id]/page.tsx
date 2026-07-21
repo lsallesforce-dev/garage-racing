@@ -632,8 +632,6 @@ export default function DetalheVeiculo() {
   const [pontosFortes, setPontosFortes] = useState<string[]>([]);
   const [novoPonto, setNovoPonto] = useState("");
   const [salvandoPontos, setSalvandoPontos] = useState(false);
-  const [roteiro, setRoteiro] = useState("");
-  const [isGeneratingRoteiro, setIsGeneratingRoteiro] = useState(false);
   const [isExtractingFicha, setIsExtractingFicha] = useState(false);
 
   // Consulta de placa (enriquecimento)
@@ -735,7 +733,6 @@ export default function DetalheVeiculo() {
     setDetalhes(veiculo.detalhes_inspecao || "");
     setPontosFortes(veiculo.pontos_fortes_venda || []);
     setOpcionais(veiculo.opcionais || []);
-    setRoteiro(veiculo.roteiro_pitch || "");
     setVendedorId(veiculo.vendedor_responsavel_id || "");
     setPlacaConsulta((prev) => prev || (veiculo.placa ?? "").toUpperCase());
     setHistorico({
@@ -937,25 +934,6 @@ export default function DetalheVeiculo() {
       alert("Falha ao extrair: " + e.message);
     } finally {
       setIsExtractingFicha(false);
-    }
-  };
-
-  const handleGerarRoteiro = async () => {
-    if (!veiculo) return;
-    setIsGeneratingRoteiro(true);
-    try {
-      const resp = await fetch("/api/veiculo/roteiro", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: veiculo.id }),
-      });
-      const data = await resp.json();
-      if (data.success) setRoteiro(data.roteiro);
-      else throw new Error(data.error);
-    } catch (e: any) {
-      alert("Falha ao gerar roteiro: " + e.message);
-    } finally {
-      setIsGeneratingRoteiro(false);
     }
   };
 
@@ -1966,46 +1944,6 @@ export default function DetalheVeiculo() {
                   </select>
                 </div>
               </div>
-            </div>
-
-            {/* Marketing AI Factory */}
-            <div className="p-8 bg-[#e2e2de] rounded-[2.5rem] border border-black/5 relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-red-600/5 blur-3xl rounded-full -mr-16 -mt-16" />
-              <div className="flex justify-between items-center mb-4 relative z-10">
-                <h3 className="text-lg font-black uppercase italic tracking-tighter text-gray-900">
-                  Marketing AI
-                </h3>
-                <span className="px-3 py-1 bg-red-600 text-white text-[9px] font-black rounded-full uppercase">
-                  Factory
-                </span>
-              </div>
-              <p className="text-xs text-gray-400 mb-6 leading-relaxed relative z-10">
-                Pitch matador para Reels e TikTok gerado em segundos.
-              </p>
-              <button
-                onClick={handleGerarRoteiro}
-                disabled={isGeneratingRoteiro}
-                className="w-full py-4 bg-gray-900 text-white font-black uppercase italic rounded-2xl hover:bg-red-600 transition-all flex items-center justify-center gap-2 relative z-10 disabled:opacity-50"
-              >
-                {isGeneratingRoteiro ? (
-                  <Loader2 size={18} className="animate-spin" />
-                ) : (
-                  <Video size={18} />
-                )}
-                {isGeneratingRoteiro ? "Roteirizando..." : "Gerar Pitch de Venda"}
-              </button>
-
-              {roteiro && (
-                <div className="mt-6 p-5 bg-gray-50 rounded-2xl border border-gray-100 relative z-10">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-red-600 mb-3">
-                    Roteiro (Reels/TikTok)
-                  </p>
-                  <pre className="text-xs text-gray-600 whitespace-pre-wrap font-sans leading-relaxed italic">
-                    {roteiro}
-                  </pre>
-                </div>
-              )}
-
             </div>
 
             {/* ── Documentos / Scanner ── */}

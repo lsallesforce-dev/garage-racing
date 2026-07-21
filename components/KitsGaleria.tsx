@@ -24,6 +24,7 @@ import {
   RefreshCw,
   Save,
   Sparkles,
+  Video,
   Wand2,
 } from "lucide-react";
 
@@ -44,6 +45,7 @@ interface CarroKit {
   marketing_reel_status: string | null;
   video_takes: string[] | null;
   marketing_capturas: MarketingCapturas | null;
+  roteiro_pitch: string | null;
 }
 
 function reelToProxy(url: string): string {
@@ -64,6 +66,8 @@ export default function KitsGaleria() {
   const [baixando, setBaixando] = useState<Record<string, "capa" | "story" | "carrossel" | "reel">>({});
   const [aberto, setAberto] = useState<Record<string, boolean>>({});
   const [editando, setEditando] = useState<Record<string, boolean>>({});
+  const [gerandoRoteiro, setGerandoRoteiro] = useState<Record<string, boolean>>({});
+  const [roteiroAberto, setRoteiroAberto] = useState<Record<string, boolean>>({});
   const legendaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
 
   // Config da loja (nível tenant)
@@ -79,7 +83,7 @@ export default function KitsGaleria() {
     if (!effectiveUserId) return;
     supabase
       .from("veiculos")
-      .select("id, marca, modelo, versao, ano, ano_modelo, fotos, status_venda, marketing_capa_url, marketing_story_url, marketing_carrossel, marketing_legenda, marketing_reel_url, marketing_reel_status, video_takes, marketing_capturas")
+      .select("id, marca, modelo, versao, ano, ano_modelo, fotos, status_venda, marketing_capa_url, marketing_story_url, marketing_carrossel, marketing_legenda, marketing_reel_url, marketing_reel_status, video_takes, marketing_capturas, roteiro_pitch")
       .eq("user_id", effectiveUserId)
       .neq("status_venda", "VENDIDO")
       .order("created_at", { ascending: false })
@@ -251,6 +255,25 @@ export default function KitsGaleria() {
     }
   }
 
+  async function gerarRoteiro(id: string) {
+    setGerandoRoteiro((p) => ({ ...p, [id]: true }));
+    setErro((p) => ({ ...p, [id]: "" }));
+    try {
+      const res = await fetch("/api/veiculo/roteiro", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const d = await res.json();
+      if (!d.success) throw new Error(d.error ?? "Erro ao gerar roteiro");
+      patchCarro(id, { roteiro_pitch: d.roteiro });
+    } catch (e: any) {
+      setErro((p) => ({ ...p, [id]: e.message ?? "Erro ao gerar roteiro" }));
+    } finally {
+      setGerandoRoteiro((p) => ({ ...p, [id]: false }));
+    }
+  }
+
   async function gerarReel(id: string) {
     setReelBusy((p) => ({ ...p, [id]: true }));
     setErro((p) => ({ ...p, [id]: "" }));
@@ -358,6 +381,48 @@ export default function KitsGaleria() {
                   <Link href={`/veiculo/${c.id}`} className="text-gray-300 hover:text-gray-600 flex-shrink-0" title="Abrir veículo">
                     <ExternalLink size={14} />
                   </Link>
+                </div>
+
+                {/* Marketing AI Factory — pitch de venda pra Reels/TikTok (colapsável) */}
+                <div className="rounded-2xl bg-[#e2e2de] p-3 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-20 h-20 bg-red-600/5 blur-2xl rounded-full -mr-8 -mt-8" />
+                  <button
+                    onClick={() => setRoteiroAberto((p) => ({ ...p, [c.id]: !p[c.id] }))}
+                    className="flex w-full items-center justify-between relative z-10"
+                  >
+                    <span className="flex items-center gap-1.5 text-[10px] font-black uppercase italic tracking-tight text-gray-900">
+                      <Video size={13} /> Marketing AI
+                      <span className="px-1.5 py-0.5 bg-red-600 text-white text-[7px] font-black rounded-full uppercase not-italic">Factory</span>
+                    </span>
+                    <ChevronDown size={13} className={`text-gray-400 transition-transform ${roteiroAberto[c.id] ? "rotate-180" : ""}`} />
+                  </button>
+
+                  {roteiroAberto[c.id] && (
+                    <div className="relative z-10 mt-3">
+                      <p className="text-[10px] text-gray-400 mb-3 leading-relaxed">
+                        Pitch matador para Reels e TikTok gerado em segundos.
+                      </p>
+                      <button
+                        onClick={() => gerarRoteiro(c.id)}
+                        disabled={gerandoRoteiro[c.id]}
+                        className="w-full py-2.5 bg-gray-900 text-white text-[10px] font-black uppercase italic rounded-xl hover:bg-red-600 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                      >
+                        {gerandoRoteiro[c.id] ? <Loader2 size={13} className="animate-spin" /> : <Video size={13} />}
+                        {gerandoRoteiro[c.id] ? "Roteirizando..." : c.roteiro_pitch ? "Regerar Pitch de Venda" : "Gerar Pitch de Venda"}
+                      </button>
+
+                      {c.roteiro_pitch && (
+                        <div className="mt-3 p-3 bg-gray-50 rounded-xl border border-gray-100">
+                          <p className="text-[9px] font-black uppercase tracking-widest text-red-600 mb-2">
+                            Roteiro (Reels/TikTok)
+                          </p>
+                          <pre className="text-[10px] text-gray-600 whitespace-pre-wrap font-sans leading-relaxed italic">
+                            {c.roteiro_pitch}
+                          </pre>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Captura guiada (colapsável) */}
