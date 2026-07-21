@@ -6,7 +6,7 @@
 //   · reel (gerar no worker, assistir, baixar)
 // Config da legenda/capa (nível loja) fica no topo, não por carro.
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useUserRole } from "@/components/SidebarWrapper";
@@ -22,6 +22,7 @@ import {
   Film,
   Loader2,
   RefreshCw,
+  Save,
   Sparkles,
   Wand2,
 } from "lucide-react";
@@ -63,6 +64,7 @@ export default function KitsGaleria() {
   const [baixando, setBaixando] = useState<Record<string, "capa" | "story" | "carrossel" | "reel">>({});
   const [aberto, setAberto] = useState<Record<string, boolean>>({});
   const [editando, setEditando] = useState<Record<string, boolean>>({});
+  const legendaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
 
   // Config da loja (nível tenant)
   const [cfgAberta, setCfgAberta] = useState(false);
@@ -378,9 +380,9 @@ export default function KitsGaleria() {
                 <button
                   onClick={() => gerar(c.id)}
                   disabled={gerando[c.id]}
-                  className="flex items-center justify-center gap-2 rounded-2xl bg-gray-900 py-3 font-black uppercase italic text-white transition-all hover:bg-red-600 disabled:opacity-50 text-sm"
+                  className="flex items-center justify-center gap-1.5 rounded-xl bg-gray-900 py-2 font-black uppercase italic text-white transition-all hover:bg-red-600 disabled:opacity-50 text-xs"
                 >
-                  {gerando[c.id] ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+                  {gerando[c.id] ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
                   {gerando[c.id] ? "Gerando..." : temKit ? "Regerar kit" : "Gerar kit"}
                 </button>
 
@@ -400,6 +402,7 @@ export default function KitsGaleria() {
                     )}
 
                     <textarea
+                      ref={(el) => { legendaRefs.current[c.id] = el; }}
                       defaultValue={c.marketing_legenda ?? ""}
                       rows={6}
                       onBlur={(e) => {
@@ -412,6 +415,18 @@ export default function KitsGaleria() {
                     />
 
                     <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          const legenda = legendaRefs.current[c.id]?.value ?? "";
+                          patchCarro(c.id, { marketing_legenda: legenda });
+                          salvarLegenda(c.id, legenda);
+                        }}
+                        disabled={salvando[c.id] === "salvando"}
+                        className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gray-900 py-2.5 text-[9px] font-black uppercase tracking-widest text-white hover:bg-red-600 disabled:opacity-50"
+                      >
+                        {salvando[c.id] === "salvando" ? <Loader2 size={12} className="animate-spin" /> : salvando[c.id] === "ok" ? <Check size={12} className="text-green-400" /> : <Save size={12} />}
+                        {salvando[c.id] === "salvando" ? "Salvando..." : salvando[c.id] === "ok" ? "Salva!" : "Salvar legenda"}
+                      </button>
                       <button onClick={() => copiar(c.id, c.marketing_legenda ?? "")} className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gray-100 py-2.5 text-[9px] font-black uppercase tracking-widest text-gray-600 hover:bg-gray-200">
                         {copiado === c.id ? <Check size={12} className="text-green-600" /> : <Copy size={12} />}
                         {copiado === c.id ? "Copiada!" : "Copiar legenda"}
