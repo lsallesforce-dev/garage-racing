@@ -38,7 +38,8 @@ export async function GET(req: NextRequest) {
 
   const capturas: MarketingCapturas = veiculo.marketing_capturas ?? {};
   const ordemTag = SHOT_TAKES.map((s) => s.tag);
-  const ordered: { url: string; tag: string | null }[] = (capturas.takes?.length)
+  // Todos os takes gravados no carro (ordem da shot list), pra label/preview.
+  const gravados: { url: string; tag: string | null }[] = (capturas.takes?.length)
     ? [...capturas.takes]
         .sort((a, b) => ordemTag.indexOf(a.tag) - ordemTag.indexOf(b.tag))
         .map((t) => ({ url: t.url, tag: t.tag }))
@@ -47,22 +48,44 @@ export async function GET(req: NextRequest) {
   const callouts = calloutsDoVeiculo(veiculo);
   const salvos: any[] = Array.isArray(veiculo.marketing_reel_edit?.clips) ? veiculo.marketing_reel_edit.clips : [];
 
-  const linhas: LinhaEdit[] = ordered.map((t, i) => {
-    const e = salvos.find((x) => x?.tag && x.tag === t.tag) ?? salvos[i];
-    const inicio = typeof e?.inicio === "number" ? e.inicio : 0;
-    const fim =
-      typeof e?.fim === "number" ? e.fim
-        : typeof e?.segundos === "number" ? inicio + e.segundos
-          : inicio + DEFAULT_SEG;
-    return {
+  const labelDe = (tag: string | null, idx: number) => (tag ? LABEL_TAKE[tag] ?? "Take" : `Take ${idx + 1}`);
+  const defaultCallout = (idx: number) => callouts[idx % Math.max(callouts.length, 1)] ?? "";
+
+  let linhas: LinhaEdit[];
+  if (salvos.length) {
+    // Existe edição salva: ela manda (respeita ordem, deletes, cortes). Como o
+    // take deletado continua em marketing_capturas.takes, NÃO reanexamos os
+    // gravados que faltam — senão o delete "voltaria". Só o que está no edit sai.
+    linhas = salvos
+      .filter((e) => typeof e?.url === "string")
+      .map((e, i) => {
+        const g = gravados.find((t) => t.url === e.url);
+        const tag = typeof e.tag === "string" ? e.tag : g?.tag ?? null;
+        const inicio = typeof e.inicio === "number" ? e.inicio : 0;
+        const fim =
+          typeof e.fim === "number" ? e.fim
+            : typeof e.segundos === "number" ? inicio + e.segundos
+              : inicio + DEFAULT_SEG;
+        return {
+          tag,
+          label: labelDe(tag, i),
+          url: e.url,
+          inicio,
+          fim,
+          callout: typeof e.callout === "string" ? e.callout : defaultCallout(i),
+        };
+      });
+  } else {
+    // Sem edição salva: lista todos os takes com defaults.
+    linhas = gravados.map((t, i) => ({
       tag: t.tag,
-      label: t.tag ? LABEL_TAKE[t.tag] ?? "Take" : `Take ${i + 1}`,
+      label: labelDe(t.tag, i),
       url: t.url,
-      inicio,
-      fim,
-      callout: typeof e?.callout === "string" ? e.callout : (callouts[i % Math.max(callouts.length, 1)] ?? ""),
-    };
-  });
+      inicio: 0,
+      fim: DEFAULT_SEG,
+      callout: defaultCallout(i),
+    }));
+  }
 
   const trilha = typeof veiculo.marketing_reel_edit?.trilha === "string" ? veiculo.marketing_reel_edit.trilha : "animado";
   const transicao = typeof veiculo.marketing_reel_edit?.transicao === "string" ? veiculo.marketing_reel_edit.transicao : "fade";
