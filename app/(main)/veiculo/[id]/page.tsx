@@ -10,7 +10,6 @@ import {
   ScanLine, FileCheck, Upload, AlertCircle, Trash2,
   FileText, Eye, EyeOff, Tag, Printer,
 } from "lucide-react";
-import { GenerateMarketingVideoButton } from "@/components/GenerateMarketingVideoButton";
 import PublicarMetaButton from "@/components/PublicarMetaButton";
 import { ArquivarDocumentos } from "@/components/ArquivarDocumentos";
 import dynamic from "next/dynamic";
@@ -2072,39 +2071,6 @@ export default function DetalheVeiculo() {
                   </pre>
                 </div>
               )}
-
-              {/* Kit de Postagem — agora centralizado em Marketing → Kits de Postagem */}
-              <div className="mt-6 pt-6 border-t border-black/10 relative z-10">
-                <p className="text-[9px] font-black uppercase tracking-widest text-gray-500 mb-2">
-                  Kit de Postagem (Fotos, Takes e Reel)
-                </p>
-                <Link
-                  href="/marketing?tab=kits"
-                  className="flex items-center justify-center gap-2 rounded-2xl bg-gray-900 py-4 font-black uppercase italic text-white transition-all hover:bg-red-600 text-sm"
-                >
-                  <Video size={16} /> Abrir na aba Kits de Postagem
-                </Link>
-                <p className="text-[10px] text-gray-400 mt-2 leading-relaxed">
-                  A captura guiada (fotos + takes), a geração do post e o reel ficam
-                  agora em Marketing → Kits de Postagem, com todos os carros num lugar só.
-                </p>
-              </div>
-
-              {/* Gerador de Vídeo IA */}
-              <div className="mt-6 pt-6 border-t border-black/10 relative z-10">
-                <p className="text-[9px] font-black uppercase tracking-widest text-gray-500 mb-3">
-                  Vídeo Editado pela IA
-                </p>
-                <GenerateMarketingVideoButton
-                  veiculoId={veiculo.id}
-                  statusInicial={veiculo.marketing_status ?? null}
-                  videoFinalUrl={veiculo.video_marketing_url ?? null}
-                  roteiroInicial={veiculo.marketing_roteiro ?? null}
-                  marca={veiculo.marca ?? null}
-                  modelo={veiculo.modelo ?? null}
-                  ano={veiculo.ano_modelo ?? null}
-                />
-              </div>
 
               {/* Publicar no Meta (Facebook / Instagram Ads) */}
               <div className="mt-6 pt-6 border-t border-black/10 relative z-10">
