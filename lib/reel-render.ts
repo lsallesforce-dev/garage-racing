@@ -96,8 +96,14 @@ export async function buildReelProps(veiculo: any, cfgRow: any): Promise<ReelPro
     }));
   }
 
-  // Trilha: escolha do editor (animado|elegante|emocional|nenhuma), default animado.
-  const TRILHAS = ["animado", "elegante", "emocional"];
+  // Trilha: escolha do editor (ver TRILHAS_OK em app/api/marketing/reel-edit/route.ts), default animado.
+  const TRILHAS = [
+    "animado", "elegante", "emocional",
+    "acao-esportiva", "blues-rock", "country-blues", "familia-alegre", "groove-energetico",
+    "magnolia-town", "reels-marketing", "rock-alegre", "rock-classico", "rock-estrada",
+    "rock-esportivo", "rock-impulso", "rock-inspirador", "rock-motivacional", "rock-power",
+    "rock-vibrante",
+  ];
   const trilhaEsc = typeof edit?.trilha === "string" ? edit.trilha : "animado";
   const trilhaUrl = trilhaEsc === "nenhuma" ? null : `${R2_PUBLIC_URL}/musicas/${TRILHAS.includes(trilhaEsc) ? trilhaEsc : "animado"}.mp3`;
 

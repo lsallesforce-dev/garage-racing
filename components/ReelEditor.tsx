@@ -5,7 +5,7 @@
 // escolher a trilha. "Salvar e gerar" persiste e dispara o render.
 
 import React, { useEffect, useRef, useState } from "react";
-import { Loader2, Film, Save, ChevronUp, ChevronDown, Music, Scissors, Trash2, Sparkles } from "lucide-react";
+import { Loader2, Film, Save, ChevronUp, ChevronDown, ChevronRight, Music, Pause, Play, Scissors, Trash2, Sparkles } from "lucide-react";
 
 interface Linha {
   tag: string | null;
@@ -21,6 +21,22 @@ const TRILHAS: { id: string; nome: string }[] = [
   { id: "animado", nome: "Animado" },
   { id: "elegante", nome: "Elegante" },
   { id: "emocional", nome: "Emocional" },
+  { id: "acao-esportiva", nome: "Ação Esportiva" },
+  { id: "blues-rock", nome: "Blues Rock" },
+  { id: "country-blues", nome: "Country Blues" },
+  { id: "familia-alegre", nome: "Família Alegre" },
+  { id: "groove-energetico", nome: "Groove Energético" },
+  { id: "magnolia-town", nome: "Magnolia Town" },
+  { id: "reels-marketing", nome: "Reels Marketing" },
+  { id: "rock-alegre", nome: "Rock Alegre" },
+  { id: "rock-classico", nome: "Rock Clássico" },
+  { id: "rock-estrada", nome: "Rock Estrada" },
+  { id: "rock-esportivo", nome: "Rock Esportivo" },
+  { id: "rock-impulso", nome: "Rock Impulso" },
+  { id: "rock-inspirador", nome: "Rock Inspirador" },
+  { id: "rock-motivacional", nome: "Rock Motivacional" },
+  { id: "rock-power", nome: "Rock Power" },
+  { id: "rock-vibrante", nome: "Rock Vibrante" },
   { id: "nenhuma", nome: "Sem música" },
 ];
 
@@ -199,6 +215,33 @@ export default function ReelEditor({
   const [transicao, setTransicao] = useState("fade");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [trilhaAberta, setTrilhaAberta] = useState(false);
+  const [tocando, setTocando] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    const audio = new Audio();
+    audio.onended = () => setTocando(null);
+    audioRef.current = audio;
+    return () => {
+      audio.pause();
+      audio.src = "";
+    };
+  }, []);
+
+  function alternarPreview(id: string) {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (tocando === id) {
+      audio.pause();
+      setTocando(null);
+      return;
+    }
+    audio.src = `/api/r2/musicas/${id}.mp3`;
+    audio.currentTime = 0;
+    audio.play().catch(() => {});
+    setTocando(id);
+  }
 
   useEffect(() => {
     fetch(`/api/marketing/reel-edit?veiculoId=${veiculoId}`)
@@ -317,23 +360,54 @@ export default function ReelEditor({
 
       {/* Trilha */}
       <div className="rounded-xl border border-gray-100 bg-white p-2.5">
-        <div className="flex items-center gap-1.5 mb-2">
-          <Music size={12} className="text-gray-400" />
-          <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Trilha</span>
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          {TRILHAS.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setTrilha(t.id)}
-              className={`rounded-lg px-3 py-1.5 text-[9px] font-black uppercase tracking-widest transition-all ${
-                trilha === t.id ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-500 hover:bg-gray-200"
-              }`}
-            >
-              {t.nome}
-            </button>
-          ))}
-        </div>
+        <button
+          onClick={() => {
+            if (trilhaAberta) audioRef.current?.pause();
+            setTrilhaAberta((v) => !v);
+          }}
+          className="flex w-full items-center justify-between"
+        >
+          <span className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-gray-400">
+            <Music size={12} /> Trilha Sonora
+          </span>
+          <span className="flex items-center gap-1 text-[10px] font-black text-gray-700">
+            {TRILHAS.find((t) => t.id === trilha)?.nome ?? trilha}
+            {trilhaAberta ? <ChevronDown size={13} className="text-gray-400" /> : <ChevronRight size={13} className="text-gray-400" />}
+          </span>
+        </button>
+
+        {trilhaAberta && (
+          <div className="mt-2 flex flex-col gap-1 max-h-64 overflow-y-auto">
+            {TRILHAS.map((t) => (
+              <div
+                key={t.id}
+                className={`flex items-center gap-2 rounded-lg px-2 py-1.5 transition-all ${
+                  trilha === t.id ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                }`}
+              >
+                {t.id === "nenhuma" ? (
+                  <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center" />
+                ) : (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      alternarPreview(t.id);
+                    }}
+                    className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full ${
+                      trilha === t.id ? "bg-white text-gray-900" : "bg-white text-gray-700"
+                    }`}
+                    title={tocando === t.id ? "Pausar prévia" : "Ouvir prévia"}
+                  >
+                    {tocando === t.id ? <Pause size={11} /> : <Play size={11} className="ml-0.5" />}
+                  </button>
+                )}
+                <button onClick={() => setTrilha(t.id)} className="flex-1 text-left text-[10px] font-black uppercase tracking-widest">
+                  {t.nome}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {erro ? <p className="text-[10px] font-bold text-red-500">{erro}</p> : null}

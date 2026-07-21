@@ -95,7 +95,13 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ clips: linhas, trilha, transicao });
 }
 
-const TRILHAS_OK = new Set(["animado", "elegante", "emocional", "nenhuma"]);
+const TRILHAS_OK = new Set([
+  "animado", "elegante", "emocional",
+  "acao-esportiva", "blues-rock", "country-blues", "familia-alegre", "groove-energetico",
+  "magnolia-town", "reels-marketing", "rock-alegre", "rock-classico", "rock-estrada",
+  "rock-esportivo", "rock-impulso", "rock-inspirador", "rock-motivacional", "rock-power",
+  "rock-vibrante", "nenhuma",
+]);
 
 const TRANSICOES_OK = new Set(["fade", "corte", "deslizar", "zoom", "desfoque"]);
 
