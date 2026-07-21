@@ -10,7 +10,6 @@ import {
   ScanLine, FileCheck, Upload, AlertCircle, Trash2,
   FileText, Eye, EyeOff, Tag, Printer,
 } from "lucide-react";
-import PublicarMetaButton from "@/components/PublicarMetaButton";
 import { ArquivarDocumentos } from "@/components/ArquivarDocumentos";
 import dynamic from "next/dynamic";
 import { toVideoUrl } from "@/lib/r2-url";
@@ -605,71 +604,6 @@ function NFModal({ veiculo, onClose, onEmitida }: {
           </button>
         </div>
       </div>
-    </div>
-  );
-}
-
-// ─── Botão Publicar OLX ───────────────────────────────────────────────────────
-
-function OlxPublicarButton({ veiculoId, statusOlx }: { veiculoId: string; statusOlx: string | null }) {
-  const [step, setStep] = React.useState<"idle" | "loading" | "ok" | "erro">("idle");
-  const [msg, setMsg] = React.useState("");
-  const publicado = statusOlx === "publicado";
-
-  const handlePublicar = async (operation: "insert" | "edit" | "delete") => {
-    setStep("loading");
-    setMsg("");
-    try {
-      const res = await fetch("/api/olx/publicar", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ veiculoId, operation }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Erro desconhecido");
-      setStep("ok");
-      setMsg(operation === "delete" ? "Removido da OLX" : "Publicado na OLX!");
-    } catch (err: any) {
-      setStep("erro");
-      setMsg(err.message);
-    }
-  };
-
-  return (
-    <div className="mt-6 pt-6 border-t border-black/10 relative z-10">
-      <p className="text-[9px] font-black uppercase tracking-widest text-gray-500 mb-3">
-        Anunciar na OLX
-      </p>
-      <div className="flex gap-2 flex-wrap">
-        {!publicado ? (
-          <button
-            onClick={() => handlePublicar("insert")}
-            disabled={step === "loading"}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black bg-[#6E0AD6] text-white hover:bg-[#5a08b0] transition disabled:opacity-50"
-          >
-            {step === "loading" ? "Publicando…" : "Publicar na OLX"}
-          </button>
-        ) : (
-          <>
-            <button
-              onClick={() => handlePublicar("edit")}
-              disabled={step === "loading"}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black bg-[#6E0AD6] text-white hover:bg-[#5a08b0] transition disabled:opacity-50"
-            >
-              {step === "loading" ? "Atualizando…" : "Atualizar OLX"}
-            </button>
-            <button
-              onClick={() => handlePublicar("delete")}
-              disabled={step === "loading"}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black bg-gray-200 text-gray-700 hover:bg-gray-300 transition disabled:opacity-50"
-            >
-              Remover OLX
-            </button>
-          </>
-        )}
-      </div>
-      {step === "ok"   && <p className="mt-2 text-[11px] text-green-600 font-bold">{msg}</p>}
-      {step === "erro" && <p className="mt-2 text-[11px] text-red-600 font-bold">{msg}</p>}
     </div>
   );
 }
@@ -2072,22 +2006,6 @@ export default function DetalheVeiculo() {
                 </div>
               )}
 
-              {/* Publicar no Meta (Facebook / Instagram Ads) */}
-              <div className="mt-6 pt-6 border-t border-black/10 relative z-10">
-                <p className="text-[9px] font-black uppercase tracking-widest text-gray-500 mb-3">
-                  Anunciar no Facebook / Instagram
-                </p>
-                <PublicarMetaButton
-                  veiculoId={veiculo.id}
-                  marca={veiculo.marca ?? ""}
-                  modelo={veiculo.modelo ?? ""}
-                  ano={veiculo.ano_modelo ?? veiculo.ano ?? ""}
-                  fotoUrl={veiculo.capa_marketing_url ?? veiculo.fotos?.[0] ?? null}
-                />
-              </div>
-
-              {/* Publicar na OLX */}
-              <OlxPublicarButton veiculoId={veiculo.id} statusOlx={veiculo.status_olx ?? null} />
             </div>
 
             {/* ── Documentos / Scanner ── */}
