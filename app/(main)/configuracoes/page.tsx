@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Upload, CheckCircle2, Loader2, ImageIcon, Trash2, Sparkles, FileImage, Save, Copy, Eye, EyeOff, FileText, ShieldCheck, PauseCircle, PlayCircle, Palette, Globe, ExternalLink } from "lucide-react";
+import { Upload, CheckCircle2, Loader2, ImageIcon, Trash2, Sparkles, FileImage, Save, Copy, Eye, EyeOff, FileText, ShieldCheck, PauseCircle, PlayCircle, Palette, Globe, ExternalLink, Mic, Play } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 declare global {
@@ -59,6 +59,9 @@ interface GarageConfig {
   meta_ads_token?: string;
   avisa_base_url?: string;
   avisa_token?: string;
+  voz_habilitada?: boolean;
+  voz_politica?: "espelho" | "espelho_e_saudacao";
+  voz_id?: string | null;
   nome_usuario?: string;
   cargo_usuario?: string;
   tom_venda?: string;
@@ -200,6 +203,9 @@ export default function ConfiguracoesPage() {
     meta_ads_token: "",
     avisa_base_url: "",
     avisa_token: "",
+    voz_habilitada: false,
+    voz_politica: "espelho",
+    voz_id: null,
     nome_usuario: "",
     cargo_usuario: "",
     tom_venda: "",
@@ -649,6 +655,9 @@ export default function ConfiguracoesPage() {
               meta_ads_token: row.meta_ads_token ?? "",
               avisa_base_url: row.avisa_base_url ?? "",
               avisa_token: row.avisa_token ?? "",
+              voz_habilitada: row.voz_habilitada ?? false,
+              voz_politica: row.voz_politica ?? "espelho",
+              voz_id: row.voz_id ?? null,
               nome_usuario: row.nome_usuario ?? "",
               cargo_usuario: row.cargo_usuario ?? "",
               tom_venda: row.tom_venda ?? "",
@@ -827,6 +836,28 @@ export default function ConfiguracoesPage() {
     }
   };
 
+  // Amostra da voz. Sem isso o tenant liga a feature às cegas e só descobre como
+  // soa quando um cliente real recebe.
+  const [carregandoAmostra, setCarregandoAmostra] = useState(false);
+  const ouvirAmostraVoz = async () => {
+    setCarregandoAmostra(true);
+    try {
+      const res = await fetch("/api/voz/preview", { method: "POST" });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || "Não consegui gerar a amostra");
+      }
+      const url = URL.createObjectURL(await res.blob());
+      const audio = new Audio(url);
+      audio.onended = () => URL.revokeObjectURL(url);
+      await audio.play();
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setCarregandoAmostra(false);
+    }
+  };
+
   const handleSaveWhatsapp = async () => {
     setSavingWa(true);
     try {
@@ -842,6 +873,8 @@ export default function ConfiguracoesPage() {
             avisa_token: config.avisa_token || null,
             meta_phone_id: config.meta_phone_id || null,
             meta_access_token: config.meta_access_token || null,
+            voz_habilitada: !!config.voz_habilitada,
+            voz_politica: config.voz_politica || "espelho",
             // Config do repasse em comunidade agora vive na página "Fluxo Grupo"
             // (salva por lá). Não gravar aqui pra não sobrescrever com valor stale.
           },
@@ -1734,6 +1767,78 @@ export default function ConfiguracoesPage() {
               </button>
             </div>
           </div>
+        </div>
+
+        {/* ── Mensagens de voz ── */}
+        <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-8">
+          <div className="flex items-center gap-3 mb-1">
+            <div className="w-8 h-8 rounded-xl bg-violet-50 flex items-center justify-center">
+              <Mic size={15} className="text-violet-600" />
+            </div>
+            <h2 className="text-[11px] font-black uppercase tracking-widest text-gray-400">
+              Mensagens de Voz
+            </h2>
+          </div>
+          <p className="text-[11px] text-gray-500 mb-6">
+            O agente responde em áudio, como um vendedor de verdade. Funciona nos dois canais.
+          </p>
+
+          <button
+            type="button"
+            onClick={() => setConfig(c => ({ ...c, voz_habilitada: !c.voz_habilitada }))}
+            className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl border transition ${
+              config.voz_habilitada
+                ? "bg-violet-50 border-violet-200"
+                : "bg-[#f5f5f3] border-gray-200"
+            }`}
+          >
+            <span className="text-sm font-semibold text-gray-900">
+              {config.voz_habilitada ? "Voz ativada" : "Voz desativada"}
+            </span>
+            <span className={`w-10 h-6 rounded-full p-0.5 transition ${config.voz_habilitada ? "bg-violet-600" : "bg-gray-300"}`}>
+              <span className={`block w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${config.voz_habilitada ? "translate-x-4" : ""}`} />
+            </span>
+          </button>
+
+          {config.voz_habilitada && (
+            <div className="mt-4 flex flex-col gap-2">
+              <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+                Quando mandar áudio
+              </label>
+              {([
+                { v: "espelho", t: "Só quando o cliente mandar áudio", d: "O agente espelha o formato do cliente. Mais discreto." },
+                { v: "espelho_e_saudacao", t: "Espelho + primeira resposta", d: "Também abre a conversa em áudio — costuma prender mais o lead." },
+              ] as const).map(op => (
+                <button
+                  key={op.v}
+                  type="button"
+                  onClick={() => setConfig(c => ({ ...c, voz_politica: op.v }))}
+                  className={`text-left px-4 py-3 rounded-2xl border transition ${
+                    (config.voz_politica ?? "espelho") === op.v
+                      ? "bg-violet-50 border-violet-300"
+                      : "bg-[#f5f5f3] border-gray-200 hover:border-gray-300"
+                  }`}
+                >
+                  <p className="text-sm font-semibold text-gray-900">{op.t}</p>
+                  <p className="text-[11px] text-gray-500 mt-0.5">{op.d}</p>
+                </button>
+              ))}
+
+              <button
+                type="button"
+                onClick={ouvirAmostraVoz}
+                disabled={carregandoAmostra}
+                className="mt-2 self-start flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 text-white text-[11px] font-black uppercase tracking-widest disabled:opacity-50 transition"
+              >
+                {carregandoAmostra ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
+                Ouvir amostra
+              </button>
+
+              <p className="text-[10px] text-gray-400 mt-1">
+                Respostas com link, lista de veículos ou texto longo continuam indo por escrito — áudio nesses casos não ajuda o cliente.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* ── Webhook Token ── */}

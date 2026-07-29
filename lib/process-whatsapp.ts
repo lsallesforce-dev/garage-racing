@@ -5,11 +5,12 @@
 import { createDecipheriv, hkdfSync } from "node:crypto";
 import { geminiFlashSales, geminiFlashFallback, parseGeminiJson } from "@/lib/gemini";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { sendMetaMessage, sendMetaImage, sendMetaVideo, sendMetaCtaButton, markMetaRead } from "@/lib/meta";
-import { sendAvisaMessage, sendAvisaImage, sendAvisaVideo } from "@/lib/avisa";
+import { sendMetaMessage, sendMetaImage, sendMetaVideo, sendMetaAudio, sendMetaCtaButton, markMetaRead } from "@/lib/meta";
+import { sendAvisaMessage, sendAvisaImage, sendAvisaVideo, sendAvisaAudio } from "@/lib/avisa";
 import { gerarRelatorioPista } from "@/lib/leads";
 import { resolverVendedor } from "@/lib/lead-routing";
 import { transcreverAudioCliente } from "@/lib/transcribe";
+import { sintetizarVoz, prepararTextoParaVoz } from "@/lib/tts";
 import { hybridVehicleSearch, findVehicleForMedia } from "@/lib/hybrid-search";
 import { getCachedHistory, cacheHistory, invalidateHistory, appendHistory, circuitIsOpen, circuitRecordFailure, circuitRecordSuccess, acquireLeadLock, releaseLeadLock, setTrocaStandby, isTrocaStandby, clearTrocaStandby } from "@/lib/redis";
 import { Vehicle } from "@/types/vehicle";
@@ -163,6 +164,11 @@ export interface GarageConfig {
   horario_funcionamento?: string;   // ex: "Seg a Sex das 8h às 18h"
   oferta_especial?: string;         // oferta ativa do mês para mencionar na negociação
   modo_repasse?: boolean;           // tenant de repasse: cliente é lojista, fala de vários carros
+  // Voz (migration 036) — OFF por padrão
+  voz_habilitada?: boolean;
+  voz_politica?: "espelho" | "espelho_e_saudacao";
+  voz_id?: string | null;           // voice_id ElevenLabs; null usa o do ambiente
+  voz_max_chars?: number;           // acima disso responde em texto
 }
 
 export interface WhatsAppJobPayload {
@@ -896,6 +902,13 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
     useAvisa
       ? sendAvisaVideo(to, url, caption, avisaCreds)
       : sendMetaVideo(to, url, caption, metaCreds);
+
+  // Nota de voz. Os dois canais retornam boolean (false = não entregou) para o
+  // chamador poder cair pra texto — voz nunca pode fazer o cliente ficar sem resposta.
+  const sendAudio = (to: string, ogg: Buffer): Promise<boolean> =>
+    useAvisa
+      ? sendAvisaAudio(to, ogg, avisaCreds)
+      : sendMetaAudio(to, ogg, metaCreds);
 
   let userMessage = rawMessage;
   let audioData: { data: string; mimeType: string } | null = null;
@@ -3144,9 +3157,66 @@ Retorne JSON estrito:
   }
 
   // ── 15. Enviar resposta ao cliente ────────────────────────────────────────────
-  await sendText(phone, aiResponse);
+  // Voz quando o tenant habilitou E a política bate E o texto é falável. Qualquer
+  // "não" na cadeia cai em texto — só os early-returns acima (handoff, despedida,
+  // erro, status) ficam SEMPRE em texto, de propósito: não são momentos pra áudio.
+  const entregouAudio = await (async (): Promise<boolean> => {
+    if (!garageConfig?.voz_habilitada) return false;
+
+    // Política: 'espelho' = só se o cliente mandou áudio.
+    // 'espelho_e_saudacao' = o acima + a primeira resposta da conversa.
+    const politica = garageConfig?.voz_politica ?? "espelho";
+    const ehSaudacao = historico.length === 0;
+    if (!hasAudio && !(politica === "espelho_e_saudacao" && ehSaudacao)) return false;
+
+    // Nunca dois áudios seguidos: cansa o cliente e vira "muro de voz".
+    if (lead?.id) {
+      const { data: ultima } = await supabaseAdmin
+        .from("mensagens")
+        .select("media_tipo")
+        .eq("lead_id", lead.id)
+        .eq("remetente", "agente")
+        .neq("id", mensagemAgenteId ?? "00000000-0000-0000-0000-000000000000")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (ultima?.media_tipo === "audio") return false;
+    }
+
+    const falavel = prepararTextoParaVoz(aiResponse, garageConfig?.voz_max_chars ?? 450);
+    if (!falavel) return false;
+
+    // Teto de custo por tenant/mês (a ElevenLabs cobra por caractere). Incrementa e
+    // já devolve o total; acima do teto degrada pra texto. Contabiliza antes de
+    // sintetizar, então superestima um pouco DEPOIS de estourar — irrelevante,
+    // porque a partir dali não sintetiza mais nada mesmo.
+    const teto = parseInt(process.env.VOZ_TETO_CHARS_MES ?? "150000", 10);
+    const { data: totalChars } = await supabaseAdmin
+      .rpc("voz_consumo_add", { p_user_id: tenantUserId, p_chars: falavel.length });
+    if (typeof totalChars === "number" && totalChars > teto) {
+      console.warn(`🔇 [Voz] Teto mensal estourado (${totalChars}/${teto} chars) para ${tenantUserId} — respondendo em texto`);
+      return false;
+    }
+
+    const voz = await sintetizarVoz(falavel, { vozId: garageConfig?.voz_id ?? undefined });
+    if (!voz) return false;
+
+    return sendAudio(phone, voz.ogg).catch((e) => {
+      console.warn("⚠️ [Voz] envio falhou, caindo pra texto:", String(e).slice(0, 200));
+      return false;
+    });
+  })();
+
+  if (!entregouAudio) await sendText(phone, aiResponse);
+
   if (mensagemAgenteId) {
-    await supabaseAdmin.from("mensagens").update({ delivered: true }).eq("id", mensagemAgenteId);
+    // content já guarda o texto integral da fala — o histórico é a memória do agente
+    // e um placeholder "🎤 áudio" cegaria as respostas seguintes. media_tipo só marca
+    // o formato pro chat da plataforma.
+    await supabaseAdmin
+      .from("mensagens")
+      .update({ delivered: true, ...(entregouAudio ? { media_tipo: "audio" } : {}) })
+      .eq("id", mensagemAgenteId);
   }
   console.log(`✅ Mensagem processada para ${phone} | temperatura: ${temperatura}`);
 

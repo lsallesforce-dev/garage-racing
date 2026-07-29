@@ -1,4 +1,4 @@
-import { markAgentEcho } from "@/lib/redis";
+import { markAgentEcho, markAgentAudioEcho } from "@/lib/redis";
 
 function formatPhone(phone: string): string {
   // Remove sufixo de sessão multi-device do WhatsApp (ex: "5521999999:32" → "5521999999")
@@ -322,6 +322,33 @@ export async function sendAvisaImage(phone: string, imageUrlOrBase64: string, me
   const payload: any = { ...buildTarget(phone), image: imageUrlOrBase64 };
   if (message) payload.message = message;
   return sendWithRetry(`${c.baseUrl}/actions/sendImage`, payload, c.token, 2, errorRef);
+}
+
+// ─── Nota de voz ──────────────────────────────────────────────────────────────
+// `/actions/sendAudio` espera `{ number, audio }` com o áudio em base64 puro —
+// mesmo formato do `image` em sendImage (confirmado sondando a validação da API;
+// /actions/sendPtt e /actions/sendVoice não existem).
+// O buffer precisa ser OGG/Opus mono, senão o WhatsApp mostra card de arquivo em
+// vez de bolha de voz — quem garante isso é o lib/tts.ts.
+//
+// markAgentAudioEcho ANTES do POST: o áudio volta no webhook como fromMe e, sem a
+// marca, o handler de takeover trata como "gerente assumiu" e trava a própria IA.
+export async function sendAvisaAudio(
+  phone: string,
+  ogg: Buffer,
+  creds?: Partial<AvisaCreds>,
+  errorRef?: { message?: string },
+): Promise<boolean> {
+  const c = resolveCreds(creds);
+  if (!c) { if (errorRef) errorRef.message = "credenciais Avisa ausentes"; console.warn("Avisa credentials missing"); return false; }
+
+  console.log(`🎤 Avisa sendAudio → ${formatPhone(phone)} (${(ogg.length / 1024).toFixed(0)}KB)`);
+
+  await markAgentAudioEcho(phone);
+
+  const payload = { ...buildTarget(phone), audio: ogg.toString("base64") };
+  const resultado = await sendWithRetry(`${c.baseUrl}/actions/sendAudio`, payload, c.token, 2, errorRef);
+  return resultado != null;
 }
 
 export async function sendAvisaPreview(

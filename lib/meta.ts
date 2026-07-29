@@ -158,21 +158,25 @@ export async function sendMetaImage(
 }
 
 // ─── Upload de mídia para o Meta (retorna media_id) ──────────────────────────
-async function uploadMediaToMeta(url: string, c: MetaCreds): Promise<string | null> {
-  try {
-    const res = await fetch(url);
-    if (!res.ok) { console.warn(`⚠️ Falha ao baixar vídeo: ${res.status}`); return null; }
-    const buf = Buffer.from(await res.arrayBuffer());
+// Limite do Graph API: 16MB para vídeo e áudio.
+const META_MEDIA_MAX = 16 * 1024 * 1024;
 
-    if (buf.length > 16 * 1024 * 1024) {
-      console.warn(`⚠️ Vídeo ${(buf.length/1024/1024).toFixed(1)}MB > 16MB — abortando upload`);
+async function uploadBufferToMeta(
+  buf: Buffer,
+  mimeType: string,
+  fileName: string,
+  c: MetaCreds,
+): Promise<string | null> {
+  try {
+    if (buf.length > META_MEDIA_MAX) {
+      console.warn(`⚠️ Mídia ${(buf.length/1024/1024).toFixed(1)}MB > 16MB — abortando upload`);
       return null;
     }
 
     const form = new FormData();
     form.append("messaging_product", "whatsapp");
-    form.append("type", "video/mp4");
-    form.append("file", new Blob([buf], { type: "video/mp4" }), "video.mp4");
+    form.append("type", mimeType);
+    form.append("file", new Blob([new Uint8Array(buf)], { type: mimeType }), fileName);
     const upload = await fetch(`${GRAPH_URL}/${c.phoneNumberId}/media`, {
       method: "POST",
       headers: { Authorization: `Bearer ${c.accessToken}` },
@@ -184,8 +188,20 @@ async function uploadMediaToMeta(url: string, c: MetaCreds): Promise<string | nu
       return null;
     }
     const data = await upload.json();
-    console.log(`📤 Meta media_id: ${data.id}`);
+    console.log(`📤 Meta media_id (${mimeType}): ${data.id}`);
     return data.id ?? null;
+  } catch (e) {
+    console.warn(`⚠️ uploadBufferToMeta erro:`, String(e).slice(0, 200));
+    return null;
+  }
+}
+
+async function uploadMediaToMeta(url: string, c: MetaCreds): Promise<string | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) { console.warn(`⚠️ Falha ao baixar vídeo: ${res.status}`); return null; }
+    const buf = Buffer.from(await res.arrayBuffer());
+    return uploadBufferToMeta(buf, "video/mp4", "video.mp4", c);
   } catch (e) {
     console.warn(`⚠️ uploadMediaToMeta erro:`, String(e).slice(0, 200));
     return null;
@@ -217,6 +233,42 @@ export async function sendMetaVideo(
     type: "video",
     video,
   }, c.accessToken);
+}
+
+// ─── Enviar nota de voz ───────────────────────────────────────────────────────
+// Áudio precisa ir por UPLOAD (media_id), não por link: só assim o Meta trata como
+// mensagem de voz. E precisa ser OGG/Opus — mp3 ou m4a viram card de arquivo.
+// Retorna true só se o Meta confirmou; false deixa o chamador cair pra texto.
+export async function sendMetaAudio(
+  phone: string,
+  ogg: Buffer,
+  creds?: Partial<MetaCreds>
+): Promise<boolean> {
+  const c = resolveCreds(creds);
+  if (!c) {
+    console.warn("⚠️ Meta credentials missing — áudio não enviado");
+    return false;
+  }
+
+  // post() lança em !res.ok e não tem retry; sem o catch um erro aqui mataria a
+  // resposta inteira, e a ideia é degradar pra texto.
+  try {
+    const mediaId = await uploadBufferToMeta(ogg, "audio/ogg", "audio.ogg", c);
+    if (!mediaId) return false;
+
+    console.log(`🎤 Meta sendAudio → ${formatPhone(phone)} (${(ogg.length/1024).toFixed(0)}KB)`);
+    await post(`/${c.phoneNumberId}/messages`, {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: formatPhone(phone),
+      type: "audio",
+      audio: { id: mediaId },
+    }, c.accessToken);
+    return true;
+  } catch (e) {
+    console.warn("⚠️ sendMetaAudio falhou:", String(e).slice(0, 200));
+    return false;
+  }
 }
 
 // ─── Enviar link com preview ──────────────────────────────────────────────────

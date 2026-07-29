@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabase";
 import { useUserRole } from "@/components/SidebarWrapper";
 import {
   Send, MessageSquare, Phone, Bot, ArrowLeft,
-  Search, User, Zap, ChevronDown, Trash2, Kanban, X,
+  Search, User, Zap, ChevronDown, Trash2, Kanban, X, Mic,
 } from "lucide-react";
 
 type UltimaMensagem = {
@@ -38,7 +38,7 @@ type Mensagem = {
   remetente: "usuario" | "agente";
   created_at: string;
   media_url?: string | null;
-  media_tipo?: "foto" | "video" | null;
+  media_tipo?: "foto" | "video" | "audio" | null;
   enviado_por_humano?: boolean;
 };
 
@@ -765,6 +765,14 @@ function CentralChatInner() {
                           ? "bg-slate-900 text-white rounded-br-sm"
                           : "bg-white text-gray-900 border border-gray-100 rounded-bl-sm shadow-sm"
                       }`}>
+                        {/* Áudio não guarda arquivo: o content É a transcrição do que
+                            foi falado (o histórico é a memória do agente). O selo só
+                            diz ao gerente que o cliente ouviu isso, não leu. */}
+                        {msg.media_tipo === "audio" && (
+                          <span className="flex items-center gap-1 text-[10px] opacity-60 mb-1">
+                            <Mic size={10} /> enviado como áudio
+                          </span>
+                        )}
                         {msg.content}
                       </div>
                     )}

@@ -14,7 +14,7 @@ import { after } from "next/server";
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { processWhatsAppMessage } from "@/lib/process-whatsapp";
-import { isDuplicateMessage, debounceClientImages, debounceFirstContact, isAgentEcho } from "@/lib/redis";
+import { isDuplicateMessage, debounceClientImages, debounceFirstContact, isAgentEcho, isAgentAudioEcho } from "@/lib/redis";
 import { logWebhookError } from "@/lib/error-log";
 import { resolveAvisaLid, sendAvisaMessage } from "@/lib/avisa";
 
@@ -303,7 +303,7 @@ export async function POST(req: NextRequest) {
       bearerToken ||
       null;
 
-    const FIELDS = "user_id, nome_empresa, nome_fantasia, nome_agente, endereco, endereco_complemento, cidade, whatsapp, whatsapp_financeiro, whatsapp_posvenda, telefone_loja, vitrine_slug, webhook_token, avisa_base_url, avisa_token, tom_venda, instrucoes_adicionais, oferta_especial, horario_funcionamento, modo_repasse, plano_ativo, trial_ends_at, plano_vence_em, ia_so_responde_anuncio, agente_pausado";
+    const FIELDS = "user_id, nome_empresa, nome_fantasia, nome_agente, endereco, endereco_complemento, cidade, whatsapp, whatsapp_financeiro, whatsapp_posvenda, telefone_loja, vitrine_slug, webhook_token, avisa_base_url, avisa_token, tom_venda, instrucoes_adicionais, oferta_especial, horario_funcionamento, modo_repasse, plano_ativo, trial_ends_at, plano_vence_em, ia_so_responde_anuncio, agente_pausado, voz_habilitada, voz_politica, voz_id, voz_max_chars";
     let tenantUserId: string | null = null;
     let garageConfig: any = null;
 
@@ -453,19 +453,20 @@ export async function POST(req: NextRequest) {
 
     // ── Takeover do gerente pelo mesmo WhatsApp ───────────────────────────────
     // Gerente e IA compartilham o número. Toda mensagem da IA volta como fromMe (eco).
-    // Se chega um fromMe de TEXTO que NÃO bate com um eco recente da IA — ou um ÁUDIO
-    // (a IA nunca envia áudio, então áudio fromMe é sempre o gerente) — foi o gerente
-    // que respondeu direto pelo celular → salva no chat + trava o agente.
+    // Se chega um fromMe — de TEXTO ou de ÁUDIO — que NÃO bate com um eco recente da
+    // IA, foi o gerente que respondeu direto pelo celular → salva no chat + trava o
+    // agente. (Antes da voz do agente, áudio fromMe era SEMPRE gerente; hoje a IA
+    // também manda áudio, então áudio precisa da mesma checagem de eco que o texto.)
     if (fromMe) {
       const txtFromMe = (rawMessage || "").trim();
-      const ehAudio = !!audioUrl; // IA nunca manda áudio → fromMe com áudio = gerente
+      const ehAudio = !!audioUrl;
       // Texto "de verdade" do gerente — ignora o placeholder de foto, que pode ser
       // eco de uma foto que a PRÓPRIA IA enviou (foto/vídeo fromMe não viram takeover).
       const ehTextoGerente = !!txtFromMe && txtFromMe !== "[Cliente enviou foto(s) do veículo]";
       const cliente = (chatPhone || "").replace(/\D/g, "");
       if ((ehTextoGerente || ehAudio) && cliente && tenantUserId) {
-        // Áudio: sem checagem de eco (a IA não manda áudio). Texto: só conta se não for eco.
-        const ehEco = ehAudio ? false : await isAgentEcho(cliente, txtFromMe);
+        // Áudio: eco marcado só por telefone (voz não tem texto pra hashear). Texto: hash do conteúdo.
+        const ehEco = ehAudio ? await isAgentAudioEcho(cliente) : await isAgentEcho(cliente, txtFromMe);
         if (!ehEco) {
           // É o gerente respondendo pelo celular (texto ou áudio) — busca o lead p/ salvar + travar
           const { data: lead } = await supabaseAdmin

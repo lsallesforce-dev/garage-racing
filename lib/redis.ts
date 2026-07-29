@@ -338,6 +338,41 @@ export async function isAgentEcho(phone: string, text: string): Promise<boolean>
   }
 }
 
+// ─── Eco de ÁUDIO do agente ───────────────────────────────────────────────────
+// Desde que a IA passou a responder em voz, "fromMe com áudio = gerente" deixou de
+// valer: o áudio da própria IA volta no webhook como fromMe e travaria o agente
+// sozinho. Áudio não tem texto pra hashear, então marcamos só o telefone.
+//
+// TTL curto (90s) e SEM delete, pelos dois lados do trade-off:
+//   • sem delete porque a Avisa reentrega eco — deletar causaria falso-takeover no 2º;
+//   • TTL curto porque, enquanto a marca existe, um áudio REAL do gerente passa
+//     despercebido. 90s cobre a reentrega sem cegar o takeover por muito tempo.
+// Entre os dois erros, travar o agente de um cliente pagante é o pior — daí o viés.
+function audioEchoKey(phone: string): string {
+  return `agent_echo_audio:${(phone || "").replace(/\D/g, "")}`;
+}
+
+export async function markAgentAudioEcho(phone: string): Promise<void> {
+  if (!phone) return;
+  try {
+    await getClient().set(audioEchoKey(phone), 1, { ex: 90 });
+  } catch (e) {
+    console.warn("⚠️ [Redis] markAgentAudioEcho falhou (non-fatal):", e);
+  }
+}
+
+// FAIL-CLOSED igual ao isAgentEcho: em erro de Redis assume eco (não trava a IA).
+export async function isAgentAudioEcho(phone: string): Promise<boolean> {
+  if (!phone) return false;
+  try {
+    const v = await getClient().get(audioEchoKey(phone));
+    return v !== null;
+  } catch (e) {
+    console.warn("⚠️ [Redis] isAgentAudioEcho falhou (fail-closed = assume eco):", e);
+    return true;
+  }
+}
+
 // ─── Lock por Lead (Anti-Processamento Concorrente) ───────────────────────────
 //
 // Garante que apenas uma instância da Vercel processa cada lead por vez.
