@@ -126,6 +126,69 @@ export async function listAvisaGroups(creds: AvisaCreds): Promise<{ jid: string;
   }
 }
 
+// Estado da sessão da instância na Avisa (GET /instance/status).
+//
+// A Avisa responde SEMPRE HTTP 200 e embrulha o resultado real no envelope `data`
+// (mesmo padrão do /user/parselid). Os dois formatos observados em produção:
+//   conectado : {"status":true,"data":{"code":200,"data":{"Connected":true,"LoggedIn":true,"Jid":"...@s.whatsapp.net"},"success":true}}
+//   caído     : {"status":true,"data":{"code":500,"error":"No session","success":false}}
+// Token morto/conta inativa responde HTTP 401 {"error":"Inactive account or invalid token"}.
+//
+// Ou seja: NUNCA basta olhar `res.ok` — instância desconectada devolve 200.
+export type AvisaSessaoEstado = "conectado" | "sem_sessao" | "token_invalido" | "indisponivel";
+
+export interface AvisaSessaoStatus {
+  estado: AvisaSessaoEstado;
+  jid?: string;
+  detalhe: string;
+}
+
+export async function getAvisaInstanceStatus(creds: AvisaCreds): Promise<AvisaSessaoStatus> {
+  try {
+    const res = await fetch(`${creds.baseUrl.replace(/\/+$/, "")}/instance/status`, {
+      headers: { Authorization: `Bearer ${creds.token}` },
+      signal: AbortSignal.timeout(15_000),
+    });
+    const text = await res.text();
+    let json: any = null;
+    try { json = JSON.parse(text); } catch {}
+
+    if (res.status === 401 || res.status === 403) {
+      return { estado: "token_invalido", detalhe: json?.error ?? `HTTP ${res.status}` };
+    }
+    if (!res.ok) {
+      return { estado: "indisponivel", detalhe: `HTTP ${res.status}: ${text.slice(0, 120)}` };
+    }
+    // Corpo vazio ou não-JSON (aconteceu num burst de chamadas): NÃO é queda.
+    // Classificar como "sem_sessao" aqui geraria alerta falso — o certo é
+    // "indisponivel", que o cron ignora e o próximo tick reavalia.
+    if (!json || typeof json !== "object") {
+      return { estado: "indisponivel", detalhe: `resposta ilegível: ${text.slice(0, 120)}` };
+    }
+
+    const envelope = json?.data ?? json;
+    const sessao = envelope?.data ?? {};
+    if (sessao?.Connected === true && sessao?.LoggedIn === true) {
+      return { estado: "conectado", jid: sessao?.Jid, detalhe: "Connected + LoggedIn" };
+    }
+    if (envelope?.error || envelope?.success === false) {
+      // "No session" = aparelho desvinculado; o fix é rescan do QR no celular da loja.
+      return { estado: "sem_sessao", detalhe: String(envelope?.error ?? "sessão inativa") };
+    }
+    // Conectado-parcial (ex.: Connected true sem LoggedIn) também não recebe/envia.
+    if (sessao?.Connected === false || sessao?.LoggedIn === false) {
+      return {
+        estado: "sem_sessao",
+        detalhe: `Connected=${sessao?.Connected} LoggedIn=${sessao?.LoggedIn}`,
+      };
+    }
+    // Formato desconhecido — não dá pra afirmar que caiu.
+    return { estado: "indisponivel", detalhe: `formato inesperado: ${text.slice(0, 120)}` };
+  } catch (err: any) {
+    return { estado: "indisponivel", detalhe: err?.message ?? "erro de rede" };
+  }
+}
+
 function resolveCreds(creds?: Partial<AvisaCreds>): AvisaCreds | null {
   const baseUrl = creds?.baseUrl ?? "";
   const token = creds?.token ?? "";

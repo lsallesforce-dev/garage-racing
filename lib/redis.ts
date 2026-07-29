@@ -565,6 +565,42 @@ export async function invalidateVitrineSlug(slug: string): Promise<void> {
   }
 }
 
+// ─── Estado da Sessão Avisa (monitor de instância caída) ─────────────────────
+//
+// O cron /api/cron/avisa-sessao roda a cada 20min. Sem estado, cada tick mandaria
+// alerta de novo (spam). Estas duas funções guardam "esse tenant já está caído":
+//
+//   avisaSessaoRegistrarQueda → true SÓ na 1ª detecção (e de novo a cada TTL,
+//                               como lembrete de que segue caído)
+//   avisaSessaoRegistrarVolta → true se havia queda registrada (→ manda "voltou")
+//
+// Fail-open nos dois: Redis fora do ar prefere alertar demais a alertar de menos.
+export async function avisaSessaoRegistrarQueda(
+  userId: string,
+  ttlSeconds = 6 * 3600
+): Promise<boolean> {
+  try {
+    const result = await getClient().set(`avisa:down:${userId}`, Date.now(), {
+      nx: true,
+      ex: ttlSeconds,
+    });
+    return result !== null; // null = já estava marcado como caído = não re-alerta
+  } catch (e) {
+    console.warn("⚠️ [Redis] avisaSessaoRegistrarQueda falhou — alertando (fail-open):", e);
+    return true;
+  }
+}
+
+export async function avisaSessaoRegistrarVolta(userId: string): Promise<boolean> {
+  try {
+    const removidas = await getClient().del(`avisa:down:${userId}`);
+    return removidas > 0;
+  } catch (e) {
+    console.warn("⚠️ [Redis] avisaSessaoRegistrarVolta falhou (non-fatal):", e);
+    return false;
+  }
+}
+
 // Retorna o userId associado ao slug, ou null se não estiver no cache.
 // Útil para componentes que precisam do userId sem ir ao Supabase.
 export async function getVitrineSlugOwner(

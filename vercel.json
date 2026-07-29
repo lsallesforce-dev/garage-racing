@@ -21,6 +21,10 @@
       "schedule": "0 12 * * *"
     },
     {
+      "path": "/api/cron/avisa-sessao",
+      "schedule": "*/20 10-23 * * *"
+    },
+    {
       "path": "/api/cron/cobranca-vencimento",
       "schedule": "0 12 * * *"
     },
