@@ -310,21 +310,38 @@ export async function POST(req: NextRequest) {
     if (token) {
 
       // Tenta pelo webhook_token primeiro, depois pelo avisa_token (URL configurada com token da Avisa API)
-      let { data } = await supabaseAdmin
+      let { data, error: lookupError } = await supabaseAdmin
         .from("config_garage")
         .select(FIELDS)
         .eq("webhook_token", token)
         .maybeSingle();
 
-      if (!data) {
+      if (!data && !lookupError) {
         // Usa limit(1) em vez de maybeSingle() para não quebrar se houver tokens duplicados
-        const { data: rows } = await supabaseAdmin
+        const { data: rows, error: avisaLookupError } = await supabaseAdmin
           .from("config_garage")
           .select(FIELDS)
           .eq("avisa_token", token)
           .not("nome_empresa", "is", null)
           .limit(1);
         data = rows?.[0] ?? null;
+        lookupError = avisaLookupError;
+      }
+
+      // Erro de BANCO (ex: coluna do FIELDS que a migration ainda não criou) não é
+      // "token não encontrado". Engolir isso deixou o agente do Carmatti mudo por
+      // 21h em 29/07: o select falhava, caía no fallback mono-tenant e o webhook
+      // respondia 200 sem gravar nada. Falha ruidosa e 503 — a Avisa reentrega.
+      if (lookupError) {
+        await logWebhookError({
+          tenantUserId: null,
+          etapa: "config_lookup",
+          erro: lookupError,
+        });
+        return NextResponse.json(
+          { status: "config_lookup_failed", detail: lookupError.message },
+          { status: 503 }
+        );
       }
 
       if (data) {
