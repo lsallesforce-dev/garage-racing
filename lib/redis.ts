@@ -338,6 +338,25 @@ export async function isAgentEcho(phone: string, text: string): Promise<boolean>
   }
 }
 
+// ─── Throttle do QR de pareamento da Avisa ────────────────────────────────────
+//
+// Cada GET /instance/qr inicia uma sessão nova na Avisa. Repetir isso em rajada
+// prende a instância em Connected=true/LoggedIn=false, estado em que ela para de
+// emitir QR e só volta pelo painel da Avisa. Esta trava garante 1 QR por tenant
+// a cada `janelaSec` mesmo que o usuário fique clicando no botão.
+//
+// FAIL-CLOSED: se o Redis estiver fora, bloqueia. Ficar sem QR por 20s é chato;
+// prender a instância do tenant é incidente.
+export async function podeGerarQrAvisa(userId: string, janelaSec = 20): Promise<boolean> {
+  try {
+    const r = await getClient().set(`avisa_qr_throttle:${userId}`, 1, { nx: true, ex: janelaSec });
+    return r === "OK";
+  } catch (e) {
+    console.warn("⚠️ [Redis] podeGerarQrAvisa falhou (fail-closed = bloqueia):", e);
+    return false;
+  }
+}
+
 // ─── Eco de ÁUDIO do agente ───────────────────────────────────────────────────
 // Desde que a IA passou a responder em voz, "fromMe com áudio = gerente" deixou de
 // valer: o áudio da própria IA volta no webhook como fromMe e travaria o agente

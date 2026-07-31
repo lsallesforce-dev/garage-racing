@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Upload, CheckCircle2, Loader2, ImageIcon, Trash2, Sparkles, FileImage, Save, Copy, Eye, EyeOff, FileText, ShieldCheck, PauseCircle, PlayCircle, Palette, Globe, ExternalLink, Mic, Play } from "lucide-react";
+import { Upload, CheckCircle2, Loader2, ImageIcon, Trash2, Sparkles, FileImage, Save, Copy, Eye, EyeOff, FileText, ShieldCheck, PauseCircle, PlayCircle, Palette, Globe, ExternalLink, Mic, Play, QrCode } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 declare global {
@@ -170,6 +170,15 @@ export default function ConfiguracoesPage() {
   const [savedWa, setSavedWa] = useState(false);
   const [agentePausado, setAgentePausado] = useState(false);
   const [togglingPausa, setTogglingPausa] = useState(false);
+
+  // Conexão da instância Avisa (QR de pareamento)
+  type SessaoEstado = "conectado" | "sem_sessao" | "token_invalido" | "indisponivel" | "sem_credenciais";
+  const [sessaoEstado, setSessaoEstado] = useState<SessaoEstado | null>(null);
+  const [sessaoJid, setSessaoJid] = useState<string | null>(null);
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const [qrSegundos, setQrSegundos] = useState(0);
+  const [gerandoQr, setGerandoQr] = useState(false);
+  const [qrErro, setQrErro] = useState<{ motivo: string; detalhe: string } | null>(null);
 
   // Facebook Ads — conectar página + ad account
   const [metaAdsLoading, setMetaAdsLoading] = useState(false);
@@ -857,6 +866,64 @@ export default function ConfiguracoesPage() {
       setCarregandoAmostra(false);
     }
   };
+
+  // ── Conexão da instância Avisa ──────────────────────────────────────────────
+  // Só o STATUS é pollado. O QR NUNCA se auto-renova: cada pedido inicia uma
+  // sessão nova na Avisa e repetir em rajada prende a instância em
+  // Connected-sem-login, estado que só o painel da Avisa destrava.
+  const carregarSessaoAvisa = async () => {
+    try {
+      const r = await fetch("/api/avisa/sessao");
+      const j = await r.json();
+      setSessaoEstado(j.configurado ? j.estado : "sem_credenciais");
+      setSessaoJid(j.jid ?? null);
+      if (j.estado === "conectado") {
+        setQrDataUrl(null);   // conectou: o QR na tela perdeu a validade
+        setQrSegundos(0);
+        setQrErro(null);
+      }
+    } catch {
+      setSessaoEstado("indisponivel");
+    }
+  };
+
+  const gerarQrAvisa = async () => {
+    setGerandoQr(true);
+    setQrErro(null);
+    try {
+      const r = await fetch("/api/avisa/sessao", { method: "POST" });
+      const j = await r.json();
+      if (j.ok) {
+        setQrDataUrl(j.qrcodeDataUrl);
+        setQrSegundos(60);        // validade real do QR do WhatsApp
+      } else {
+        setQrDataUrl(null);
+        setQrErro({ motivo: j.motivo ?? "erro", detalhe: j.detalhe ?? "" });
+        if (j.motivo === "ja_conectado") carregarSessaoAvisa();
+      }
+    } catch (e: any) {
+      setQrErro({ motivo: "erro", detalhe: e?.message ?? "falha de rede" });
+    } finally {
+      setGerandoQr(false);
+    }
+  };
+
+  // Status a cada 5s enquanto a aba WhatsApp está aberta (chamada barata, não
+  // inicia sessão) — é assim que a tela percebe sozinha que o QR foi lido.
+  useEffect(() => {
+    if (activeTab !== "whatsapp") return;
+    carregarSessaoAvisa();
+    const id = setInterval(carregarSessaoAvisa, 5000);
+    return () => clearInterval(id);
+  }, [activeTab]);
+
+  // Contagem regressiva do QR. Ao zerar, o QR sai da tela e o usuário decide se
+  // gera outro — nada de renovar sozinho.
+  useEffect(() => {
+    if (qrSegundos <= 0) return;
+    const id = setTimeout(() => setQrSegundos(s => s - 1), 1000);
+    return () => clearTimeout(id);
+  }, [qrSegundos]);
 
   const handleSaveWhatsapp = async () => {
     setSavingWa(true);
@@ -1691,6 +1758,111 @@ export default function ConfiguracoesPage() {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* ── Conexão do WhatsApp (QR da Avisa) ── */}
+        <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-8">
+          <div className="flex items-center justify-between gap-3 mb-1">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-green-50 flex items-center justify-center">
+                <QrCode size={16} className="text-green-600" />
+              </div>
+              <div>
+                <h2 className="text-[11px] font-black uppercase tracking-widest text-gray-900">Conexão do WhatsApp</h2>
+                <p className="text-[10px] text-gray-400">Pareie o celular da loja lendo o QR Code</p>
+              </div>
+            </div>
+
+            {sessaoEstado && (
+              <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full ${
+                sessaoEstado === "conectado" ? "bg-green-50 text-green-700"
+                : sessaoEstado === "sem_credenciais" ? "bg-gray-100 text-gray-500"
+                : sessaoEstado === "indisponivel" ? "bg-gray-100 text-gray-500"
+                : "bg-red-50 text-red-600"}`}>
+                {sessaoEstado === "conectado" ? "Conectado"
+                  : sessaoEstado === "sem_sessao" ? "Desconectado"
+                  : sessaoEstado === "token_invalido" ? "Token inválido"
+                  : sessaoEstado === "sem_credenciais" ? "Não configurado"
+                  : "Indisponível"}
+              </span>
+            )}
+          </div>
+
+          {sessaoEstado === "conectado" && (
+            <div className="mt-5 px-4 py-3 bg-green-50 border border-green-200 rounded-2xl flex items-center gap-2">
+              <CheckCircle2 size={14} className="text-green-600 shrink-0" />
+              <p className="text-[11px] text-green-800 font-semibold">
+                WhatsApp conectado{sessaoJid ? ` — ${sessaoJid.split(":")[0].split("@")[0]}` : ""}. Não precisa fazer nada.
+              </p>
+            </div>
+          )}
+
+          {sessaoEstado === "sem_credenciais" && (
+            <p className="mt-5 text-[11px] text-gray-500">
+              Preencha a URL base e o token da Avisa acima, salve, e o botão de conectar aparece aqui.
+            </p>
+          )}
+
+          {sessaoEstado && sessaoEstado !== "conectado" && sessaoEstado !== "sem_credenciais" && (
+            <div className="mt-5 flex flex-col gap-4">
+              {qrDataUrl && qrSegundos > 0 ? (
+                <div className="flex flex-col items-center gap-3">
+                  {/* O PNG da Avisa vem 256x256 e 1 bit, sem margem: pixelated + padding
+                      branco é o que faz a câmera enxergar. */}
+                  <div className="bg-white p-5 rounded-2xl border border-gray-200">
+                    <img
+                      src={qrDataUrl}
+                      alt="QR Code para conectar o WhatsApp"
+                      width={288}
+                      height={288}
+                      style={{ imageRendering: "pixelated" }}
+                      className="w-72 h-72 block"
+                    />
+                  </div>
+                  <p className="text-[11px] text-gray-600 font-semibold text-center">
+                    No celular: WhatsApp → Aparelhos conectados → Conectar aparelho
+                  </p>
+                  <p className="text-[10px] text-gray-400">expira em {qrSegundos}s</p>
+                </div>
+              ) : (
+                <button
+                  onClick={gerarQrAvisa}
+                  disabled={gerandoQr}
+                  className="self-start flex items-center gap-2 px-5 py-2.5 rounded-xl bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-[11px] font-black uppercase tracking-widest transition"
+                >
+                  {gerandoQr ? <Loader2 size={13} className="animate-spin" /> : <QrCode size={13} />}
+                  {qrDataUrl ? "Gerar novo QR Code" : "Conectar WhatsApp"}
+                </button>
+              )}
+
+              {qrErro && (
+                <div className={`px-4 py-3 rounded-2xl border ${
+                  qrErro.motivo === "sessao_presa" ? "bg-amber-50 border-amber-200" : "bg-red-50 border-red-200"}`}>
+                  {qrErro.motivo === "sessao_presa" ? (
+                    <>
+                      <p className="text-[11px] text-amber-800 font-black uppercase tracking-widest mb-1">
+                        Instância travada
+                      </p>
+                      <p className="text-[11px] text-amber-700">
+                        A instância ficou conectada sem concluir o login e parou de emitir QR.
+                        Reconecte pelo painel da Avisa — daqui não dá pra destravar.
+                      </p>
+                    </>
+                  ) : qrErro.motivo === "throttle" ? (
+                    <p className="text-[11px] text-red-700">{qrErro.detalhe}</p>
+                  ) : (
+                    <p className="text-[11px] text-red-700">
+                      Não consegui gerar o QR: {qrErro.detalhe}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <p className="text-[10px] text-gray-400">
+                Gere o QR só quando estiver com o celular em mãos — cada geração reinicia a sessão na Avisa.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* ── Meta Cloud API ── */}

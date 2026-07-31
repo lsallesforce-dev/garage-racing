@@ -70,6 +70,56 @@ export async function registrarWebhookAvisa(
   }
 }
 
+// ─── QR Code de pareamento (GET /instance/qr) ─────────────────────────────────
+//
+// CUIDADO: cada chamada dispara um "Session started successfully" no lado da Avisa.
+// Chamar em loop (ex.: auto-refresh de 20s) prende a instância em
+// Connected=true / LoggedIn=false — estado em que a Avisa PARA de emitir QR e
+// /instance/qr passa a responder HTTP 500. Dessa cova só se sai pelo painel da
+// Avisa. Por isso: só gerar QR sob ação explícita do usuário, com throttle.
+//
+// O PNG vem 256x256 e 1 bit, sem quiet zone — a UI precisa ampliar com
+// image-rendering: pixelated e dar margem branca, senão a camera nao le.
+export type AvisaQrResultado =
+  | { ok: true; qrcodeDataUrl: string }
+  | { ok: false; motivo: "ja_conectado" | "sessao_presa" | "erro"; detalhe: string };
+
+export async function getAvisaQrCode(creds: AvisaCreds): Promise<AvisaQrResultado> {
+  // Nunca pedir QR de uma instância já logada — seria derrubar quem está no ar.
+  const antes = await getAvisaInstanceStatus(creds);
+  if (antes.estado === "conectado") {
+    return { ok: false, motivo: "ja_conectado", detalhe: antes.jid ?? "sessão ativa" };
+  }
+  if (antes.estado === "token_invalido") {
+    return { ok: false, motivo: "erro", detalhe: antes.detalhe };
+  }
+
+  try {
+    const res = await fetch(`${creds.baseUrl.replace(/\/+$/, "")}/instance/qr`, {
+      headers: { Authorization: `Bearer ${creds.token}` },
+      signal: AbortSignal.timeout(25_000),
+    });
+    const text = await res.text();
+    let json: any = null;
+    try { json = JSON.parse(text); } catch {}
+
+    const qr = json?.data?.qrcode;
+    if (res.ok && typeof qr === "string" && qr.startsWith("data:image")) {
+      return { ok: true, qrcodeDataUrl: qr };
+    }
+
+    // 500/HTML ou 200 sem qrcode logo após um Connected-sem-LoggedIn é a assinatura
+    // da instância presa — o usuário precisa reconectar pelo painel da Avisa.
+    const detalhe = json?.data?.error ?? json?.message ?? `HTTP ${res.status}`;
+    if (antes.detalhe.includes("LoggedIn=false") || antes.detalhe.includes("Connected=true") || !res.ok) {
+      return { ok: false, motivo: "sessao_presa", detalhe: String(detalhe).slice(0, 200) };
+    }
+    return { ok: false, motivo: "erro", detalhe: String(detalhe).slice(0, 200) };
+  } catch (err: any) {
+    return { ok: false, motivo: "erro", detalhe: err?.message ?? "erro de rede" };
+  }
+}
+
 // Resolve um LID (@lid) para o número real via POST /user/parselid da Avisa.
 // Retorna o número real (ex: "5514997985754") ou null se não conseguir.
 export async function resolveAvisaLid(lid: string, creds: AvisaCreds): Promise<string | null> {
