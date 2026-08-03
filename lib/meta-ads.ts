@@ -72,7 +72,12 @@ async function graphGet(path: string, token: string, params: Record<string, stri
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   const res = await fetch(url.toString());
   const data = await res.json();
-  if (data.error) throw new Error(`Meta API [GET ${path}]: ${data.error.message}`);
+  if (data.error) {
+    const e = data.error;
+    const sub = e.error_subcode ? `/${e.error_subcode}` : "";
+    const userMsg = e.error_user_msg ? ` — ${e.error_user_msg}` : "";
+    throw new Error(`Meta API [GET ${path}]: ${e.message} (code ${e.code}${sub})${userMsg}`);
+  }
   return data;
 }
 
