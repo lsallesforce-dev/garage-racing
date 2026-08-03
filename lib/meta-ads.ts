@@ -88,7 +88,15 @@ async function graphPost(path: string, token: string, body: Record<string, any>)
     body: JSON.stringify(body),
   });
   const data = await res.json();
-  if (data.error) throw new Error(`Meta API [POST ${path}]: ${data.error.message} (code ${data.error.code})`);
+  if (data.error) {
+    const e = data.error;
+    const sub = e.error_subcode ? `/${e.error_subcode}` : "";
+    const userMsg = e.error_user_msg ? ` — ${e.error_user_msg}` : "";
+    const blame = e.error_data?.blame_field_specs
+      ? ` [campo: ${JSON.stringify(e.error_data.blame_field_specs)}]`
+      : "";
+    throw new Error(`Meta API [POST ${path}]: ${e.message} (code ${e.code}${sub})${userMsg}${blame}`);
+  }
   return data;
 }
 
