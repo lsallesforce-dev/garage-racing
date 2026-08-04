@@ -170,6 +170,82 @@ async function processLeadgenEvent(entry: any, pageAccessToken: string) {
   }
 }
 
+// ─── Coexistência: eco de mensagem enviada pelo lojista (WhatsApp Business App) ──
+// Quando o número está em COEXISTÊNCIA, as msgs que o lojista envia PELO CELULAR
+// chegam aqui com field "smb_message_echoes". Salvamos no CRM como msg do "agente"
+// (pro histórico/contexto da IA) e colocamos o lead em standby humano (takeover) —
+// a IA para de responder aquele lead, já que um humano assumiu a conversa pelo app.
+async function processSmbEcho(value: any) {
+  const phoneNumberId: string = value?.metadata?.phone_number_id ?? "";
+  if (!phoneNumberId) return;
+
+  // Resolve tenant pelo phone_number_id (config_garage pode ter múltiplas linhas)
+  const { data: garageRows } = await supabaseAdmin
+    .from("config_garage")
+    .select("user_id")
+    .eq("meta_phone_id", phoneNumberId)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  const tenantUserId = garageRows?.[0]?.user_id;
+  if (!tenantUserId) {
+    console.warn(`⚠️ [SMB echo] Nenhum tenant para phone_number_id=${phoneNumberId}`);
+    return;
+  }
+
+  for (const echo of value?.message_echoes ?? []) {
+    const customer: string = echo?.to ?? "";   // o cliente para quem o lojista mandou
+    if (!customer) continue;
+
+    // Dedup: a Meta pode reentregar o mesmo echo
+    if (echo?.id && await isDuplicateMessage(tenantUserId, echo.id)) {
+      console.log(`🔁 [SMB echo] echo ${echo.id} já processado`);
+      continue;
+    }
+
+    // Conteúdo textual (text, caption de mídia, ou rótulo do tipo)
+    const content: string =
+      echo?.text?.body
+      ?? echo?.[echo?.type]?.caption
+      ?? `[${echo?.type ?? "mensagem"} enviada pelo lojista]`;
+
+    // Find-or-create do lead (NÃO usar upsert p/ não sobrescrever status de lead existente)
+    let leadId: string | null = null;
+    const { data: leadExistente } = await supabaseAdmin
+      .from("leads")
+      .select("id")
+      .eq("user_id", tenantUserId)
+      .eq("wa_id", customer)
+      .maybeSingle();
+    if (leadExistente) {
+      leadId = leadExistente.id;
+    } else {
+      const { data: leadNovo } = await supabaseAdmin
+        .from("leads")
+        .insert({ wa_id: customer, user_id: tenantUserId, origem: "coexistencia", status: "MORNO" })
+        .select("id")
+        .single();
+      leadId = leadNovo?.id ?? null;
+    }
+    if (!leadId) continue;
+
+    // Salva a msg do lojista como "agente" (entra no histórico do contexto da IA)
+    await supabaseAdmin.from("mensagens").insert({
+      lead_id: leadId,
+      content,
+      remetente: "agente",
+      delivered: true,
+    });
+
+    // Takeover: humano respondeu pelo celular → IA em standby para esse lead
+    await supabaseAdmin
+      .from("leads")
+      .update({ em_atendimento_humano: true, updated_at: new Date().toISOString() })
+      .eq("id", leadId);
+
+    console.log(`👤 [SMB echo] lojista respondeu ${customer} pelo app → lead ${leadId} em standby humano`);
+  }
+}
+
 // ─── Extração de Campos do Payload Meta ──────────────────────────────────────
 function extractFields(payload: any): {
   phone: string;
@@ -279,6 +355,24 @@ export async function POST(req: NextRequest) {
         }
       });
       return NextResponse.json({ status: "leadgen_queued" });
+    }
+
+    // Coexistência: eco de mensagem que o lojista enviou pelo WhatsApp Business App
+    const isSmbEcho = payload?.entry?.some((e: any) =>
+      e?.changes?.some((c: any) => c?.field === "smb_message_echoes")
+    );
+    if (isSmbEcho) {
+      after(async () => {
+        for (const entry of payload.entry ?? []) {
+          for (const change of entry?.changes ?? []) {
+            if (change?.field !== "smb_message_echoes") continue;
+            await processSmbEcho(change.value).catch((e) =>
+              console.error("❌ processSmbEcho:", e)
+            );
+          }
+        }
+      });
+      return NextResponse.json({ status: "smb_echo_queued" });
     }
 
     const { phone, userMessage, fromMe, messageId, phoneNumberId, audioMediaId, adReferral, isClientImage } = extractFields(payload);
