@@ -456,7 +456,14 @@ export default function ConfiguracoesPage() {
       if (event.origin !== "https://www.facebook.com") return;
       try {
         const data = JSON.parse(event.data);
-        if (data.type === "WA_EMBEDDED_SIGNUP" && data.event === "FINISH") {
+        // "FINISH" = onboarding normal (número novo Cloud API)
+        // "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING" = COEXISTÊNCIA (número que já roda
+        // no WhatsApp Business App do celular; app + API juntos). Ambos trazem
+        // phone_number_id em data.data; a coexistência também traz waba_id.
+        if (
+          data.type === "WA_EMBEDDED_SIGNUP" &&
+          (data.event === "FINISH" || data.event === "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING")
+        ) {
           setConfig(c => ({
             ...c,
             meta_phone_id: data.data?.phone_number_id || c.meta_phone_id,
