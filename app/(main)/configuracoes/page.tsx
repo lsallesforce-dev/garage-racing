@@ -525,8 +525,11 @@ export default function ConfiguracoesPage() {
         override_default_response_type: true,
         extras: {
           setup: {},
-          featureType: "",
-          sessionInfoVersion: "2",
+          // Coexistência: conecta o número que JÁ roda no WhatsApp Business App do
+          // celular (app + Cloud API juntos, histórico sincronizado). Sem isso, o
+          // fluxo pediria um número novo/migração. sessionInfoVersion "3" é exigido.
+          featureType: "whatsapp_business_app_onboarding",
+          sessionInfoVersion: "3",
         },
       },
     );
