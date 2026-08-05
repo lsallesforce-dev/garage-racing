@@ -14,20 +14,23 @@ export async function POST(req: NextRequest) {
     const appId     = process.env.META_APP_ID!;
     const appSecret = process.env.META_APP_SECRET!;
 
-    // Troca o code pelo access token.
-    // ⚠️ O FB.login (JS SDK) usa a URL DA PÁGINA como redirect_uri no diálogo,
-    // então a troca precisa mandar EXATAMENTE a mesma URL. Confirmado por erro:
-    //   - redirect_uri ausente/"" → code 100/36008 ("redirect_uri must be
-    //     identical to the one used in the OAuth dialog")
-    //   - redirect_uri = URL real → code 191 SE o dominio nao estiver em
-    //     "App Domains"/"Valid OAuth Redirect URIs" do app Meta.
-    // Fix: URL real AQUI + cadastrar autozap.digital em App Domains e a URL
-    // /configuracoes em Valid OAuth Redirect URIs (painel do Meta).
+    // DIAGNÓSTICO: o FB.login (JS SDK) usa o canal interno do FB
+    // (staticxx.facebook.com/xd_arbiter) como redirect_uri no diálogo — NÃO a
+    // nossa URL. O code é de Login-for-Business (config_id) e a troca
+    // documentada é SEM redirect_uri. Logamos app_id + resposta crua pra
+    // confirmar se o app do servidor bate com o app que emitiu o code
+    // (client-side confirmado = 1371434341765309).
+    console.log(`🔍 [Meta exchange] server_app_id=${appId} secret_len=${appSecret?.length ?? 0} code_len=${code?.length ?? 0} redirectUri=${JSON.stringify(redirectUri ?? null)}`);
+
+    // Troca do code pelo access token — SEM redirect_uri (Embedded Signup /
+    // Login for Business). O code é validado contra o app (client_id+secret),
+    // não contra um redirect_uri da nossa origem.
     const tokenRes = await fetch(
       "https://graph.facebook.com/v19.0/oauth/access_token?" +
-      new URLSearchParams({ client_id: appId, client_secret: appSecret, redirect_uri: redirectUri ?? "", code }),
+      new URLSearchParams({ client_id: appId, client_secret: appSecret, code }),
     );
     const tokenData = await tokenRes.json();
+    console.log(`🔍 [Meta exchange] tokenData=${JSON.stringify(tokenData).slice(0, 500)}`);
     if (!tokenData.access_token) throw new Error("Token inválido: " + JSON.stringify(tokenData));
 
     let accessToken = tokenData.access_token;
