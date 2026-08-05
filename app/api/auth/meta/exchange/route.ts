@@ -8,16 +8,20 @@ export async function POST(req: NextRequest) {
   const userId = getEffectiveUserId(user!);
 
   try {
-    const { code, redirectUri } = await req.json();
+    const { code } = await req.json();
     if (!code) return NextResponse.json({ error: "code obrigatório" }, { status: 400 });
 
     const appId     = process.env.META_APP_ID!;
     const appSecret = process.env.META_APP_SECRET!;
 
-    // Troca o code pelo access token
+    // Troca o code pelo access token.
+    // ⚠️ Embedded Signup: o code é de SESSÃO, NÃO um OAuth clássico — a troca
+    // NÃO leva redirect_uri. Mandar redirect_uri faz a Meta validar o domínio
+    // contra "App Domains" e recusar com code 191 ("Can't load URL: The domain
+    // of this URL isn't included in the app's domains"). Sem redirect_uri, ok.
     const tokenRes = await fetch(
       "https://graph.facebook.com/v19.0/oauth/access_token?" +
-      new URLSearchParams({ client_id: appId, client_secret: appSecret, redirect_uri: redirectUri, code }),
+      new URLSearchParams({ client_id: appId, client_secret: appSecret, code }),
     );
     const tokenData = await tokenRes.json();
     if (!tokenData.access_token) throw new Error("Token inválido: " + JSON.stringify(tokenData));
