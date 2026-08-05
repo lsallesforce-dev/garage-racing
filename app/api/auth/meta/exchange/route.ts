@@ -22,6 +22,17 @@ export async function POST(req: NextRequest) {
     // (client-side confirmado = 1371434341765309).
     console.log(`🔍 [Meta exchange] server_app_id=${appId} secret_len=${appSecret?.length ?? 0} code_len=${code?.length ?? 0} redirectUri=${JSON.stringify(redirectUri ?? null)}`);
 
+    // DIAGNÓSTICO do secret: pede um app access token (client_credentials).
+    // Se o par client_id+secret for válido, retorna access_token; se o secret
+    // estiver errado (app antigo/regenerado), retorna erro — isolando a causa
+    // do 36008 sem expor o secret.
+    try {
+      const appTokRes = await fetch("https://graph.facebook.com/v19.0/oauth/access_token?" +
+        new URLSearchParams({ client_id: appId, client_secret: appSecret, grant_type: "client_credentials" }));
+      const appTok = await appTokRes.json();
+      console.log(`🔍 [Meta exchange] appSecretCheck ok=${!!appTok.access_token} resp=${JSON.stringify(appTok).slice(0, 200)}`);
+    } catch (e) { console.log("🔍 [Meta exchange] appSecretCheck erro:", String(e).slice(0, 120)); }
+
     // Troca do code pelo access token — SEM redirect_uri (Embedded Signup /
     // Login for Business). O code é validado contra o app (client_id+secret),
     // não contra um redirect_uri da nossa origem.
