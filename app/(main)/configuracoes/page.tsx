@@ -452,6 +452,9 @@ export default function ConfiguracoesPage() {
     document.body.appendChild(script);
   };
 
+  // Instante do FINISH do Embedded Signup — usado pra medir a idade do code.
+  const sessionFinishAtRef = useRef<number | null>(null);
+
   useEffect(() => {
     // Recebe phone_number_id do popup do Embedded Signup
     const handleMessage = (event: MessageEvent) => {
@@ -466,6 +469,10 @@ export default function ConfiguracoesPage() {
           data.type === "WA_EMBEDDED_SIGNUP" &&
           (data.event === "FINISH" || data.event === "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING")
         ) {
+          // Marca QUANDO o fluxo terminou. O code do Embedded Signup vive ~30s, mas o
+          // callback do FB.login só dispara quando o popup fecha — se o usuário demora
+          // pra fechar a tela final, o code chega morto e a troca dá 100/36008.
+          sessionFinishAtRef.current = Date.now();
           setConfig(c => ({
             ...c,
             meta_phone_id: data.data?.phone_number_id || c.meta_phone_id,
@@ -517,14 +524,18 @@ export default function ConfiguracoesPage() {
       (response: any) => {
         const code = response.authResponse?.code;
         if (!code) { setMetaConnecting(false); return; }
+        // Idade do code: do FINISH do fluxo até agora. Se passar dos ~30s de TTL,
+        // a Meta recusa a troca com 36008 mesmo estando tudo certo.
+        const codeAgeMs = sessionFinishAtRef.current ? Date.now() - sessionFinishAtRef.current : null;
+        sessionFinishAtRef.current = null;
         void (async () => {
           try {
             const res = await fetch("/api/auth/meta/exchange", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              // configId/appId vão só pra diagnóstico server-side: confirmam se o
-              // browser realmente usou o config_id e o MESMO app do servidor.
-              body: JSON.stringify({ code, redirectUri, configId, appId: process.env.NEXT_PUBLIC_META_APP_ID }),
+              // configId/appId/codeAgeMs vão só pra diagnóstico server-side: confirmam
+              // o config_id, o app usado pelo browser e a idade do code.
+              body: JSON.stringify({ code, redirectUri, configId, codeAgeMs, appId: process.env.NEXT_PUBLIC_META_APP_ID }),
             });
             const data = await res.json();
             if (res.ok) {

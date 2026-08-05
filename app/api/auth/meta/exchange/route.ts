@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
@@ -8,7 +9,7 @@ export async function POST(req: NextRequest) {
   const userId = getEffectiveUserId(user!);
 
   try {
-    const { code, redirectUri, configId, appId: clientAppId } = await req.json();
+    const { code, redirectUri, configId, codeAgeMs, appId: clientAppId } = await req.json();
     if (!code) return NextResponse.json({ error: "code obrigatório" }, { status: 400 });
 
     const appId     = process.env.META_APP_ID!;
@@ -33,7 +34,10 @@ export async function POST(req: NextRequest) {
     // redirect_uri no diálogo — NÃO a nossa URL. Por isso a troca é SEM
     // redirect_uri e nenhuma URL nossa jamais "bate": quando o 36008 aparece, a
     // causa está no code (não é de Login for Business), nunca no redirect.
-    console.log(`🔍 [Meta exchange] server_app_id=${appId} client_app_id=${clientAppId ?? "?"} config_id=${configId ?? "AUSENTE"} secret_len=${appSecret?.length ?? 0} code_len=${code?.length ?? 0} redirectUri=${JSON.stringify(redirectUri ?? null)}`);
+    // codeFp identifica o code sem expô-lo: se dois requests trouxerem o MESMO fp, é
+    // reenvio do mesmo code (o segundo sempre falha, code é de uso único).
+    const codeFp = createHash("sha256").update(String(code)).digest("hex").slice(0, 10);
+    console.log(`🔍 [Meta exchange] server_app_id=${appId} client_app_id=${clientAppId ?? "?"} config_id=${configId ?? "AUSENTE"} code_fp=${codeFp} code_age_ms=${codeAgeMs ?? "?"} secret_len=${appSecret?.length ?? 0} code_len=${code?.length ?? 0} redirectUri=${JSON.stringify(redirectUri ?? null)}`);
 
     // (o check client_credentials de 05/08 já confirmou que o par app_id+secret é
     // válido — removido pra não logar app token à toa.)
@@ -52,10 +56,18 @@ export async function POST(req: NextRequest) {
       // code não é de Login for Business: a configuração do config_id não é do tipo
       // Embedded Signup, ou não pertence a este app.
       if (tokenData?.error?.error_subcode === 36008) {
+        // O code do Embedded Signup é de uso único e vive ~30s. Idade alta = expirou
+        // entre o fim do fluxo e o fechamento do popup (o callback do FB.login só
+        // dispara quando o popup fecha).
+        if (typeof codeAgeMs === "number" && codeAgeMs > 25_000) {
+          throw new Error(
+            `O código expirou antes da troca (${Math.round(codeAgeMs / 1000)}s de vida; o limite da Meta é ~30s). ` +
+            "Refaça a conexão e feche a janela do Facebook assim que o fluxo terminar.",
+          );
+        }
         throw new Error(
-          "A Meta recusou o código (36008). App e secret conferem, então a configuração " +
-          `${configId} provavelmente não é uma config de Embedded Signup (Facebook Login for Business) ` +
-          `do app ${appId}. Confira em Login do Facebook para Empresas → Configurações.`,
+          `A Meta recusou o código (36008) com ${codeAgeMs ?? "?"}ms de idade. App, secret e a config ` +
+          `${configId} já foram validados — se persistir, o code pode estar sendo reenviado (fp ${codeFp}).`,
         );
       }
       throw new Error("Token inválido: " + JSON.stringify(tokenData));
