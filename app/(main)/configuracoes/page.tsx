@@ -493,31 +493,35 @@ export default function ConfiguracoesPage() {
 
     const redirectUri = `${window.location.origin}/configuracoes`;
 
+    // O SDK do Facebook rejeita callback async ("Expression is of type
+    // asyncfunction, not function"). Callback normal + IIFE async dentro.
     window.FB.login(
-      async (response: any) => {
+      (response: any) => {
         const code = response.authResponse?.code;
         if (!code) { setMetaConnecting(false); return; }
-        try {
-          const res = await fetch("/api/auth/meta/exchange", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ code, redirectUri }),
-          });
-          const data = await res.json();
-          if (res.ok) {
-            setConfig(c => ({
-              ...c,
-              meta_access_token: data.access_token  || c.meta_access_token,
-              meta_phone_id:     data.phone_number_id || c.meta_phone_id,
-            }));
-            setMetaConnected(true);
-            setTimeout(() => setMetaConnected(false), 4000);
-          } else {
-            alert("Erro ao conectar: " + data.error);
+        void (async () => {
+          try {
+            const res = await fetch("/api/auth/meta/exchange", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ code, redirectUri }),
+            });
+            const data = await res.json();
+            if (res.ok) {
+              setConfig(c => ({
+                ...c,
+                meta_access_token: data.access_token  || c.meta_access_token,
+                meta_phone_id:     data.phone_number_id || c.meta_phone_id,
+              }));
+              setMetaConnected(true);
+              setTimeout(() => setMetaConnected(false), 4000);
+            } else {
+              alert("Erro ao conectar: " + data.error);
+            }
+          } finally {
+            setMetaConnecting(false);
           }
-        } finally {
-          setMetaConnecting(false);
-        }
+        })();
       },
       {
         config_id: process.env.NEXT_PUBLIC_META_CONFIG_ID,
