@@ -439,7 +439,9 @@ export default function ConfiguracoesPage() {
         appId: process.env.NEXT_PUBLIC_META_APP_ID!,
         autoLogAppEvents: true,
         xfbml: true,
-        version: "v19.0",
+        // v19.0 saiu do suporte (Graph API dura ~2 anos); o Embedded Signup atual
+        // pressupõe versão corrente. Manter alinhado com o exchange server-side.
+        version: "v23.0",
       });
     };
     const script = document.createElement("script");
@@ -487,6 +489,22 @@ export default function ConfiguracoesPage() {
       });
     }
     if (!window.FB) { alert("SDK do Facebook ainda carregando, tente novamente."); return; }
+
+    // GUARDA: sem config_id o FB.login degrada pro Facebook Login CLÁSSICO — o code
+    // que volta não é de Login for Business e a troca server-side falha SEMPRE com
+    // 100/36008 ("redirect_uri must be identical"), porque o diálogo usou o redirect
+    // interno do SDK (staticxx/xd_arbiter), impossível de reproduzir na troca.
+    // Falhar aqui, explícito, em vez de abrir um fluxo que nunca conclui.
+    const configId = process.env.NEXT_PUBLIC_META_CONFIG_ID;
+    if (!configId) {
+      alert(
+        "Configuração do Embedded Signup ausente (NEXT_PUBLIC_META_CONFIG_ID não chegou no build).\n\n" +
+        "Sem ela o Facebook abre o login comum e a troca do código falha com o erro 36008. " +
+        "Confira a env na Vercel e faça um redeploy (env NEXT_PUBLIC_ só entra em build novo).",
+      );
+      return;
+    }
+
     setMetaConnecting(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setMetaConnecting(false); return; }
@@ -504,7 +522,9 @@ export default function ConfiguracoesPage() {
             const res = await fetch("/api/auth/meta/exchange", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ code, redirectUri }),
+              // configId/appId vão só pra diagnóstico server-side: confirmam se o
+              // browser realmente usou o config_id e o MESMO app do servidor.
+              body: JSON.stringify({ code, redirectUri, configId, appId: process.env.NEXT_PUBLIC_META_APP_ID }),
             });
             const data = await res.json();
             if (res.ok) {
@@ -524,7 +544,7 @@ export default function ConfiguracoesPage() {
         })();
       },
       {
-        config_id: process.env.NEXT_PUBLIC_META_CONFIG_ID,
+        config_id: configId,
         response_type: "code",
         override_default_response_type: true,
         extras: {

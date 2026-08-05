@@ -8,41 +8,58 @@ export async function POST(req: NextRequest) {
   const userId = getEffectiveUserId(user!);
 
   try {
-    const { code, redirectUri } = await req.json();
+    const { code, redirectUri, configId, appId: clientAppId } = await req.json();
     if (!code) return NextResponse.json({ error: "code obrigatório" }, { status: 400 });
 
     const appId     = process.env.META_APP_ID!;
     const appSecret = process.env.META_APP_SECRET!;
 
-    // DIAGNÓSTICO: o FB.login (JS SDK) usa o canal interno do FB
-    // (staticxx.facebook.com/xd_arbiter) como redirect_uri no diálogo — NÃO a
-    // nossa URL. O code é de Login-for-Business (config_id) e a troca
-    // documentada é SEM redirect_uri. Logamos app_id + resposta crua pra
-    // confirmar se o app do servidor bate com o app que emitiu o code
-    // (client-side confirmado = 1371434341765309).
-    console.log(`🔍 [Meta exchange] server_app_id=${appId} secret_len=${appSecret?.length ?? 0} code_len=${code?.length ?? 0} redirectUri=${JSON.stringify(redirectUri ?? null)}`);
+    // O code é emitido PELO app do browser. Se o browser usa um app e o servidor
+    // troca com outro, a Meta recusa com 100/36008 (mensagem enganosa de redirect_uri).
+    if (clientAppId && clientAppId !== appId) {
+      console.error(`🚨 [Meta exchange] app_id divergente: browser=${clientAppId} servidor=${appId}`);
+      return NextResponse.json({
+        error: `App do Facebook divergente: o botão usou o app ${clientAppId} e o servidor troca com o app ${appId}. Alinhe NEXT_PUBLIC_META_APP_ID e META_APP_ID na Vercel e redeploy.`,
+      }, { status: 400 });
+    }
+    if (!configId) {
+      console.error("🚨 [Meta exchange] code veio SEM config_id — fluxo caiu no Login clássico");
+      return NextResponse.json({
+        error: "O login do Facebook rodou sem config_id (Embedded Signup). O código gerado não é de Login for Business e não pode ser trocado. Configure NEXT_PUBLIC_META_CONFIG_ID e redeploy.",
+      }, { status: 400 });
+    }
 
-    // DIAGNÓSTICO do secret: pede um app access token (client_credentials).
-    // Se o par client_id+secret for válido, retorna access_token; se o secret
-    // estiver errado (app antigo/regenerado), retorna erro — isolando a causa
-    // do 36008 sem expor o secret.
-    try {
-      const appTokRes = await fetch("https://graph.facebook.com/v19.0/oauth/access_token?" +
-        new URLSearchParams({ client_id: appId, client_secret: appSecret, grant_type: "client_credentials" }));
-      const appTok = await appTokRes.json();
-      console.log(`🔍 [Meta exchange] appSecretCheck ok=${!!appTok.access_token} resp=${JSON.stringify(appTok).slice(0, 200)}`);
-    } catch (e) { console.log("🔍 [Meta exchange] appSecretCheck erro:", String(e).slice(0, 120)); }
+    // O FB.login (JS SDK) usa o canal interno do FB (staticxx/xd_arbiter) como
+    // redirect_uri no diálogo — NÃO a nossa URL. Por isso a troca é SEM
+    // redirect_uri e nenhuma URL nossa jamais "bate": quando o 36008 aparece, a
+    // causa está no code (não é de Login for Business), nunca no redirect.
+    console.log(`🔍 [Meta exchange] server_app_id=${appId} client_app_id=${clientAppId ?? "?"} config_id=${configId ?? "AUSENTE"} secret_len=${appSecret?.length ?? 0} code_len=${code?.length ?? 0} redirectUri=${JSON.stringify(redirectUri ?? null)}`);
+
+    // (o check client_credentials de 05/08 já confirmou que o par app_id+secret é
+    // válido — removido pra não logar app token à toa.)
 
     // Troca do code pelo access token — SEM redirect_uri (Embedded Signup /
-    // Login for Business). O code é validado contra o app (client_id+secret),
-    // não contra um redirect_uri da nossa origem.
+    // Login for Business, jeito documentado). O code é validado contra o app
+    // (client_id+secret), não contra um redirect_uri da nossa origem.
     const tokenRes = await fetch(
-      "https://graph.facebook.com/v19.0/oauth/access_token?" +
+      "https://graph.facebook.com/v23.0/oauth/access_token?" +
       new URLSearchParams({ client_id: appId, client_secret: appSecret, code }),
     );
     const tokenData = await tokenRes.json();
     console.log(`🔍 [Meta exchange] tokenData=${JSON.stringify(tokenData).slice(0, 500)}`);
-    if (!tokenData.access_token) throw new Error("Token inválido: " + JSON.stringify(tokenData));
+    if (!tokenData.access_token) {
+      // 36008 aqui, com app_id/secret/config_id já validados acima, significa que o
+      // code não é de Login for Business: a configuração do config_id não é do tipo
+      // Embedded Signup, ou não pertence a este app.
+      if (tokenData?.error?.error_subcode === 36008) {
+        throw new Error(
+          "A Meta recusou o código (36008). App e secret conferem, então a configuração " +
+          `${configId} provavelmente não é uma config de Embedded Signup (Facebook Login for Business) ` +
+          `do app ${appId}. Confira em Login do Facebook para Empresas → Configurações.`,
+        );
+      }
+      throw new Error("Token inválido: " + JSON.stringify(tokenData));
+    }
 
     let accessToken = tokenData.access_token;
 
@@ -51,7 +68,7 @@ export async function POST(req: NextRequest) {
     // Best-effort: se falhar (alguns tokens de negócio já vêm long-lived), mantém o original.
     try {
       const llRes = await fetch(
-        "https://graph.facebook.com/v19.0/oauth/access_token?" +
+        "https://graph.facebook.com/v23.0/oauth/access_token?" +
         new URLSearchParams({
           grant_type: "fb_exchange_token",
           client_id: appId,
@@ -68,7 +85,7 @@ export async function POST(req: NextRequest) {
 
     // Busca WABA e phone
     const wabaRes  = await fetch(
-      `https://graph.facebook.com/v19.0/me/businesses?access_token=${accessToken}&fields=id,name,whatsapp_business_accounts`,
+      `https://graph.facebook.com/v23.0/me/businesses?access_token=${accessToken}&fields=id,name,whatsapp_business_accounts`,
     );
     const wabaData = await wabaRes.json();
     const waba     = wabaData?.data?.[0]?.whatsapp_business_accounts?.data?.[0];
@@ -76,7 +93,7 @@ export async function POST(req: NextRequest) {
 
     let phoneNumberId: string | null = null;
     if (wabaId) {
-      const phoneRes  = await fetch(`https://graph.facebook.com/v19.0/${wabaId}/phone_numbers?access_token=${accessToken}`);
+      const phoneRes  = await fetch(`https://graph.facebook.com/v23.0/${wabaId}/phone_numbers?access_token=${accessToken}`);
       const phoneData = await phoneRes.json();
       phoneNumberId   = phoneData?.data?.[0]?.id ?? null;
     }
@@ -86,7 +103,7 @@ export async function POST(req: NextRequest) {
     // /api/webhook/meta — o agente fica mudo. Best-effort com log ruidoso.
     if (wabaId) {
       try {
-        const subRes = await fetch(`https://graph.facebook.com/v19.0/${wabaId}/subscribed_apps`, {
+        const subRes = await fetch(`https://graph.facebook.com/v23.0/${wabaId}/subscribed_apps`, {
           method: "POST",
           headers: { Authorization: `Bearer ${accessToken}` },
         });
@@ -104,7 +121,7 @@ export async function POST(req: NextRequest) {
     // conhecido — nesse caso loga e segue (o envio pode falhar até registrar manual).
     if (phoneNumberId) {
       try {
-        const regRes = await fetch(`https://graph.facebook.com/v19.0/${phoneNumberId}/register`, {
+        const regRes = await fetch(`https://graph.facebook.com/v23.0/${phoneNumberId}/register`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
           body: JSON.stringify({ messaging_product: "whatsapp", pin: "000000" }),
