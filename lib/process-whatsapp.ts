@@ -284,7 +284,10 @@ Este cliente é um LOJISTA/COMPRADOR que revende carros — não um consumidor f
 - SEMPRE trate cada pergunta como podendo ser sobre um carro DIFERENTE do anterior. NÃO assuma que ele ainda fala do último carro.
 - Quando ele citar um carro (marca, modelo, cor ou ano), é SOBRE ESSE que ele quer falar agora — mude o foco na hora.
 - Se a mensagem for vaga ("manda foto", "qual valor", "tem esse") e NÃO der pra saber com CERTEZA de qual carro ele fala, PERGUNTE qual carro antes de responder ou mandar mídia. É melhor confirmar do que mandar a foto/preço errados.
-- Foco em agilidade e informação seca: lojista quer preço, km, ano e estado rápido, sem papo de venda emocional.\n`
+- Foco em agilidade e informação seca: lojista quer preço, km, ano e estado rápido, sem papo de venda emocional.
+- ⛔ TOM SECO (sobrepõe o limite geral): resposta de no MÁXIMO **90 caracteres**, 1 linha. Responda o que foi perguntado e PARE.
+- ⛔ PROIBIDO nesse modo: saudação repetida ("oi", "bom dia" fora da 1ª mensagem), elogio ao carro, emoji, e pergunta aberta de fechamento ("posso te ajudar em mais alguma coisa?", "o que achou?"). Pergunta só quando for necessária pra saber DE QUAL CARRO ele fala.
+- Exemplos: ❌ "Que ótima escolha! Esse Onix é show, tá impecável. Quer que eu mande mais detalhes?" ✅ "Onix 2020, 62 mil km, R$ 68.900."\n`
     : "";
 
   return `
@@ -2214,6 +2217,11 @@ Responda apenas com o JSON, sem markdown.`;
     !exclusoesFoto.some((e) => mensagemLower.includes(e));
 
   let fotoEnviada = false;
+  // Envio de material COMPLETO (pedido Marcos Repasse): quando o cliente pede
+  // mídia, vai tudo de uma vez — todas as fotos + vídeo + ficha — em vez do
+  // conta-gotas padrão. O gatilho continua sendo o pedido do cliente.
+  const materialCompleto = garageConfig?.envio_material_completo === true;
+  let veiculoDaFoto: Vehicle | null = null;
 
   if (clientePediuFoto) {
     // Pedido de múltiplos: envia fotos de todos os veículos do contexto
@@ -2332,7 +2340,10 @@ Responda apenas com o JSON, sem markdown.`;
     // - "todas" → até 12 (basicamente tudo)
     // - "mais" / "interior" → 6
     // - padrão → 4
-    const MAX_FOTOS_POR_VEICULO = pedindoTodasFotos ? 12 : (pedindoMaisFotos ? 6 : 4);
+    // Com envio_material_completo (pedido Marcos Repasse): pediu foto = leva
+    // TUDO de uma vez, sem conta-gotas — o cliente dele é lojista, quer o
+    // material inteiro pra decidir na hora.
+    const MAX_FOTOS_POR_VEICULO = materialCompleto ? 15 : (pedindoTodasFotos ? 12 : (pedindoMaisFotos ? 6 : 4));
 
     for (const v of veiculosParaFoto) {
       // Se pedindoFotosMultiplos (vários carros), envia só a capa de cada um.
@@ -2361,8 +2372,12 @@ Responda apenas com o JSON, sem markdown.`;
       }
 
       // Prioriza fotos NUNCA enviadas. Se já mandou todas, recomeça do início.
+      // No modo material completo não há priorização: "manda tudo" é tudo mesmo,
+      // na ordem original (capa primeiro).
       const fotosNaoEnviadas = todasFotosRaw.filter(f => !fotosJaEnviadas.has(f));
-      const poolFotos = fotosNaoEnviadas.length > 0 ? fotosNaoEnviadas : todasFotosRaw;
+      const poolFotos = materialCompleto
+        ? todasFotosRaw
+        : (fotosNaoEnviadas.length > 0 ? fotosNaoEnviadas : todasFotosRaw);
       const reenviando = fotosNaoEnviadas.length === 0 && fotosJaEnviadas.size > 0;
 
       const fotosParaEnviar = poolFotos.slice(0, MAX_FOTOS_POR_VEICULO);
@@ -2420,6 +2435,7 @@ Responda apenas com o JSON, sem markdown.`;
           console.warn(`⚠️ Falha ao enviar foto de ${v.marca} ${v.modelo}:`, e);
         }
       }
+      if (fotoEnviada && !veiculoDaFoto) veiculoDaFoto = v;
     }
 
     // Atualiza veiculo_id do lead para o carro principal enviado (primeiro da lista se único)
@@ -2432,7 +2448,9 @@ Responda apenas com o JSON, sem markdown.`;
   const clientePediuVideo =
     gatilhosVideo.some((g) => mensagemLower.includes(g)) ||
     // Mesmo guard de foto: não disparar por "Ok/Sim" se há instrucao_pendente ativa.
-    (msgConfirmacao && (clientePediuVideoAntes || agenteMencionouVideo) && !clientePediuFoto && !lead?.instrucao_pendente);
+    (msgConfirmacao && (clientePediuVideoAntes || agenteMencionouVideo) && !clientePediuFoto && !lead?.instrucao_pendente) ||
+    // Material completo: quem pediu foto leva o vídeo junto, no mesmo turno.
+    (materialCompleto && fotoEnviada && !pedindoFotosMultiplos);
 
   let videoEnviado = false;
 
@@ -2440,9 +2458,12 @@ Responda apenas com o JSON, sem markdown.`;
     // Vídeo: veiculoPrincipal tem prioridade absoluta para mensagens vagas.
     // Se o cliente pediu um carro diferente, usa findVehicleForMedia (nunca hitsTextuais).
     const msgSemContextoVideo = userMessage.replace(/^\[(?:Contexto do link|Lead veio do anúncio)[^\n]*\n?/m, "").trim();
-    const veiculoParaVideo = clientePediuCarroDiferente
+    // No material completo o vídeo tem que ser do MESMO carro cujas fotos
+    // acabaram de sair — senão "manda foto do Onix" mandaria o vídeo do carro
+    // em foco, que pode ser outro.
+    const veiculoParaVideo = (materialCompleto ? veiculoDaFoto : null) ?? (clientePediuCarroDiferente
       ? (msgSemContextoVideo ? (await findVehicleForMedia(msgSemContextoVideo, tenantUserId)) ?? veiculoPrincipal : veiculoPrincipal)
-      : veiculoPrincipal;
+      : veiculoPrincipal);
 
     if (veiculoParaVideo) {
       // Prioridade: reel de marketing (já otimizado) → vídeo bruto
@@ -2491,6 +2512,43 @@ Responda apenas com o JSON, sem markdown.`;
           }
         } catch (e) {
           console.warn("⚠️ Falha ao enviar vídeo:", e);
+        }
+      }
+    }
+  }
+
+  // ── 11c. Ficha do carro (só no modo material completo) ──────────────────────
+  // Fecha o pacote: depois das fotos e do vídeo, uma mensagem com a ficha. O
+  // prompt padrão proíbe despejar ficha (regra do conta-gotas) — aqui é
+  // deliberado e vale só pro tenant configurado.
+  if (materialCompleto && fotoEnviada) {
+    const vFicha = veiculoDaFoto ?? veiculoPrincipal;
+    if (vFicha) {
+      const f = vFicha as any;
+      const anoFicha = f.ano && f.ano_modelo && f.ano !== f.ano_modelo
+        ? `${f.ano}/${f.ano_modelo}`
+        : (f.ano_modelo || f.ano || null);
+      const linhas = [
+        `*${nomeCarroLimpo(vFicha)}${f.versao ? ` ${f.versao}` : ""}*`,
+        anoFicha ? `Ano: ${anoFicha}` : null,
+        f.quilometragem_estimada != null ? `Km: ${Number(f.quilometragem_estimada).toLocaleString("pt-BR")}` : null,
+        f.cor ? `Cor: ${f.cor}` : null,
+        f.cambio ? `Câmbio: ${f.cambio}` : null,
+        f.combustivel ? `Combustível: ${f.combustivel}` : null,
+        f.preco_sugerido ? `Valor: R$ ${Number(f.preco_sugerido).toLocaleString("pt-BR")}` : null,
+      ].filter(Boolean);
+      if (linhas.length > 1) {
+        try {
+          await sendText(phone, linhas.join("\n"));
+          if (lead) {
+            await supabaseAdmin.from("mensagens").insert({
+              lead_id: lead.id,
+              content: linhas.join("\n"),
+              remetente: "agente",
+            }).then(() => {}, () => {});
+          }
+        } catch (e) {
+          console.warn("⚠️ Falha ao enviar ficha do carro:", e);
         }
       }
     }
