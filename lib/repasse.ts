@@ -98,6 +98,35 @@ export function urlVitrine(cfg: any): string | null {
   return null;
 }
 
+// Remove os rodapés do anúncio de um texto JÁ montado. Necessário porque o
+// texto congelado pelo dono (veiculos.repasse_texto) é usado VERBATIM e já veio
+// com os blocos gravados — sem isso, desligar o CTA não surte efeito nos carros
+// que têm texto congelado (que é o caso do Marcos Repasse).
+// Cada bloco = linha do rótulo + linha da URL seguinte + a linha em branco antes.
+export function removerRodapes(
+  texto: string,
+  opts: { cta?: boolean; vitrine?: boolean },
+): string {
+  const tiraCta = opts.cta === false;
+  const tiraVitrine = opts.vitrine === false;
+  if (!tiraCta && !tiraVitrine) return texto;
+
+  const linhas = texto.split("\n");
+  const out: string[] = [];
+  for (let i = 0; i < linhas.length; i++) {
+    const l = linhas[i];
+    const ehCta = tiraCta && l.startsWith("💬 Falar com Vendedor");
+    const ehVitrine = tiraVitrine && l.startsWith("🚗 Veja nosso estoque");
+    if (ehCta || ehVitrine) {
+      if (out.length && out[out.length - 1].trim() === "") out.pop(); // tira a linha em branco antes
+      if (i + 1 < linhas.length) i++; // pula a linha da URL
+      continue;
+    }
+    out.push(l);
+  }
+  return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 // Sem centavos — pro valor de referência ("Média") ficar redondo tipo anúncio.
 function formatarMoedaInteira(valor: number): string {
   return new Intl.NumberFormat("pt-BR", {
@@ -342,22 +371,28 @@ export async function gerarRepasseCompleto(
 
   if (!carro) return null;
 
-  // Texto congelado pelo dono (FIPE corrigida etc.): usa VERBATIM, não regenera.
-  // Fonte única da verdade pra grupo E prospecção (pedido Marcos Repasse).
-  if (tipo === "repasse" && typeof carro.repasse_texto === "string" && carro.repasse_texto.trim()) {
-    const capaUrl: string | null = carro.capa_marketing_url || carro.fotos?.[0] || null;
-    return { texto: carro.repasse_texto, capaUrl };
-  }
-
   // config_garage pode ter múltiplas linhas por user_id — nunca usar .single()/.maybeSingle()
   const { data: cfgRows } = await supabaseAdmin
     .from("config_garage")
-    .select("whatsapp_agente, whatsapp, vitrine_slug, dominio_custom, cidade, estado")
+    .select("whatsapp_agente, whatsapp, vitrine_slug, dominio_custom, cidade, estado, repasse_cta_ativo")
     .eq("user_id", carro.user_id)
     .order("created_at", { ascending: false })
     .limit(1);
   const cfg = cfgRows?.[0] ?? null;
-  const botPhone = cfg?.whatsapp_agente || cfg?.whatsapp || null;
+  // repasse_cta_ativo=false → anúncio sai SEM o bloco "💬 Falar com Vendedor".
+  // Pedido Marcos Repasse: com o agente no celular pessoal dele, o wa.me do
+  // agente no anúncio do grupo virou ruído. Default true (nulo = ligado).
+  const ctaAtivo = cfg?.repasse_cta_ativo !== false;
+  const botPhone = ctaAtivo ? (cfg?.whatsapp_agente || cfg?.whatsapp || null) : null;
+
+  // Texto congelado pelo dono (FIPE corrigida etc.): usa VERBATIM, não regenera.
+  // Fonte única da verdade pra grupo E prospecção (pedido Marcos Repasse).
+  // Só passa por removerRodapes quando o CTA está desligado — o texto congelado
+  // foi salvo COM o bloco e não seria regenerado.
+  if (tipo === "repasse" && typeof carro.repasse_texto === "string" && carro.repasse_texto.trim()) {
+    const capaUrl: string | null = carro.capa_marketing_url || carro.fotos?.[0] || null;
+    return { texto: removerRodapes(carro.repasse_texto, { cta: ctaAtivo }), capaUrl };
+  }
   const vitrineUrl = urlVitrine(cfg);
 
   // Versão rica: versao do banco, ou combinação de motor + combustivel + cambio

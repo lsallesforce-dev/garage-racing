@@ -7,7 +7,7 @@
 // instância Avisa dedicada, com cadência anti-ban (ver cron/transmissao-envios).
 
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { resolverFipe, gerarTextoRepasse } from "@/lib/repasse";
+import { resolverFipe, gerarTextoRepasse, removerRodapes } from "@/lib/repasse";
 
 /**
  * Mensagem de envio = texto puro do carro, sem saudação (pedido Marcos
@@ -40,21 +40,10 @@ export function normalizarTelefone(raw: string): string | null {
 // Prospecção é lista PESSOAL: não leva o "💬 Falar com Vendedor" (wa.me do
 // agente) nem o "🚗 Veja nosso estoque completo" (vitrine). O texto congelado
 // (repasse_texto) é o do repasse, que TEM esses dois blocos — então removemos.
-// Cada bloco = linha do rótulo + linha da URL seguinte + a linha em branco antes.
-function semRodapesProspeccao(texto: string): string {
-  const linhas = texto.split("\n");
-  const out: string[] = [];
-  for (let i = 0; i < linhas.length; i++) {
-    const l = linhas[i];
-    if (l.startsWith("💬 Falar com Vendedor") || l.startsWith("🚗 Veja nosso estoque")) {
-      if (out.length && out[out.length - 1].trim() === "") out.pop(); // tira a linha em branco antes
-      if (i + 1 < linhas.length) i++; // pula a linha da URL
-      continue;
-    }
-    out.push(l);
-  }
-  return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
-}
+// A remoção em si vive em lib/repasse.ts (removerRodapes), compartilhada com o
+// gate repasse_cta_ativo do anúncio de grupo.
+const semRodapesProspeccao = (texto: string) =>
+  removerRodapes(texto, { cta: false, vitrine: false });
 
 export async function gerarTransmissaoCompleto(
   veiculoId: string,

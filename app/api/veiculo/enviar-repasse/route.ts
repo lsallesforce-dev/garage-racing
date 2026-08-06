@@ -10,7 +10,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireVehicleOwner } from "@/lib/api-auth";
 import { sendMetaMessage, sendMetaCtaButton } from "@/lib/meta";
 import { sendAvisaMessage, sendAvisaImage } from "@/lib/avisa";
-import { gruposDoConfig } from "@/lib/repasse";
+import { gruposDoConfig, removerRodapes } from "@/lib/repasse";
 
 export const maxDuration = 30;
 
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
   // config_garage pode ter múltiplas linhas por user_id — nunca usar .single()/.maybeSingle()
   const { data: cfgRows } = await supabaseAdmin
     .from("config_garage")
-    .select("whatsapp, whatsapp_agente, meta_phone_id, meta_access_token, avisa_base_url, avisa_token, repasse_grupo_jid, repasse_grupo_nome, repasse_grupos")
+    .select("whatsapp, whatsapp_agente, meta_phone_id, meta_access_token, avisa_base_url, avisa_token, repasse_grupo_jid, repasse_grupo_nome, repasse_grupos, repasse_cta_ativo")
     .eq("user_id", carro.user_id)
     .order("created_at", { ascending: false })
     .limit(1);
@@ -56,7 +56,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Número do gerente não configurado em Configurações" }, { status: 400 });
   }
 
-  const botPhone = (cfg?.whatsapp_agente || cfg?.whatsapp || "").replace(/\D/g, "");
+  // repasse_cta_ativo=false → sem "💬 Falar com Vendedor" (nem no corpo, nem como
+  // botão Meta). O `texto` vem do cliente e pode ser o texto congelado, que já traz
+  // o bloco gravado — por isso passa por removerRodapes também.
+  const ctaAtivo = cfg?.repasse_cta_ativo !== false;
+  const textoFinal = removerRodapes(texto, { cta: ctaAtivo });
+  const botPhone = ctaAtivo ? (cfg?.whatsapp_agente || cfg?.whatsapp || "").replace(/\D/g, "") : "";
   const ctaUrl = botPhone ? `https://wa.me/${botPhone}` : null;
 
   // ── Canal Avisa: sem botão CTA — o link vai no corpo; capa via sendMedia ────
@@ -66,7 +71,7 @@ export async function POST(req: NextRequest) {
     const avisaCreds = { baseUrl: cfg!.avisa_base_url as string, token: cfg!.avisa_token as string };
     // O texto gerado por gerarTextoRepasse já inclui o link "Falar com Vendedor" —
     // só anexa aqui se o usuário tiver removido/editado o texto sem o link.
-    const textoComLink = ctaUrl && !texto.includes("wa.me/") ? `${texto}\n\n💬 Falar com vendedor: ${ctaUrl}` : texto;
+    const textoComLink = ctaUrl && !textoFinal.includes("wa.me/") ? `${textoFinal}\n\n💬 Falar com vendedor: ${ctaUrl}` : textoFinal;
     const grupos = gruposDoConfig(cfg);
     const destinos = grupos.length > 0 ? grupos.map((g) => g.jid) : [destino];
     for (let i = 0; i < destinos.length; i++) {
@@ -84,11 +89,11 @@ export async function POST(req: NextRequest) {
   const creds = { phoneNumberId: cfg!.meta_phone_id, accessToken: resolvedToken };
 
   if (ctaUrl) {
-    if (texto.length <= BODY_LIMIT) {
+    if (textoFinal.length <= BODY_LIMIT) {
       // ✅ Mensagem única: foto (header) + texto (body) + botão
       await sendMetaCtaButton(
         destino,
-        texto,
+        textoFinal,
         "Falar com Vendedor",
         ctaUrl,
         creds,
@@ -96,13 +101,13 @@ export async function POST(req: NextRequest) {
       );
     } else {
       // Fallback: texto longo → envia separado + botão
-      await sendMetaMessage(destino, texto, creds, { split: false });
+      await sendMetaMessage(destino, textoFinal, creds, { split: false });
       await new Promise(r => setTimeout(r, 600));
       await sendMetaCtaButton(destino, "💬", "Falar com Vendedor", ctaUrl, creds, capaUrl ?? undefined);
     }
   } else {
     // Sem botão: envia texto puro
-    await sendMetaMessage(destino, texto, creds, { split: false });
+    await sendMetaMessage(destino, textoFinal, creds, { split: false });
   }
 
   return NextResponse.json({ ok: true });
