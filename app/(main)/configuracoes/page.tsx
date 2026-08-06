@@ -539,6 +539,7 @@ export default function ConfiguracoesPage() {
         // Idade do code: do FINISH do fluxo até agora. Se passar dos ~30s de TTL,
         // a Meta recusa a troca com 36008 mesmo estando tudo certo.
         const codeAgeMs = sessionFinishAtRef.current ? Date.now() - sessionFinishAtRef.current : null;
+        const finishRecebido = sessionFinishAtRef.current !== null;
         sessionFinishAtRef.current = null;
         void (async () => {
           try {
@@ -547,7 +548,7 @@ export default function ConfiguracoesPage() {
               headers: { "Content-Type": "application/json" },
               // configId/appId/codeAgeMs vão só pra diagnóstico server-side: confirmam
               // o config_id, o app usado pelo browser e a idade do code.
-              body: JSON.stringify({ code, redirectUri, configId, codeAgeMs, appId: process.env.NEXT_PUBLIC_META_APP_ID }),
+              body: JSON.stringify({ code, redirectUri, configId, codeAgeMs, finishRecebido, appId: process.env.NEXT_PUBLIC_META_APP_ID }),
             });
             const data = await res.json();
             if (res.ok) {
@@ -570,6 +571,10 @@ export default function ConfiguracoesPage() {
         config_id: configId,
         response_type: "code",
         override_default_response_type: true,
+        // Sem isto, quem já autorizou o app recebe status "connected" na hora e o
+        // wizard do Embedded Signup NÃO abre: o code volta sem sessão de onboarding
+        // e a troca morre em 36008. rerequest força o fluxo a rodar de novo.
+        auth_type: "rerequest",
         extras: {
           setup: {},
           // Coexistência: conecta o número que JÁ roda no WhatsApp Business App do

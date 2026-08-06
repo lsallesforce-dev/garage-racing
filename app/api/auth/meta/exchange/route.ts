@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
   const userId = getEffectiveUserId(user!);
 
   try {
-    const { code, redirectUri, configId, codeAgeMs, appId: clientAppId } = await req.json();
+    const { code, redirectUri, configId, codeAgeMs, finishRecebido, appId: clientAppId } = await req.json();
     if (!code) return NextResponse.json({ error: "code obrigatório" }, { status: 400 });
 
     const appId     = process.env.META_APP_ID!;
@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     // codeFp identifica o code sem expô-lo: se dois requests trouxerem o MESMO fp, é
     // reenvio do mesmo code (o segundo sempre falha, code é de uso único).
     const codeFp = createHash("sha256").update(String(code)).digest("hex").slice(0, 10);
-    console.log(`🔍 [Meta exchange] server_app_id=${appId} client_app_id=${clientAppId ?? "?"} config_id=${configId ?? "AUSENTE"} code_fp=${codeFp} code_age_ms=${codeAgeMs ?? "?"} secret_len=${appSecret?.length ?? 0} code_len=${code?.length ?? 0} redirectUri=${JSON.stringify(redirectUri ?? null)}`);
+    console.log(`🔍 [Meta exchange] server_app_id=${appId} client_app_id=${clientAppId ?? "?"} config_id=${configId ?? "AUSENTE"} code_fp=${codeFp} code_age_ms=${codeAgeMs ?? "?"} finish=${finishRecebido ?? "?"} secret_len=${appSecret?.length ?? 0} code_len=${code?.length ?? 0} redirectUri=${JSON.stringify(redirectUri ?? null)}`);
 
     // (o check client_credentials de 05/08 já confirmou que o par app_id+secret é
     // válido — removido pra não logar app token à toa.)
@@ -59,6 +59,14 @@ export async function POST(req: NextRequest) {
         // O code do Embedded Signup é de uso único e vive ~30s. Idade alta = expirou
         // entre o fim do fluxo e o fechamento do popup (o callback do FB.login só
         // dispara quando o popup fecha).
+        // Sem FINISH, o wizard do Embedded Signup nem rodou: o Facebook reaproveitou
+        // a autorização existente e devolveu um code de reautorização, que não serve.
+        if (finishRecebido === false) {
+          throw new Error(
+            "O fluxo do Embedded Signup não chegou ao fim — o Facebook reaproveitou uma autorização que essa conta já tinha e devolveu um código sem sessão de onboarding. " +
+            "Remova o app AutoZap Digital em Facebook → Configurações → Apps e sites e conecte de novo.",
+          );
+        }
         if (typeof codeAgeMs === "number" && codeAgeMs > 25_000) {
           throw new Error(
             `O código expirou antes da troca (${Math.round(codeAgeMs / 1000)}s de vida; o limite da Meta é ~30s). ` +
