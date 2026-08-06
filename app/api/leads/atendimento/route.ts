@@ -6,12 +6,17 @@ import type { GarageConfig } from "@/lib/process-whatsapp";
 
 export const maxDuration = 60;
 
-const FIELDS_GARAGE = "user_id, nome_empresa, nome_fantasia, nome_agente, endereco, endereco_complemento, cidade, whatsapp, whatsapp_financeiro, whatsapp_posvenda, vitrine_slug, webhook_token, avisa_base_url, avisa_token, meta_phone_id, meta_access_token, tom_venda, instrucoes_adicionais, oferta_especial, horario_funcionamento, modo_repasse, plano_ativo, trial_ends_at, plano_vence_em, voz_habilitada, voz_politica, voz_id, voz_max_chars";
+const FIELDS_GARAGE = "user_id, nome_empresa, nome_fantasia, nome_agente, endereco, endereco_complemento, cidade, whatsapp, whatsapp_agente, whatsapp_financeiro, whatsapp_posvenda, vitrine_slug, webhook_token, avisa_base_url, avisa_token, meta_phone_id, meta_access_token, tom_venda, instrucoes_adicionais, oferta_especial, horario_funcionamento, modo_repasse, plano_ativo, trial_ends_at, plano_vence_em, ia_modo_lead_only, envio_material_completo, voz_habilitada, voz_politica, voz_id, voz_max_chars";
 
 export async function POST(req: NextRequest) {
-  const { lead_id, em_atendimento_humano } = await req.json();
-  if (!lead_id || typeof em_atendimento_humano !== "boolean") {
-    return NextResponse.json({ error: "lead_id e em_atendimento_humano obrigatórios" }, { status: 400 });
+  const { lead_id, em_atendimento_humano, ia_liberada } = await req.json();
+  // ia_liberada é o gate do modo lead-only (migration 037): o dono decide no
+  // painel se aquele contato é lead (true) ou pessoal (false). Aceita os dois
+  // campos, mas exige pelo menos um.
+  const temAtendimento = typeof em_atendimento_humano === "boolean";
+  const temLiberacao = typeof ia_liberada === "boolean";
+  if (!lead_id || (!temAtendimento && !temLiberacao)) {
+    return NextResponse.json({ error: "lead_id e em_atendimento_humano ou ia_liberada obrigatórios" }, { status: 400 });
   }
 
   const { error: authError } = await requireLeadOwner(lead_id);
@@ -19,14 +24,19 @@ export async function POST(req: NextRequest) {
 
   await supabaseAdmin
     .from("leads")
-    .update({ em_atendimento_humano })
+    .update({
+      ...(temAtendimento ? { em_atendimento_humano } : {}),
+      // Liberar a IA também destrava o stand-by: sem isso o lead sairia do
+      // filtro de liberação e continuaria mudo por outro motivo.
+      ...(temLiberacao ? { ia_liberada, ...(ia_liberada ? { em_atendimento_humano: false } : {}) } : {}),
+    })
     .eq("id", lead_id);
 
-  // Devolver pra IA: se a última mensagem da conversa é do cliente (ficou sem
-  // resposta enquanto estava em stand-by), reprocessa na hora. Sem isso, o
-  // cliente ficava esperando até o cron diário de reprocessar-pendentes (04h)
-  // — o handoff manual só destravava o flag, nunca gerava a resposta.
-  if (em_atendimento_humano === false) {
+  // Devolver pra IA (ou liberar um lead que estava aguardando): se a última
+  // mensagem da conversa é do cliente e ficou sem resposta, reprocessa na hora.
+  // Sem isso, o cliente ficava esperando até o cron diário de
+  // reprocessar-pendentes (04h) — o handoff manual só destravava o flag.
+  if (em_atendimento_humano === false || ia_liberada === true) {
     await reprocessarPendenteAgora(lead_id).catch((err) => {
       console.error(`[atendimento] Falha ao reprocessar lead ${lead_id} após devolver pra IA:`, err?.message);
     });

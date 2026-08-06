@@ -27,6 +27,9 @@ type Lead = {
   resumo_negociacao: string | null;
   updated_at: string;
   em_atendimento_humano: boolean;
+  // Modo lead-only (agente no celular pessoal do dono): null = aguardando decisão,
+  // true = lead liberado, false = contato pessoal. Ver lib/lead-gate.ts.
+  ia_liberada: boolean | null;
   veiculos: { marca: string; modelo: string } | null;
   ultimaMensagem?: UltimaMensagem | null;
 };
@@ -69,10 +72,10 @@ function origemCfg(origem: string | null | undefined) {
   return ORIGEM_CONFIG[key] ?? { label: key, emoji: "📥", color: "bg-gray-50 text-gray-500 border-gray-200" };
 }
 
-const FILTROS = ["Todos", "QUENTE", "MORNO", "FRIO", "HUMANO", "SEM_ATENDIMENTO", "PROBLEMA"] as const;
+const FILTROS = ["Todos", "QUENTE", "MORNO", "FRIO", "HUMANO", "AGUARDANDO_IA", "SEM_ATENDIMENTO", "PROBLEMA"] as const;
 type Filtro = typeof FILTROS[number];
 const FILTRO_LABELS: Record<string, string> = {
-  Todos: "Todos", QUENTE: "Quente", MORNO: "Morno", FRIO: "Frio", HUMANO: "Humano", SEM_ATENDIMENTO: "Sem Atend.", PROBLEMA: "Pós-venda",
+  Todos: "Todos", QUENTE: "Quente", MORNO: "Morno", FRIO: "Frio", HUMANO: "Humano", AGUARDANDO_IA: "Liberar?", SEM_ATENDIMENTO: "Sem Atend.", PROBLEMA: "Pós-venda",
 };
 const FILTRO_COLORS: Record<string, { active: string; inactive: string }> = {
   Todos:    { active: "bg-gray-900 text-white",          inactive: "bg-gray-50 text-gray-400 hover:bg-gray-100" },
@@ -80,6 +83,7 @@ const FILTRO_COLORS: Record<string, { active: string; inactive: string }> = {
   MORNO:    { active: "bg-amber-400 text-white",         inactive: "bg-amber-50 text-amber-500 hover:bg-amber-100 border border-amber-100" },
   FRIO:     { active: "bg-blue-400 text-white",          inactive: "bg-blue-50 text-blue-500 hover:bg-blue-100 border border-blue-100" },
   HUMANO:   { active: "bg-green-600 text-white",         inactive: "bg-green-50 text-green-700 hover:bg-green-100 border border-green-200" },
+  AGUARDANDO_IA: { active: "bg-violet-600 text-white",   inactive: "bg-violet-50 text-violet-700 hover:bg-violet-100 border border-violet-200" },
   SEM_ATENDIMENTO: { active: "bg-orange-500 text-white", inactive: "bg-orange-50 text-orange-600 hover:bg-orange-100 border border-orange-200" },
   PROBLEMA: { active: "bg-red-600 text-white",           inactive: "bg-red-50 text-red-700 hover:bg-red-100 border border-red-200" },
 };
@@ -130,6 +134,25 @@ function CentralChatInner() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const PAGE_SIZE = 60;
 
+  // Modo lead-only: agente rodando no celular pessoal do dono. Só nesse modo
+  // faz sentido mostrar o filtro "Liberar?" e os botões de liberar/marcar
+  // pessoal — nos demais tenants ia_liberada é null pra todo mundo.
+  const [leadOnly, setLeadOnly] = useState(false);
+  useEffect(() => {
+    if (!effectiveUserId) return;
+    let ativo = true;
+    (async () => {
+      const { data } = await supabase
+        .from("config_garage")
+        .select("ia_modo_lead_only")
+        .eq("user_id", effectiveUserId)
+        .order("created_at", { ascending: false })
+        .limit(1);
+      if (ativo) setLeadOnly(data?.[0]?.ia_modo_lead_only === true);
+    })();
+    return () => { ativo = false; };
+  }, [effectiveUserId]);
+
   // Permite abrir o chat já filtrado via URL (ex.: ?filtro=SEM_ATENDIMENTO vindo do dashboard)
   useEffect(() => {
     const f = new URLSearchParams(window.location.search).get("filtro");
@@ -174,6 +197,10 @@ function CentralChatInner() {
     // (leads antigos com updated_at velho nunca aparecem no filtro client-side).
     if (filtro === "HUMANO") {
       query = query.eq("em_atendimento_humano", true);
+    } else if (filtro === "AGUARDANDO_IA") {
+      // Modo lead-only: contatos que chegaram no número pessoal do dono e não
+      // foram classificados como lead — a IA ficou muda esperando ele decidir.
+      query = query.is("ia_liberada", null);
     } else if (filtro === "SEM_ATENDIMENTO") {
       // Mesma regra do card do dashboard: humano + anúncio + >48h + última msg do CLIENTE.
       // A lógica de "última mensagem" mora na função SQL leads_sem_atendimento_ids.
@@ -212,6 +239,7 @@ function CentralChatInner() {
     const novos = leadsData.map((l) => ({
       ...l,
       em_atendimento_humano: l.em_atendimento_humano ?? false,
+      ia_liberada: l.ia_liberada ?? null,
       ultimaMensagem: ultimasMap.get(l.id) ?? null,
     })) as Lead[];
 
@@ -349,6 +377,19 @@ function CentralChatInner() {
     carregarLeads();
   };
 
+  // Modo lead-only: decide se aquele contato é lead (IA assume e já responde a
+  // mensagem que ficou parada) ou pessoal (IA nunca mais tenta).
+  const decidirLead = async (liberar: boolean) => {
+    if (!selectedLead) return;
+    await fetch("/api/leads/atendimento", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lead_id: selectedLead.id, ia_liberada: liberar }),
+    });
+    setSelectedLead((prev) => prev ? { ...prev, ia_liberada: liberar, em_atendimento_humano: liberar ? false : prev.em_atendimento_humano } : prev);
+    carregarLeads();
+  };
+
   const devolverParaIA = async () => {
     if (!selectedLead) return;
     await fetch("/api/leads/atendimento", {
@@ -409,7 +450,9 @@ function CentralChatInner() {
   const leadsFiltrados = leads
     .filter((l) => {
       const matchFiltro = filtro === "Todos" || filtro === "SEM_ATENDIMENTO"
-        || (filtro === "HUMANO" ? l.em_atendimento_humano === true : l.status === filtro);
+        || (filtro === "AGUARDANDO_IA" ? l.ia_liberada === null
+          : filtro === "HUMANO" ? l.em_atendimento_humano === true
+          : l.status === filtro);
       const termo = busca.toLowerCase();
       const matchBusca = !termo
         || (l.nome ?? "").toLowerCase().includes(termo)
@@ -466,7 +509,7 @@ function CentralChatInner() {
 
           {/* Filtros */}
           <div className="flex gap-1 overflow-x-auto pb-0.5 scrollbar-none">
-            {FILTROS.map((f) => {
+            {FILTROS.filter((f) => f !== "AGUARDANDO_IA" || leadOnly).map((f) => {
               const colors = FILTRO_COLORS[f];
               return (
                 <button
@@ -657,6 +700,32 @@ function CentralChatInner() {
                 </span>
               </button>
 
+              {/* Modo lead-only: contato ainda não classificado — a IA está muda
+                  esperando o dono dizer se é lead ou conversa pessoal. */}
+              {leadOnly && selectedLead && selectedLead.ia_liberada !== true && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => decidirLead(true)}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-violet-600 hover:bg-violet-700 text-white text-[9px] font-black uppercase tracking-widest rounded-xl transition-all whitespace-nowrap shadow-lg shadow-violet-500/20"
+                    title="É um lead — o agente assume e responde a mensagem parada"
+                  >
+                    <Bot size={12} />
+                    <span className="hidden sm:inline">Liberar IA</span>
+                    <span className="sm:hidden">Liberar</span>
+                  </button>
+                  {selectedLead.ia_liberada === null && (
+                    <button
+                      onClick={() => decidirLead(false)}
+                      className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-gray-900 hover:text-white text-gray-500 text-[9px] font-black uppercase tracking-widest rounded-xl transition-all whitespace-nowrap"
+                      title="Contato pessoal — o agente nunca responde aqui"
+                    >
+                      <span className="hidden sm:inline">É pessoal</span>
+                      <span className="sm:hidden">Pessoal</span>
+                    </button>
+                  )}
+                </div>
+              )}
+
               {/* Indicador + botão de modo */}
               {modoHumano ? (
                 <div className="flex items-center gap-2">
@@ -677,12 +746,21 @@ function CentralChatInner() {
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
-                  <div className="hidden sm:flex items-center gap-1.5 px-3 py-2 bg-green-50 border border-green-200 rounded-xl">
-                    <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-                    <span className="text-[9px] font-black uppercase tracking-widest text-green-600">
-                      IA ativa
-                    </span>
-                  </div>
+                  {leadOnly && selectedLead?.ia_liberada !== true ? (
+                    <div className="hidden sm:flex items-center gap-1.5 px-3 py-2 bg-violet-50 border border-violet-200 rounded-xl">
+                      <span className="w-1.5 h-1.5 bg-violet-500 rounded-full" />
+                      <span className="text-[9px] font-black uppercase tracking-widest text-violet-600">
+                        {selectedLead?.ia_liberada === false ? "Contato pessoal" : "IA aguardando"}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="hidden sm:flex items-center gap-1.5 px-3 py-2 bg-green-50 border border-green-200 rounded-xl">
+                      <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+                      <span className="text-[9px] font-black uppercase tracking-widest text-green-600">
+                        IA ativa
+                      </span>
+                    </div>
+                  )}
                   <button
                     onClick={assumirConversa}
                     className="flex items-center gap-1.5 px-3 py-2 bg-orange-500 hover:bg-orange-600 text-white text-[9px] font-black uppercase tracking-widest rounded-xl transition-all whitespace-nowrap shadow-lg shadow-orange-500/20"

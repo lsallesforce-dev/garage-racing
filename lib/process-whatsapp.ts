@@ -9,6 +9,7 @@ import { sendMetaMessage, sendMetaImage, sendMetaVideo, sendMetaAudio, sendMetaC
 import { sendAvisaMessage, sendAvisaImage, sendAvisaVideo, sendAvisaAudio } from "@/lib/avisa";
 import { gerarRelatorioPista } from "@/lib/leads";
 import { resolverVendedor } from "@/lib/lead-routing";
+import { classificarLead, liberaAutomatico, origemProvaLead, MAX_MSGS_PARA_CLASSIFICAR } from "@/lib/lead-gate";
 import { transcreverAudioCliente } from "@/lib/transcribe";
 import { sintetizarVoz, prepararTextoParaVoz } from "@/lib/tts";
 import { hybridVehicleSearch, findVehicleForMedia } from "@/lib/hybrid-search";
@@ -149,6 +150,7 @@ export interface GarageConfig {
   endereco_complemento?: string;
   cidade?: string;
   whatsapp?: string;
+  whatsapp_agente?: string;         // número onde a instância do agente está pareada
   whatsapp_financeiro?: string;
   whatsapp_posvenda?: string;
   telefone_loja?: string;
@@ -164,6 +166,9 @@ export interface GarageConfig {
   horario_funcionamento?: string;   // ex: "Seg a Sex das 8h às 18h"
   oferta_especial?: string;         // oferta ativa do mês para mencionar na negociação
   modo_repasse?: boolean;           // tenant de repasse: cliente é lojista, fala de vários carros
+  // Agente no celular pessoal do dono (migration 037)
+  ia_modo_lead_only?: boolean;      // só responde conversa classificada como lead (ver lib/lead-gate.ts)
+  envio_material_completo?: boolean; // ao pedir mídia, manda todas as fotos + vídeo + ficha de uma vez
   // Voz (migration 036) — OFF por padrão
   voz_habilitada?: boolean;
   voz_politica?: "espelho" | "espelho_e_saudacao";
@@ -875,15 +880,36 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
       ? sendAvisaMessage(to, text, avisaCreds)
       : sendMetaMessage(to, text, metaCreds);
 
+  // Número do próprio agente. Quando o agente roda no celular PESSOAL do dono
+  // (ia_modo_lead_only), gerente == agente e todo alerta viraria auto-envio: a
+  // mensagem cai no "Mensagens para mim" dele e o eco volta como fromMe,
+  // poluindo o takeover. Guard único aqui cobre os ~8 pontos de alerta.
+  const numeroAgente = String(garageConfig?.whatsapp_agente ?? "")
+    .replace(/\D/g, "").replace(/^(?!55)/, "55");
+  const ehAutoEnvio = (to: string) => {
+    if (!numeroAgente || numeroAgente.length < 12) return false;
+    const dest = String(to ?? "").replace(/\D/g, "").replace(/^(?!55)/, "55");
+    return dest === numeroAgente;
+  };
+
   // sendAlert: para notificações ao gerente — sem typing delay, para não ser cortado pelo runtime
-  const sendAlert = (to: string, text: string) =>
-    useAvisa
+  const sendAlert = (to: string, text: string) => {
+    if (ehAutoEnvio(to)) {
+      console.log(`🔕 [Alerta suprimido] destino ${to} é o próprio número do agente — ver no painel.`);
+      return Promise.resolve(null as any);
+    }
+    return useAvisa
       ? sendAvisaMessage(to, text, avisaCreds, { typing: false })
       : sendMetaMessage(to, text, metaCreds);
+  };
 
   // sendAlertComLink: alerta ao gerente com botão "Abrir Conversa" (wa.me link clicável)
   // Meta → CTA button com fallback texto; Avisa → texto com link
   const sendAlertComLink = async (gerenteTo: string, body: string, clientePhone: string) => {
+    if (ehAutoEnvio(gerenteTo)) {
+      console.log(`🔕 [Alerta suprimido] destino ${gerenteTo} é o próprio número do agente — ver no painel.`);
+      return;
+    }
     const clienteClean = clientePhone.replace(/\D/g, "");
     const waLink = `https://wa.me/${clienteClean}`;
     if (!useAvisa && metaCreds.phoneNumberId && metaCreds.accessToken) {
@@ -1413,6 +1439,53 @@ Responda apenas com o JSON, sem markdown.`;
     }
     if (lead?.id) await releaseLeadLock(tenantUserId, lead.id).catch(() => {});
     return;
+  }
+
+  // ── 4a. Gate lead-only (agente rodando no celular PESSOAL do dono) ──────────
+  // Com ia_modo_lead_only, o webhook recebe TUDO que chega no número do dono —
+  // família, fornecedor, outro lojista. A IA só fala com quem for lead.
+  // leads.ia_liberada: null = aguardando, true = lead, false = contato pessoal.
+  // O dono decide na mão pelo painel (filtro AGUARDANDO_IA) ou mandando !ia /
+  // !off na própria conversa pelo celular.
+  if (garageConfig?.ia_modo_lead_only === true && lead && lead.ia_liberada !== true) {
+    if (lead.ia_liberada === false) {
+      console.log(`🔕 [Lead gate] ${phone} marcado como contato pessoal — IA não responde.`);
+      if (lead.id) await releaseLeadLock(tenantUserId, lead.id).catch(() => {});
+      return;
+    }
+
+    // Camada 1 — origem verificável (anúncio/portal/vitrine) libera sem gastar IA.
+    let liberar = origemProvaLead(lead.origem) || !!adReferral;
+    let motivo = "origem";
+
+    // Camada 2 — classificador. Só entra se a origem não provou nada.
+    if (!liberar) {
+      const { count: msgCount } = await supabaseAdmin
+        .from("mensagens")
+        .select("*", { count: "exact", head: true })
+        .eq("lead_id", lead.id);
+
+      if ((msgCount ?? 0) > MAX_MSGS_PARA_CLASSIFICAR) {
+        // Conversa longa e ainda não classificada: para de gastar Gemini a cada
+        // mensagem e deixa a decisão pro humano no painel.
+        console.log(`🔕 [Lead gate] ${phone} com ${msgCount} msgs sem classificação — aguardando decisão manual.`);
+        if (lead.id) await releaseLeadLock(tenantUserId, lead.id).catch(() => {});
+        return;
+      }
+
+      const veredito = await classificarLead(userMessage ?? "");
+      liberar = liberaAutomatico(veredito);
+      motivo = `classificador (lead=${veredito.lead} conf=${veredito.confianca})`;
+      if (!liberar) {
+        console.log(`🔕 [Lead gate] ${phone} não classificado como lead — ${motivo}. Mensagem salva, IA muda.`);
+        if (lead.id) await releaseLeadLock(tenantUserId, lead.id).catch(() => {});
+        return;
+      }
+    }
+
+    await supabaseAdmin.from("leads").update({ ia_liberada: true }).eq("id", lead.id);
+    (lead as any).ia_liberada = true;
+    console.log(`✅ [Lead gate] ${phone} liberado por ${motivo} — IA assume a conversa.`);
   }
 
   // ── 4b. Guarda anti-loop (robô/lead-fantasma repetindo a MESMA coisa) ────────

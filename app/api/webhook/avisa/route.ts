@@ -187,6 +187,11 @@ function extractFields(payload: any): {
   }
   // Formato Avisa/Z-API simplificado
   else if (parsedData?.number || parsedData?.phone) {
+    // Status/Story: o guard existia só no formato Baileys. No celular pessoal do
+    // dono chega status o dia todo — cada um viraria um "lead" chamado status.
+    if (String(parsedData.number || parsedData.phone).startsWith("status@")) {
+      return { phone: "", userMessage: "", fromMe: true };
+    }
     phone = (parsedData.number || parsedData.phone || "").replace(/@.*$/, "");
     userMessage =
       parsedData.message || parsedData.text?.message || parsedData.body || "";
@@ -212,6 +217,10 @@ function extractFields(payload: any): {
   else if (parsedData?.data?.key?.remoteJid) {
     const key = parsedData.data.key;
     const msg = parsedData.data.message;
+    // Status/Story — mesmo motivo do guard no formato Baileys/Z-API acima
+    if ((key.remoteJid || "").startsWith("status@")) {
+      return { phone: "", userMessage: "", fromMe: true };
+    }
     if ((key.remoteJid || "").endsWith("@g.us")) {
       return {
         phone: (key.participant || "").replace(/@.*$/, ""),
@@ -303,7 +312,7 @@ export async function POST(req: NextRequest) {
       bearerToken ||
       null;
 
-    const FIELDS = "user_id, nome_empresa, nome_fantasia, nome_agente, endereco, endereco_complemento, cidade, whatsapp, whatsapp_financeiro, whatsapp_posvenda, telefone_loja, vitrine_slug, webhook_token, avisa_base_url, avisa_token, tom_venda, instrucoes_adicionais, oferta_especial, horario_funcionamento, modo_repasse, plano_ativo, trial_ends_at, plano_vence_em, ia_so_responde_anuncio, agente_pausado, voz_habilitada, voz_politica, voz_id, voz_max_chars";
+    const FIELDS = "user_id, nome_empresa, nome_fantasia, nome_agente, endereco, endereco_complemento, cidade, whatsapp, whatsapp_agente, whatsapp_financeiro, whatsapp_posvenda, telefone_loja, vitrine_slug, webhook_token, avisa_base_url, avisa_token, tom_venda, instrucoes_adicionais, oferta_especial, horario_funcionamento, modo_repasse, plano_ativo, trial_ends_at, plano_vence_em, ia_so_responde_anuncio, agente_pausado, ia_modo_lead_only, envio_material_completo, voz_habilitada, voz_politica, voz_id, voz_max_chars";
     let tenantUserId: string | null = null;
     let garageConfig: any = null;
 
@@ -477,9 +486,69 @@ export async function POST(req: NextRequest) {
     if (fromMe) {
       const txtFromMe = (rawMessage || "").trim();
       const ehAudio = !!audioUrl;
+
+      // Conversa do dono com ELE MESMO ("Mensagens para mim"): com o agente
+      // pareado no celular pessoal, anotação pessoal dele viraria um lead com o
+      // próprio número. Descarta antes de qualquer coisa — menos os comandos,
+      // que justamente podem ser digitados nesse chat (tratados logo abaixo).
+      const numAgente = String(garageConfig?.whatsapp_agente ?? "").replace(/\D/g, "");
+      const numChat = (chatPhone || "").replace(/\D/g, "");
+      const ehChatConsigo = !!numAgente && !!numChat && numAgente.endsWith(numChat.slice(-11));
+
+      // ── Comandos do dono pelo próprio celular (modo lead-only) ───────────────
+      // Com o agente rodando no celular PESSOAL dele, tudo que ele digita chega
+      // como fromMe — então os comandos têm que ser tratados AQUI e ANTES do
+      // takeover, senão o próprio "!ia" travaria o lead em atendimento humano.
+      //   !ia  → libera a IA nessa conversa
+      //   !off → marca como contato pessoal (a IA nunca mais tenta)
+      // Duas formas: "!ia" na conversa do contato (rápido, mas o contato vê o
+      // comando) ou "!ia 5517999998888" de qualquer chat — inclusive o
+      // "Mensagens para mim" — pra não sujar a conversa do cliente.
+      const cmdMatch = txtFromMe.toLowerCase().match(/^!(ia|off|nao|não)(?:\s+(\+?[\d\s()-]{8,}))?$/);
+      if (tenantUserId && cmdMatch) {
+        const liberar = cmdMatch[1] === "ia";
+        const alvoExplicito = (cmdMatch[2] || "").replace(/\D/g, "");
+        const alvo = alvoExplicito
+          ? alvoExplicito.replace(/^(?!55)/, "55")
+          : (chatPhone || "").replace(/\D/g, "");
+        if (alvo && alvo.length >= 12) {
+          await supabaseAdmin
+            .from("leads")
+            .upsert(
+              {
+                user_id: tenantUserId,
+                wa_id: alvo,
+                ia_liberada: liberar,
+                ...(liberar ? { em_atendimento_humano: false, instrucao_pendente: null } : {}),
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: "user_id, wa_id" },
+            );
+          console.log(`🎚️ [Lead gate] "${txtFromMe}" → ${alvo} ia_liberada=${liberar}`);
+          // Confirmação só quando o alvo foi explícito — aí o chat atual é dele
+          // (ou de outra conversa dele), nunca a do cliente. Sem isso o cliente
+          // receberia um "✅ Agente ativado" do nada.
+          if (alvoExplicito && garageConfig?.avisa_base_url && garageConfig?.avisa_token && chatPhone) {
+            await sendAvisaMessage(
+              chatPhone.replace(/\D/g, ""),
+              liberar ? `✅ Agente ativado para +${alvo}` : `🔕 +${alvo} marcado como contato pessoal`,
+              { baseUrl: garageConfig.avisa_base_url, token: garageConfig.avisa_token },
+              { typing: false },
+            ).catch(() => {});
+          }
+        } else {
+          console.warn(`⚠️ [Lead gate] comando "${txtFromMe}" sem alvo válido — ignorado`);
+        }
+        return NextResponse.json({ status: "cmd_ia" });
+      }
       // Texto "de verdade" do gerente — ignora o placeholder de foto, que pode ser
       // eco de uma foto que a PRÓPRIA IA enviou (foto/vídeo fromMe não viram takeover).
       const ehTextoGerente = !!txtFromMe && txtFromMe !== "[Cliente enviou foto(s) do veículo]";
+      if (ehChatConsigo) {
+        console.log(`📝 [Auto-chat] Anotação do dono no próprio número — ignorada.`);
+        return NextResponse.json({ status: "ignored_self_chat" });
+      }
+
       const cliente = (chatPhone || "").replace(/\D/g, "");
       if ((ehTextoGerente || ehAudio) && cliente && tenantUserId) {
         // Áudio: eco marcado só por telefone (voz não tem texto pra hashear). Texto: hash do conteúdo.
