@@ -458,9 +458,18 @@ export default function ConfiguracoesPage() {
   useEffect(() => {
     // Recebe phone_number_id do popup do Embedded Signup
     const handleMessage = (event: MessageEvent) => {
-      if (event.origin !== "https://www.facebook.com") return;
+      // O SDK posta de www.facebook.com, mas versões do fluxo usam outros subdomínios
+      // (web.facebook.com, business.facebook.com). Aceitar o domínio inteiro — origem
+      // continua verificada, só deixou de ser um host só.
+      if (!/^https:\/\/([a-z-]+\.)*facebook\.com$/.test(event.origin)) return;
       try {
         const data = JSON.parse(event.data);
+        // Diagnóstico do Embedded Signup: sem isso não dá pra saber se o fluxo chegou
+        // ao FINISH ou morreu no meio (CANCEL/erro), que é o que decide se o code
+        // nasce válido. Só loga eventos do próprio ES.
+        if (data?.type === "WA_EMBEDDED_SIGNUP") {
+          console.log("[ES]", event.origin, data.event, JSON.stringify(data.data ?? {}).slice(0, 200));
+        }
         // "FINISH" = onboarding normal (número novo Cloud API)
         // "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING" = COEXISTÊNCIA (número que já roda
         // no WhatsApp Business App do celular; app + API juntos). Ambos trazem
@@ -522,6 +531,9 @@ export default function ConfiguracoesPage() {
     // asyncfunction, not function"). Callback normal + IIFE async dentro.
     window.FB.login(
       (response: any) => {
+        // status "connected" sem ter passado pelo FINISH = o usuário só reautorizou o
+        // app, não completou o Embedded Signup — o code sai sem sessão de onboarding.
+        console.log("[ES] FB.login callback", response?.status, "finishRecebido=", sessionFinishAtRef.current !== null);
         const code = response.authResponse?.code;
         if (!code) { setMetaConnecting(false); return; }
         // Idade do code: do FINISH do fluxo até agora. Se passar dos ~30s de TTL,
