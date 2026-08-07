@@ -26,6 +26,34 @@ export const maxDuration = 300;
 // Fase 2: Upstash Redis com SET NX EX — atômico e seguro em multi-instância.
 // Política fail-open: se o Redis estiver offline, a mensagem é processada normalmente.
 
+// Texto de uma mensagem CITADA (reply). O anúncio de repasse vai como imagem
+// com legenda, então o caso principal é imageMessage.caption.
+function textoDeQuoted(quoted: any): string {
+  if (!quoted) return "";
+  return (
+    quoted.conversation ||
+    quoted.extendedTextMessage?.text ||
+    quoted.imageMessage?.caption ||
+    quoted.videoMessage?.caption ||
+    ""
+  );
+}
+
+// Extrai "MARCA MODELO ANO" de um texto de anúncio de repasse. Formato gerado
+// por gerarTextoRepasse: linha "🚘 FIAT MOBI LIKE 1.0 FIRE FLEX 5P. MANUAL" e
+// linha "🗓️ 2025/2025". Devolve null se não for um anúncio nosso — melhor não
+// injetar contexto nenhum do que injetar lixo (ver guard do linkContext abaixo).
+function descritorDoAnuncio(texto: string): string | null {
+  if (!texto) return null;
+  const linhas = texto.split("\n");
+  const linhaCarro = linhas.find((l) => /^\s*🚘/.test(l));
+  if (!linhaCarro) return null;
+  const carro = linhaCarro.replace(/^\s*🚘\s*/, "").trim();
+  if (!carro) return null;
+  const ano = linhas.find((l) => /^\s*🗓/.test(l))?.match(/(\d{4})/)?.[1] ?? "";
+  return [carro, ano].filter(Boolean).join(" ").slice(0, 120);
+}
+
 // ─── Extração de Campos do Payload ───────────────────────────────────────────
 function extractFields(payload: any): {
   phone: string;
@@ -158,6 +186,21 @@ function extractFields(payload: any): {
       if (thumb) imageThumbnail = thumb;
     }
 
+    // Cliente RESPONDENDO (citando) o anúncio do grupo no privado. O texto citado
+    // vem em contextInfo.quotedMessage e era simplesmente descartado — só
+    // externalAdReply era lido. Resultado: "Tá bom esse carro?" chegava sem carro
+    // nenhum e o agente caía no handoff ("já conectei você à nossa equipe").
+    // Virou crítico com o CTA wa.me desligado: o prefill do link era o que
+    // identificava o carro; agora a citação é o único sinal.
+    const quotedTexto = textoDeQuoted(msg?.extendedTextMessage?.contextInfo?.quotedMessage);
+    const descQuote = descritorDoAnuncio(quotedTexto);
+    if (quotedTexto) {
+      console.log(`🔁 [Quote] citação de ${quotedTexto.length} chars → descritor: ${descQuote ?? "(não é anúncio nosso)"}`);
+    }
+    if (descQuote && !userMessage.includes(descQuote)) {
+      userMessage = `[Contexto do link: "${descQuote}"]\n${userMessage}`;
+    }
+
     // Link preview context (Instagram, Facebook, etc.)
     // Click-to-WhatsApp ads: título está em contextInfo.externalAdReply.title/.body
     // Posts orgânicos: título está em extendedTextMessage.title/.description
@@ -165,7 +208,11 @@ function extractFields(payload: any): {
     const extTitle = adReply?.title ?? msg?.extendedTextMessage?.title;
     const extDesc  = adReply?.body  ?? msg?.extendedTextMessage?.description;
     const linkContext = [extTitle, extDesc].filter(Boolean).join(" — ");
-    if (linkContext && !userMessage.includes(linkContext)) {
+    // Só injeta o preview se NÃO houver citação. Encaminhar o anúncio trazia
+    // "[Contexto do link: "Marcos — Conta comercial"]" (nome do perfil de quem
+    // mandou), e o passo 6b do pipeline corta no " — " e busca o carro por
+    // "Marcos" — contexto errado atrapalha mais do que contexto nenhum.
+    if (linkContext && !descQuote && !userMessage.includes(linkContext)) {
       userMessage = `[Contexto do link: "${linkContext}"]\n${userMessage}`;
       console.log(`🔗 [Link preview Baileys] Contexto extraído: ${linkContext}`);
     }
@@ -240,11 +287,19 @@ function extractFields(payload: any): {
       if (thumb) imageThumbnail = thumb;
     }
 
+    // Citação do anúncio — mesma lógica do formato Baileys acima
+    const quotedTextoEvo = textoDeQuoted(msg?.extendedTextMessage?.contextInfo?.quotedMessage);
+    const descQuoteEvo = descritorDoAnuncio(quotedTextoEvo);
+    if (descQuoteEvo && !userMessage.includes(descQuoteEvo)) {
+      userMessage = `[Contexto do link: "${descQuoteEvo}"]\n${userMessage}`;
+      console.log(`🔁 [Quote Evolution] descritor: ${descQuoteEvo}`);
+    }
+
     // Link preview context (Evolution API format)
     const extTitle = msg?.extendedTextMessage?.title;
     const extDesc  = msg?.extendedTextMessage?.description;
     const linkContext = [extTitle, extDesc].filter(Boolean).join(" — ");
-    if (linkContext && !userMessage.includes(linkContext)) {
+    if (linkContext && !descQuoteEvo && !userMessage.includes(linkContext)) {
       userMessage = `[Contexto do link: "${linkContext}"]\n${userMessage}`;
       console.log(`🔗 [Link preview Evolution] Contexto extraído: ${linkContext}`);
     }
