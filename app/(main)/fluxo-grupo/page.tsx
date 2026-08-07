@@ -28,7 +28,6 @@ interface Cfg {
   repasse_janela_fim?: number;
   repasse_janela_fim_sabado?: number;
   repasse_bomdia_ativo?: boolean;
-  repasse_cta_ativo?: boolean;
   repasse_intervalo_variar?: boolean;
   repasse_link_comunidade?: string;
   repasse_link_instagram?: string;
@@ -75,7 +74,7 @@ export default function FluxoGrupo() {
     setLoading(true);
     const [{ data: cfgRows }, { data: veic }] = await Promise.all([
       supabase.from("config_garage")
-        .select("id, repasse_grupos, repasse_auto_ativo, repasse_intervalo_min, repasse_qtd_por_envio, repasse_janela_inicio, repasse_janela_fim, repasse_janela_fim_sabado, repasse_bomdia_ativo, repasse_cta_ativo, repasse_intervalo_variar, repasse_link_comunidade, repasse_link_instagram, repasse_bomdia_logo_url, avisa_base_url, avisa_token")
+        .select("id, repasse_grupos, repasse_auto_ativo, repasse_intervalo_min, repasse_qtd_por_envio, repasse_janela_inicio, repasse_janela_fim, repasse_janela_fim_sabado, repasse_bomdia_ativo, repasse_intervalo_variar, repasse_link_comunidade, repasse_link_instagram, repasse_bomdia_logo_url, avisa_base_url, avisa_token")
         .eq("user_id", effectiveUserId).order("created_at", { ascending: false }).limit(1),
       supabase.from("veiculos")
         .select("id, marca, modelo, ano_modelo, capa_marketing_url, fotos, repasse_enviado_em, repasse_pausado, repasse_ordem")
@@ -226,7 +225,6 @@ export default function FluxoGrupo() {
         repasse_janela_fim: config.repasse_janela_fim ?? 18,
         repasse_janela_fim_sabado: config.repasse_janela_fim_sabado ?? 12,
         repasse_bomdia_ativo: config.repasse_bomdia_ativo ?? true,
-        repasse_cta_ativo: config.repasse_cta_ativo ?? true,
         repasse_intervalo_variar: config.repasse_intervalo_variar ?? false,
         repasse_link_comunidade: config.repasse_link_comunidade || null,
         repasse_link_instagram: config.repasse_link_instagram || null,
@@ -444,18 +442,6 @@ export default function FluxoGrupo() {
               <button type="button" onClick={() => setConfig(c => ({ ...c, repasse_intervalo_variar: !c.repasse_intervalo_variar }))}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${config.repasse_intervalo_variar ? "bg-green-500" : "bg-gray-200"}`}>
                 <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${config.repasse_intervalo_variar ? "translate-x-6" : "translate-x-1"}`} />
-              </button>
-            </div>
-
-            {/* Link "Falar com Vendedor" no anúncio */}
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-gray-700">Link “Falar com Vendedor”</p>
-                <p className="text-[9px] text-gray-400 mt-0.5">Desligue se o WhatsApp do agente é o seu número pessoal — o anúncio sai sem o wa.me</p>
-              </div>
-              <button type="button" onClick={() => setConfig(c => ({ ...c, repasse_cta_ativo: !(c.repasse_cta_ativo ?? true) }))}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${(config.repasse_cta_ativo ?? true) ? "bg-green-500" : "bg-gray-200"}`}>
-                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${(config.repasse_cta_ativo ?? true) ? "translate-x-6" : "translate-x-1"}`} />
               </button>
             </div>
 

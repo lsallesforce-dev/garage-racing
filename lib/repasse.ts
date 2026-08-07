@@ -247,13 +247,13 @@ export async function resolverFipe(carro: any, versaoRica: string): Promise<stri
   return buscarFipe(carro.marca, carro.modelo, versaoRica, carro.ano_modelo);
 }
 
+// NOTA: os parâmetros botPhone/vitrineUrl foram REMOVIDOS (07/08) junto com os
+// rodapés que eles alimentavam. Se reaparecerem numa assinatura, é regressão.
 export function gerarTextoRepasse(
   carro: any,
   fipe: string | null,
   mediaWeb: string | null,
-  botPhone?: string | null,
   tipo: "repasse" | "promocao" = "repasse",
-  vitrineUrl?: string | null,
   cidadeTenant?: string | null,
 ): string {
   // Cidade do anúncio: prioridade pra cidade configurada do tenant
@@ -316,20 +316,11 @@ export function gerarTextoRepasse(
 
   linhas.push(`💵 Valor: ${preco}`);
 
-  if (botPhone) {
-    const phoneClean = botPhone.replace(/\D/g, "");
-    // Link wa.me DIRETO — o WhatsApp abre a conversa do vendedor na hora, de dentro
-    // do grupo. (O link curto /c/ ficava limpo porém NÃO abria: morria no navegador
-    // interno do WhatsApp.) Prefill curto com o carro → o agente resolve via busca.
-    const modeloCurto = String(carro.modelo || "").split(/\s+/).slice(0, 2).join(" ");
-    const ctx = [carro.marca, modeloCurto, anoMod].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
-    // Prefill enxuto = só o carro (sem "Tenho interesse no") → link mais curto na
-    // cara do anúncio. O agente resolve o carro pela busca do mesmo jeito.
-    const prefill = encodeURIComponent(ctx).replace(/%20/g, "+");
-    linhas.push(``);
-    linhas.push(`💬 Falar com Vendedor:`);
-    linhas.push(`https://wa.me/${phoneClean}?text=${prefill}`);
-  }
+  // ⚠️ NÃO reintroduzir "💬 Falar com Vendedor" (wa.me) nem "🚗 Veja nosso
+  // estoque completo" (vitrine). Removidos em definitivo a pedido do Marcos
+  // Repasse (07/08) — o anúncio vai só com o carro. Quem lê chama no direct.
+  // Textos congelados antigos (veiculos.repasse_texto) ainda podem trazer os
+  // blocos: removerRodapes() limpa na leitura, em gerarRepasseCompleto.
 
   linhas.push(``);
   linhas.push(`📷 Tenho Fotos e Vídeos`);
@@ -343,12 +334,6 @@ export function gerarTextoRepasse(
     );
     linhas.push(``);
     linhas.push(`🚨 Lembrando que, Veículo de Repasse não tem Garantia !`);
-  }
-
-  if (vitrineUrl) {
-    linhas.push(``);
-    linhas.push(`🚗 Veja nosso estoque completo:`);
-    linhas.push(vitrineUrl);
   }
 
   return linhas.join("\n");
@@ -374,26 +359,20 @@ export async function gerarRepasseCompleto(
   // config_garage pode ter múltiplas linhas por user_id — nunca usar .single()/.maybeSingle()
   const { data: cfgRows } = await supabaseAdmin
     .from("config_garage")
-    .select("whatsapp_agente, whatsapp, vitrine_slug, dominio_custom, cidade, estado, repasse_cta_ativo")
+    .select("cidade, estado")
     .eq("user_id", carro.user_id)
     .order("created_at", { ascending: false })
     .limit(1);
   const cfg = cfgRows?.[0] ?? null;
-  // repasse_cta_ativo=false → anúncio sai SEM o bloco "💬 Falar com Vendedor".
-  // Pedido Marcos Repasse: com o agente no celular pessoal dele, o wa.me do
-  // agente no anúncio do grupo virou ruído. Default true (nulo = ligado).
-  const ctaAtivo = cfg?.repasse_cta_ativo !== false;
-  const botPhone = ctaAtivo ? (cfg?.whatsapp_agente || cfg?.whatsapp || null) : null;
 
   // Texto congelado pelo dono (FIPE corrigida etc.): usa VERBATIM, não regenera.
   // Fonte única da verdade pra grupo E prospecção (pedido Marcos Repasse).
-  // Só passa por removerRodapes quando o CTA está desligado — o texto congelado
-  // foi salvo COM o bloco e não seria regenerado.
+  // removerRodapes é a rede de segurança: texto salvo ANTES de 07/08 (ou colado
+  // à mão) ainda pode trazer os rodapés, e eles não podem mais sair no ar.
   if (tipo === "repasse" && typeof carro.repasse_texto === "string" && carro.repasse_texto.trim()) {
     const capaUrl: string | null = carro.capa_marketing_url || carro.fotos?.[0] || null;
-    return { texto: removerRodapes(carro.repasse_texto, { cta: ctaAtivo }), capaUrl };
+    return { texto: removerRodapes(carro.repasse_texto, { cta: false, vitrine: false }), capaUrl };
   }
-  const vitrineUrl = urlVitrine(cfg);
 
   // Versão rica: versao do banco, ou combinação de motor + combustivel + cambio
   const versaoRica = [carro.versao, carro.motor, carro.combustivel, carro.cambio]
@@ -409,7 +388,7 @@ export async function gerarRepasseCompleto(
   const cidadeUf = cfg?.cidade
     ? [String(cfg.cidade).trim(), String(cfg.estado ?? "").trim()].filter(Boolean).join("-")
     : null;
-  const texto = gerarTextoRepasse(carro, fipe, null, botPhone, tipo, vitrineUrl, cidadeUf);
+  const texto = gerarTextoRepasse(carro, fipe, null, tipo, cidadeUf);
 
   // Foto na proporção ORIGINAL (sem normalizar pra quadrado/4:5). O cron envia a
   // foto como imagem SEPARADA, antes do texto — o WhatsApp mostra a foto inteira e

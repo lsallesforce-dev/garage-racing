@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireVehicleOwner } from "@/lib/api-auth";
-import { gerarTextoRepasse, resolverFipe, urlVitrine } from "@/lib/repasse";
+import { gerarTextoRepasse, resolverFipe } from "@/lib/repasse";
 
 export const maxDuration = 60;
 
@@ -42,9 +42,6 @@ export async function POST(req: NextRequest) {
     .limit(1);
   const cfg = cfgRows?.[0] ?? null;
 
-  const botPhone = cfg?.whatsapp_agente || cfg?.whatsapp || null;
-  const vitrineUrl = urlVitrine(cfg);
-
   // Constrói versao rica: usa versao do banco se preenchida,
   // senão combina motor + combustivel + cambio para ter discriminadores técnicos na busca FIPE.
   const versaoRica = [
@@ -58,8 +55,10 @@ export async function POST(req: NextRequest) {
   // derivada da FIPE (+1%) dentro do gerarTextoRepasse — não busca mais na web.
   const fipe = await resolverFipe(carro, versaoRica);
 
-  const texto = gerarTextoRepasse(carro, fipe, null, botPhone, tipo, vitrineUrl, cfg?.cidade);
+  const texto = gerarTextoRepasse(carro, fipe, null, tipo, cfg?.cidade);
   const capaUrl = carro.capa_marketing_url || carro.fotos?.[0] || null;
 
-  return NextResponse.json({ texto, capaUrl, fipe, botPhone });
+  // botPhone segue null no retorno: o anúncio não tem mais CTA (07/08). Mantido
+  // no payload só pra não quebrar quem consome a resposta.
+  return NextResponse.json({ texto, capaUrl, fipe, botPhone: null });
 }

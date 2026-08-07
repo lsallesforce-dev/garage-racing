@@ -32,16 +32,16 @@ export function normalizarTelefone(raw: string): string | null {
 // ── Texto da campanha ─────────────────────────────────────────────────────────
 /**
  * Gera texto + capa pro disparo de transmissão de um veículo.
- * Reusa gerarTextoRepasse com botPhone=null (sem "💬 Falar com Vendedor") e
- * vitrineUrl=null (sem "🚗 Veja nosso estoque completo") — lista pessoal, só
- * o texto puro do carro (pedido Marcos Repasse 10/07, revoga a decisão de
- * 07/07 de manter a vitrine). Retorna null se o veículo não existir.
+ * Desde 07/08 o gerarTextoRepasse não emite mais rodapé nenhum (nem o wa.me
+ * nem a vitrine), então grupo e transmissão saem iguais. Retorna null se o
+ * veículo não existir.
  */
 // Prospecção é lista PESSOAL: não leva o "💬 Falar com Vendedor" (wa.me do
 // agente) nem o "🚗 Veja nosso estoque completo" (vitrine). O texto congelado
 // (repasse_texto) é o do repasse, que TEM esses dois blocos — então removemos.
 // A remoção em si vive em lib/repasse.ts (removerRodapes), compartilhada com o
-// gate repasse_cta_ativo do anúncio de grupo.
+// anúncio de grupo — desde 07/08 os dois rodapés saíram de vez da geração e a
+// função virou só a rede de segurança pros textos congelados antigos.
 const semRodapesProspeccao = (texto: string) =>
   removerRodapes(texto, { cta: false, vitrine: false });
 
@@ -84,9 +84,7 @@ export async function gerarTransmissaoCompleto(
   const cidadeUf = cfg?.cidade
     ? [String(cfg.cidade).trim(), String(cfg.estado ?? "").trim()].filter(Boolean).join("-")
     : null;
-  // botPhone=null → sem "Falar com Vendedor". vitrineUrl=null → sem o link do
-  // estoque completo no fim (pedido Marcos Repasse 10/07: só o texto do carro).
-  const texto = gerarTextoRepasse(carro, fipe, null, null, "repasse", null, cidadeUf);
+  const texto = gerarTextoRepasse(carro, fipe, null, "repasse", cidadeUf);
   const capaUrl: string | null = carro.capa_marketing_url || carro.fotos?.[0] || null;
 
   return { texto, capaUrl };
