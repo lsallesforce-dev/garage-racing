@@ -29,6 +29,7 @@ interface Cfg {
   repasse_janela_fim_sabado?: number;
   repasse_bomdia_ativo?: boolean;
   repasse_cta_ativo?: boolean;
+  repasse_intervalo_variar?: boolean;
   repasse_link_comunidade?: string;
   repasse_link_instagram?: string;
   repasse_bomdia_logo_url?: string | null;
@@ -74,7 +75,7 @@ export default function FluxoGrupo() {
     setLoading(true);
     const [{ data: cfgRows }, { data: veic }] = await Promise.all([
       supabase.from("config_garage")
-        .select("id, repasse_grupos, repasse_auto_ativo, repasse_intervalo_min, repasse_qtd_por_envio, repasse_janela_inicio, repasse_janela_fim, repasse_janela_fim_sabado, repasse_bomdia_ativo, repasse_cta_ativo, repasse_link_comunidade, repasse_link_instagram, repasse_bomdia_logo_url, avisa_base_url, avisa_token")
+        .select("id, repasse_grupos, repasse_auto_ativo, repasse_intervalo_min, repasse_qtd_por_envio, repasse_janela_inicio, repasse_janela_fim, repasse_janela_fim_sabado, repasse_bomdia_ativo, repasse_cta_ativo, repasse_intervalo_variar, repasse_link_comunidade, repasse_link_instagram, repasse_bomdia_logo_url, avisa_base_url, avisa_token")
         .eq("user_id", effectiveUserId).order("created_at", { ascending: false }).limit(1),
       supabase.from("veiculos")
         .select("id, marca, modelo, ano_modelo, capa_marketing_url, fotos, repasse_enviado_em, repasse_pausado, repasse_ordem")
@@ -226,6 +227,7 @@ export default function FluxoGrupo() {
         repasse_janela_fim_sabado: config.repasse_janela_fim_sabado ?? 12,
         repasse_bomdia_ativo: config.repasse_bomdia_ativo ?? true,
         repasse_cta_ativo: config.repasse_cta_ativo ?? true,
+        repasse_intervalo_variar: config.repasse_intervalo_variar ?? false,
         repasse_link_comunidade: config.repasse_link_comunidade || null,
         repasse_link_instagram: config.repasse_link_instagram || null,
       }).eq("id", config.id);
@@ -399,7 +401,7 @@ export default function FluxoGrupo() {
             {/* Intervalo + carros por envio */}
             <div className="flex gap-3">
               <div className="flex flex-col gap-1.5 flex-1">
-                <label className={labelCls}>Intervalo entre anúncios</label>
+                <label className={labelCls}>{config.repasse_intervalo_variar ? "Intervalo médio" : "Intervalo entre anúncios"}</label>
                 <select value={config.repasse_intervalo_min ?? 120} onChange={e => setConfig(c => ({ ...c, repasse_intervalo_min: Number(e.target.value) }))} className={inputCls}>
                   <option value={10}>10 minutos</option><option value={15}>15 minutos</option><option value={30}>30 minutos</option>
                   <option value={60}>1 hora</option><option value={120}>2 horas</option><option value={180}>3 horas</option><option value={240}>4 horas</option>
@@ -424,7 +426,26 @@ export default function FluxoGrupo() {
                 </div>
               ))}
             </div>
-            <p className="text-[10px] text-gray-400 italic">Horário de Brasília. O fluxo pula domingo e fecha mais cedo no sábado. Só carros disponíveis com preço entram — na ordem do rodízio, pulando os pausados.</p>
+            <p className="text-[10px] text-gray-400 italic">
+              Horário de Brasília. O fluxo pula domingo e fecha mais cedo no sábado. Só carros disponíveis com preço entram — na ordem do rodízio, pulando os pausados.
+              {config.repasse_intervalo_variar && " Com intervalo esporádico ligado, os horários previstos são só uma média — a ordem dos carros continua exata."}
+            </p>
+
+            {/* Intervalo esporádico */}
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-gray-700">Intervalo esporádico</p>
+                <p className="text-[9px] text-gray-400 mt-0.5">
+                  {config.repasse_intervalo_variar
+                    ? `Cada anúncio sorteia o próximo gap entre ${Math.round((config.repasse_intervalo_min ?? 120) * 0.5)} e ${Math.round((config.repasse_intervalo_min ?? 120) * 1.5)} min — horários abaixo viram estimativa`
+                    : "Anúncio em horário cravado denuncia robô. Ligue pra variar o intervalo em volta da média"}
+                </p>
+              </div>
+              <button type="button" onClick={() => setConfig(c => ({ ...c, repasse_intervalo_variar: !c.repasse_intervalo_variar }))}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${config.repasse_intervalo_variar ? "bg-green-500" : "bg-gray-200"}`}>
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${config.repasse_intervalo_variar ? "translate-x-6" : "translate-x-1"}`} />
+              </button>
+            </div>
 
             {/* Link "Falar com Vendedor" no anúncio */}
             <div className="flex items-center justify-between">

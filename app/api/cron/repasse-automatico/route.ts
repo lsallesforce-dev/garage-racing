@@ -86,7 +86,7 @@ export async function GET(req: NextRequest) {
   let { data: configRows, error: configErr }: { data: any[] | null; error: { message?: string } | null } =
     await supabaseAdmin
       .from("config_garage")
-      .select(`${CAMPOS_BASE}, repasse_grupos, repasse_ciclo_iniciado_em`)
+      .select(`${CAMPOS_BASE}, repasse_grupos, repasse_ciclo_iniciado_em, repasse_intervalo_variar, repasse_proximo_envio_em`)
       .eq("repasse_auto_ativo", true)
       .not("avisa_base_url", "is", null)
       .not("avisa_token", "is", null)
@@ -95,8 +95,8 @@ export async function GET(req: NextRequest) {
   // Janela deploy→migration (021/022): se alguma coluna nova ainda não existe,
   // refaz sem elas — grupo cai pro legado e o rodízio cai pra ordem antiga; o
   // repasse NÃO para (cron quente de produção, cliente real no ar).
-  if (configErr && /repasse_grupos|repasse_ciclo_iniciado_em/i.test(configErr.message ?? "")) {
-    console.warn("⚠️ repasse-automatico: coluna nova ausente (migration 021/022 pendente) — usando modo legado");
+  if (configErr && /repasse_grupos|repasse_ciclo_iniciado_em|repasse_intervalo_variar|repasse_proximo_envio_em/i.test(configErr.message ?? "")) {
+    console.warn("⚠️ repasse-automatico: coluna nova ausente (migration 021/022/038 pendente) — usando modo legado");
     ({ data: configRows, error: configErr } = await supabaseAdmin
       .from("config_garage")
       .select(CAMPOS_BASE)
@@ -200,6 +200,22 @@ export async function GET(req: NextRequest) {
 
       // ── 3. Checar intervalo desde o último envio ──────────────────────────
       const intervaloMin: number = cfg.repasse_intervalo_min ?? 120;
+      // Modo esporádico (migration 038): o intervalo configurado é a MÉDIA e o
+      // gap de cada envio foi sorteado no tick anterior (repasse_proximo_envio_em).
+      // Intervalo cravado de hora em hora denuncia robô no grupo.
+      const variar: boolean = cfg.repasse_intervalo_variar === true;
+      const proximoAlvo: string | null = cfg.repasse_proximo_envio_em ?? null;
+
+      if (variar && proximoAlvo) {
+        const faltamMin = (new Date(proximoAlvo).getTime() - agora.getTime()) / 60_000;
+        // Mesma tolerância do caminho fixo: o tick do cron nunca cai no segundo exato.
+        if (faltamMin > 2) {
+          console.log(
+            `🎲 [repasse/${tenantId}] Próximo envio sorteado em ${faltamMin.toFixed(0)}min (${proximoAlvo}) — pulando`,
+          );
+          continue;
+        }
+      }
 
       const { data: ultimoEnvioRows } = await supabaseAdmin
         .from("veiculos")
@@ -211,7 +227,10 @@ export async function GET(req: NextRequest) {
 
       const ultimoEnvio = ultimoEnvioRows?.[0]?.repasse_enviado_em ?? null;
 
-      if (ultimoEnvio) {
+      // Com alvo sorteado válido o gate acima já decidiu — a regra de intervalo
+      // fixo só vale pro modo normal (ou no 1º envio depois de ligar a flag,
+      // quando ainda não há alvo).
+      if (ultimoEnvio && !(variar && proximoAlvo)) {
         const diffMs = agora.getTime() - new Date(ultimoEnvio).getTime();
         const diffMin = diffMs / 60_000;
         // Tolerância p/ o jitter do cron: este cron roda a cada 10min (*/10), mas o
@@ -334,6 +353,25 @@ export async function GET(req: NextRequest) {
         }
 
         if (algumOk) enviados++;
+      }
+
+      // ── 7. Sorteia o próximo gap (modo esporádico) ────────────────────────
+      // Gravado DEPOIS dos envios, sempre que este tick tentou enviar — mesmo se
+      // a Avisa não confirmou, porque o carro já foi claimed e não volta pra fila.
+      // Sorteio entre 0,5x e 1,5x da média, arredondado em 5min (com média 60 →
+      // 30 a 90min). Fora da janela/sem carro o código já deu `continue` antes,
+      // então o alvo não é reagendado à toa.
+      if (variar && carros.length > 0) {
+        const fator = 0.5 + Math.random();                       // 0,5 .. 1,5
+        const gapMin = Math.max(5, Math.round((intervaloMin * fator) / 5) * 5);
+        const proximo = new Date(agora.getTime() + gapMin * 60_000);
+        await supabaseAdmin
+          .from("config_garage")
+          .update({ repasse_proximo_envio_em: proximo.toISOString() })
+          .eq("user_id", tenantId);
+        console.log(
+          `🎲 [repasse/${tenantId}] Próximo envio sorteado: +${gapMin}min (${proximo.toISOString()}) — média ${intervaloMin}min`,
+        );
       }
     } catch (e) {
       // Erro em um tenant não derruba os outros
