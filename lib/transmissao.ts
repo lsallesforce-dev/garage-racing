@@ -7,7 +7,7 @@
 // instância Avisa dedicada, com cadência anti-ban (ver cron/transmissao-envios).
 
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { resolverFipe, gerarTextoRepasse, removerRodapes } from "@/lib/repasse";
+import { resolverFipe, gerarTextoRepasse, removerRodapes, garantirDisclaimers } from "@/lib/repasse";
 
 /**
  * Mensagem de envio = texto puro do carro, sem saudação (pedido Marcos
@@ -59,7 +59,7 @@ export async function gerarTransmissaoCompleto(
   // Assim grupo e prospecção mostram EXATAMENTE o texto salvo (pedido Marcos).
   if (typeof carro.repasse_texto === "string" && carro.repasse_texto.trim()) {
     const capaUrl: string | null = carro.capa_marketing_url || carro.fotos?.[0] || null;
-    return { texto: semRodapesProspeccao(carro.repasse_texto), capaUrl };
+    return { texto: garantirDisclaimers(semRodapesProspeccao(carro.repasse_texto)), capaUrl };
   }
 
   // config_garage pode ter múltiplas linhas por user_id — nunca .single()

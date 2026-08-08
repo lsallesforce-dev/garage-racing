@@ -11,7 +11,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireVehicleOwner } from "@/lib/api-auth";
 import { sendMetaMessage } from "@/lib/meta";
 import { sendAvisaMessage, sendAvisaImage } from "@/lib/avisa";
-import { gruposDoConfig, removerRodapes } from "@/lib/repasse";
+import { gruposDoConfig, removerRodapes, garantirDisclaimers } from "@/lib/repasse";
 
 export const maxDuration = 30;
 
@@ -58,7 +58,9 @@ export async function POST(req: NextRequest) {
   // Sem "💬 Falar com Vendedor" e sem "🚗 Veja nosso estoque" — removidos em
   // definitivo (07/08, pedido Marcos Repasse). O `texto` vem do cliente e pode
   // ser um congelado antigo com os blocos, então passa por removerRodapes.
-  const textoFinal = removerRodapes(texto, { cta: false, vitrine: false });
+  // garantirDisclaimers: o `texto` vem do editor do estoque e o dono pode ter
+  // apagado o aviso de repasse/garantia — ele é obrigatório em todo carro.
+  const textoFinal = garantirDisclaimers(removerRodapes(texto, { cta: false, vitrine: false }));
 
   // ── Canal Avisa: imagem com o texto como legenda ───────────────────────────
   // Com grupo(s) vinculado(s) (repasse_grupos, migration 021), envia para TODOS;

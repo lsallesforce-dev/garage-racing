@@ -127,6 +127,25 @@ export function removerRodapes(
   return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
+// Disclaimers OBRIGATÓRIOS do anúncio de repasse (pedido Marcos Repasse 08/08:
+// "essas duas frases têm que estar em todos os carros"). O gerarTextoRepasse já
+// emite as duas quando tipo="repasse", mas o texto CONGELADO (repasse_texto) é
+// usado verbatim — se o dono editar o texto e apagar, o carro vai ao ar sem
+// aviso legal. Esta função garante na leitura, então vale pra texto congelado
+// antigo, editado à mão e pra carro cadastrado depois.
+const DISCLAIMER_MODALIDADE =
+  "📣 Veiculo vendido na Modalidade de Repasse nas Condições e Estado de Conservação em que se encontra.";
+const DISCLAIMER_GARANTIA =
+  "🚨 Lembrando que, Veículo de Repasse não tem Garantia !";
+
+export function garantirDisclaimers(texto: string): string {
+  let out = texto.trimEnd();
+  // Casa pelo miolo da frase: o dono pode ter mexido no emoji ou no espaçamento.
+  if (!/Modalidade de Repasse/i.test(out)) out += `\n\n${DISCLAIMER_MODALIDADE}`;
+  if (!/n[ãa]o\s+tem\s+Garantia/i.test(out)) out += `\n\n${DISCLAIMER_GARANTIA}`;
+  return out;
+}
+
 // Sem centavos — pro valor de referência ("Média") ficar redondo tipo anúncio.
 function formatarMoedaInteira(valor: number): string {
   return new Intl.NumberFormat("pt-BR", {
@@ -371,7 +390,8 @@ export async function gerarRepasseCompleto(
   // à mão) ainda pode trazer os rodapés, e eles não podem mais sair no ar.
   if (tipo === "repasse" && typeof carro.repasse_texto === "string" && carro.repasse_texto.trim()) {
     const capaUrl: string | null = carro.capa_marketing_url || carro.fotos?.[0] || null;
-    return { texto: removerRodapes(carro.repasse_texto, { cta: false, vitrine: false }), capaUrl };
+    const limpo = removerRodapes(carro.repasse_texto, { cta: false, vitrine: false });
+    return { texto: tipo === "repasse" ? garantirDisclaimers(limpo) : limpo, capaUrl };
   }
 
   // Versão rica: versao do banco, ou combinação de motor + combustivel + cambio
