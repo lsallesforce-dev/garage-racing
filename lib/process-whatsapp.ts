@@ -55,8 +55,16 @@ async function ensureCompressedVideo(videoUrl: string | null, veiculoId: string)
   if (size > 0 && size <= 15 * 1024 * 1024) return videoUrl; // já pequeno, usa direto
   if (size === 0) return videoUrl; // não conseguiu checar, tenta direto
 
-  // Verifica se versão comprimida já existe no R2 (evita compressão dupla em paralelo)
-  const r2KeyPrecheck = videoUrl.split("/").pop()!.replace(/\.mp4$/i, "_wpp.mp4");
+  // Chave da versão comprimida. ⚠️ Trocar QUALQUER extensão, não só .mp4: o
+  // celular do lojista grava em .mov (QuickTime) e o replace de "\.mp4$" não
+  // casava nada — a chave saía IGUAL ao arquivo original, o HEAD abaixo achava
+  // o próprio vídeo cru e ele era dado como "já comprimido". Resultado: .mov de
+  // 27MB indo pro WhatsApp (limite 16MB), a Avisa respondendo 200 e o vídeo
+  // nunca chegando. Compressão de .mov/.webm/.avi simplesmente nunca rodou.
+  const nomeArquivo = videoUrl.split("/").pop()!;
+  const chaveWpp = (n: string) =>
+    /\.[a-z0-9]{2,5}$/i.test(n) ? n.replace(/\.[a-z0-9]{2,5}$/i, "_wpp.mp4") : `${n}_wpp.mp4`;
+  const r2KeyPrecheck = chaveWpp(nomeArquivo);
   const existingWppUrl = `${process.env.R2_PUBLIC_URL}/${r2KeyPrecheck}`;
   const existingHead = await fetch(existingWppUrl, { method: "HEAD" }).catch(() => null);
   if (existingHead?.ok) {
@@ -93,8 +101,8 @@ const execFileAsync = promisify(execFile);
       const compressed = await fs.readFile(tmpOut);
       console.log(`🗜️ ${(size/1024/1024).toFixed(1)}MB → ${(compressed.length/1024/1024).toFixed(1)}MB`);
 
-      // Salva no R2 com sufixo _wpp.mp4
-      const r2Key = videoUrl.split("/").pop()!.replace(/\.mp4$/i, "_wpp.mp4");
+      // Salva no R2 com sufixo _wpp.mp4 (mesma regra do precheck acima)
+      const r2Key = chaveWpp(nomeArquivo);
       const r2 = new S3Client({
         region: "auto",
         endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
@@ -977,10 +985,16 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
       ? sendAvisaImage(to, url, caption, avisaCreds)
       : sendMetaImage(to, url, caption, metaCreds);
 
-  const sendVideo = (to: string, url: string, caption?: string) =>
-    useAvisa
-      ? sendAvisaVideo(to, url, caption, avisaCreds)
-      : sendMetaVideo(to, url, caption, metaCreds);
+  // Retorna BOOLEAN de entrega. sendWithRetry (lib/avisa.ts) devolve undefined
+  // quando falha — NUNCA lança. Sem normalizar isso aqui, o chamador marcava
+  // "enviado" e gravava a mídia em `mensagens`: o painel mostrava um vídeo que
+  // o WhatsApp nunca recebeu (relato do Marcos 08/08). Mesma regra do sendAudio.
+  const sendVideo = async (to: string, url: string, caption?: string): Promise<boolean> => {
+    const r = useAvisa
+      ? await sendAvisaVideo(to, url, caption, avisaCreds)
+      : await sendMetaVideo(to, url, caption, metaCreds);
+    return r != null && r !== false;
+  };
 
   // Nota de voz. Os dois canais retornam boolean (false = não entregou) para o
   // chamador poder cair pra texto — voz nunca pode fazer o cliente ficar sem resposta.
@@ -2552,7 +2566,21 @@ Responda apenas com o JSON, sem markdown.`;
       console.log(`🎥 vídeo enviado ao Meta: ${videoUrl} (marketing=${!!(veiculoParaVideo as any).video_marketing_url})`);
       if (videoUrl) {
         try {
-          await sendVideo(phone, videoUrl, undefined);
+          const entregue = await sendVideo(phone, videoUrl, undefined);
+          if (!entregue) {
+            // NÃO grava em `mensagens`: mídia que não saiu não pode aparecer no
+            // painel como enviada. Manda o link da vitrine pro cliente conseguir
+            // ver o vídeo de qualquer jeito, e avisa o gerente.
+            console.warn(`⚠️ [vídeo] Não entregue a ${phone} (${videoUrl}) — nada gravado no chat.`);
+            const carUrlFallback = vitrineUrl ? `${vitrineUrl}/${veiculoParaVideo.id}` : null;
+            if (carUrlFallback) {
+              await sendText(phone, `O vídeo é pesado pra mandar aqui. Dá pra ver nesse link: ${carUrlFallback}`);
+            }
+            await sendAlert(
+              gerentePhone ?? "",
+              `⚠️ Vídeo do ${nomeCarroLimpo(veiculoParaVideo)} não foi entregue no WhatsApp (arquivo grande demais ou formato recusado). Cliente +${phone}.`,
+            ).catch(() => {});
+          } else {
           videoEnviado = true;
           // Registra o vídeo no histórico do chat para exibição no painel
           if (lead) {
@@ -2582,6 +2610,7 @@ Responda apenas com o JSON, sem markdown.`;
               .update({ veiculo_id: veiculoParaVideo.id })
               .eq("id", lead.id);
           }
+          } // fim do else (vídeo entregue)
         } catch (e) {
           console.warn("⚠️ Falha ao enviar vídeo:", e);
         }
