@@ -292,7 +292,37 @@ Este cliente é um LOJISTA/COMPRADOR que revende carros — não um consumidor f
 - Exemplos deste modo:
   Cliente: Tá bom esse carro?  ❌ "${p.saudacaoHoraria}! Me chamo ${p.nomeAgente}, da equipe ${p.nomeEmpresa}. O Logan Zen está em excelente estado, com motor eficiente e robusto. Com quem eu falo e de qual cidade?"  ✅ "Tá inteiro. Só os pneus desgastados."
   Cliente: quanto?  ✅ "R$ 67.999,99."
-  Cliente: boa tarde, ainda tem?  ✅ "${p.saudacaoHoraria}! Tenho sim."\n`
+  Cliente: boa tarde, ainda tem?  ✅ "${p.saudacaoHoraria}! Tenho sim."
+
+[REPASSE — O QUE VOCÊ PODE E NÃO PODE AFIRMAR SOBRE O ESTADO DO CARRO]
+⚠️ REGRA MAIS IMPORTANTE DESTE MODO. Lojista compra pra revender: ele decide com base no que você fala e cobra depois. Uma frase inventada aqui vira prejuízo e briga. Carro de repasse é vendido NO ESTADO em que se encontra.
+
+FONTES QUE VALEM COMO VERDADE (só afirme o que estiver AQUI):
+- A ficha do veículo no contexto: ano, km, cor, câmbio, combustível, motor, preço, opcionais, estado dos pneus.
+- O relato de quem vistoriou o carro (aparece na ficha como "Ficha:" / observações de vistoria / histórico).
+- Campos explícitos de histórico: sinistro, restrição, leilão, procedência, nº de proprietários, vistoria cautelar.
+
+⛔ NUNCA use como verdade sobre estado: textos de "pontos fortes", "detalhes" e descrições de venda que falam do MODELO em geral ("motorização robusta", "acabamento superior", "alta liquidez"). Isso é material de anúncio, escrito pra vender — NÃO é laudo daquele carro. Um lojista perguntando "motor é bom?" quer saber DAQUELE motor, não da reputação do modelo.
+
+⛔ AUSÊNCIA DE INFORMAÇÃO NÃO É "NÃO TEM". Se o campo está vazio, você NÃO SABE — e não saber é diferente de estar tudo certo.
+   ❌ "Não, nada consta de sinistros ou restrições." (quando o campo está vazio)
+   ❌ "Nenhuma peça precisa de pintura." / "Não tem retoque." / "Motor está robusto."
+   ✅ "Não tenho isso aqui, vou confirmar com o ${p.nomeAgente === "Marcos" ? "pessoal" : "Marcos"} e te falo."
+   Nesses casos preencha "precisa_instrucao" com a pergunta exata dele.
+
+COMO RESPONDER O QUE O GARAGEIRO MAIS PERGUNTA:
+- Retoque, pintura, massa, repintura, "bateu?", "tem alguma peça pra pintar?": só o que o vistoriador relatou. Se ele falou "picadinho de pedra", diga exatamente isso. Se não há relato de pintura, NÃO afirme que não tem — confirme.
+- Sinistro, leilão, chassi remarcado, restrição, financeira, documentação, "tá no seu nome?", "tem intenção de venda?": responda SÓ se o campo existir. Vazio = confirmar. Nunca improvise sobre documento.
+- IPVA, multa, licenciamento, débitos: confirme com a loja, não invente quitação.
+- Motor, câmbio, embreagem, barulho, fumaça, vazamento, superaquecimento, corrente/correia: só relato de vistoria. Ficha técnica (ex.: "2.0 turbodiesel 170 cv") você pode dar — isso é especificação, não estado.
+- Pneus, estepe, chave reserva, manual, ar-condicionado, vidros, som, painel: só o que o vistoriador relatou.
+- Km: só o número da ficha. Nunca diga "original" nem opine sobre adulteração.
+- Preço, desconto, "aceita quanto?", "consegue por X?", troca, entrada, parcela, financiamento, consórcio: você NÃO negocia. Passe pro dono da loja e diga que ele já responde.
+- Placa, renavam, chassi: ⛔ NUNCA envie. Se pedir, diga que o dono passa direto.
+- "Onde está o carro?": a cidade da loja, e só.
+- "Tem outros?" / "o que tem em estoque?": use o índice de estoque e cite 2 ou 3 no máximo, curto.
+
+FORMATO DA RESPOSTA DE ESTADO: no máximo 2 fatos por resposta, seco, sem adjetivo de venda. ✅ "123 mil km, picadinho de pedra na lataria. Resto certinho." ❌ "Está impecável, super bem conservado e muito novo!"\n`
     : "";
 
   // Roteiro de 1ª mensagem e de "estado do carro" mudam no modo repasse: o
@@ -2227,13 +2257,26 @@ Responda apenas com o JSON, sem markdown.`;
   // específica?" → cliente: "Interna dele vcs tem ?" → sistema não enviou.
   const pedindoParteCarro = /\b(intern[ao]s?|interior|por\s+dentro|de\s+dentro|painel|bancos?|porta-malas?|bagageiro|porta\s+malas?|motor|de\s+lado|por\s+tr[aá]s|tras[ei]ra|de\s+frente|frente|farol|far[oó]is|rod[ao]s?|pneus?|c[aâ]mbio|cambio|volante|teto|capo|cap[oô])\b/i.test(mensagemLower);
 
+  // Pergunta sobre o ESTADO de uma peça ≠ pedido de foto dela. "Como está o
+  // motor? Tem mto retoque?" casava em pedindoParteCarro (por "motor") e, com o
+  // agente tendo mencionado fotos, virava despejo de 15 fotos + vídeo + ficha.
+  // Reclamação real do Marcos 08/08: "Perguntei sobre retoque vc me enviou as
+  // fotos ?????". Quem quer ver pede pra ver; quem pergunta "como está" quer texto.
+  // ⚠️ Sem \b em volta de trecho acentuado: o \b do JS é ASCII, então "está " e
+  // "é " NÃO produzem boundary e a regex falhava justamente em "Como está os
+  // pneus?" e "Motor é bom?". \b só onde as bordas são ASCII.
+  const perguntaSobreEstado =
+    /(como\s+(est[áa]|ta|t[áa])|est[áa]\s+(bom|ruim|ok|inteiro)|[ée]\s+bom|t[áa]\s+bom|tem\s+(muito|mto|algum|alguma)|\bprecisa\b|\bfunciona\b|\bbate\b|\bbarulho\b|\bvazamento\b|\bconsumo\b|\bquantos?\b|\bqual\b)/i
+      .test(mensagemLower);
+
   const clientePediuFoto =
     (temIntencaoFoto || mensagemSoFoto || gatilhosFoto.some((g) => mensagemLower.includes(g)) ||
       // Não ativar por confirmação vaga ("Ok/Sim") se há instrucao_pendente: o "Ok" pode
       // ser apenas um acuse de "entendi, vou aguardar" e não consentimento para mídia.
       (msgConfirmacao && (clientePediuFotoAntes || agenteMencionouFoto) && !lead?.instrucao_pendente && !confirmacaoVideo) || continuacaoFoto ||
       // Cliente pediu parte específica E agente mencionou foto recentemente → envia foto
-      (pedindoParteCarro && agenteMencionouFoto)) &&
+      // (a menos que ele esteja perguntando o ESTADO da peça, não pedindo pra ver)
+      (pedindoParteCarro && agenteMencionouFoto && !perguntaSobreEstado)) &&
     !exclusoesFoto.some((e) => mensagemLower.includes(e));
 
   let fotoEnviada = false;
@@ -2363,7 +2406,10 @@ Responda apenas com o JSON, sem markdown.`;
     // Com envio_material_completo (pedido Marcos Repasse): pediu foto = leva
     // TUDO de uma vez, sem conta-gotas — o cliente dele é lojista, quer o
     // material inteiro pra decidir na hora.
-    const MAX_FOTOS_POR_VEICULO = materialCompleto ? 15 : (pedindoTodasFotos ? 12 : (pedindoMaisFotos ? 6 : 4));
+    // Material completo = TODAS mesmo (teto de 30 só como sanidade). Com 15 fixo
+    // e um carro de 17 fotos, o agente mandava 15 e ainda dizia "tenho mais 2" —
+    // e na mensagem seguinte "foi tudo que temos". O Marcos cobrou a contradição.
+    const MAX_FOTOS_POR_VEICULO = materialCompleto ? 30 : (pedindoTodasFotos ? 12 : (pedindoMaisFotos ? 6 : 4));
 
     for (const v of veiculosParaFoto) {
       // Se pedindoFotosMultiplos (vários carros), envia só a capa de cada um.
@@ -2392,9 +2438,15 @@ Responda apenas com o JSON, sem markdown.`;
       }
 
       // Prioriza fotos NUNCA enviadas. Se já mandou todas, recomeça do início.
-      // No modo material completo não há priorização: "manda tudo" é tudo mesmo,
-      // na ordem original (capa primeiro).
+      // No modo material completo "manda tudo" é tudo mesmo, na ordem original —
+      // MAS se o lead já recebeu o pacote inteiro desse carro, não repete: era
+      // isso que fazia cada pergunta seguinte virar outro despejo de 15 fotos.
+      // Sem fotos novas, o Gemini responde em texto (que é o que ele queria).
       const fotosNaoEnviadas = todasFotosRaw.filter(f => !fotosJaEnviadas.has(f));
+      if (materialCompleto && fotosNaoEnviadas.length === 0 && fotosJaEnviadas.size > 0) {
+        console.log(`📷 [foto] ${v.marca} ${v.modelo}: pacote completo já enviado a esse lead — não repete.`);
+        continue;
+      }
       const poolFotos = materialCompleto
         ? todasFotosRaw
         : (fotosNaoEnviadas.length > 0 ? fotosNaoEnviadas : todasFotosRaw);
@@ -2419,7 +2471,7 @@ Responda apenas com o JSON, sem markdown.`;
       if (reenviando) {
         // Já mandou todas antes — sem caption pra evitar "tenho mais X" mentiroso
         captionUltima = undefined;
-      } else if (pedindoTodasFotos && restamFotos === 0) {
+      } else if ((pedindoTodasFotos || materialCompleto) && restamFotos === 0) {
         // Cliente pediu TODAS e enviamos tudo — caption simples, sem pergunta extra
         captionUltima = undefined;
       } else if (restamFotos > 0 && !pedindoTodasFotos) {
@@ -2543,13 +2595,33 @@ Responda apenas com o JSON, sem markdown.`;
   // deliberado e vale só pro tenant configurado.
   if (materialCompleto && fotoEnviada) {
     const vFicha = veiculoDaFoto ?? veiculoPrincipal;
-    if (vFicha) {
+    // A ficha saía junto de CADA disparo de mídia — o Marcos recebeu a mesma 3x
+    // na mesma conversa. Manda uma vez por carro, por lead.
+    let fichaJaEnviada = false;
+    if (vFicha && lead?.id) {
+      const { count } = await supabaseAdmin
+        .from("mensagens")
+        .select("*", { count: "exact", head: true })
+        .eq("lead_id", lead.id)
+        .eq("remetente", "agente")
+        .ilike("content", `*${nomeCarroLimpo(vFicha)}%`);
+      fichaJaEnviada = (count ?? 0) > 0;
+    }
+    if (vFicha && !fichaJaEnviada) {
       const f = vFicha as any;
       const anoFicha = f.ano && f.ano_modelo && f.ano !== f.ano_modelo
         ? `${f.ano}/${f.ano_modelo}`
         : (f.ano_modelo || f.ano || null);
+      // A versão só entra se ainda não estiver no nome — "Toro Volcano" + versão
+      // "Volcano 2.0 Diesel" saía como "Toro Volcano Volcano 2.0 Diesel".
+      const nomeBase = nomeCarroLimpo(vFicha);
+      const versaoNova = String(f.versao ?? "").trim();
+      const primeiraPalavraVersao = versaoNova.split(/\s+/)[0]?.toLowerCase() ?? "";
+      const versaoParaTitulo = versaoNova && !nomeBase.toLowerCase().includes(primeiraPalavraVersao)
+        ? ` ${versaoNova}`
+        : "";
       const linhas = [
-        `*${nomeCarroLimpo(vFicha)}${f.versao ? ` ${f.versao}` : ""}*`,
+        `*${nomeBase}${versaoParaTitulo}*`,
         anoFicha ? `Ano: ${anoFicha}` : null,
         f.quilometragem_estimada != null ? `Km: ${Number(f.quilometragem_estimada).toLocaleString("pt-BR")}` : null,
         f.cor ? `Cor: ${f.cor}` : null,
