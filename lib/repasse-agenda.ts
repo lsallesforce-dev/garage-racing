@@ -65,8 +65,23 @@ export function computarAgenda(carrosOrdenados: string[], base: Date, cfg: Agend
   return out;
 }
 
-/** A partir de quando o próximo envio pode sair, dado o último envio real. */
-export function baseDoProximoEnvio(ultimoEnvio: Date | null, intervaloMin: number, agora: Date): Date {
+/**
+ * A partir de quando o próximo envio pode sair.
+ *
+ * No modo esporádico (repasse_intervalo_variar) o gap NÃO é o intervalo
+ * configurado — ele já foi SORTEADO pelo cron e está em
+ * `config_garage.repasse_proximo_envio_em`. Usar o intervalo aqui faria o board
+ * desenhar uma fila cravada de hora em hora enquanto o envio real sai em outro
+ * horário — foi exatamente a queixa do Marcos ("voltou pro de hora em hora"):
+ * o cron variava, a TELA é que mentia. Com alvo sorteado válido, ele manda.
+ */
+export function baseDoProximoEnvio(
+  ultimoEnvio: Date | null,
+  intervaloMin: number,
+  agora: Date,
+  alvoSorteado?: Date | null,
+): Date {
+  if (alvoSorteado && alvoSorteado > agora) return alvoSorteado;
   if (!ultimoEnvio) return agora;
   const liberado = new Date(ultimoEnvio.getTime() + Math.max(1, intervaloMin) * 60_000);
   return liberado > agora ? liberado : agora;

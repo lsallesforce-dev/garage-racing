@@ -29,6 +29,7 @@ interface Cfg {
   repasse_janela_fim_sabado?: number;
   repasse_bomdia_ativo?: boolean;
   repasse_intervalo_variar?: boolean;
+  repasse_proximo_envio_em?: string | null;
   repasse_link_comunidade?: string;
   repasse_link_instagram?: string;
   repasse_bomdia_logo_url?: string | null;
@@ -74,7 +75,7 @@ export default function FluxoGrupo() {
     setLoading(true);
     const [{ data: cfgRows }, { data: veic }] = await Promise.all([
       supabase.from("config_garage")
-        .select("id, repasse_grupos, repasse_auto_ativo, repasse_intervalo_min, repasse_qtd_por_envio, repasse_janela_inicio, repasse_janela_fim, repasse_janela_fim_sabado, repasse_bomdia_ativo, repasse_intervalo_variar, repasse_link_comunidade, repasse_link_instagram, repasse_bomdia_logo_url, avisa_base_url, avisa_token")
+        .select("id, repasse_grupos, repasse_auto_ativo, repasse_intervalo_min, repasse_qtd_por_envio, repasse_janela_inicio, repasse_janela_fim, repasse_janela_fim_sabado, repasse_bomdia_ativo, repasse_intervalo_variar, repasse_proximo_envio_em, repasse_link_comunidade, repasse_link_instagram, repasse_bomdia_logo_url, avisa_base_url, avisa_token")
         .eq("user_id", effectiveUserId).order("created_at", { ascending: false }).limit(1),
       supabase.from("veiculos")
         .select("id, marca, modelo, ano_modelo, capa_marketing_url, fotos, repasse_enviado_em, repasse_pausado, repasse_ordem")
@@ -135,7 +136,13 @@ export default function FluxoGrupo() {
       const t = c.repasse_enviado_em ? Date.parse(c.repasse_enviado_em) : 0;
       return t > m ? t : m;
     }, 0);
-    const base = baseDoProximoEnvio(ultimo ? new Date(ultimo) : null, cfgAgenda.intervaloMin, agora);
+    // Modo esporádico: o 1º horário é o gap JÁ SORTEADO pelo cron (exato); do 2º
+    // em diante ninguém sabe — o sorteio só acontece na hora do envio. Então só
+    // o primeiro é cravado, o resto é estimativa em cima da média.
+    const alvo = config.repasse_intervalo_variar && config.repasse_proximo_envio_em
+      ? new Date(config.repasse_proximo_envio_em)
+      : null;
+    const base = baseDoProximoEnvio(ultimo ? new Date(ultimo) : null, cfgAgenda.intervaloMin, agora, alvo);
     return computarAgenda(ativos.map(c => c.id), base, cfgAgenda);
     // eslint-disable-next-line
   }, [ativos, carros, config]);
@@ -289,7 +296,11 @@ export default function FluxoGrupo() {
                   <div className="hidden sm:flex items-center gap-1.5 text-green-700 shrink-0">
                     <Clock size={13} />
                     <span className="text-[11px] font-black uppercase tracking-widest">
-                      {config.repasse_auto_ativo && temGrupo && t ? labelHorario(t, agora) : "—"}
+                      {config.repasse_auto_ativo && temGrupo && t
+                        ? (config.repasse_intervalo_variar && i > 0
+                            ? `~ ${labelHorario(t, agora)}`
+                            : labelHorario(t, agora))
+                        : "—"}
                     </span>
                   </div>
                   <button
