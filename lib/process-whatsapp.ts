@@ -15,6 +15,7 @@ import { sintetizarVoz, prepararTextoParaVoz } from "@/lib/tts";
 import { hybridVehicleSearch, findVehicleForMedia } from "@/lib/hybrid-search";
 import { urlVitrine } from "@/lib/repasse";
 import { logWebhookError } from "@/lib/error-log";
+import { lerAcoes, compararDecisoes, registrarShadow } from "@/lib/shadow-acoes";
 import { getCachedHistory, cacheHistory, invalidateHistory, appendHistory, circuitIsOpen, circuitRecordFailure, circuitRecordSuccess, acquireLeadLock, releaseLeadLock, setTrocaStandby, isTrocaStandby, clearTrocaStandby } from "@/lib/redis";
 import { Vehicle } from "@/types/vehicle";
 
@@ -586,8 +587,23 @@ Você DEVE retornar a resposta estritamente no formato JSON, usando a seguinte e
   "temperatura": "FRIO" | "MORNO" | "QUENTE",
   "resumo": "Intenção clara do cliente em uma frase curta",
   "nome_cliente_extraido": "Nome do cliente se revelado na mensagem atual (ou null caso não dito)",
-  "precisa_instrucao": "Descreva EXATAMENTE o que o cliente perguntou e você não tem como responder com certeza — ou null se tem a informação"
+  "precisa_instrucao": "Descreva EXATAMENTE o que o cliente perguntou e você não tem como responder com certeza — ou null se tem a informação",
+  "acoes": [ { "tipo": "enviar_fotos" | "enviar_video", "veiculo_id": "ID do contexto", "partes": ["interior"] } ]
 }
+
+REGRAS DO acoes (campo NOVO — leia com atenção):
+- É a lista do que O CLIENTE ESTÁ PEDINDO NESTE TURNO, em forma de ação.
+- ⚠️ Declare INDEPENDENTEMENTE do que o sistema já tenha executado. Se o cliente
+  pediu foto nesta mensagem, emita {"tipo":"enviar_fotos"} — mesmo que o aviso
+  acima diga que a mídia já saiu. Este campo descreve o PEDIDO, não o resultado.
+- "partes" é opcional e só pra foto: quando o cliente pede um pedaço específico
+  ("manda o interior", "e o motor?", "foto do painel"). Sem pedido específico, omita.
+- "veiculo_id" TEM que ser um ID que aparece no contexto acima. Nunca invente.
+  Se o cliente não deixou claro de qual carro fala, use null.
+- Array VAZIO quando o cliente não está pedindo mídia nenhuma. É o caso comum —
+  pergunta de preço, de estado do carro ou saudação NÃO são pedido de mídia.
+- Pedir mídia é o cliente querer VER o carro. "Quero ver esse carro" no sentido
+  de ir até a loja é VISITA, não foto — nesse caso o array vai vazio.
 
 REGRAS DO precisa_instrucao:
 - Use quando o cliente pedir um dado que NÃO está na ficha do veículo (ex: laudo de vistoria, cor dos bancos, número de donos, histórico de revisões, detalhes mecânicos específicos)
@@ -3012,6 +3028,33 @@ Responda apenas com o JSON, sem markdown.`;
           temperatura = parsed.temperatura;
         }
         resumo = parsed.resumo || "";
+
+        // ── SHADOW MODE (Fase 2) — mede, NÃO executa ─────────────────────────
+        // O modelo passou a declarar em `acoes` o que o cliente está pedindo.
+        // Aqui só comparamos com o que as 18 regras de regex do passo 11
+        // decidiram, e gravamos a divergência. O comportamento em produção
+        // continua 100% do regex — a virada acontece depois, com dado medido.
+        try {
+          const idsContexto = new Set<string>([
+            ...topVeiculos.map((v) => v.id),
+            ...(veiculoPrincipal ? [veiculoPrincipal.id] : []),
+          ]);
+          const decisaoModelo = lerAcoes((parsed as any).acoes, idsContexto);
+          const decisaoRegex = {
+            foto: clientePediuFoto,
+            video: clientePediuVideo,
+            veiculoId: veiculoDaFoto?.id ?? veiculoPrincipal?.id ?? null,
+          };
+          const div = compararDecisoes(decisaoRegex, decisaoModelo, userMessage);
+          if (div.houve) {
+            console.log(
+              `🕶️ [shadow] divergência — regex{foto:${decisaoRegex.foto},video:${decisaoRegex.video}} × modelo{foto:${decisaoModelo.foto},video:${decisaoModelo.video}} | ${div.detalhe}`,
+            );
+            await registrarShadow(tenantUserId, lead?.id ?? null, div);
+          }
+        } catch (e) {
+          console.warn("⚠️ [shadow] comparação falhou (não afeta o cliente):", String(e).slice(0, 120));
+        }
 
         // Atualiza veiculo_id do lead com base no foco identificado pelo Gemini
         // Valida o UUID contra o banco antes de aplicar (evita alucinações e cross-tenant)
