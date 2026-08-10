@@ -700,22 +700,34 @@ function formatVehicleCard(v: Vehicle): string {
 //
 // Custo: ~60 chars por carro. Estoque de 100 carros = ~6KB. Cabe folgado no prompt.
 async function buildInventoryIndex(tenantUserId: string): Promise<string> {
-  const { data } = await supabaseAdmin
+  // ⚠️ `preco_sugerido`, NUNCA `preco` — essa coluna não existe. Até 10/08 o
+  // select pedia `preco` e o Postgres devolvia 42703; como o `error` era
+  // descartado, `data` vinha null e a função retornava "" em TODA mensagem.
+  // Resultado: este índice — a camada 1 anti-mentira descrita no CLAUDE.md —
+  // nunca chegou ao prompt uma vez sequer, e o agente seguia negando carro que
+  // existe. Por isso o `error` agora é lido e logado alto (ver abaixo).
+  const { data, error } = await supabaseAdmin
     .from("veiculos")
-    .select("id, marca, modelo, ano, ano_modelo, cor, preco")
+    .select("id, marca, modelo, ano, ano_modelo, cor, preco_sugerido")
     .eq("status_venda", "DISPONIVEL")
     .eq("user_id", tenantUserId)
     .order("marca", { ascending: true })
     .order("modelo", { ascending: true });
 
+  if (error) {
+    console.error(
+      `🚨 [buildInventoryIndex] FALHOU para tenant ${tenantUserId} — o agente vai responder SEM o índice do estoque e pode negar carro que existe: ${error.message}`,
+    );
+    return "";
+  }
   if (!data || data.length === 0) return "";
 
-  const lines = (data as Array<{ id: string; marca: string | null; modelo: string | null; ano: number | null; ano_modelo: number | null; cor: string | null; preco: number | null }>).map((v) => {
+  const lines = (data as Array<{ id: string; marca: string | null; modelo: string | null; ano: number | null; ano_modelo: number | null; cor: string | null; preco_sugerido: number | null }>).map((v) => {
     const ano = v.ano_modelo || v.ano || "";
     const anoStr = ano ? ` ${ano}` : "";
     const corStr = v.cor ? ` ${v.cor}` : "";
-    const precoStr = v.preco
-      ? ` • R$ ${Number(v.preco).toLocaleString("pt-BR")}`
+    const precoStr = v.preco_sugerido
+      ? ` • R$ ${Number(v.preco_sugerido).toLocaleString("pt-BR")}`
       : "";
     return `- ${v.marca ?? ""} ${v.modelo ?? ""}${anoStr}${corStr}${precoStr} [ID:${v.id}]`;
   });
