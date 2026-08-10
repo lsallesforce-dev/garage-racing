@@ -481,9 +481,9 @@ export async function sendAvisaPreview(
   return sendWithRetry(`${c.baseUrl}/actions/sendPreview`, payload, c.token);
 }
 
-export async function sendAvisaVideo(phone: string, videoUrl: string, caption?: string, creds?: Partial<AvisaCreds>) {
+export async function sendAvisaVideo(phone: string, videoUrl: string, caption?: string, creds?: Partial<AvisaCreds>, errorRef?: { message?: string }) {
   const c = resolveCreds(creds);
-  if (!c) { console.warn("Avisa credentials missing"); return; }
+  if (!c) { if (errorRef) errorRef.message = "credenciais Avisa ausentes"; console.warn("Avisa credentials missing"); return; }
 
   console.log(`📹 Avisa sendVideo → ${formatPhone(phone)}`);
 
@@ -495,5 +495,5 @@ export async function sendAvisaVideo(phone: string, videoUrl: string, caption?: 
   };
   if (caption) payload.message = caption;
 
-  return sendWithRetry(`${c.baseUrl}/actions/sendMedia`, payload, c.token);
+  return sendWithRetry(`${c.baseUrl}/actions/sendMedia`, payload, c.token, 2, errorRef);
 }

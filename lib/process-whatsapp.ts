@@ -1005,11 +1005,35 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   // `return;` quando falta credencial, sem lançar. É a via PRINCIPAL do produto:
   // sem esta normalização o agente ficava mudo pro cliente e o painel marcava
   // a mensagem como entregue.
+  // Instrumentação ÚNICA de falha de envio. Fica aqui dentro dos wrappers, e
+  // não em cada call site, por decisão explícita: o histórico deste arquivo
+  // mostra que fix aplicado por instância sempre deixa um irmão pra trás (o
+  // sendVideo ganhou boolean e o sendImage não; o 404 do embedding virou error
+  // e o 500 ficou warn). Qualquer envio novo que passe por estes wrappers já
+  // nasce instrumentado.
+  //
+  // O `motivo` vem do errorRef que lib/avisa.ts já preenchia ("credenciais
+  // Avisa ausentes", "timeout de gateway", "HTTP 463"...) e que até agora só a
+  // Transmissão consumia — no pipeline do agente ele era descartado.
+  const registrarFalhaEnvio = async (tipo: string, to: string, motivo?: string) => {
+    const detalhe = motivo || (useAvisa ? "Avisa não confirmou o envio" : "Meta não confirmou o envio");
+    console.error(`🚨 [envio/${tipo}] NÃO entregue para ${to} (tenant ${tenantUserId}): ${detalhe}`);
+    await logWebhookError({
+      tenantUserId,
+      phone: to,
+      etapa: `envio_${tipo}`,
+      erro: detalhe,
+    }).catch(() => {});
+  };
+
   const sendText = async (to: string, text: string): Promise<boolean> => {
+    const errorRef: { message?: string } = {};
     const r = useAvisa
-      ? await sendAvisaMessage(to, text, avisaCreds)
+      ? await sendAvisaMessage(to, text, avisaCreds, undefined, errorRef)
       : await sendMetaMessage(to, text, metaCreds);
-    return r != null && r !== false;
+    const ok = r != null && r !== false;
+    if (!ok) await registrarFalhaEnvio("texto", to, errorRef.message);
+    return ok;
   };
 
   // Número do próprio agente. Quando o agente roda no celular PESSOAL do dono
@@ -1059,10 +1083,13 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   // (era o mesmo bug do vídeo, corrigido em 10/08 dez linhas abaixo — a foto
   // tinha ficado de fora.)
   const sendImage = async (to: string, url: string, caption?: string): Promise<boolean> => {
+    const errorRef: { message?: string } = {};
     const r = useAvisa
-      ? await sendAvisaImage(to, url, caption, avisaCreds)
+      ? await sendAvisaImage(to, url, caption, avisaCreds, errorRef)
       : await sendMetaImage(to, url, caption, metaCreds);
-    return r != null && r !== false;
+    const ok = r != null && r !== false;
+    if (!ok) await registrarFalhaEnvio("foto", to, errorRef.message);
+    return ok;
   };
 
   // Retorna BOOLEAN de entrega. sendWithRetry (lib/avisa.ts) devolve undefined
@@ -1070,10 +1097,13 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   // "enviado" e gravava a mídia em `mensagens`: o painel mostrava um vídeo que
   // o WhatsApp nunca recebeu (relato do Marcos 08/08). Mesma regra do sendAudio.
   const sendVideo = async (to: string, url: string, caption?: string): Promise<boolean> => {
+    const errorRef: { message?: string } = {};
     const r = useAvisa
-      ? await sendAvisaVideo(to, url, caption, avisaCreds)
+      ? await sendAvisaVideo(to, url, caption, avisaCreds, errorRef)
       : await sendMetaVideo(to, url, caption, metaCreds);
-    return r != null && r !== false;
+    const ok = r != null && r !== false;
+    if (!ok) await registrarFalhaEnvio("video", to, errorRef.message);
+    return ok;
   };
 
   // Nota de voz. Os dois canais retornam boolean (false = não entregou) para o
@@ -2930,13 +2960,21 @@ Responda apenas com o JSON, sem markdown.`;
           if (fallbackError?.status === 429) {
             console.error("❌ Todos os modelos Gemini indisponíveis (spending cap) — handoff humano");
             geminiIndisponivel = true;
+            // Instrumentado: 429 nos DOIS modelos = agente cego pro tenant
+            // inteiro. Até agora isso só existia no log da Vercel, que rotaciona.
+            await logWebhookError({
+              tenantUserId, phone, etapa: "gemini_indisponivel",
+              erro: "429 no gemini-2.5-flash E no fallback 2.0 — provável cota/billing",
+            }).catch(() => {});
           } else {
             await circuitRecordFailure("gemini");
+            await logWebhookError({ tenantUserId, phone, etapa: "gemini", erro: fallbackError }).catch(() => {});
             throw fallbackError;
           }
         }
       } else {
         await circuitRecordFailure("gemini");
+        await logWebhookError({ tenantUserId, phone, etapa: "gemini", erro: primaryError }).catch(() => {});
         throw primaryError;
       }
     }
@@ -3672,13 +3710,9 @@ Retorne JSON estrito:
     // auto-recuperação existe desde sempre e nunca rodou uma vez, porque o
     // update abaixo marcava `true` incondicionalmente — em 47.346 mensagens o
     // banco não tem UMA com delivered=false.
-    console.error(`🚨 [${phone}] Resposta do agente NÃO entregue (tenant ${tenantUserId}) — fica pro cron de reenvio.`);
-    await logWebhookError({
-      tenantUserId,
-      phone,
-      etapa: "envio_resposta",
-      erro: `Resposta do agente não confirmada pelo canal ${useAvisa ? "Avisa" : "Meta"}`,
-    }).catch(() => {});
+    // A falha em si já foi logada e gravada em `erros_webhook` pelo próprio
+    // sendText (registrarFalhaEnvio). Aqui só o encaminhamento pro resgate.
+    console.warn(`↩️ [${phone}] Resposta fica delivered=false — o cron reprocessar-pendentes reenvia entre 10min e 2h.`);
   }
 
   if (mensagemAgenteId) {

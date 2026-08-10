@@ -10,7 +10,11 @@
     },
     {
       "path": "/api/cron/reprocessar-pendentes",
-      "schedule": "0 4 * * *"
+      "schedule": "*/15 10-23 * * *"
+    },
+    {
+      "path": "/api/cron/alertas-operacionais",
+      "schedule": "0 11-23 * * *"
     },
     {
       "path": "/api/cron/meta-sync",

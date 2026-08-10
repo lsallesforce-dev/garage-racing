@@ -45,6 +45,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // ⚠️ A JANELA E O AGENDAMENTO TÊM QUE CASAR. Este cron pesca o que falhou
+  // entre 10min e 2h atrás, mas rodava `0 4 * * *` — uma vez por dia, 4h UTC
+  // (1h BRT). Só podia pescar falhas entre 23h e 00h50 BRT, quando não há
+  // tráfego: o resgate nunca aconteceu na prática. Agora roda a cada 15min na
+  // janela comercial (`*/15 10-23 * * *` UTC = 7h–20h BRT), que é menor que as
+  // 2h da janela — nenhuma falha escapa entre duas execuções.
   const agora = new Date();
   const limite10min = new Date(agora.getTime() - 10 * 60 * 1000).toISOString();
   const limite2h    = new Date(agora.getTime() - 2 * 60 * 60 * 1000).toISOString();
