@@ -20,6 +20,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { processWhatsAppMessage } from "@/lib/process-whatsapp";
 import { sendAvisaMessage } from "@/lib/avisa";
 import { sendMetaMessage } from "@/lib/meta";
+import { CONFIG_GARAGE_SELECT } from "@/lib/config-garage";
 
 export const maxDuration = 300;
 
@@ -29,14 +30,7 @@ function isAuthorized(req: NextRequest): boolean {
   return req.headers.get("authorization") === `Bearer ${secret}`;
 }
 
-const FIELDS_GARAGE = [
-  "user_id", "nome_empresa", "nome_fantasia", "nome_agente",
-  "endereco", "endereco_complemento", "whatsapp", "whatsapp_agente", "whatsapp_financeiro", "whatsapp_posvenda", "vitrine_slug", "dominio_custom",
-  "avisa_base_url", "avisa_token", "meta_phone_id", "meta_access_token",
-  "tom_venda", "instrucoes_adicionais", "oferta_especial", "horario_funcionamento", "modo_repasse",
-  "plano_ativo", "trial_ends_at", "plano_vence_em", "ia_modo_lead_only", "envio_material_completo",
-  "voz_habilitada", "voz_politica", "voz_id", "voz_max_chars",
-].join(", ");
+const FIELDS_GARAGE = CONFIG_GARAGE_SELECT;
 
 function assinaturaValida(cfg: any): boolean {
   const agora = new Date();

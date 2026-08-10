@@ -18,6 +18,7 @@ import { isDuplicateMessage, debounceClientImages, debounceFirstContact, isAgent
 import { logWebhookError } from "@/lib/error-log";
 import { resolveAvisaLid, sendAvisaMessage } from "@/lib/avisa";
 import { RE_CODIGO_ANUNCIO } from "@/lib/repasse";
+import { CONFIG_GARAGE_SELECT } from "@/lib/config-garage";
 
 // Vercel Pro: 300s | Hobby: 60s
 // O after() usa o mesmo budget de tempo — resposta vai em ~50ms, sobra tudo para a IA
@@ -373,7 +374,7 @@ export async function POST(req: NextRequest) {
       bearerToken ||
       null;
 
-    const FIELDS = "user_id, nome_empresa, nome_fantasia, nome_agente, endereco, endereco_complemento, cidade, whatsapp, whatsapp_agente, whatsapp_financeiro, whatsapp_posvenda, telefone_loja, vitrine_slug, dominio_custom, webhook_token, avisa_base_url, avisa_token, tom_venda, instrucoes_adicionais, oferta_especial, horario_funcionamento, modo_repasse, plano_ativo, trial_ends_at, plano_vence_em, ia_so_responde_anuncio, agente_pausado, ia_modo_lead_only, envio_material_completo, voz_habilitada, voz_politica, voz_id, voz_max_chars";
+    const FIELDS = CONFIG_GARAGE_SELECT;
     let tenantUserId: string | null = null;
     let garageConfig: any = null;
 
