@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireVehicleOwner } from "@/lib/api-auth";
-import { gerarTextoRepasse, resolverFipe } from "@/lib/repasse";
+import { gerarTextoRepasse, resolverFipe, garantirCodigo, garantirDisclaimers, removerRodapes } from "@/lib/repasse";
 
 export const maxDuration = 60;
 
@@ -30,7 +30,13 @@ export async function POST(req: NextRequest) {
   // (botão ↺) ignora e regenera do zero.
   if (!forcar && tipo === "repasse" && typeof carro.repasse_texto === "string" && carro.repasse_texto.trim()) {
     const capaSalva = carro.capa_marketing_url || carro.fotos?.[0] || null;
-    return NextResponse.json({ texto: carro.repasse_texto, capaUrl: capaSalva, salvo: true });
+    // Passa pelo MESMO tratamento do envio (removerRodapes + código + disclaimers).
+    // Sem isso o preview mostra uma coisa e o grupo recebe outra — foi o que
+    // aconteceu com o código do anúncio, que só aparecia no envio.
+    const tratado = garantirDisclaimers(
+      garantirCodigo(removerRodapes(carro.repasse_texto, { cta: false, vitrine: false }), carro.id),
+    );
+    return NextResponse.json({ texto: tratado, capaUrl: capaSalva, salvo: true });
   }
 
   // config_garage pode ter múltiplas linhas por user_id — nunca usar .single()/.maybeSingle()
@@ -55,7 +61,7 @@ export async function POST(req: NextRequest) {
   // derivada da FIPE (+1%) dentro do gerarTextoRepasse — não busca mais na web.
   const fipe = await resolverFipe(carro, versaoRica);
 
-  const texto = gerarTextoRepasse(carro, fipe, null, tipo, cfg?.cidade);
+  const texto = garantirCodigo(gerarTextoRepasse(carro, fipe, null, tipo, cfg?.cidade), carro.id);
   const capaUrl = carro.capa_marketing_url || carro.fotos?.[0] || null;
 
   // botPhone segue null no retorno: o anúncio não tem mais CTA (07/08). Mantido
