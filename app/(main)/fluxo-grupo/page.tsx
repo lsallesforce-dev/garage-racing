@@ -412,7 +412,8 @@ export default function FluxoGrupo() {
               <div className="flex flex-col gap-1.5 flex-1">
                 <label className={labelCls}>{config.repasse_intervalo_variar ? "Intervalo médio" : "Intervalo entre anúncios"}</label>
                 <select value={config.repasse_intervalo_min ?? 120} onChange={e => setConfig(c => ({ ...c, repasse_intervalo_min: Number(e.target.value) }))} className={inputCls}>
-                  <option value={10}>10 minutos</option><option value={15}>15 minutos</option><option value={30}>30 minutos</option>
+                  <option value={10}>10 minutos</option><option value={15}>15 minutos</option><option value={20}>20 minutos</option>
+                  <option value={30}>30 minutos</option><option value={45}>45 minutos</option>
                   <option value={60}>1 hora</option><option value={120}>2 horas</option><option value={180}>3 horas</option><option value={240}>4 horas</option>
                 </select>
               </div>
