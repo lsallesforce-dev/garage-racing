@@ -1728,6 +1728,55 @@ Responda apenas com o JSON, sem markdown.`;
     }
   }
 
+  // ── 6a2. Código do anúncio — identidade, não semelhança ─────────────────────
+  // O cliente CITOU um anúncio que carrega "🔖 Cód.: XXXXXX" (o webhook injeta
+  // como "#XXXXXX" na frente do descritor). Isso aponta pra UM carro, então
+  // manda em tudo — inclusive sobrescreve um veiculo_id já vinculado: citar o
+  // anúncio é o gesto mais explícito que existe de "quero ESTE".
+  //
+  // Existia porque marca+modelo+ano não bastam: o Marcos tem dois "ONIX SEDAN
+  // Plus LTZ 1.0 12V TB Flex Aut." 2025 (um branco, um preto) com `modelo`
+  // idêntico — o agente mandou o branco pra quem perguntou do preto.
+  //
+  // Prefixo do UUID é único no tenant, mas a query exige match ÚNICO: se algum
+  // dia colidir, cai no caminho antigo em vez de apontar pro carro errado.
+  {
+    const codMatch = userMessage.match(/\[(?:Contexto do link|Lead veio do anúncio):\s*"#([0-9A-Fa-f]{6})\b/);
+    if (codMatch) {
+      const cod = codMatch[1].toLowerCase();
+      // Filtra em JS, não no SQL: `id` é uuid e o Postgres não tem ILIKE pra
+      // uuid ("operator does not exist: uuid ~~* unknown"). O erro voltaria em
+      // silêncio e o código nunca resolveria nada. São ~100 ids por tenant.
+      const { data: idsTenant } = await supabaseAdmin
+        .from("veiculos")
+        .select("id")
+        .eq("user_id", tenantUserId)
+        .eq("status_venda", "DISPONIVEL");
+
+      const casam = (idsTenant ?? []).filter((r: any) =>
+        String(r.id).replace(/-/g, "").toLowerCase().startsWith(cod),
+      );
+
+      const { data: porCodigo } = casam.length === 1
+        ? await supabaseAdmin.from("veiculos").select("*").eq("id", casam[0].id).limit(1)
+        : { data: null as any[] | null };
+
+      if (porCodigo?.length === 1) {
+        const v = porCodigo[0] as Vehicle;
+        if (veiculoPrincipal?.id !== v.id) {
+          console.log(`🔖 [Código ${cod.toUpperCase()}] veículo resolvido: ${v.marca} ${v.modelo} ${(v as any).cor ?? ""} (${v.id})${veiculoPrincipal ? ` — sobrescreve ${veiculoPrincipal.id}` : ""}`);
+        }
+        veiculoPrincipal = v;
+        if (lead && (lead as any).veiculo_id !== v.id) {
+          await supabaseAdmin.from("leads").update({ veiculo_id: v.id }).eq("id", lead.id);
+          (lead as any).veiculo_id = v.id;
+        }
+      } else {
+        console.warn(`⚠️ [Código ${cod.toUpperCase()}] ${casam.length} carros casaram — ignorando o código e caindo na busca por texto`);
+      }
+    }
+  }
+
   // ── 6b. Resolução via contexto do link (CTWA sem ad_id em meta_campanhas) ────
   // Quando o lead não tem veículo vinculado mas a mensagem tem [Contexto do link: "..."],
   // extrai o NOME DO CARRO (título do anúncio) e busca no estoque.

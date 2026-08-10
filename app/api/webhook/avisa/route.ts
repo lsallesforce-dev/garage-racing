@@ -17,6 +17,7 @@ import { processWhatsAppMessage } from "@/lib/process-whatsapp";
 import { isDuplicateMessage, debounceClientImages, debounceFirstContact, isAgentEcho, isAgentAudioEcho } from "@/lib/redis";
 import { logWebhookError } from "@/lib/error-log";
 import { resolveAvisaLid, sendAvisaMessage } from "@/lib/avisa";
+import { RE_CODIGO_ANUNCIO } from "@/lib/repasse";
 
 // Vercel Pro: 300s | Hobby: 60s
 // O after() usa o mesmo budget de tempo — resposta vai em ~50ms, sobra tudo para a IA
@@ -51,7 +52,12 @@ function descritorDoAnuncio(texto: string): string | null {
   const carro = linhaCarro.replace(/^\s*🚘\s*/, "").trim();
   if (!carro) return null;
   const ano = linhas.find((l) => /^\s*🗓/.test(l))?.match(/(\d{4})/)?.[1] ?? "";
-  return [carro, ano].filter(Boolean).join(" ").slice(0, 120);
+  // Código do anúncio (🔖 Cód.: XXXXXX) vai NA FRENTE do descritor: é o único
+  // sinal que distingue dois carros com marca/modelo/ano idênticos. O passo 6a
+  // do pipeline resolve por ele antes de tentar casar texto.
+  const cod = texto.match(RE_CODIGO_ANUNCIO)?.[1];
+  const desc = [carro, ano].filter(Boolean).join(" ").slice(0, 120);
+  return cod ? `#${cod.toUpperCase()} ${desc}` : desc;
 }
 
 // ─── Extração de Campos do Payload ───────────────────────────────────────────

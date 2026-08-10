@@ -138,6 +138,46 @@ const DISCLAIMER_MODALIDADE =
 const DISCLAIMER_GARANTIA =
   "🚨 Lembrando que, Veículo de Repasse não tem Garantia !";
 
+// ─── Código do anúncio ────────────────────────────────────────────────────────
+//
+// Dois carros podem ser IMPOSSÍVEIS de distinguir pelo texto do anúncio: o
+// Marcos tem dois "ONIX SEDAN Plus LTZ 1.0 12V TB Flex Aut." 2025, um branco e
+// um preto, com `modelo` byte a byte idêntico. Quando o cliente cita o anúncio
+// no particular, o descritor extraído (MARCA MODELO ANO) casa com os dois e o
+// agente escolhia o primeiro — mandou o branco pra quem perguntou do preto.
+//
+// O código resolve por identidade em vez de semelhança: sai no anúncio, volta
+// na citação e aponta pra UM veículo. Derivado do próprio UUID — sem coluna
+// nova, sem sequência a manter, estável pra sempre. 6 hex = 16,7M combinações;
+// conferido: zero colisão nos 101 carros da base. Mesmo assim a leitura exige
+// match ÚNICO no tenant, então colisão degrada pro comportamento antigo em vez
+// de apontar pro carro errado.
+export function codigoVeiculo(id: string): string {
+  return id.replace(/-/g, "").slice(0, 6).toUpperCase();
+}
+
+/** Casa o código no texto do anúncio (e na citação que volta do WhatsApp). */
+export const RE_CODIGO_ANUNCIO = /🔖\s*C[óo]d\.?:?\s*([0-9A-Fa-f]{6})\b/;
+
+/**
+ * Injeta "🔖 Cód.: XXXXXX" logo abaixo da linha do veículo (🚘) — alto na
+ * mensagem de propósito: se o WhatsApp truncar a legenda citada, o código não
+ * pode ser a primeira coisa a cair. Sem linha 🚘 (texto congelado antigo com
+ * formato diferente), vai pro fim. Idempotente.
+ */
+export function garantirCodigo(texto: string, veiculoId: string): string {
+  if (RE_CODIGO_ANUNCIO.test(texto)) return texto;
+  const linha = `🔖 Cód.: ${codigoVeiculo(veiculoId)}`;
+  const linhas = texto.split("\n");
+  const iCarro = linhas.findIndex((l) => /^\s*🚘/.test(l));
+  if (iCarro === -1) return `${texto.trimEnd()}\n\n${linha}`;
+  // Insere com linha em branco dos dois lados e normaliza no fim — assim não
+  // importa se o anúncio já tinha ou não uma linha em branco depois do 🚘
+  // (mesma normalização que removerRodapes faz).
+  linhas.splice(iCarro + 1, 0, "", linha, "");
+  return linhas.join("\n").replace(/\n{3,}/g, "\n\n");
+}
+
 export function garantirDisclaimers(texto: string): string {
   let out = texto.trimEnd();
   // Casa pelo miolo da frase: o dono pode ter mexido no emoji ou no espaçamento.
@@ -391,7 +431,8 @@ export async function gerarRepasseCompleto(
   if (tipo === "repasse" && typeof carro.repasse_texto === "string" && carro.repasse_texto.trim()) {
     const capaUrl: string | null = carro.capa_marketing_url || carro.fotos?.[0] || null;
     const limpo = removerRodapes(carro.repasse_texto, { cta: false, vitrine: false });
-    return { texto: tipo === "repasse" ? garantirDisclaimers(limpo) : limpo, capaUrl };
+    const comCodigo = garantirCodigo(limpo, carro.id);
+    return { texto: tipo === "repasse" ? garantirDisclaimers(comCodigo) : comCodigo, capaUrl };
   }
 
   // Versão rica: versao do banco, ou combinação de motor + combustivel + cambio
@@ -408,7 +449,7 @@ export async function gerarRepasseCompleto(
   const cidadeUf = cfg?.cidade
     ? [String(cfg.cidade).trim(), String(cfg.estado ?? "").trim()].filter(Boolean).join("-")
     : null;
-  const texto = gerarTextoRepasse(carro, fipe, null, tipo, cidadeUf);
+  const texto = garantirCodigo(gerarTextoRepasse(carro, fipe, null, tipo, cidadeUf), carro.id);
 
   // Foto na proporção ORIGINAL (sem normalizar pra quadrado/4:5). O cron envia a
   // foto como imagem SEPARADA, antes do texto — o WhatsApp mostra a foto inteira e
