@@ -1043,10 +1043,19 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
     return sendAlert(gerenteTo, `${body}\n\n🔗 ${waLink}`).catch(() => {});
   };
 
-  const sendImage = (to: string, url: string, caption?: string) =>
-    useAvisa
-      ? sendAvisaImage(to, url, caption, avisaCreds)
-      : sendMetaImage(to, url, caption, metaCreds);
+  // Retorna BOOLEAN de entrega, mesma regra do sendVideo/sendAudio. Os dois
+  // canais falham CALADOS: sendAvisaImage devolve o undefined do sendWithRetry
+  // e sendMetaImage faz `return;` quando não há credencial — nenhum dos dois
+  // lança. Sem normalizar, o chamador marcava `fotoEnviada = true` e gravava a
+  // foto em `mensagens`: o painel mostrava 15 fotos que o cliente não recebeu.
+  // (era o mesmo bug do vídeo, corrigido em 10/08 dez linhas abaixo — a foto
+  // tinha ficado de fora.)
+  const sendImage = async (to: string, url: string, caption?: string): Promise<boolean> => {
+    const r = useAvisa
+      ? await sendAvisaImage(to, url, caption, avisaCreds)
+      : await sendMetaImage(to, url, caption, metaCreds);
+    return r != null && r !== false;
+  };
 
   // Retorna BOOLEAN de entrega. sendWithRetry (lib/avisa.ts) devolve undefined
   // quando falha — NUNCA lança. Sem normalizar isso aqui, o chamador marcava
@@ -2631,7 +2640,16 @@ Responda apenas com o JSON, sem markdown.`;
         const isUltima = i === fotosParaEnviar.length - 1;
         const caption = isUltima ? captionUltima : undefined;
         try {
-          await sendImage(phone, fotosParaEnviar[i], caption);
+          const entregue = await sendImage(phone, fotosParaEnviar[i], caption);
+          if (!entregue) {
+            // Não grava em `mensagens`: foto que não saiu não pode aparecer no
+            // painel como enviada. Aborta o resto do álbum — se a 1ª não foi,
+            // as outras 14 também não vão, e cada tentativa é uma chamada.
+            console.error(
+              `🚨 [foto] Envio NÃO confirmado (${i + 1}/${fotosParaEnviar.length}) de ${v.marca} ${v.modelo} para ${phone} — abortando o álbum`,
+            );
+            break;
+          }
           fotoEnviada = true;
           // Registra a foto no histórico do chat para exibição no painel
           if (lead) {
@@ -3249,7 +3267,16 @@ Responda apenas com o JSON, sem markdown.`;
             const carUrl = vitrineUrl ? `${vitrineUrl}/${veiculoSeguranca.id}` : null;
             const caption = (i === fotos.length - 1 && carUrl) ? `Ver mais: ${carUrl}` : undefined;
             try {
-              await sendImage(phone, fotos[i], caption);
+              // Checar o retorno aqui é o que mais importa: esta é a rede de
+              // segurança contra "o Gemini disse que mandou e não mandou". Sem
+              // isso ela marcava fotoEnviada=true e gravava em `mensagens` —
+              // produzindo exatamente a mentira que existe pra impedir.
+              const entregue = await sendImage(phone, fotos[i], caption);
+              if (!entregue) {
+                console.error(`🚨 [safety-net] Envio NÃO confirmado da foto ${i + 1}/${fotos.length} — abortando`);
+                break;
+              }
+              fotoEnviada = true;
               if (lead) {
                 await supabaseAdmin.from("mensagens").insert({
                   lead_id: lead.id,
@@ -3263,7 +3290,17 @@ Responda apenas com o JSON, sem markdown.`;
               console.warn(`⚠️ [safety-net] Falha ao enviar foto:`, e);
             }
           }
-          fotoEnviada = true;
+          if (!fotoEnviada) {
+            // Nem a rede de segurança conseguiu entregar — não deixa o texto
+            // do Gemini afirmando envio.
+            aiResponse = `Tive um problema pra te mandar as fotos agora. Já vou resolver e te envio.`;
+            if (gerentePhone) {
+              await sendAlert(
+                gerentePhone,
+                `🚨 FOTO NÃO ENTREGUE — ${veiculoSeguranca.marca} ${veiculoSeguranca.modelo} para ${phone}. O cliente pediu e o envio falhou.`,
+              ).catch(() => {});
+            }
+          }
         } else {
           // Sem fotos cadastradas — corrige o aiResponse para não mentir
           aiResponse = `Vou confirmar essas fotos com o pessoal do pátio. Qualquer dúvida já me chama aqui!`;
@@ -3281,16 +3318,23 @@ Responda apenas com o JSON, sem markdown.`;
           try {
             const videoUrl = await ensureCompressedVideo(videoUrlRaw, veiculoSeguranca.id);
             if (videoUrl) {
-              await sendVideo(phone, videoUrl, undefined);
-              videoEnviado = true;
-              if (lead) {
-                await supabaseAdmin.from("mensagens").insert({
-                  lead_id: lead.id,
-                  content: `🎥 ${nomeCarroLimpo(veiculoSeguranca)}`,
-                  remetente: "agente",
-                  media_url: videoUrl,
-                  media_tipo: "video",
-                }).then(() => {}, () => {});
+              // sendVideo já devolve boolean desde 10/08, mas aqui o retorno
+              // vinha sendo descartado — a rede de segurança gravava vídeo não
+              // entregue no painel, o mesmo bug que ela existe pra evitar.
+              const entregue = await sendVideo(phone, videoUrl, undefined);
+              if (entregue) {
+                videoEnviado = true;
+                if (lead) {
+                  await supabaseAdmin.from("mensagens").insert({
+                    lead_id: lead.id,
+                    content: `🎥 ${nomeCarroLimpo(veiculoSeguranca)}`,
+                    remetente: "agente",
+                    media_url: videoUrl,
+                    media_tipo: "video",
+                  }).then(() => {}, () => {});
+                }
+              } else {
+                console.error(`🚨 [safety-net] Vídeo NÃO entregue de ${veiculoSeguranca.marca} ${veiculoSeguranca.modelo} para ${phone}`);
               }
             }
           } catch (e) {
