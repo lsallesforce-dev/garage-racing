@@ -110,7 +110,12 @@ export async function GET(req: NextRequest) {
     // Quando o agente roda no celular pessoal do dono, gerente == agente e o
     // alerta viraria auto-envio (mesma regra do sendAlert no pipeline).
     const agente = String(cfg.whatsapp_agente ?? "").replace(/\D/g, "");
-    const podeAvisar = !!gerente && gerente !== agente;
+    // Opt-in explícito pro WhatsApp. A gravação em `alertas_operacionais`
+    // (painel) vale pra TODOS — é interna. O que fica atrás do flag é a
+    // mensagem que chega no celular do lojista: voltada pra fora e sem desfazer.
+    // Estrear isso nos 3 tenants de uma vez contraria a ordem de exposição do
+    // plano (Marcos → APROVE → Carmatti; nunca estrear no Carmatti, 40k msgs).
+    const podeAvisar = !!gerente && gerente !== agente && cfg.alertas_whatsapp_ativo === true;
 
     // ── 1. HANDOFF PARADO ────────────────────────────────────────────────────
     // O achado mais caro: 511 leads engajados cuja última palavra é do cliente.

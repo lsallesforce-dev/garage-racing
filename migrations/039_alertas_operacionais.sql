@@ -113,3 +113,9 @@ as $$
      and c.n >= p_min_msgs_cliente
    order by u.created_at desc;
 $$;
+
+-- Opt-in por tenant pro ALERTA DE WHATSAPP. A gravação em
+-- `alertas_operacionais` (painel) vale pra todos — é interna. O que fica atrás
+-- do flag é a mensagem no celular do lojista: voltada pra fora e sem desfazer.
+alter table config_garage
+  add column if not exists alertas_whatsapp_ativo boolean default false;
