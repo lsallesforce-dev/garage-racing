@@ -13,6 +13,7 @@ import { classificarLead, liberaAutomatico, origemProvaLead, MAX_MSGS_PARA_CLASS
 import { transcreverAudioCliente } from "@/lib/transcribe";
 import { sintetizarVoz, prepararTextoParaVoz } from "@/lib/tts";
 import { hybridVehicleSearch, findVehicleForMedia } from "@/lib/hybrid-search";
+import { urlVitrine } from "@/lib/repasse";
 import { getCachedHistory, cacheHistory, invalidateHistory, appendHistory, circuitIsOpen, circuitRecordFailure, circuitRecordSuccess, acquireLeadLock, releaseLeadLock, setTrocaStandby, isTrocaStandby, clearTrocaStandby } from "@/lib/redis";
 import { Vehicle } from "@/types/vehicle";
 
@@ -163,6 +164,7 @@ export interface GarageConfig {
   whatsapp_posvenda?: string;
   telefone_loja?: string;
   vitrine_slug?: string;
+  dominio_custom?: string | null;
   webhook_token?: string;
   meta_phone_id?: string;
   meta_access_token?: string;
@@ -1650,9 +1652,12 @@ Responda apenas com o JSON, sem markdown.`;
   const enderecoComplemento = garageConfig?.endereco_complemento || "";
   const cidadeGaragem = garageConfig?.cidade || "";
   const telefoneLojaDisplay = garageConfig?.telefone_loja || "";
-  const vitrineUrl = garageConfig?.vitrine_slug
-    ? `${process.env.NEXT_PUBLIC_APP_URL || "https://www.autozap.digital"}/vitrine/${garageConfig.vitrine_slug}`
-    : null;
+  // urlVitrine() (lib/repasse) dá prioridade ao domínio próprio do tenant. O
+  // agente montava a URL na mão e mandava sempre autozap.digital/vitrine/{slug}
+  // — o Marcos tem marcosrepasse.com.br e o link do concorrente ia pro cliente
+  // dele. O proxy reescreve dominio/{id} → /vitrine/{slug}/{id}, então o link
+  // por carro funciona igual nos dois.
+  const vitrineUrl = urlVitrine(garageConfig);
 
   // ── 6. Buscar veículo principal atual do lead ───────────────────────────────
   let veiculoPrincipal: Vehicle | null = null;

@@ -385,7 +385,7 @@ export async function POST(req: NextRequest) {
     // Resolve tenant pelo phone_number_id
     const { data: garageConfig } = await supabaseAdmin
       .from("config_garage")
-      .select("user_id, nome_empresa, nome_fantasia, nome_agente, endereco, endereco_complemento, whatsapp, whatsapp_financeiro, whatsapp_posvenda, vitrine_slug, meta_phone_id, meta_access_token, tom_venda, instrucoes_adicionais, horario_funcionamento, oferta_especial, plano_ativo, trial_ends_at, plano_vence_em, agente_pausado, voz_habilitada, voz_politica, voz_id, voz_max_chars")
+      .select("user_id, nome_empresa, nome_fantasia, nome_agente, endereco, endereco_complemento, whatsapp, whatsapp_financeiro, whatsapp_posvenda, vitrine_slug, dominio_custom, meta_phone_id, meta_access_token, tom_venda, instrucoes_adicionais, horario_funcionamento, oferta_especial, plano_ativo, trial_ends_at, plano_vence_em, agente_pausado, voz_habilitada, voz_politica, voz_id, voz_max_chars")
       .eq("meta_phone_id", phoneNumberId)
       .maybeSingle();
 

@@ -6,7 +6,7 @@ import type { GarageConfig } from "@/lib/process-whatsapp";
 
 export const maxDuration = 60;
 
-const FIELDS_GARAGE = "user_id, nome_empresa, nome_fantasia, nome_agente, endereco, endereco_complemento, cidade, whatsapp, whatsapp_agente, whatsapp_financeiro, whatsapp_posvenda, vitrine_slug, webhook_token, avisa_base_url, avisa_token, meta_phone_id, meta_access_token, tom_venda, instrucoes_adicionais, oferta_especial, horario_funcionamento, modo_repasse, plano_ativo, trial_ends_at, plano_vence_em, ia_modo_lead_only, envio_material_completo, voz_habilitada, voz_politica, voz_id, voz_max_chars";
+const FIELDS_GARAGE = "user_id, nome_empresa, nome_fantasia, nome_agente, endereco, endereco_complemento, cidade, whatsapp, whatsapp_agente, whatsapp_financeiro, whatsapp_posvenda, vitrine_slug, dominio_custom, webhook_token, avisa_base_url, avisa_token, meta_phone_id, meta_access_token, tom_venda, instrucoes_adicionais, oferta_especial, horario_funcionamento, modo_repasse, plano_ativo, trial_ends_at, plano_vence_em, ia_modo_lead_only, envio_material_completo, voz_habilitada, voz_politica, voz_id, voz_max_chars";
 
 export async function POST(req: NextRequest) {
   const { lead_id, em_atendimento_humano, ia_liberada } = await req.json();

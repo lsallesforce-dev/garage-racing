@@ -367,7 +367,7 @@ export async function POST(req: NextRequest) {
       bearerToken ||
       null;
 
-    const FIELDS = "user_id, nome_empresa, nome_fantasia, nome_agente, endereco, endereco_complemento, cidade, whatsapp, whatsapp_agente, whatsapp_financeiro, whatsapp_posvenda, telefone_loja, vitrine_slug, webhook_token, avisa_base_url, avisa_token, tom_venda, instrucoes_adicionais, oferta_especial, horario_funcionamento, modo_repasse, plano_ativo, trial_ends_at, plano_vence_em, ia_so_responde_anuncio, agente_pausado, ia_modo_lead_only, envio_material_completo, voz_habilitada, voz_politica, voz_id, voz_max_chars";
+    const FIELDS = "user_id, nome_empresa, nome_fantasia, nome_agente, endereco, endereco_complemento, cidade, whatsapp, whatsapp_agente, whatsapp_financeiro, whatsapp_posvenda, telefone_loja, vitrine_slug, dominio_custom, webhook_token, avisa_base_url, avisa_token, tom_venda, instrucoes_adicionais, oferta_especial, horario_funcionamento, modo_repasse, plano_ativo, trial_ends_at, plano_vence_em, ia_so_responde_anuncio, agente_pausado, ia_modo_lead_only, envio_material_completo, voz_habilitada, voz_politica, voz_id, voz_max_chars";
     let tenantUserId: string | null = null;
     let garageConfig: any = null;
 
