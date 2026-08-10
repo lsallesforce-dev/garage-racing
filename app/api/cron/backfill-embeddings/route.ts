@@ -12,7 +12,11 @@ import { generateEmbedding } from "@/lib/gemini";
 
 export const maxDuration = 300;
 
-const LOTE = 40;
+// 40 cobria o fluxo normal (poucos carros novos por dia). Depois da troca do
+// modelo de embedding em 10/08 a base inteira ficou pendente de uma vez (~95
+// carros), e a 40/dia levaria 3 dias com a busca semântica capenga no meio.
+// 120 cabe folgado no maxDuration de 300s.
+const LOTE = 120;
 
 function isAuthorized(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET;

@@ -360,10 +360,21 @@ async function fuzzyCorrectTokens(tokens: string[], tenantUserId: string): Promi
 }
 
 // ─── Busca Semântica pgvector ─────────────────────────────────────────────────
+/**
+ * Corte de similaridade de cosseno. Calibrado em 10/08 pro gemini-embedding-001
+ * (1536 dims): os thresholds antigos (0,40/0,45) vinham da era OpenAI e neste
+ * modelo os scores ficam todos altos — "minha geladeira parou de gelar" bate
+ * 0,52 contra a base de carros, ou seja, 0,45 deixava passar QUALQUER coisa e a
+ * semântica devolvia 5 carros pra toda mensagem.
+ * Medido: ruído/fora de contexto ≤ 0,544 · consulta real ≥ 0,611.
+ * ⚠️ Threshold é acoplado ao modelo — recalibrar se trocar o embedding.
+ */
+export const SEMANTIC_THRESHOLD = 0.58;
+
 async function semanticSearch(
   message: string,
   tenantUserId: string,
-  threshold = 0.45,
+  threshold = SEMANTIC_THRESHOLD,
   count = 5
 ): Promise<Vehicle[]> {
   const queryEmbedding = await generateEmbedding(message);
@@ -729,7 +740,7 @@ export async function hybridVehicleSearch(
 
     // Sem hits textuais → semântica como complemento, mesma categoria
     const categoriaAtual = (veiculoPrincipal as any).categoria as string | undefined;
-    const semanticos = await semanticSearch(userMessage, tenantUserId, 0.40, 5);
+    const semanticos = await semanticSearch(userMessage, tenantUserId, SEMANTIC_THRESHOLD, 5);
     const complementares = semanticos
       .filter((v) => v.id !== veiculoPrincipal.id)
       .filter((v) => {
@@ -749,7 +760,7 @@ export async function hybridVehicleSearch(
   if (temHitsTextuais) {
     const semanticos = msgCurta
       ? []
-      : await semanticSearch(userMessage, tenantUserId, 0.45, 3);
+      : await semanticSearch(userMessage, tenantUserId, SEMANTIC_THRESHOLD, 3);
     const extras = semanticos.filter((v) => !hitsTextuais.some((h) => h.id === v.id));
     return {
       topVeiculos: [...hitsTextuais, ...extras].slice(0, 5),
@@ -759,7 +770,7 @@ export async function hybridVehicleSearch(
   }
 
   if (!msgCurta) {
-    const semanticos = await semanticSearch(userMessage, tenantUserId, 0.45, 5);
+    const semanticos = await semanticSearch(userMessage, tenantUserId, SEMANTIC_THRESHOLD, 5);
     if (semanticos.length > 0) {
       return { topVeiculos: semanticos, hitsTextuais: [], clientePediuCarroDiferente: false };
     }
