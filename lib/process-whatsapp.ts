@@ -1358,7 +1358,12 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   // Identificação: phone normalizado bate com config_garage.whatsapp (número do gerente).
   const normalizeWa = (n: string) => n.replace(/\D/g, "").replace(/^55/, "").slice(-9);
   const ownerWa = garageConfig?.whatsapp ? normalizeWa(garageConfig.whatsapp) : null;
-  const isOwner = ownerWa ? normalizeWa(phone).endsWith(ownerWa) || ownerWa.endsWith(normalizeWa(phone)) : false;
+  // Igualdade estrita: `normalizeWa` já corta os dois lados nos MESMOS 9
+  // dígitos finais, então comparar por endsWith não adicionava tolerância —
+  // só criava falso positivo. Cliente de outro DDD com os 9 dígitos finais
+  // iguais aos do dono era tratado como OWNER e a mensagem dele ia pro parser
+  // de agenda do gerente em vez do agente de vendas.
+  const isOwner = ownerWa ? normalizeWa(phone) === ownerWa : false;
 
   if (isOwner && userMessage.trim()) {
     const agendaKeywords = /agenda|agendar|compromisso|reunião|reuniao|visita|liga(r|ção|cao)|lembrar|lembrete|marcar/i;
@@ -2791,7 +2796,12 @@ Responda apenas com o JSON, sem markdown.`;
         .select("*", { count: "exact", head: true })
         .eq("lead_id", lead.id)
         .eq("remetente", "agente")
-        .ilike("content", `*${nomeCarroLimpo(vFicha)}%`);
+        // `%` é o wildcard do Postgres. Até 10/08 estava `*${nome}%`, e `*` é
+        // caractere LITERAL em ilike — o padrão nunca casou nada (conferido no
+        // banco: `*Chevrolet ONIX%` → 0 linhas, `%Chevrolet ONIX%` → 161).
+        // O guard "ficha uma vez por carro" nunca funcionou; a ficha era
+        // reenviada a cada disparo de mídia. (O `*` vale em .or(), não aqui.)
+        .ilike("content", `%${nomeCarroLimpo(vFicha)}%`);
       fichaJaEnviada = (count ?? 0) > 0;
     }
     if (vFicha && !fichaJaEnviada) {

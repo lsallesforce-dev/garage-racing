@@ -158,7 +158,11 @@ export async function POST(req: NextRequest) {
       }
     } catch (err: any) {
       console.error("❌ OLX webhook after() erro:", err);
-      await logWebhookError(tenantUserId, "olx-lead", "after", err?.message ?? String(err));
+      // logWebhookError recebe UM objeto (lib/error-log.ts:16). Passar 4 args
+      // posicionais fazia o destructuring virar undefined → INSERT violava
+      // `etapa NOT NULL` → o erro do webhook OLX sumia. O TS2554 nunca barrou
+      // o deploy por causa do ignoreBuildErrors do next.config.ts.
+      await logWebhookError({ tenantUserId, etapa: "olx-lead-after", erro: err });
     }
   });
 

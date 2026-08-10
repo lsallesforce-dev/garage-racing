@@ -187,9 +187,14 @@ Escreva UMA mensagem curta de retomada (máx. 2 linhas). Regras:
         token:   cfg.avisa_token,
       });
     } else {
+      // `phoneNumberId`, NÃO `phoneId` — MetaCreds (lib/meta.ts:9). Com a chave
+      // errada o resolveCreds devolvia null, sendMetaMessage fazia `return;`
+      // (não lança!) e o catch abaixo nunca via nada: o lead era marcado como
+      // reativado, followup_count subia, e o cliente não recebia mensagem
+      // nenhuma. Valia pra TODO tenant no canal Meta.
       await sendMetaMessage(lead.wa_id, mensagem, {
-        phoneId:     cfg.meta_phone_id,
-        accessToken: cfg.meta_access_token,
+        phoneNumberId: cfg.meta_phone_id,
+        accessToken:   cfg.meta_access_token,
       });
     }
   } catch (err) {
