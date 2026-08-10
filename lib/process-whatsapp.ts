@@ -572,6 +572,7 @@ PROIBIDO TERMINANTE:
 - Frases > 1 linha
 - "vou enviar" / "já te mando" (mídia já chegou)
 ` : ""}
+${!p.midiaSendada ? `⛔ VOCÊ NÃO TEM MÍDIA ANEXADA NESTA RESPOSTA. Quem envia foto e vídeo é o sistema, não você — e neste turno ele não enviou nada. Portanto NUNCA escreva "estou te enviando", "vou mandar", "já te mando", "segue aí", "aqui estão". Se o cliente pediu material, diga que vai confirmar com o pátio e use precisa_instrucao.` : ""}
 ${(!p.midiaSendada && (p.clientePediuFoto || p.clientePediuVideo)) ? `⛔ ATENÇÃO CRÍTICA: O cliente pediu mídia mas o sistema NÃO ENVIOU NADA neste turno. NÃO escreva "Aqui estão", "Te mandei", "Acabei de enviar", "Já te mando", "Vou enviar", "Tá indo" — seria mentira. Em vez disso, peça desculpa e diga que vai verificar com a equipe. Ex: "Deixa eu confirmar essas fotos com o pessoal do pátio." E use precisa_instrucao para alertar o gerente.` : ""}
 
 [AÇÃO REQUERIDA]
@@ -2179,6 +2180,11 @@ Responda apenas com o JSON, sem markdown.`;
     "mandar foto", "mandar fotos", "enviar foto", "enviar fotos",
     "preciso de foto", "preciso de fotos", "queria foto", "queria fotos",
     "gostaria de foto", "gostaria de fotos",
+    // "material" é como o GARAGEIRO pede foto+vídeo — não fala "foto", fala
+    // "manda o material". Sem isso o passo 11 nem rodava e o Gemini prometia
+    // envio que nunca acontecia (caso Marcos 10/08 08:04: "Manda o material" →
+    // "Certo, estou te enviando as fotos e o vídeo" → nada saiu).
+    "material", "manda tudo", "me manda tudo", "envia tudo", "me envia tudo", "quero tudo",
   ];
   // "quero ver" e "ver o carro" removidos — são frases de visita presencial, não pedido de foto
   const exclusoesFoto = [
@@ -2189,6 +2195,9 @@ Responda apenas com o JSON, sem markdown.`;
     "gostei", "essa foto", "nessa foto", "aquela foto", "essa imagem", "pelo foto",
     // tirar foto na loja (cliente perguntando se PODE tirar uma foto)
     "tirar foto", "tirar uma foto", "tirei foto",
+    // "material" virou gatilho ("manda o material"), mas garageiro também usa a
+    // palavra pra estofado — "qual o material do banco?" é pergunta, não pedido.
+    "qual o material", "qual material", "que material", "material do banco", "material dos banco",
   ];
 
   // ── 11b. Enviar Vídeo ───────────────────────────────────────────────────────
@@ -3087,9 +3096,20 @@ Responda apenas com o JSON, sem markdown.`;
     // Detecta APENAS padrões que afirmam envio NESTE TURNO (presente).
     // Evita falso positivo em follow-ups que referem mídia enviada dias antes
     // (ex: "Viu as fotos que te mandei?" — passado, não é mentira).
-    const indicaEnvioFoto = /\b(aqui\s+est[aãáà]o?\s+(?:as?\s+)?fotos?|aqui\s+v[aãáà]o?\s+(?:as?\s+)?fotos?|segue[m]?\s+(?:as?\s+)?fotos?|olha\s+(?:s[oó]\s+)?(?:as?\s+)?fotos?|acabei\s+de\s+(?:te\s+)?enviar)\b/i.test(aiResponse) ||
+    // Promessa de envio no PRESENTE ou no já-já. A lista antiga só tinha o
+    // pretérito/apresentação ("aqui estão", "segue", "acabei de enviar") e deixou
+    // passar o gerúndio — "Certo, estou te enviando as fotos e o vídeo da Strada"
+    // (Marcos, 10/08 08:04) não casou e o cliente ficou esperando mídia que não veio.
+    // Enumerar frase por frase não escala; o que importa é VERBO DE ENVIO perto do
+    // SUBSTANTIVO de mídia. `[^.!?\n]{0,40}` prende os dois na mesma frase.
+    const VERBO_ENVIO = String.raw`(?:aqui\s+est[aãáà]o?|aqui\s+v[aãáà]o?|segue[m]?|olha\s+(?:s[oó]\s+)?|estou\s+(?:te\s+)?(?:enviando|mandando|passando)|t[oô]\s+(?:te\s+)?(?:enviando|mandando)|vou\s+(?:te\s+)?(?:enviar|mandar|passar)|j[áa]\s+(?:te\s+)?(?:envio|mando|passo)|te\s+(?:envio|mando)|acabei\s+de\s+(?:te\s+)?(?:enviar|mandar))`;
+    const prometeu = (midia: string) =>
+      new RegExp(`${VERBO_ENVIO}[^.!?\\n]{0,40}${midia}`, "i").test(aiResponse);
+
+    const indicaEnvioFoto = prometeu(String.raw`\bfotos?\b`) ||
+                              /\bacabei\s+de\s+(?:te\s+)?enviar\b/i.test(aiResponse) ||
                               /^aqui\s+est[aãáà]o?[!.\s]/i.test(aiResponse.trim()); // "Aqui estão!" no início (caso Denize)
-    const indicaEnvioVideo = /\b(aqui\s+(?:est[aãáà]o?|v[aãáà]o?)\s+o?\s*v[íi]deo|segue[m]?\s+o?\s*v[íi]deo)\b/i.test(aiResponse);
+    const indicaEnvioVideo = prometeu(String.raw`\bv[íi]deos?\b`);
 
     if ((indicaEnvioFoto && !fotoEnviada) || (indicaEnvioVideo && !videoEnviado)) {
       console.warn(`🚨 [safety-net mídia] Gemini afirmou envio mas sistema não enviou. Forçando envio agora.`);
