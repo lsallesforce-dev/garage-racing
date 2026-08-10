@@ -771,6 +771,54 @@ function buildStockContext(topVeiculos: Vehicle[], veiculoPrincipal: Vehicle | n
 //      — impede que o LLM siga o padrão estabelecido pelas msgs anteriores
 //   2. INJETA uma mensagem corretiva no final como âncora explícita
 // IMPORTANTE: nada disso é salvo no banco — só existe nesta call.
+type MsgHist = { remetente: string; content: string; media_tipo?: string | null };
+
+/**
+ * Colapsa rajada de mídia em UMA linha de histórico.
+ *
+ * Cada foto vira uma linha em `mensagens` ("📷 Chevrolet S10"). No envio de
+ * material completo saem 13+ de uma vez, e o histórico que vai pro Gemini
+ * ficava sendo 13 linhas idênticas — o modelo perdia as perguntas do cliente
+ * e passava a repetir a si mesmo (conversa do Lucas 08/08). Pro modelo, o que
+ * importa é "mandei 13 fotos e 1 vídeo", não cada arquivo.
+ *
+ * Só junta linhas CONSECUTIVAS do mesmo remetente: mídia separada por uma fala
+ * do cliente continua sendo evento distinto.
+ */
+function colapsarRajadaMidia(msgs: MsgHist[]): MsgHist[] {
+  const out: MsgHist[] = [];
+  let i = 0;
+  while (i < msgs.length) {
+    if (!msgs[i].media_tipo) { out.push(msgs[i]); i++; continue; }
+    let j = i, fotos = 0, videos = 0, outros = 0;
+    while (j < msgs.length && msgs[j].media_tipo && msgs[j].remetente === msgs[i].remetente) {
+      const t = msgs[j].media_tipo;
+      if (t === "foto") fotos++;
+      else if (t === "video") videos++;
+      else outros++;
+      j++;
+    }
+    if (j - i === 1) {
+      out.push(msgs[i]);
+    } else {
+      const partes = [
+        fotos ? `${fotos} ${fotos === 1 ? "foto" : "fotos"}` : null,
+        videos ? `${videos} ${videos === 1 ? "vídeo" : "vídeos"}` : null,
+        outros ? `${outros} ${outros === 1 ? "arquivo" : "arquivos"}` : null,
+      ].filter(Boolean);
+      out.push({ remetente: msgs[i].remetente, content: `[enviei ${partes.join(" e ")} ao cliente]` });
+    }
+    i = j;
+  }
+  return out;
+}
+
+/** Mantém as 2 primeiras (saudação + nome) + as mais recentes até `max`. */
+function cortarHistorico(msgs: MsgHist[], max: number): MsgHist[] {
+  if (msgs.length <= max) return msgs;
+  return [...msgs.slice(0, 2), ...msgs.slice(-(max - 2))];
+}
+
 function fixHistoryLoops(historico: any[], context: string): any[] {
   const LOOP_PATTERNS = [
     /vou verificar o pre[çc]o/i,
@@ -1932,25 +1980,30 @@ Responda apenas com o JSON, sem markdown.`;
       console.log(`⚡ [Redis] Cache hit de histórico para lead ${lead.id} (${cached.length} msgs)`);
     } else {
       // Cache miss — busca no Supabase: primeiras 2 + últimas 13 em paralelo
+      // Puxa 40 recentes (não 13) porque uma rajada de mídia sozinha estoura a
+      // janela: no envio de material completo saem 13 fotos + vídeo, e as 13
+      // últimas linhas viravam TODAS "📷 Chevrolet S10" — o agente perdia de
+      // vista as perguntas do cliente (lataria, pneus) e ficava repetitivo.
+      // O corte pra 13 acontece DEPOIS de colapsar a rajada em uma linha só.
       const [{ data: primeiras }, { data: recentes }] = await Promise.all([
         supabaseAdmin
           .from("mensagens")
-          .select("id, remetente, content, created_at")
+          .select("id, remetente, content, created_at, media_tipo")
           .eq("lead_id", lead.id)
           .order("created_at", { ascending: true })
           .limit(2),
         supabaseAdmin
           .from("mensagens")
-          .select("id, remetente, content, created_at")
+          .select("id, remetente, content, created_at, media_tipo")
           .eq("lead_id", lead.id)
           .order("created_at", { ascending: false })
-          .limit(13),
+          .limit(40),
       ]);
 
       if (primeiras || recentes) {
         // Mescla: primeiras + recentes (revertidas para ordem cronológica), sem duplicatas
         const seenIds = new Set<string>();
-        const merged: { remetente: string; content: string }[] = [];
+        const merged: { remetente: string; content: string; media_tipo?: string | null }[] = [];
 
         for (const m of (primeiras ?? [])) {
           if (!seenIds.has(m.id)) { seenIds.add(m.id); merged.push(m); }
@@ -1959,8 +2012,10 @@ Responda apenas com o JSON, sem markdown.`;
           if (!seenIds.has(m.id)) { seenIds.add(m.id); merged.push(m); }
         }
 
-        if (merged.length > 0) {
-          historico = merged.map((m) => ({
+        const compacto = cortarHistorico(colapsarRajadaMidia(merged), 15);
+
+        if (compacto.length > 0) {
+          historico = compacto.map((m) => ({
             role: m.remetente === "usuario" ? "user" : "model",
             parts: [{ text: m.content }],
           }));
@@ -2517,7 +2572,9 @@ Responda apenas com o JSON, sem markdown.`;
             try {
               await supabaseAdmin.from("mensagens").insert({
                 lead_id: lead.id,
-                content: caption ?? `📷 ${nomeCarroLimpo(v)}`,
+                // Numerado: 13 linhas idênticas "📷 Chevrolet S10" viravam um
+                // paredão ilegível no painel (conversa do Lucas 08/08).
+                content: caption ?? `📷 ${nomeCarroLimpo(v)} (${i + 1}/${fotosParaEnviar.length})`,
                 remetente: "agente",
                 media_url: fotosParaEnviar[i],
                 media_tipo: "foto",
