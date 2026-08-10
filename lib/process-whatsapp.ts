@@ -14,6 +14,7 @@ import { transcreverAudioCliente } from "@/lib/transcribe";
 import { sintetizarVoz, prepararTextoParaVoz } from "@/lib/tts";
 import { hybridVehicleSearch, findVehicleForMedia } from "@/lib/hybrid-search";
 import { urlVitrine } from "@/lib/repasse";
+import { logWebhookError } from "@/lib/error-log";
 import { getCachedHistory, cacheHistory, invalidateHistory, appendHistory, circuitIsOpen, circuitRecordFailure, circuitRecordSuccess, acquireLeadLock, releaseLeadLock, setTrocaStandby, isTrocaStandby, clearTrocaStandby } from "@/lib/redis";
 import { Vehicle } from "@/types/vehicle";
 
@@ -999,10 +1000,17 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
     return;
   }
 
-  const sendText  = (to: string, text: string) =>
-    useAvisa
-      ? sendAvisaMessage(to, text, avisaCreds)
-      : sendMetaMessage(to, text, metaCreds);
+  // Retorna BOOLEAN de entrega — mesma regra do sendImage/sendVideo/sendAudio.
+  // sendAvisaMessage já devolve boolean; sendMetaMessage devolve `any` e faz
+  // `return;` quando falta credencial, sem lançar. É a via PRINCIPAL do produto:
+  // sem esta normalização o agente ficava mudo pro cliente e o painel marcava
+  // a mensagem como entregue.
+  const sendText = async (to: string, text: string): Promise<boolean> => {
+    const r = useAvisa
+      ? await sendAvisaMessage(to, text, avisaCreds)
+      : await sendMetaMessage(to, text, metaCreds);
+    return r != null && r !== false;
+  };
 
   // Número do próprio agente. Quando o agente roda no celular PESSOAL do dono
   // (ia_modo_lead_only), gerente == agente e todo alerta viraria auto-envio: a
@@ -3646,7 +3654,22 @@ Retorne JSON estrito:
     });
   })();
 
-  if (!entregouAudio) await sendText(phone, aiResponse);
+  const entregouTexto = entregouAudio ? true : await sendText(phone, aiResponse);
+
+  if (!entregouTexto) {
+    // Fica delivered=false de propósito: o cron `reprocessar-pendentes`
+    // (cenário B) varre exatamente isso e REENVIA entre 10min e 2h. Essa
+    // auto-recuperação existe desde sempre e nunca rodou uma vez, porque o
+    // update abaixo marcava `true` incondicionalmente — em 47.346 mensagens o
+    // banco não tem UMA com delivered=false.
+    console.error(`🚨 [${phone}] Resposta do agente NÃO entregue (tenant ${tenantUserId}) — fica pro cron de reenvio.`);
+    await logWebhookError({
+      tenantUserId,
+      phone,
+      etapa: "envio_resposta",
+      erro: `Resposta do agente não confirmada pelo canal ${useAvisa ? "Avisa" : "Meta"}`,
+    }).catch(() => {});
+  }
 
   if (mensagemAgenteId) {
     // content já guarda o texto integral da fala — o histórico é a memória do agente
@@ -3654,7 +3677,7 @@ Retorne JSON estrito:
     // o formato pro chat da plataforma.
     await supabaseAdmin
       .from("mensagens")
-      .update({ delivered: true, ...(entregouAudio ? { media_tipo: "audio" } : {}) })
+      .update({ delivered: entregouTexto, ...(entregouAudio ? { media_tipo: "audio" } : {}) })
       .eq("id", mensagemAgenteId);
   }
   console.log(`✅ Mensagem processada para ${phone} | temperatura: ${temperatura}`);

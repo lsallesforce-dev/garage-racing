@@ -92,16 +92,24 @@ export async function GET(req: NextRequest) {
       if (!cfg || !assinaturaValida(cfg)) { ignorados++; continue; }
 
       const useAvisa = !!(cfg.avisa_base_url && cfg.avisa_token);
-      if (useAvisa) {
-        await sendAvisaMessage(lead.wa_id, msg.content, {
-          baseUrl: cfg.avisa_base_url,
-          token: cfg.avisa_token,
-        });
-      } else {
-        await sendMetaMessage(lead.wa_id, msg.content, {
-          phoneNumberId: cfg.meta_phone_id ?? "",
-          accessToken: cfg.meta_access_token ?? "",
-        });
+      const r = useAvisa
+        ? await sendAvisaMessage(lead.wa_id, msg.content, {
+            baseUrl: cfg.avisa_base_url,
+            token: cfg.avisa_token,
+          })
+        : await sendMetaMessage(lead.wa_id, msg.content, {
+            phoneNumberId: cfg.meta_phone_id ?? "",
+            accessToken: cfg.meta_access_token ?? "",
+          });
+
+      // Sem confirmação, NÃO marca entregue: a mensagem continua elegível pro
+      // próximo tick (até a janela de 2h fechar). Marcar true aqui sem checar
+      // era o mesmo bug que a gente veio consertar — o reenviador declarando
+      // sucesso do reenvio que não aconteceu.
+      if (!(r != null && r !== false)) {
+        console.error(`🚨 [reenvio] Falhou de novo para ${lead.wa_id} (msg ${msg.id}) — fica pendente`);
+        ignorados++;
+        continue;
       }
 
       await supabaseAdmin.from("mensagens").update({ delivered: true }).eq("id", msg.id);
