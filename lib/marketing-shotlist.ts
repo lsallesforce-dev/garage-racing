@@ -3,6 +3,7 @@
 // (client) e pelas rotas de marketing (server).
 
 export type ShotTipo = "foto" | "take";
+export type ShotBloco = "exterior" | "interior" | "traseira" | "mecanica";
 
 export interface ShotItem {
   tag: string;
@@ -10,6 +11,37 @@ export interface ShotItem {
   dica: string;
   tipo: ShotTipo;
   obrigatoria: boolean;
+  // Campos abaixo só existem nos takes. Opcionais de propósito: obrigatórios
+  // quebrariam as literais de SHOT_FOTOS.
+  bloco?: ShotBloco;
+  segundos?: number;   // duração alvo do clipe no reel (substitui o DEFAULT_SEG chapado)
+  refInicio?: number;  // trecho correspondente no vídeo modelo (Takes padrão)
+  refFim?: number;
+}
+
+// Bumpar quando a lista de takes mudar de forma que invalide decupagem já feita.
+export const SHOTLIST_VERSAO = 2;
+// Prefixo versionado dos clipes de referência no R2 (o proxy manda cache immutable,
+// então trocar o vídeo modelo exige subir um prefixo novo, não sobrescrever).
+export const REF_VERSAO = "v1";
+
+// Mapa de tag legada → tag atual. Vazio hoje: a v2 só ADICIONOU tags, não renomeou
+// nenhuma (renomear embaralharia a narrativa em silêncio — o indexOf da ordenação
+// devolve -1 e joga o take pro início do array). É o hook pra quando precisar.
+export const TAKE_ALIAS: Record<string, string> = {};
+
+export function normalizarTag(tag: string): string {
+  return TAKE_ALIAS[tag] ?? tag;
+}
+
+export function refClipUrl(tag: string): string {
+  return `/api/r2/referencia/takes/${REF_VERSAO}/${tag}.mp4`;
+}
+export function refCompletoUrl(): string {
+  return `/api/r2/referencia/takes/${REF_VERSAO}/completo.mp4`;
+}
+export function refPosterUrl(tag: string): string {
+  return `/ref/${tag}.jpg`;
 }
 
 // Fotos: a "frente-3-4" é a capa do carrossel (vira fundo da capa templatada).
@@ -26,25 +58,66 @@ export const SHOT_FOTOS: ShotItem[] = [
 
 // Takes: 5–10s cada, celular na VERTICAL, movimento LENTO e contínuo.
 // Alimentam o reel automatizado (F2), mas já são coletados etiquetados no F1.
+//
+// A ORDEM e os campos ref* saem da decupagem frame a frame do vídeo modelo
+// ("Takes padrão.mp4" — Tucson, 9:16, 57,73s de conteúdo). É essa sequência que o
+// vendedor vê no grid e é essa que o reel monta. Não renomear tag existente:
+// as tags são chave de dados em veiculos.marketing_capturas.takes[].tag.
 export const SHOT_TAKES: ShotItem[] = [
-  { tag: "walk-in-frontal", label: "Aproximação frontal", dica: "Comece a ~5 passos e ande devagar em direção à frente do carro.", tipo: "take", obrigatoria: true },
-  { tag: "pan-lateral",     label: "Passada lateral",     dica: "Caminhe ao longo da lateral, câmera estável apontada pro carro.",  tipo: "take", obrigatoria: true },
-  { tag: "traseira",        label: "Traseira",            dica: "Contorne a traseira devagar, de um farol ao outro.",               tipo: "take", obrigatoria: true },
-  { tag: "interior",        label: "Interior",            dica: "Da porta aberta: painel → central → bancos, movimento lento.",     tipo: "take", obrigatoria: true },
-  { tag: "detalhe-roda",    label: "Detalhe da roda",     dica: "Close na roda subindo até o retrovisor.",                          tipo: "take", obrigatoria: false },
-  { tag: "multimidia",      label: "Multimídia",          dica: "Central ligada mostrando a tela; toque em algo pra dar vida.",     tipo: "take", obrigatoria: false },
-  { tag: "painel-digital",  label: "Painel",              dica: "Painel de instrumentos ligado, do banco do motorista.",           tipo: "take", obrigatoria: false },
-  { tag: "porta-malas-take",label: "Porta-malas",         dica: "Abrindo o porta-malas devagar, mostrando o espaço.",               tipo: "take", obrigatoria: false },
-  { tag: "farol-detalhe",   label: "Faróis",              dica: "Close no farol de LED / detalhe da frente.",                       tipo: "take", obrigatoria: false },
-  { tag: "assinatura",      label: "Assinatura",          dica: "O melhor ângulo do carro, parado 5s. Vira o encerramento.",        tipo: "take", obrigatoria: false },
+  { tag: "walk-in-frontal",     label: "Aproximação frontal",  dica: "Comece a ~5 passos e ande devagar em direção à frente do carro.",  tipo: "take", obrigatoria: true,  bloco: "exterior", segundos: 3.0, refInicio: 0.0,  refFim: 3.0 },
+  { tag: "pan-lateral",         label: "Passada lateral",      dica: "Da frente 3/4 até o perfil, caminhando devagar ao lado do carro.", tipo: "take", obrigatoria: true,  bloco: "exterior", segundos: 2.2, refInicio: 3.0,  refFim: 5.2 },
+  { tag: "farol-detalhe",       label: "Farol / para-choque",  dica: "Close no farol ou no farol de neblina, aproximando devagar.",      tipo: "take", obrigatoria: false, bloco: "exterior", segundos: 1.2, refInicio: 5.2,  refFim: 6.4 },
+  { tag: "detalhe-roda",        label: "Roda dianteira",       dica: "Close na roda dianteira, de leve diagonal.",                       tipo: "take", obrigatoria: false, bloco: "exterior", segundos: 1.0, refInicio: 6.4,  refFim: 7.4 },
+  { tag: "interior",            label: "Interior (porta → painel)", dica: "Porta aberta: entre com a câmera até enquadrar o painel.",    tipo: "take", obrigatoria: true,  bloco: "interior", segundos: 3.0, refInicio: 7.4,  refFim: 11.0 },
+  { tag: "painel-digital",      label: "Volante e painel",     dica: "Close no volante com o painel de instrumentos atrás.",             tipo: "take", obrigatoria: false, bloco: "interior", segundos: 1.2, refInicio: 11.0, refFim: 12.2 },
+  { tag: "multimidia",          label: "Multimídia",           dica: "Central ligada mostrando a tela; toque em algo pra dar vida.",     tipo: "take", obrigatoria: false, bloco: "interior", segundos: 2.2, refInicio: 12.2, refFim: 15.2 },
+  { tag: "cambio",              label: "Câmbio",               dica: "Close na alavanca de câmbio e no console.",                        tipo: "take", obrigatoria: false, bloco: "interior", segundos: 1.0, refInicio: 15.2, refFim: 16.2 },
+  { tag: "bancos-take",         label: "Bancos dianteiros",    dica: "Da porta aberta, passe devagar pelos dois bancos da frente.",      tipo: "take", obrigatoria: true,  bloco: "interior", segundos: 2.5, refInicio: 16.2, refFim: 23.0 },
+  { tag: "banco-traseiro",      label: "Banco traseiro",       dica: "Porta de trás aberta, mostre o banco e o espaço pras pernas.",     tipo: "take", obrigatoria: false, bloco: "interior", segundos: 2.5, refInicio: 23.0, refFim: 31.8 },
+  { tag: "traseira",            label: "Traseira",             dica: "Contorne a traseira devagar, de uma lanterna à outra.",            tipo: "take", obrigatoria: true,  bloco: "traseira", segundos: 2.5, refInicio: 31.8, refFim: 37.5 },
+  { tag: "porta-malas-take",    label: "Porta-malas",          dica: "Abra o porta-malas devagar e mostre o espaço por dentro.",         tipo: "take", obrigatoria: false, bloco: "traseira", segundos: 3.0, refInicio: 37.5, refFim: 43.0 },
+  { tag: "pan-lateral-traseira",label: "Passada lateral traseira", dica: "Câmera baixa, passando da lanterna até a roda de trás.",       tipo: "take", obrigatoria: false, bloco: "traseira", segundos: 2.2, refInicio: 43.0, refFim: 48.0 },
+  { tag: "motor-take",          label: "Motor",                dica: "Capô aberto, entre com a câmera mostrando o motor.",               tipo: "take", obrigatoria: false, bloco: "mecanica", segundos: 2.2, refInicio: 48.0, refFim: 52.0 },
+  { tag: "assinatura",          label: "Assinatura",           dica: "O melhor ângulo do carro, movimento lento. Vira o encerramento.",  tipo: "take", obrigatoria: true,  bloco: "mecanica", segundos: 2.8, refInicio: 52.0, refFim: 55.5 },
 ];
+
+// Ordem e rótulo dos blocos no grid (agrupa os 15 slots em 4 seções).
+export const SHOT_BLOCOS: { bloco: ShotBloco; label: string }[] = [
+  { bloco: "exterior", label: "Por fora" },
+  { bloco: "interior", label: "Por dentro" },
+  { bloco: "traseira", label: "Traseira e porta-malas" },
+  { bloco: "mecanica", label: "Motor e fechamento" },
+];
+
+// Duração alvo do clipe no reel. Fallback pro antigo DEFAULT_SEG quando a tag
+// não é conhecida (take legado sem etiqueta).
+export const TAKE_SEGUNDOS_PADRAO = 2.2;
+export function segundosDoTake(tag: string | null | undefined): number {
+  if (!tag) return TAKE_SEGUNDOS_PADRAO;
+  const s = SHOT_TAKES.find((t) => t.tag === normalizarTag(tag));
+  return s?.segundos ?? TAKE_SEGUNDOS_PADRAO;
+}
 
 export const SHOT_LIST: ShotItem[] = [...SHOT_FOTOS, ...SHOT_TAKES];
 
-export interface CapturaRegistro { tag: string; url: string }
+// origem: "manual" = vendedor subiu no slot; "auto" = veio da decupagem de um
+// vídeo único; "classificado" = foto etiquetada pelo Gemini Vision.
+export type CapturaOrigem = "manual" | "auto" | "classificado";
+export interface CapturaRegistro { tag: string; url: string; origem?: CapturaOrigem }
 export interface MarketingCapturas {
   fotos?: CapturaRegistro[];
   takes?: CapturaRegistro[];
+}
+
+// Ordena os takes gravados na ordem narrativa da shot list. Tag desconhecida vai
+// pro FIM (o indexOf cru devolve -1 e jogaria pro início, embaralhando em silêncio).
+export function ordenarTakes<T extends { tag?: string | null }>(takes: T[]): T[] {
+  const ordem = SHOT_TAKES.map((s) => s.tag);
+  const pos = (t: T) => {
+    const i = ordem.indexOf(normalizarTag(t.tag ?? ""));
+    return i < 0 ? ordem.length : i;
+  };
+  return [...takes].sort((a, b) => pos(a) - pos(b));
 }
 
 // Ordem narrativa do carrossel de feed (slide 1 é a capa templatada; a

@@ -1,19 +1,29 @@
 "use client";
 
 // Captura guiada do Kit de Postagem — shot list de fotos + takes etiquetados.
-// Usada dentro do card do carro na aba Kits (Marketing). Sobe foto no Supabase
-// Storage, take no R2 (/api/veiculo/takes), registra tag→url em marketing_capturas.
-// Notifica o pai via onChange pra ele refletir contagem/estado (reel, capa).
+// Usada dentro do card do carro na aba Kits (Marketing).
+//
+// Fotos: upload direto no Supabase Storage.
+// Takes: presign (/api/veiculo/takes/presign) → PUT direto no R2 → registro da
+//   tag em /api/marketing/capturas. O vídeo NÃO passa pelo body da função Vercel
+//   (teto ~4,5 MB; take de celular passa disso fácil e dava 413).
+//
+// Os 15 slots de take seguem a ordem do vídeo modelo "Takes padrão" e cada slot
+// vazio toca o trecho correspondente dele em loop — ver components/captura/.
 
-import React, { useRef, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import {
+  SHOT_BLOCOS,
   SHOT_FOTOS,
   SHOT_TAKES,
+  normalizarTag,
   type MarketingCapturas,
   type ShotItem,
 } from "@/lib/marketing-shotlist";
-import { Camera, Check, Images, Loader2, Video } from "lucide-react";
+import { Camera, Check, Images, Loader2, PlayCircle } from "lucide-react";
+import SlotTake from "./captura/SlotTake";
+import VideoModeloModal from "./captura/VideoModeloModal";
 
 interface Props {
   veiculoId: string;
@@ -21,27 +31,80 @@ interface Props {
   onChange: (c: MarketingCapturas) => void;
 }
 
+// Antes de gastar upload: o take tem que ser curto. Vertical é só aviso — take
+// horizontal ainda entra no reel (com barras), take de 3min não.
+const MAX_SEG = 45;
+async function inspecionarVideo(file: File): Promise<{ duracao: number; vertical: boolean } | null> {
+  return new Promise((resolve) => {
+    const el = document.createElement("video");
+    const src = URL.createObjectURL(file);
+    const limpar = () => URL.revokeObjectURL(src);
+    el.preload = "metadata";
+    el.onloadedmetadata = () => {
+      limpar();
+      resolve({ duracao: el.duration, vertical: el.videoHeight >= el.videoWidth });
+    };
+    el.onerror = () => { limpar(); resolve(null); };
+    el.src = src;
+  });
+}
+
 export default function CapturaGuiada({ veiculoId, capturas, onChange }: Props) {
   const [subindo, setSubindo] = useState<string | null>(null);
   const [erroSlot, setErroSlot] = useState<Record<string, string>>({});
   const [classificando, setClassificando] = useState(false);
   const [msg, setMsg] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
+  const [modeloAberto, setModeloAberto] = useState(false);
+  const [refAtivo, setRefAtivo] = useState<string | null>(null);
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   function urlDe(shot: ShotItem): string | null {
     const lista = shot.tipo === "foto" ? capturas.fotos : capturas.takes;
-    return lista?.find((c) => c.tag === shot.tag)?.url ?? null;
+    return lista?.find((c) => normalizarTag(c.tag) === shot.tag)?.url ?? null;
   }
 
   async function registrar(shot: ShotItem, url: string) {
     const res = await fetch("/api/marketing/capturas", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ veiculoId, tipo: shot.tipo, tag: shot.tag, url }),
+      body: JSON.stringify({ veiculoId, tipo: shot.tipo, tag: shot.tag, url, origem: "manual" }),
     });
     if (!res.ok) throw new Error((await res.json()).error ?? `HTTP ${res.status}`);
     const { marketing_capturas } = await res.json();
     onChange(marketing_capturas);
+  }
+
+  async function subirTake(shot: ShotItem, file: File) {
+    const info = await inspecionarVideo(file);
+    if (info && info.duracao > MAX_SEG) {
+      throw new Error(`Take de ${Math.round(info.duracao)}s — grave até ${MAX_SEG}s`);
+    }
+
+    const pre = await fetch("/api/veiculo/takes/presign", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        veiculoId,
+        tag: shot.tag,
+        fileName: file.name,
+        fileType: file.type || "video/mp4",
+        fileSize: file.size,
+      }),
+    });
+    if (!pre.ok) throw new Error((await pre.json()).error ?? `HTTP ${pre.status}`);
+    const { signedUrl, publicUrl } = await pre.json();
+
+    const put = await fetch(signedUrl, {
+      method: "PUT",
+      headers: { "Content-Type": file.type || "video/mp4" },
+      body: file,
+    });
+    if (!put.ok) throw new Error(`Falha no upload pro R2 (HTTP ${put.status})`);
+
+    await registrar(shot, publicUrl);
+    if (info && !info.vertical) {
+      setMsg({ tipo: "erro", texto: `"${shot.label}" ficou deitado. O reel é vertical — regrave em pé se der.` });
+    }
   }
 
   async function handleFile(shot: ShotItem, file: File) {
@@ -58,16 +121,28 @@ export default function CapturaGuiada({ veiculoId, capturas, onChange }: Props) 
         const { data: { publicUrl } } = supabase.storage.from("fotos-veiculos").getPublicUrl(data.path);
         await registrar(shot, publicUrl);
       } else {
-        const fd = new FormData();
-        fd.append("veiculoId", veiculoId);
-        fd.append("arquivo", file);
-        const res = await fetch("/api/veiculo/takes", { method: "POST", body: fd });
-        if (!res.ok) throw new Error((await res.json()).error ?? `HTTP ${res.status}`);
-        const { publicUrl } = await res.json();
-        await registrar(shot, publicUrl);
+        await subirTake(shot, file);
       }
     } catch (e: any) {
       setErroSlot((p) => ({ ...p, [shot.tag]: e.message ?? "Erro no upload" }));
+    } finally {
+      setSubindo(null);
+    }
+  }
+
+  async function removerTake(shot: ShotItem) {
+    setSubindo(shot.tag);
+    try {
+      const res = await fetch("/api/veiculo/takes", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ veiculoId, tag: shot.tag }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error ?? `HTTP ${res.status}`);
+      onChange(d.marketing_capturas);
+    } catch (e: any) {
+      setErroSlot((p) => ({ ...p, [shot.tag]: e.message ?? "Erro ao remover" }));
     } finally {
       setSubindo(null);
     }
@@ -98,10 +173,16 @@ export default function CapturaGuiada({ veiculoId, capturas, onChange }: Props) 
     }
   }
 
+  // Um clipe de referência por vez: o slot que entrar em foco vira o ativo.
+  const marcarRefVisivel = useCallback((tag: string, visivel: boolean) => {
+    setRefAtivo((atual) => (visivel ? tag : atual === tag ? null : atual));
+  }, []);
+
   const fotosOk = SHOT_FOTOS.filter((s) => urlDe(s)).length;
   const takesOk = SHOT_TAKES.filter((s) => urlDe(s)).length;
+  const obrigatoriosFalta = SHOT_TAKES.filter((s) => s.obrigatoria && !urlDe(s));
 
-  function Slot({ shot }: { shot: ShotItem }) {
+  function SlotFoto({ shot }: { shot: ShotItem }) {
     const url = urlDe(shot);
     const busy = subindo === shot.tag;
     const erro = erroSlot[shot.tag];
@@ -110,11 +191,9 @@ export default function CapturaGuiada({ veiculoId, capturas, onChange }: Props) 
         type="button"
         onClick={() => inputRefs.current[shot.tag]?.click()}
         disabled={busy}
-        className={`relative flex flex-col items-center justify-center gap-1 rounded-2xl border-2 p-3 text-center transition-all min-h-[100px] ${
-          url
-            ? "border-green-500/60 bg-green-50"
-            : erro
-              ? "border-red-400 bg-red-50"
+        className={`relative flex min-h-[100px] flex-col items-center justify-center gap-1 rounded-2xl border-2 p-3 text-center transition-all ${
+          url ? "border-green-500/60 bg-green-50"
+            : erro ? "border-red-400 bg-red-50"
               : "border-dashed border-gray-300 bg-gray-50 hover:border-gray-400"
         }`}
         title={shot.dica}
@@ -122,7 +201,7 @@ export default function CapturaGuiada({ veiculoId, capturas, onChange }: Props) 
         <input
           ref={(el) => { inputRefs.current[shot.tag] = el; }}
           type="file"
-          accept={shot.tipo === "foto" ? "image/*" : "video/*"}
+          accept="image/*"
           capture="environment"
           className="hidden"
           onChange={(e) => {
@@ -131,23 +210,19 @@ export default function CapturaGuiada({ veiculoId, capturas, onChange }: Props) 
             e.target.value = "";
           }}
         />
-        {url && shot.tipo === "foto" ? (
+        {url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={url} alt={shot.label} className="absolute inset-0 h-full w-full rounded-2xl object-cover opacity-80" />
         ) : null}
         <div className="relative z-10 flex flex-col items-center gap-1">
           {busy ? (
             <Loader2 size={16} className="animate-spin text-gray-500" />
-          ) : url && shot.tipo === "take" ? (
-            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-green-600 text-white"><Check size={13} /></span>
           ) : url ? (
             <span className="flex h-6 w-6 items-center justify-center rounded-full bg-green-600 text-white"><Check size={13} /></span>
-          ) : shot.tipo === "foto" ? (
-            <Camera size={16} className="text-gray-400" />
           ) : (
-            <Video size={16} className="text-gray-400" />
+            <Camera size={16} className="text-gray-400" />
           )}
-          <span className={`text-[9px] font-black uppercase tracking-wide ${url && shot.tipo === "foto" ? "text-white drop-shadow" : "text-gray-600"}`}>
+          <span className={`text-[9px] font-black uppercase tracking-wide ${url ? "text-white drop-shadow" : "text-gray-600"}`}>
             {shot.label}{shot.obrigatoria && !url ? " *" : ""}
           </span>
           {erro ? <span className="text-[8px] text-red-500">{erro}</span> : null}
@@ -158,7 +233,7 @@ export default function CapturaGuiada({ veiculoId, capturas, onChange }: Props) 
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-2">
+      <div className="mb-2 flex items-center justify-between">
         <button
           type="button"
           onClick={puxarFotosDoAnuncio}
@@ -173,21 +248,72 @@ export default function CapturaGuiada({ veiculoId, capturas, onChange }: Props) 
         </span>
       </div>
 
-      <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Fotos</p>
-      <div className="grid grid-cols-4 gap-2 mb-3">
-        {SHOT_FOTOS.map((s) => <Slot key={s.tag} shot={s} />)}
+      <p className="mb-1 text-[10px] font-black uppercase tracking-widest text-gray-400">Fotos</p>
+      <div className="mb-3 grid grid-cols-4 gap-2">
+        {SHOT_FOTOS.map((s) => <SlotFoto key={s.tag} shot={s} />)}
       </div>
 
-      <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">
-        Takes de vídeo <span className="text-gray-300 normal-case font-bold">(pro reel — 5-10s cada, celular na vertical)</span>
-      </p>
-      <div className="grid grid-cols-3 gap-2">
-        {SHOT_TAKES.map((s) => <Slot key={s.tag} shot={s} />)}
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">
+          Takes de vídeo <span className="font-bold normal-case text-gray-300">(5-10s cada, celular em pé)</span>
+        </p>
+        <button
+          type="button"
+          onClick={() => setModeloAberto(true)}
+          className="flex flex-shrink-0 items-center gap-1 rounded-lg bg-gray-100 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-gray-600 hover:bg-gray-200"
+        >
+          <PlayCircle size={11} /> Vídeo modelo
+        </button>
       </div>
+
+      {/* Barra de progresso: o vendedor precisa ver o quanto falta, não descobrir
+          contando slot cinza. */}
+      <div className="mb-2">
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
+          <div
+            className="h-full rounded-full bg-green-500 transition-all"
+            style={{ width: `${(takesOk / SHOT_TAKES.length) * 100}%` }}
+          />
+        </div>
+        {obrigatoriosFalta.length ? (
+          <p className="mt-1 text-[9px] font-bold text-gray-400">
+            Falta o essencial: {obrigatoriosFalta.map((s) => s.label).join(" · ")}
+          </p>
+        ) : (
+          <p className="mt-1 text-[9px] font-bold text-green-600">Takes essenciais completos ✅</p>
+        )}
+      </div>
+
+      {SHOT_BLOCOS.map(({ bloco, label }) => {
+        const doBloco = SHOT_TAKES.filter((s) => s.bloco === bloco);
+        if (!doBloco.length) return null;
+        return (
+          <div key={bloco} className="mb-2">
+            <p className="mb-1 text-[9px] font-black uppercase tracking-widest text-gray-300">{label}</p>
+            <div className="grid grid-cols-3 gap-2">
+              {doBloco.map((s) => (
+                <SlotTake
+                  key={s.tag}
+                  shot={s}
+                  url={urlDe(s)}
+                  busy={subindo === s.tag}
+                  erro={erroSlot[s.tag]}
+                  refAtivo={refAtivo === s.tag}
+                  onRefVisivel={(v) => marcarRefVisivel(s.tag, v)}
+                  onArquivo={(f) => handleFile(s, f)}
+                  onRemover={() => removerTake(s)}
+                />
+              ))}
+            </div>
+          </div>
+        );
+      })}
 
       {msg ? (
         <p className={`mt-2 text-[10px] font-bold ${msg.tipo === "ok" ? "text-green-600" : "text-red-500"}`}>{msg.texto}</p>
       ) : null}
+
+      {modeloAberto ? <VideoModeloModal onClose={() => setModeloAberto(false)} /> : null}
     </div>
   );
 }

@@ -43,3 +43,6 @@ next-env.d.ts
 
 .vercel
 .env*
+
+# build local dos clipes de referência da captura guiada (scripts/gerar-referencia.ts)
+.referencia-build/
