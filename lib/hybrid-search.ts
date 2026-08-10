@@ -366,7 +366,17 @@ async function fuzzyCorrectTokens(tokens: string[], tenantUserId: string): Promi
  * modelo os scores ficam todos altos — "minha geladeira parou de gelar" bate
  * 0,52 contra a base de carros, ou seja, 0,45 deixava passar QUALQUER coisa e a
  * semântica devolvia 5 carros pra toda mensagem.
- * Medido: ruído/fora de contexto ≤ 0,544 · consulta real ≥ 0,611.
+ * Medido contra o estoque real do Marcos (95 carros, 10/08):
+ *   "picape diesel 4x4 pra trabalhar no sítio" → 0,747 (S10) … 0,683 (Hilux)
+ *   "um carro econômico e barato"              → 0,650 (Mobi) … 0,595
+ *   "preciso de algo pra carga, entrega"       → 0,562 (Master furgão) ← CORTADO
+ *   "aceita financiamento?"                    → 0,543  (teto do ruído)
+ *   "bom dia"                                  → 0,513
+ * O corte em 0,58 é deliberadamente conservador: pergunta vaga como "algo pra
+ * carga" fica de fora por 0,018. Preferimos assim — a semântica é complementar
+ * (nunca desloca hit textual), então falso negativo só deixa de sugerir uma
+ * alternativa, enquanto falso positivo põe carro errado na boca do agente.
+ * Baixar pra 0,55 recupera as vagas, mas encosta no teto do ruído.
  * ⚠️ Threshold é acoplado ao modelo — recalibrar se trocar o embedding.
  */
 export const SEMANTIC_THRESHOLD = 0.58;
