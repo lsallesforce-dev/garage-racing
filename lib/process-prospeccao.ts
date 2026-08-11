@@ -13,7 +13,81 @@
 // =============================================================================
 
 import { geminiFlashSales, geminiFlashFallback, parseGeminiJson } from "@/lib/gemini";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 import type { Prospect, ProspectMensagem } from "@/lib/prospeccao-types";
+
+// ─── Pátio de demonstração ────────────────────────────────────────────────────
+// A abertura convida o lojista a "perguntar de um carro como se fosse cliente",
+// então a Mari precisa de estoque pra mostrar. Sai do tenant AutoZap (loja do
+// próprio Lucas) — carro e foto são dele, sem usar acervo de cliente.
+const TENANT_DEMO = "9e80d6e1-7ad9-4578-a848-1dd61fc36c9a";
+// Abaixo disso o estoque real não sustenta uma demo; cai no catálogo fixo.
+const MIN_CARROS_DEMO = 3;
+
+export interface CarroDemo {
+  id: string;
+  descricao: string;
+  foto: string | null;
+}
+
+// Catálogo de reserva: usado enquanto o tenant demo não tiver carro suficiente.
+// Sem foto de propósito — melhor não mandar imagem do que mandar a errada.
+const PATIO_FIXO: CarroDemo[] = [
+  { id: "fx1", descricao: "VW Gol 1.0 2014, prata, 98 mil km, completo — R$ 38.900", foto: null },
+  { id: "fx2", descricao: "Hyundai HB20 1.0 Comfort 2019, branco, 62 mil km — R$ 58.900", foto: null },
+  { id: "fx3", descricao: "Chevrolet Onix LT 1.0 2020, prata, 54 mil km — R$ 64.900", foto: null },
+  { id: "fx4", descricao: "Fiat Argo Drive 1.3 2021, vermelho, 41 mil km — R$ 69.900", foto: null },
+  { id: "fx5", descricao: "VW Polo Track 1.0 2024, branco, 18 mil km — R$ 74.900", foto: null },
+  { id: "fx6", descricao: "Jeep Renegade Sport 1.3T 2022, cinza, 47 mil km — R$ 98.900", foto: null },
+  { id: "fx7", descricao: "Toyota Corolla XEi 2.0 2021, prata, 58 mil km — R$ 128.900", foto: null },
+];
+
+function moeda(v: number | null): string {
+  if (!v) return "consultar";
+  return "R$ " + v.toLocaleString("pt-BR", { maximumFractionDigits: 0 });
+}
+
+/**
+ * Carrega o pátio de demonstração do tenant AutoZap. Cai no catálogo fixo se o
+ * estoque real ainda não tiver carros suficientes, pra demo nunca ficar vazia.
+ */
+export async function carregarPatioDemo(): Promise<CarroDemo[]> {
+  try {
+    const { data } = await supabaseAdmin
+      .from("veiculos")
+      .select("id, marca, modelo, versao, ano, ano_modelo, cor, quilometragem_estimada, preco_sugerido, fotos")
+      .eq("user_id", TENANT_DEMO)
+      .eq("status_venda", "DISPONIVEL")
+      .order("preco_sugerido", { ascending: true })
+      .limit(10);
+
+    const carros = (data ?? []).map((v) => {
+      const ano = v.ano ?? v.ano_modelo;
+      const km = v.quilometragem_estimada
+        ? `${Math.round(v.quilometragem_estimada / 1000)} mil km`
+        : null;
+      const partes = [
+        [v.marca, v.modelo, v.versao].filter(Boolean).join(" "),
+        ano, v.cor, km,
+      ].filter(Boolean).join(", ");
+      const fotos: string[] = Array.isArray(v.fotos) ? v.fotos : [];
+      return {
+        id: v.id as string,
+        descricao: `${partes} — ${moeda(v.preco_sugerido)}`,
+        foto: fotos[0] ?? null,
+      };
+    });
+
+    if (carros.length < MIN_CARROS_DEMO) {
+      console.log(`ℹ️ [prospeccao] Pátio demo com ${carros.length} carro(s) — usando catálogo fixo.`);
+      return PATIO_FIXO;
+    }
+    return carros;
+  } catch (err) {
+    console.error("❌ [prospeccao] Falha ao carregar pátio demo — usando catálogo fixo:", err);
+    return PATIO_FIXO;
+  }
+}
 
 // Temperatura da conversa de prospecção (espelha o padrão FRIO/MORNO/QUENTE do B2C).
 export type ProspeccaoTemperatura = "FRIO" | "MORNO" | "QUENTE";
@@ -26,6 +100,8 @@ export interface RespostaProspeccao {
   handoff: boolean;
   motivo_handoff: string | null;
   opt_out: boolean;
+  /** ID do carro do pátio demo cuja foto deve ir junto com a resposta (null = sem foto). */
+  foto_veiculo_id: string | null;
   /** true = os 2 modelos Gemini fora do ar — o caller NÃO deve responder o prospect (silêncio + alerta). */
   gemini_fora?: boolean;
 }
@@ -33,7 +109,12 @@ export interface RespostaProspeccao {
 const VALID_TEMPERATURAS: ProspeccaoTemperatura[] = ["FRIO", "MORNO", "QUENTE"];
 
 // ─── System instruction (persona + produto + regras) ─────────────────────────
-function buildSystemInstruction(prospect: Prospect): string {
+function buildSystemInstruction(prospect: Prospect, patio: CarroDemo[]): string {
+  // Só os carros COM foto ganham [ID]: assim o Gemini não consegue prometer
+  // imagem de um carro que não tem nenhuma.
+  const blocoPatio = patio
+    .map((c) => (c.foto ? `- ${c.descricao} [ID:${c.id}]` : `- ${c.descricao}`))
+    .join("\n");
   const empresa = prospect.nome_empresa || "a revenda";
   const cidade = prospect.cidade ? ` (${prospect.cidade}${prospect.estado ? "/" + prospect.estado : ""})` : "";
 
@@ -82,16 +163,13 @@ Ela vai te tratar como cliente comprador. RESPONDA COMO SE VOCÊ FOSSE O VENDEDO
 PROIBIDO devolver a pergunta vazia ("qual tipo de carro você procura?"). Se ela pedir pra ver o que você tem, MOSTRE 3 carros do pátio de demonstração abaixo, com preço, em bolhas curtas. Vendedor bom oferece; só atendente ruim pergunta de volta.
 
 ## SEU PÁTIO DE DEMONSTRAÇÃO (é o estoque que você "tem")
-- VW Gol 1.0 2014, prata, 98 mil km, completo — R$ 38.900
-- Hyundai HB20 1.0 Comfort 2019, branco, 62 mil km — R$ 58.900
-- Chevrolet Onix LT 1.0 2020, prata, 54 mil km — R$ 64.900
-- Fiat Argo Drive 1.3 2021, vermelho, 41 mil km — R$ 69.900
-- VW Polo Track 1.0 2024, branco, 18 mil km — R$ 74.900
-- Jeep Renegade Sport 1.3T 2022, cinza, 47 mil km — R$ 98.900
-- Toyota Corolla XEi 2.0 2021, prata, 58 mil km — R$ 128.900
-- VW Nivus Highline 2023, branco, 29 mil km — R$ 119.900
+${blocoPatio}
 Todos aceitam troca e financiamento. Se perguntarem detalhe que não está aqui (motor, único dono, pneu), diga que confirma com o pátio e volta — NÃO invente ficha técnica.
 Se pedirem um carro que NÃO está na lista, faça o que bom vendedor faz: diga que esse não tem no pátio agora e ofereça o mais parecido da lista. Nunca finja ter.
+
+## MANDAR FOTO
+Quando a pessoa pedir foto de um carro (ou quando oferecer ajudar a decidir), preencha "foto_veiculo_id" com o ID entre colchetes do carro escolhido. O sistema envia a imagem junto com sua resposta.
+NUNCA diga que "não consegue mandar foto": se o carro tem ID, você consegue. Se o carro escolhido não tiver foto disponível, o campo fica null e você segue a conversa sem prometer imagem.
 
 Depois de 2 ou 3 trocas assim, quebre a quarta parede UMA vez, com leveza: "foi mais ou menos assim que eu respondi agora. seus clientes teriam isso às 23h, no domingo, sem você precisar estar."
 Só uma vez. Não fique lembrando que é demonstração.
@@ -130,7 +208,8 @@ Responda EXCLUSIVAMENTE um JSON válido, sem markdown, sem comentários, exatame
   "qualificado": true | false,
   "handoff": true | false,
   "motivo_handoff": "string curta ou null",
-  "opt_out": true | false
+  "opt_out": true | false,
+  "foto_veiculo_id": "ID do carro cuja foto deve ir junto, ou null"
 }`;
 }
 
@@ -187,6 +266,7 @@ const FALLBACK_REENVIO: RespostaProspeccao = {
   handoff: false,
   motivo_handoff: null,
   opt_out: false,
+  foto_veiculo_id: null,
 };
 
 // Gemini totalmente fora (cota/billing/erro nos 2 modelos): silêncio > desculpa
@@ -199,6 +279,7 @@ const GEMINI_FORA: RespostaProspeccao = {
   handoff: false,
   motivo_handoff: null,
   opt_out: false,
+  foto_veiculo_id: null,
   gemini_fora: true,
 };
 
@@ -230,6 +311,10 @@ function parseResposta(jsonText: string): RespostaProspeccao {
         ? parsed.motivo_handoff.trim()
         : null,
     opt_out,
+    foto_veiculo_id:
+      typeof parsed.foto_veiculo_id === "string" && parsed.foto_veiculo_id.trim()
+        ? parsed.foto_veiculo_id.trim()
+        : null,
   };
 }
 
@@ -242,11 +327,13 @@ function parseResposta(jsonText: string): RespostaProspeccao {
 export async function gerarRespostaProspeccao({
   prospect,
   mensagens,
+  patio,
 }: {
   prospect: Prospect;
   mensagens: ProspectMensagem[];
+  patio?: CarroDemo[];
 }): Promise<RespostaProspeccao> {
-  const systemInstruction = buildSystemInstruction(prospect);
+  const systemInstruction = buildSystemInstruction(prospect, patio ?? (await carregarPatioDemo()));
   const historico = buildHistorico(mensagens);
 
   // Garante que sempre haja ao menos uma entrada "user" final para o modelo responder.

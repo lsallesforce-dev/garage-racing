@@ -16,8 +16,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { timingSafeEqual } from "crypto";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { sendAvisaMessage, extractWebhookToken } from "@/lib/avisa";
-import { gerarRespostaProspeccao } from "@/lib/process-prospeccao";
+import { sendAvisaMessage, sendAvisaImage, extractWebhookToken } from "@/lib/avisa";
+import { gerarRespostaProspeccao, carregarPatioDemo } from "@/lib/process-prospeccao";
 import { bumpStats } from "@/lib/prospeccao-stats";
 import type { Prospect, ProspectMensagem } from "@/lib/prospeccao-types";
 
@@ -353,6 +353,9 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Carrega o histórico e gera a resposta do agente ─────────────────────────
+  // O pátio vai junto: a Mari precisa dele pra ofertar carro E pra saber de qual
+  // deles ela tem foto (só esses recebem [ID] no prompt).
+  const patio = await carregarPatioDemo();
   const { data: msgs } = await supabaseAdmin
     .from("prospect_mensagens")
     .select("*")
@@ -361,7 +364,7 @@ export async function POST(req: NextRequest) {
 
   const mensagens = (msgs ?? []) as ProspectMensagem[];
 
-  const r = await gerarRespostaProspeccao({ prospect, mensagens });
+  const r = await gerarRespostaProspeccao({ prospect, mensagens, patio });
 
   // ── Blindagem: Gemini fora do ar → silêncio + alerta (nunca desculpa técnica) ─
   // O prospect é um potencial assinante vendo a IA em ação; vendedor humano que
@@ -410,6 +413,23 @@ export async function POST(req: NextRequest) {
         // sendAvisaMessage agora retorna boolean: false = 463/erro (não saiu).
         const ok = await sendAvisaMessage(waId, bolha, creds);
         if (!ok) { enviada = false; break; } // não insiste nas próximas bolhas
+      }
+
+      // Foto do carro pedido. Vai DEPOIS do texto (o WhatsApp mostra a imagem
+      // como resposta ao que ela acabou de dizer) e só se o Gemini apontou um ID
+      // que existe no pátio E tem foto — ele não decide a URL, só qual carro.
+      if (enviada && r.foto_veiculo_id) {
+        const carro = patio.find((c) => c.id === r.foto_veiculo_id);
+        if (carro?.foto) {
+          try {
+            await sendAvisaImage(waId, carro.foto, undefined, creds);
+          } catch (err) {
+            // Foto é bônus da demo: falhar aqui não invalida a resposta enviada.
+            console.error("❌ [prospeccao webhook] Falha ao enviar foto do carro:", err);
+          }
+        } else {
+          console.warn(`⚠️ [prospeccao webhook] foto_veiculo_id "${r.foto_veiculo_id}" sem foto no pátio — ignorado.`);
+        }
       }
     } catch (err) {
       console.error("❌ [prospeccao webhook] Erro inesperado ao enviar resposta:", err);
