@@ -123,9 +123,9 @@ function primeiroNome(nomeEmpresa: string | null): string {
 // com frase nova iniciando em minúscula.
 function ganchoProvaSocial(prospect: Prospect): string {
   const cidade = (prospect.cidade || "").trim();
-  if (/rio preto/i.test(cidade)) return "Tem lojista aqui de Rio Preto usando";
-  if (cidade) return `Tem lojista em ${cidade} usando`;
-  return "Tem lojista de multimarcas usando";
+  if (/rio preto/i.test(cidade)) return "Tem lojista aqui de Rio Preto me usando";
+  if (cidade) return `Tem lojista em ${cidade} me usando`;
+  return "Tem revenda me usando";
 }
 
 // ─── Substitui placeholders de template de abertura ───────────────────────────
