@@ -26,43 +26,50 @@ const SUBTABS: { id: SubTab; label: string; icon: any }[] = [
   { id: "metricas",  label: "Saúde & Métricas", icon: Activity   },
 ];
 
-// Funil em ordem
+// Funil em ordem. Campanha de tiro único: a fila ("Novos") esvazia conforme o
+// cron dispara, e o que não respondeu em 48h cai em "Sem resposta" — que é a
+// base da próxima rodada.
 const FUNIL: { status: ProspectStatus; label: string }[] = [
-  { status: "novo",        label: "Novos"        },
-  { status: "aprovado",    label: "Aprovados"    },
-  { status: "em_cadencia", label: "Em Cadência"  },
-  { status: "respondeu",   label: "Responderam"  },
-  { status: "quente",      label: "Quentes"      },
-  { status: "handoff",     label: "Handoff"      },
-  { status: "ganho",       label: "Ganhos"       },
+  { status: "novo",         label: "Na fila"      },
+  { status: "enviado",      label: "Enviados"     },
+  { status: "respondeu",    label: "Responderam"  },
+  { status: "quente",       label: "Quentes"      },
+  { status: "handoff",      label: "Handoff"      },
+  { status: "sem_resposta", label: "Sem resposta" },
+  { status: "ganho",        label: "Ganhos"       },
 ];
 
 const STATUS_LABEL: Record<ProspectStatus, string> = {
-  novo: "Novo",
-  aprovado: "Aprovado",
-  em_cadencia: "Em Cadência",
+  novo: "Na fila",
+  enviado: "Enviado",
   respondeu: "Respondeu",
+  sem_resposta: "Sem resposta",
   quente: "Quente",
   handoff: "Handoff",
   ganho: "Ganho",
   perdido: "Perdido",
   opt_out: "Opt-out",
+  // Legado pré-migration 042 — só pra renderizar registro antigo sem quebrar.
+  aprovado: "Aprovado (legado)",
+  em_cadencia: "Em Cadência (legado)",
 };
 
 const STATUS_BADGE: Record<ProspectStatus, string> = {
-  novo:        "bg-blue-50 text-blue-700 border-blue-100",
-  aprovado:    "bg-indigo-50 text-indigo-700 border-indigo-100",
-  em_cadencia: "bg-purple-50 text-purple-700 border-purple-100",
-  respondeu:   "bg-cyan-50 text-cyan-700 border-cyan-100",
-  quente:      "bg-amber-50 text-amber-700 border-amber-100",
-  handoff:     "bg-orange-50 text-orange-700 border-orange-100",
-  ganho:       "bg-green-50 text-green-700 border-green-100",
-  perdido:     "bg-gray-100 text-gray-500 border-gray-200",
-  opt_out:     "bg-red-50 text-red-600 border-red-100",
+  novo:         "bg-blue-50 text-blue-700 border-blue-100",
+  enviado:      "bg-purple-50 text-purple-700 border-purple-100",
+  respondeu:    "bg-cyan-50 text-cyan-700 border-cyan-100",
+  sem_resposta: "bg-gray-100 text-gray-500 border-gray-200",
+  quente:       "bg-amber-50 text-amber-700 border-amber-100",
+  handoff:      "bg-orange-50 text-orange-700 border-orange-100",
+  ganho:        "bg-green-50 text-green-700 border-green-100",
+  perdido:      "bg-gray-100 text-gray-500 border-gray-200",
+  opt_out:      "bg-red-50 text-red-600 border-red-100",
+  aprovado:     "bg-indigo-50 text-indigo-700 border-indigo-100",
+  em_cadencia:  "bg-indigo-50 text-indigo-700 border-indigo-100",
 };
 
 const ALL_STATUS: ProspectStatus[] = [
-  "novo", "aprovado", "em_cadencia", "respondeu", "quente", "handoff", "ganho", "perdido", "opt_out",
+  "novo", "enviado", "respondeu", "quente", "handoff", "sem_resposta", "ganho", "perdido", "opt_out",
 ];
 
 function fmtDateTime(iso?: string | null) {
@@ -995,6 +1002,86 @@ interface DiaStat {
   ganhos: number;
 }
 
+// ─── Progresso da rodada + disparo da próxima ────────────────────────────────
+// A campanha é de tiro único: o cron esvazia "Na fila" e o silêncio de 48h
+// empurra pra "Sem resposta". Quando a fila zera, a rodada acabou e só o Lucas
+// decide reabrir — nunca o cron.
+function PainelRodada({
+  funil,
+  headers,
+  onFeito,
+}: {
+  funil: Record<string, number>;
+  headers: Record<string, string>;
+  onFeito: () => void;
+}) {
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  const naFila = funil["novo"] ?? 0;
+  const enviados = funil["enviado"] ?? 0;
+  const semResposta = funil["sem_resposta"] ?? 0;
+  const responderam = (funil["respondeu"] ?? 0) + (funil["quente"] ?? 0) + (funil["handoff"] ?? 0);
+
+  const contatados = enviados + semResposta + responderam;
+  const total = naFila + contatados;
+  const pct = total > 0 ? Math.round((contatados / total) * 100) : 0;
+  const rodadaAcabou = naFila === 0 && semResposta > 0;
+
+  const abrirRodada = async () => {
+    if (!confirm(`Devolver ${semResposta} contato(s) sem resposta para a fila? Eles receberão UMA nova mensagem, no mesmo ritmo.`)) return;
+    setEnviando(true);
+    setErro(null);
+    try {
+      const res = await fetch("/api/admin/vendas/rodada", { method: "POST", headers });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Falha ao abrir a rodada");
+      onFeito();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro inesperado");
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div>
+          <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">Rodada atual</p>
+          <p className="text-sm font-bold text-gray-900">
+            {contatados} de {total} contatados
+            {responderam > 0 && <span className="text-cyan-600"> · {responderam} responderam</span>}
+          </p>
+        </div>
+        {rodadaAcabou && (
+          <button
+            onClick={abrirRodada}
+            disabled={enviando}
+            className="px-4 py-2 rounded-xl bg-gray-900 text-white text-[11px] font-black uppercase tracking-widest hover:bg-gray-700 transition disabled:opacity-50"
+          >
+            {enviando ? "Abrindo..." : `Iniciar próxima rodada (${semResposta})`}
+          </button>
+        )}
+      </div>
+
+      <div className="h-2 w-full rounded-full bg-gray-100 overflow-hidden">
+        <div className="h-full bg-gray-900 transition-all" style={{ width: `${pct}%` }} />
+      </div>
+
+      <p className="text-[10px] text-gray-400 leading-relaxed">
+        {naFila > 0
+          ? `${naFila} contato(s) ainda na fila. Uma mensagem por contato: sem resposta em 48h, a conversa encerra sozinha.`
+          : semResposta > 0
+            ? "Rodada concluída. A próxima manda UMA nova mensagem só para quem não respondeu."
+            : "Nada na fila e ninguém aguardando nova rodada."}
+      </p>
+
+      {erro && <p className="text-[11px] font-bold text-red-600">{erro}</p>}
+    </div>
+  );
+}
+
 function Metricas({ headers }: { headers: Record<string, string> }) {
   const [funil, setFunil] = useState<Record<string, number>>({});
   const [dias, setDias] = useState<DiaStat[]>([]);
@@ -1040,6 +1127,9 @@ function Metricas({ headers }: { headers: Record<string, string> }) {
           </div>
         ))}
       </div>
+
+      {/* Progresso da rodada + disparo da próxima */}
+      <PainelRodada funil={funil} headers={headers} onFeito={carregar} />
 
       {/* Perdidos / opt-out */}
       <div className="grid grid-cols-2 gap-3 max-w-md">

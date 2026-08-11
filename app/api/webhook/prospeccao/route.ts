@@ -282,7 +282,7 @@ export async function POST(req: NextRequest) {
   // ── Stand-by humano: não responde se um humano assumiu ──────────────────────
   if (prospect.em_atendimento_humano) {
     // Marca como "respondeu" se ainda não evoluiu, mas mantém o humano no controle.
-    if (prospect.status === "aprovado" || prospect.status === "em_cadencia" || prospect.status === "novo") {
+    if (prospect.status === "enviado" || prospect.status === "novo" || prospect.status === "sem_resposta") {
       patchBase.status = "respondeu";
     }
     await supabaseAdmin.from("prospects").update(patchBase).eq("id", prospect.id);
@@ -354,10 +354,10 @@ export async function POST(req: NextRequest) {
     patchBase.status = "opt_out";
     patchBase.opt_out = true;
   } else {
-    // Conversa viva: adia a reativação automática do cron (+2 dias). Sem isso, o
-    // proximo_contato_at setado lá na abertura vencia e o cron mandava um
-    // follow-up "oi, tudo certo?" POR CIMA de um papo em andamento.
-    patchBase.proximo_contato_at = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();
+    // Conversa viva. Desde a migration 042 não há follow-up automático, então não
+    // há nada pra adiar: basta garantir que nenhum agendamento residual sobreviva.
+    // (O status sair de 'enviado' também tira o prospect da varredura das 48h.)
+    patchBase.proximo_contato_at = null;
     if (r.handoff) {
       patchBase.status = "handoff";
       // NÃO seta em_atendimento_humano aqui: a IA continua respondendo o cliente

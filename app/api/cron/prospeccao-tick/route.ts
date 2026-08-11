@@ -2,26 +2,31 @@
 // =============================================================================
 // AutoZap — Cron "tranquilo" da prospecção B2B (1 passo por chamada)
 // =============================================================================
-// Cada invocação executa NO MÁXIMO 1 ação (abertura OU follow-up) — o ritmo é
-// ditado pela frequência com que o cron é chamado + pelos intervalos/quota da
-// config. Conservador e idempotente (anti-ban).
+// Campanha de TIRO ÚNICO: cada contato recebe UMA mensagem por rodada. Não há
+// follow-up automático — quem não responde em 48h é encerrado (`sem_resposta`),
+// e a rodada seguinte só existe se o Lucas apertar o botão em /admin (Vendas).
+// Motivo: a cadência antiga mandava "oi, tudo joia?" a cada 2 dias, converteu
+// zero em 39 conversas e levou o chip anterior ao soft-ban 463.
+//
+// Cada invocação executa NO MÁXIMO 1 envio — o ritmo é ditado pela frequência
+// do cron + intervalos/quota da config. Conservador e idempotente (anti-ban).
 //
 // Ordem de verificações (qualquer falha → skip com motivo):
+//   0. Self-heal do webhook + varredura das 48h (rodam SEMPRE, fora dos gates)
 //   1. Autenticação (Bearer CRON_SECRET OU assinatura QStash — nunca fail-open)
 //   2. Config: ativo?
 //   3. Janela: hora (America/Sao_Paulo) ∈ [janela_inicio, janela_fim) e dia ∈ dias_semana
 //   4. Quota: enviadas hoje < msgs_por_dia
 //   5. Intervalo: tempo desde a última msg do agente >= intervalo_min_seg (+ jitter)
-//   6. Escolhe 1 prospect elegível e processa (abertura ou follow-up)
+//   6. Pega 1 da fila (status 'novo') e manda a abertura
 // =============================================================================
 
 import { NextRequest, NextResponse } from "next/server";
 import { Receiver } from "@upstash/qstash";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendAvisaMessage, registrarWebhookAvisa, extractWebhookToken } from "@/lib/avisa";
-import { gerarFollowupProspeccao } from "@/lib/process-prospeccao";
 import { bumpStats } from "@/lib/prospeccao-stats";
-import type { Prospect, ProspeccaoConfig, ProspectMensagem } from "@/lib/prospeccao-types";
+import type { Prospect, ProspeccaoConfig } from "@/lib/prospeccao-types";
 
 export const maxDuration = 300;
 
@@ -96,19 +101,71 @@ function brasiliaHourAndIsoDow(): { hora: number; dow: number } {
 }
 
 
+// ─── Primeiro nome do contato ─────────────────────────────────────────────────
+// A lista de lojistas é de PESSOAS ("Adailton Votuporanga", "Alex Master Veic RP"),
+// não de razão social. Abrir com o nome inteiro soa a mala direta; usamos só o
+// primeiro nome. Descarta token curto/genérico do começo (ex.: "A/C MULTIMARCAS").
+function primeiroNome(nomeEmpresa: string | null): string {
+  const bruto = (nomeEmpresa || "").trim();
+  if (!bruto) return "";
+  const tok = bruto.split(/\s+/)[0].replace(/[^\p{L}]/gu, "");
+  if (tok.length < 3) return "";
+  // Capitaliza: a Lista B veio toda em CAIXA ALTA e "Oi ADELINO" parece grito.
+  return tok.charAt(0).toUpperCase() + tok.slice(1).toLowerCase();
+}
+
+// ─── Gancho de prova social, por proximidade geográfica ───────────────────────
+// A prova mais forte é a mais perto: um lojista da mesma cidade vale mais que
+// "revendas em geral". Rio Preto é a base da AutoZap (Marcos, Carmatti, APROVE),
+// e ~74 contatos da lista são de lá.
+function ganchoProvaSocial(prospect: Prospect): string {
+  const cidade = (prospect.cidade || "").trim();
+  if (/rio preto/i.test(cidade)) return "tem lojista aqui de Rio Preto usando";
+  if (cidade) return `tem lojista em ${cidade} usando`;
+  return "tem lojista de multimarcas usando";
+}
+
 // ─── Substitui placeholders de template de abertura ───────────────────────────
 function preencherTemplate(tpl: string, prospect: Prospect): string {
+  // {saudacao} já vem com o nome embutido. Nem todo registro tem nome utilizável
+  // ("A/C MULTIMARCAS" → token de 2 letras); nesse caso sai só "Oi." em vez do
+  // "Oi, ." que um placeholder vazio deixaria.
+  const nome = primeiroNome(prospect.nome_empresa);
   return tpl
+    .replace(/\{saudacao\}/gi, nome ? `Oi, ${nome}` : "Oi")
+    .replace(/\{primeiro_nome\}/gi, nome)
+    .replace(/\{gancho\}/gi, ganchoProvaSocial(prospect))
     .replace(/\{empresa\}/gi, prospect.nome_empresa || "")
     .replace(/\{nome_empresa\}/gi, prospect.nome_empresa || "")
     .replace(/\{cidade\}/gi, prospect.cidade || "")
     .replace(/\{estado\}/gi, prospect.estado || "")
     // Colapsa só espaços/tabs HORIZONTAIS (placeholder vazio deixa espaço duplo).
-    // NÃO pode tocar em \n: o \s{2,} antigo apagava o \n\n que separa as bolhas
-    // da abertura → o split devolvia 1 bolha só e a abertura saía como bloco
-    // único (saudação + convite + link grudados). Preservar \n mantém as 2 bolhas.
+    // NÃO pode tocar em \n: as quebras são o que dá respiro ao texto da abertura,
+    // e uma LINHA EM BRANCO ainda separa bolhas (hoje o template não usa nenhuma —
+    // a abertura sai como UMA mensagem só, que é como uma mensagem fria deve chegar).
     .replace(/[^\S\n]{2,}/g, " ")
     .trim();
+}
+
+// ─── Janela de espera antes de dar o prospect por perdido ─────────────────────
+const HORAS_ATE_SEM_RESPOSTA = 48;
+// Teto de ondas por contato. Passou disso, sai da base ativa pra sempre.
+const MAX_RODADAS = 3;
+
+// ─── Encerra quem levou a abertura e não respondeu em 48h ─────────────────────
+// Campanha de tiro único: sem resposta não gera cutucão, gera encerramento. O
+// prospect vira base da PRÓXIMA rodada, que só o Lucas dispara manualmente.
+async function encerrarSemResposta(): Promise<number> {
+  const limite = new Date(Date.now() - HORAS_ATE_SEM_RESPOSTA * 60 * 60 * 1000).toISOString();
+  const { data } = await supabaseAdmin
+    .from("prospects")
+    .update({ status: "sem_resposta", updated_at: new Date().toISOString() })
+    .eq("status", "enviado")
+    .lt("enviado_em", limite)
+    .select("id");
+  const n = data?.length ?? 0;
+  if (n > 0) console.log(`🔚 [prospeccao-tick] ${n} prospect(s) sem resposta em ${HORAS_ATE_SEM_RESPOSTA}h → encerrados.`);
+  return n;
 }
 
 export async function POST(req: NextRequest) {
@@ -122,6 +179,12 @@ export async function POST(req: NextRequest) {
   // Garante que o inbound dos prospects chegue mesmo após queda/re-pareamento da
   // Avisa. Não bloqueia o tick se falhar.
   await garantirWebhookProspeccao().catch(() => {});
+
+  // ── 0b. Varredura das 48h: quem não respondeu, encerra ──────────────────────
+  // Roda ANTES dos gates (config/janela/quota) de propósito: mesmo com a campanha
+  // pausada ou fora do horário, quem levou a abertura e ficou em silêncio precisa
+  // sair de "enviado". Não envia nada — só fecha o ciclo do prospect.
+  const encerrados = await encerrarSemResposta();
 
   // ── 1. Config ───────────────────────────────────────────────────────────────
   const { data: cfg } = await supabaseAdmin
@@ -176,122 +239,28 @@ export async function POST(req: NextRequest) {
   }
 
   const nowIso = new Date().toISOString();
-  const proximoContato = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(); // +2 dias
-
-  // ── 5. Escolhe 1 prospect — prioridade: followups devidos ────────────────────
-  // Followup devido: proximo_contato_at <= agora, não opt_out, em cadência.
-  const { data: followupsDevidos } = await supabaseAdmin
-    .from("prospects")
-    .select("*")
-    .eq("opt_out", false)
-    .eq("em_atendimento_humano", false)
-    .in("status", ["em_cadencia", "respondeu"])
-    .not("proximo_contato_at", "is", null)
-    .lte("proximo_contato_at", nowIso)
-    .order("proximo_contato_at", { ascending: true })
-    .limit(1);
-
-  const followup = (followupsDevidos?.[0] as Prospect | undefined) ?? null;
-
   const creds = autozapAvisaCreds();
 
-  // ── 5a. Caminho FOLLOW-UP ─────────────────────────────────────────────────────
-  if (followup) {
-    const alvoTel = followup.wa_id || followup.telefone;
-    if (!alvoTel) {
-      // Sem telefone → reagenda pra frente pra não travar a fila.
-      await supabaseAdmin
-        .from("prospects")
-        .update({ proximo_contato_at: proximoContato })
-        .eq("id", followup.id);
-      return NextResponse.json({ skip: "followup_sem_telefone", prospect_id: followup.id });
-    }
-
-    const { data: msgs } = await supabaseAdmin
-      .from("prospect_mensagens")
-      .select("*")
-      .eq("prospect_id", followup.id)
-      .order("created_at", { ascending: true });
-
-    const texto = await gerarFollowupProspeccao({
-      prospect: followup,
-      mensagens: (msgs ?? []) as ProspectMensagem[],
-    });
-
-    if (!texto) {
-      // Gemini sinalizou conversa encerrada → empurra o próximo contato pra frente.
-      await supabaseAdmin
-        .from("prospects")
-        .update({ proximo_contato_at: proximoContato, updated_at: nowIso })
-        .eq("id", followup.id);
-      return NextResponse.json({ skip: "followup_encerrado", prospect_id: followup.id });
-    }
-
-    if (!creds) {
-      console.warn("⚠️ [prospeccao-tick] AUTOZAP_AVISA_* ausentes — follow-up NÃO enviado (graceful).");
-      return NextResponse.json({ skip: "sem_credenciais", acao: "followup", prospect_id: followup.id });
-    }
-
-    let okEnvio = false;
-    try {
-      okEnvio = await sendAvisaMessage(alvoTel, texto, creds);
-    } catch (err) {
-      console.error("❌ [prospeccao-tick] Erro inesperado ao enviar follow-up:", err);
-    }
-    if (!okEnvio) {
-      // Envio recusado (tipicamente 463). Não grava msg do agente nem avança a fila:
-      // conta bloqueio e sai — o prospect continua elegível pro próximo tick.
-      console.error("❌ [prospeccao-tick] Follow-up NÃO enviado (envio recusado — ex.: 463).");
-      await bumpStats({ bloqueios: 1 }).catch(() => {});
-      return NextResponse.json({ error: "falha_envio", acao: "followup" }, { status: 500 });
-    }
-
-    await Promise.all([
-      supabaseAdmin.from("prospect_mensagens").insert({
-        prospect_id: followup.id,
-        remetente: "agente",
-        content: texto,
-      }),
-      supabaseAdmin
-        .from("prospects")
-        .update({
-          ultima_msg_at: nowIso,
-          proximo_contato_at: proximoContato,
-          followup_count: (followup.followup_count ?? 0) + 1,
-          updated_at: nowIso,
-        })
-        .eq("id", followup.id),
-      bumpStats({ enviadas: 1 }),
-    ]);
-
-    return NextResponse.json({ ok: true, acao: "followup", prospect_id: followup.id });
-  }
-
-  // ── 5b. Caminho ABERTURA (novo aprovado, sem mensagens, por score desc) ──────
-  const { data: aprovados } = await supabaseAdmin
+  // ── 5. Escolhe 1 prospect da FILA ───────────────────────────────────────────
+  // NÃO existe mais caminho de follow-up: uma rodada = uma mensagem por contato.
+  // Fila = status 'novo' (nunca abordado nesta rodada), respeitando opt_out e o
+  // teto de rodadas. Ordena por score desc e, no empate, pelos mais antigos.
+  const { data: fila } = await supabaseAdmin
     .from("prospects")
     .select("*")
-    .eq("status", "aprovado")
+    .eq("status", "novo")
     .eq("opt_out", false)
     .eq("em_atendimento_humano", false)
+    .lt("rodada", MAX_RODADAS)
     .order("score", { ascending: false })
+    .order("created_at", { ascending: true })
     .limit(10);
 
-  let novo: Prospect | null = null;
-  for (const cand of (aprovados ?? []) as Prospect[]) {
-    if (!cand.wa_id && !cand.telefone) continue; // sem como enviar
-    const { count } = await supabaseAdmin
-      .from("prospect_mensagens")
-      .select("*", { count: "exact", head: true })
-      .eq("prospect_id", cand.id);
-    if ((count ?? 0) === 0) {
-      novo = cand;
-      break;
-    }
-  }
+  // Sem telefone não há o que enviar — pula sem gastar a vez do cron.
+  const novo = ((fila ?? []) as Prospect[]).find((c) => c.wa_id || c.telefone) ?? null;
 
   if (!novo) {
-    return NextResponse.json({ skip: "sem_elegiveis" });
+    return NextResponse.json({ skip: "fila_vazia", encerrados });
   }
 
   // Escolhe um template de abertura aleatório e preenche placeholders.
@@ -347,16 +316,26 @@ export async function POST(req: NextRequest) {
     supabaseAdmin
       .from("prospects")
       .update({
-        status: "em_cadencia",
+        status: "enviado",
+        rodada: (novo.rodada ?? 0) + 1,
+        enviado_em: nowIso,
         ultima_msg_at: nowIso,
-        proximo_contato_at: proximoContato,
+        // proximo_contato_at fica NULO de propósito: é o campo que fazia o cron
+        // voltar a cutucar sozinho. Nesta campanha, silêncio = fim.
+        proximo_contato_at: null,
         updated_at: nowIso,
       })
       .eq("id", novo.id),
     bumpStats({ enviadas: 1, novas_conversas: 1 }),
   ]);
 
-  return NextResponse.json({ ok: true, acao: "abertura", prospect_id: novo.id });
+  return NextResponse.json({
+    ok: true,
+    acao: "abertura",
+    prospect_id: novo.id,
+    rodada: (novo.rodada ?? 0) + 1,
+    encerrados,
+  });
 }
 
 // Vercel Cron dispara via GET (com Authorization: Bearer CRON_SECRET). Os demais
