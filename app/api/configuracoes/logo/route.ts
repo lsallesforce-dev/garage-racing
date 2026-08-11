@@ -1,11 +1,23 @@
+// POST /api/configuracoes/logo — logo da loja, usada na capa do post (kit), na
+// capa do reel e no contrato.
+//
+// ⚠️ Duas regras que parecem detalhe e não são:
+// 1. Grava SEMPRE .png. Todos os consumidores montam o caminho na mão como
+//    `logos/{user_id}.png` (marketing/pacote, reel-render, reel-edit,
+//    marketing-pipeline, contratos/dados-vendedor). Salvar .jpg/.webp deixava a
+//    logo aparecendo em Configurações e sumindo das postagens, sem erro nenhum.
+// 2. Usa getEffectiveUserId, não user.id. Vendedor subindo logo gravava em
+//    logos/{id-do-vendedor}.png, que consumidor nenhum lê (eles usam o dono).
+
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { requireAuth } from "@/lib/api-auth";
+import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
 
 export async function POST(req: NextRequest) {
   try {
     const { user, error: authError } = await requireAuth();
     if (authError) return authError;
+    const ownerId = getEffectiveUserId(user!);
 
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
@@ -34,20 +46,49 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Formato inválido. Envie PNG, JPEG ou WebP." }, { status: 400 });
     }
 
-    const ext = isJpeg ? "jpg" : isWebp ? "webp" : "png";
-    const contentType = isJpeg ? "image/jpeg" : isWebp ? "image/webp" : "image/png";
+    // Converte pra PNG (mantém transparência; JPEG ganha fundo branco por não
+    // ter canal alfa mesmo). Se o sharp falhar, só segue com PNG de verdade —
+    // nunca grava .jpg/.webp, que o resto do sistema não sabe ler.
+    let png: Buffer = buffer;
+    if (!isPng) {
+      try {
+        const sharp = (await import("sharp")).default;
+        png = Buffer.from(await sharp(buffer).png().toBuffer());
+      } catch {
+        return NextResponse.json(
+          { error: "Não consegui converter essa imagem. Envie um PNG." },
+          { status: 400 },
+        );
+      }
+    }
+
     const suffix = tipo === "bomdia" ? "-bomdia" : "";
-    const path = `logos/${user!.id}${suffix}.${ext}`;
+    const path = `logos/${ownerId}${suffix}.png`;
 
     const { error } = await supabaseAdmin.storage
       .from("configuracoes")
-      .upload(path, buffer, { upsert: true, contentType });
+      .upload(path, png, { upsert: true, contentType: "image/png" });
 
     if (error) throw error;
 
     const { data } = supabaseAdmin.storage.from("configuracoes").getPublicUrl(path);
+    // ?v= força o refresh: o caminho é fixo, então sem isso o browser (e o CDN
+    // do Storage) continuariam servindo a logo antiga depois da troca.
+    const url = `${data.publicUrl}?v=${Date.now()}`;
 
-    return NextResponse.json({ url: data.publicUrl });
+    // Espelha na config_garage pra Minha Loja e o painel do Marketing mostrarem
+    // a mesma logo sem cada tela ter que adivinhar o caminho.
+    if (tipo === "geral") {
+      const { data: rows } = await supabaseAdmin
+        .from("config_garage")
+        .select("id")
+        .eq("user_id", ownerId)
+        .order("created_at", { ascending: false })
+        .limit(1);
+      if (rows?.[0]) await supabaseAdmin.from("config_garage").update({ logo_url: url }).eq("id", rows[0].id);
+    }
+
+    return NextResponse.json({ url });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }

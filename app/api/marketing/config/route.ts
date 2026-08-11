@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 async function latestCfgRow(userId: string) {
   const { data } = await supabaseAdmin
     .from("config_garage")
-    .select("id, marketing_mostrar_preco, marketing_claim, marketing_hashtags, marketing_foto_com_marca")
+    .select("id, marketing_mostrar_preco, marketing_claim, marketing_hashtags, marketing_foto_com_marca, logo_url")
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(1);
@@ -26,6 +26,7 @@ export async function GET() {
     claim: row?.marketing_claim ?? "",
     hashtags: row?.marketing_hashtags ?? "",
     foto_com_marca: row?.marketing_foto_com_marca === true,
+    logo_url: row?.logo_url ?? null,
   });
 }
 

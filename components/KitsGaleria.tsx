@@ -79,6 +79,11 @@ export default function KitsGaleria() {
   const [hashtags, setHashtags] = useState("");
   const [fotoComMarca, setFotoComMarca] = useState(false);
   const [salvandoCfg, setSalvandoCfg] = useState(false);
+  const [cfgErro, setCfgErro] = useState("");
+  const [cfgSalvo, setCfgSalvo] = useState(false);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [subindoLogo, setSubindoLogo] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!effectiveUserId) return;
@@ -103,6 +108,7 @@ export default function KitsGaleria() {
         setClaim(d.claim ?? "");
         setHashtags(d.hashtags ?? "");
         setFotoComMarca(d.foto_com_marca === true);
+        setLogoUrl(d.logo_url ?? null);
         setCfgCarregada(true);
       })
       .catch(() => setCfgCarregada(true));
@@ -138,16 +144,61 @@ export default function KitsGaleria() {
     setCarros((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
   }
 
-  async function salvarCfg() {
+  // Persiste um pedaço da config. A rota aceita update parcial (só o que vier no
+  // body), então o checkbox grava sozinho, sem depender do botão Salvar.
+  //
+  // O erro é MOSTRADO: esta função engolia o `res.ok` e um 401/404/500 ficava
+  // idêntico a sucesso — a marca d'água "ligada" na tela e desligada no banco.
+  async function patchCfg(patch: Record<string, unknown>): Promise<boolean> {
     setSalvandoCfg(true);
+    setCfgErro("");
     try {
-      await fetch("/api/marketing/config", {
+      const res = await fetch("/api/marketing/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mostrar_preco: mostrarPreco, claim, hashtags, foto_com_marca: fotoComMarca }),
+        body: JSON.stringify(patch),
       });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `HTTP ${res.status}`);
+      setCfgSalvo(true);
+      setTimeout(() => setCfgSalvo(false), 2500);
+      return true;
+    } catch (e: any) {
+      setCfgErro(e.message ?? "Não consegui salvar");
+      return false;
     } finally {
       setSalvandoCfg(false);
+    }
+  }
+
+  // Checkbox salva na hora: era o modo de falha real — marcar a caixa, não clicar
+  // em Salvar e achar que valeu.
+  async function alternarCfg(campo: "mostrar_preco" | "foto_com_marca", valor: boolean) {
+    const setter = campo === "mostrar_preco" ? setMostrarPreco : setFotoComMarca;
+    setter(valor);
+    const ok = await patchCfg({ [campo]: valor });
+    if (!ok) setter(!valor); // não vingou no banco: a tela volta a contar a verdade
+  }
+
+  async function salvarCfg() {
+    await patchCfg({ mostrar_preco: mostrarPreco, claim, hashtags, foto_com_marca: fotoComMarca });
+  }
+
+  async function subirLogo(file: File) {
+    setSubindoLogo(true);
+    setCfgErro("");
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/configuracoes/logo", { method: "POST", body: fd });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error ?? `HTTP ${res.status}`);
+      setLogoUrl(d.url);
+      setCfgSalvo(true);
+      setTimeout(() => setCfgSalvo(false), 2500);
+    } catch (e: any) {
+      setCfgErro(e.message ?? "Erro ao enviar a logo");
+    } finally {
+      setSubindoLogo(false);
     }
   }
 
@@ -331,18 +382,63 @@ export default function KitsGaleria() {
       {cfgAberta && (
         <div className="space-y-3 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
           <label className="flex items-center gap-3 text-xs font-bold text-gray-600">
-            <input type="checkbox" checked={mostrarPreco} onChange={(e) => setMostrarPreco(e.target.checked)} className="h-4 w-4 accent-red-600" />
+            <input type="checkbox" checked={mostrarPreco} onChange={(e) => alternarCfg("mostrar_preco", e.target.checked)} className="h-4 w-4 accent-red-600" />
             Mostrar preço na capa e na legenda
           </label>
-          <label className="flex items-center gap-3 text-xs font-bold text-gray-600">
-            <input type="checkbox" checked={fotoComMarca} onChange={(e) => setFotoComMarca(e.target.checked)} className="h-4 w-4 accent-red-600" />
-            Minhas fotos já têm a marca d&apos;água da loja (não sobrepor o logo)
-          </label>
+          <div>
+            <label className="flex items-center gap-3 text-xs font-bold text-gray-600">
+              <input type="checkbox" checked={fotoComMarca} onChange={(e) => alternarCfg("foto_com_marca", e.target.checked)} className="h-4 w-4 accent-red-600" />
+              Minhas fotos já têm a marca d&apos;água da loja (não sobrepor o logo)
+            </label>
+            <p className="ml-7 mt-0.5 text-[10px] font-bold text-gray-400">
+              Vale a partir do próximo kit — os já gerados mantêm a capa antiga até você gerar de novo.
+            </p>
+          </div>
+
+          {/* Logo usada nas postagens (capa do post, capa do reel e contrato) */}
+          <div className="flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 p-2.5">
+            <input
+              ref={logoInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) subirLogo(f);
+                e.target.value = "";
+              }}
+            />
+            <div className="flex h-12 w-20 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg border border-gray-200 bg-white">
+              {logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={logoUrl} alt="Logo da loja" className="h-full w-full object-contain p-1" />
+              ) : (
+                <span className="text-[8px] font-black uppercase tracking-widest text-gray-300">sem logo</span>
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-bold text-gray-600">Logo das postagens</p>
+              <p className="text-[10px] font-bold text-gray-400">
+                Aparece na capa do post e na capa do reel. PNG com fundo transparente fica melhor.
+              </p>
+            </div>
+            <button
+              onClick={() => logoInputRef.current?.click()}
+              disabled={subindoLogo}
+              className="flex-shrink-0 rounded-xl bg-gray-900 px-3 py-2 text-[9px] font-black uppercase tracking-widest text-white hover:bg-red-600 disabled:opacity-50"
+            >
+              {subindoLogo ? "Enviando..." : logoUrl ? "Trocar" : "Enviar"}
+            </button>
+          </div>
           <input value={claim} onChange={(e) => setClaim(e.target.value)} placeholder="Claim da loja (ex.: Pegamos seu carro na troca e financiamos a diferença)" className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs" maxLength={140} />
           <input value={hashtags} onChange={(e) => setHashtags(e.target.value)} placeholder="Hashtags fixas (ex.: #minhaloja #riopreto)" className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs" maxLength={300} />
-          <button onClick={salvarCfg} disabled={salvandoCfg} className="rounded-xl bg-gray-900 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white hover:bg-red-600 disabled:opacity-50">
-            {salvandoCfg ? "Salvando..." : "Salvar config"}
-          </button>
+          <div className="flex items-center gap-3">
+            <button onClick={salvarCfg} disabled={salvandoCfg} className="rounded-xl bg-gray-900 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white hover:bg-red-600 disabled:opacity-50">
+              {salvandoCfg ? "Salvando..." : "Salvar config"}
+            </button>
+            {cfgSalvo ? <span className="text-[10px] font-black uppercase tracking-widest text-green-600">Salvo ✓</span> : null}
+            {cfgErro ? <span className="text-[10px] font-bold text-red-500">{cfgErro}</span> : null}
+          </div>
         </div>
       )}
 
