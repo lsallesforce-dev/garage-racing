@@ -411,9 +411,13 @@ export default function ReelEditor({
     });
   }
 
-  // Regera as legendas a partir da ficha do carro e recarrega as linhas. `forcar`
-  // porque o vendedor só clica nisso quando quer trocar o texto — o cache por
-  // ficha_hash devolveria o mesmo de sempre.
+  // Regera as legendas a partir da ficha do carro. `forcar` porque o vendedor só
+  // clica nisso quando quer trocar o texto — o cache por ficha_hash devolveria o
+  // mesmo de sempre.
+  //
+  // Usa a RESPOSTA da rota, não um GET novo do reel-edit: o GET aplica a
+  // precedência (manual > ficha), então se houver texto salvo ele devolveria o
+  // texto velho e o botão pareceria não fazer nada. É exatamente o que acontecia.
   async function regerarLegendas() {
     setGerandoLegendas(true);
     setErro(null);
@@ -423,16 +427,22 @@ export default function ReelEditor({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ veiculoId, forcar: true }),
       });
-      if (!res.ok) throw new Error((await res.json()).error ?? `HTTP ${res.status}`);
-      const d = await fetch(`/api/marketing/reel-edit?veiculoId=${veiculoId}`).then((r) => r.json());
-      // Só as legendas voltam da ficha; corte e ordem que o vendedor mexeu ficam.
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error ?? `HTTP ${res.status}`);
+      const takes: Record<string, { callout?: string; subCallout?: string }> = d.callouts?.takes ?? {};
+      // Corte e ordem que o vendedor mexeu ficam; só o texto é reescrito. Take
+      // que a ficha não sustenta fica VAZIO — é melhor que legenda desconexa.
       setLinhas((prev) =>
         prev
           ? prev.map((l) => {
-              const novo = (d.clips ?? []).find((c: Linha) => c.tag && c.tag === l.tag);
-              return novo ? { ...l, callout: novo.callout, subCallout: novo.subCallout } : l;
+              const novo = l.tag ? takes[l.tag] : null;
+              return {
+                ...l,
+                callout: (novo?.callout ?? "").toUpperCase(),
+                subCallout: novo?.subCallout ?? "",
+              };
             })
-          : d.clips ?? []
+          : prev
       );
     } catch (e: any) {
       setErro(e.message ?? "Erro ao gerar legendas");
@@ -520,11 +530,15 @@ export default function ReelEditor({
         onClick={regerarLegendas}
         disabled={gerandoLegendas}
         className="flex items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white py-2 text-[9px] font-black uppercase tracking-widest text-gray-600 hover:bg-gray-50 disabled:opacity-50"
-        title="Reescreve a legenda de cada take usando opcionais, motor, câmbio e o resto da ficha do carro"
+        title="Reescreve a legenda de cada take usando opcionais, motor, câmbio e o resto da ficha do carro. Substitui o que estiver escrito — clique em Salvar pra valer."
       >
         {gerandoLegendas ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
         {gerandoLegendas ? "Escrevendo..." : "Gerar legendas da ficha do carro"}
       </button>
+      <p className="-mt-1 text-[9px] font-bold text-gray-400">
+        Reescreve o texto de todos os takes a partir da ficha e substitui o que estiver escrito.
+        Take que a ficha não sustenta fica sem legenda. Salve depois pra valer.
+      </p>
 
       {/* Transição */}
       <div className="rounded-xl border border-gray-100 bg-white p-2.5">

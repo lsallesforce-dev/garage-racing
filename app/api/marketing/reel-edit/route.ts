@@ -168,24 +168,50 @@ export async function POST(req: NextRequest) {
   const { error: authError } = await requireVehicleOwner(veiculoId);
   if (authError) return authError;
 
+  // O que a legenda AUTOMÁTICA diria hoje, take a take.
+  //
+  // Sem isso o editor congela o automático como se fosse edição manual: o GET
+  // devolve a legenda já resolvida pra caixa de texto, o vendedor clica em
+  // Salvar sem tocar nela, e ela volta pra cá como "manual" — que tem a maior
+  // precedência em resolverCallout(). Foi o que aconteceu com o Tucson: os 10
+  // clipes ficaram com o rodízio por índice gravado (clipe 9 = opcional [8],
+  // "TRAVAS ELÉTRICAS COM" no take do farol), e "Gerar legendas da ficha" não
+  // conseguia mais vencer. Só texto DIFERENTE do automático é edição de verdade.
+  const { data: vAtual } = await supabaseAdmin
+    .from("veiculos")
+    .select("opcionais, pontos_fortes_venda, preco_sugerido, cor, marketing_reel_edit")
+    .eq("id", veiculoId)
+    .single();
+  const listaAuto = calloutsDoVeiculo(vAtual ?? {});
+  const calloutsSalvos = await lerCalloutsSalvos(veiculoId);
+  const mesmoTexto = (a: string, b: string) => a.trim().toUpperCase() === b.trim().toUpperCase();
+
   // Sanitiza. A ORDEM do array é a ordem final dos clipes (reorder). url = fonte.
   const limpos = clips
     .slice(0, 20)
     .filter((c: any) => typeof c?.url === "string" && c.url.startsWith("https://"))
-    .map((c: any) => {
+    .map((c: any, i: number) => {
       const inicio = Math.max(Number(c?.inicio) || 0, 0);
       // fim ao menos 1s depois do início; máx 8s de trecho
       const fimBruto = Number(c?.fim);
       const fim = Number.isFinite(fimBruto)
         ? Math.min(Math.max(fimBruto, inicio + 1), inicio + 15)
         : inicio + DEFAULT_SEG;
+
+      const tag = typeof c?.tag === "string" ? c.tag : null;
+      const auto = resolverCallout({ tag, idx: i, salvos: calloutsSalvos, lista: listaAuto });
+      const calloutTxt = String(c?.callout ?? "").trim().slice(0, 40);
+      const subTxt = String(c?.subCallout ?? "").trim().slice(0, 60);
+
       return {
-        tag: typeof c?.tag === "string" ? c.tag : null,
+        tag,
         url: c.url,
         inicio,
         fim,
-        callout: String(c?.callout ?? "").trim().slice(0, 40),
-        subCallout: String(c?.subCallout ?? "").trim().slice(0, 60),
+        // "" = siga o automático. Guardar o texto igual ao automático o
+        // fossilizaria e a legenda nunca mais acompanharia a ficha.
+        callout: mesmoTexto(calloutTxt, auto.callout) ? "" : calloutTxt,
+        subCallout: mesmoTexto(subTxt, auto.subCallout) ? "" : subTxt,
       };
     });
 
@@ -206,12 +232,7 @@ export async function POST(req: NextRequest) {
       segundos: Number.isFinite(seg) ? Math.min(Math.max(seg, 1), 6) : CAPA_SEG_PADRAO,
     };
   } else {
-    const { data: atual } = await supabaseAdmin
-      .from("veiculos")
-      .select("marketing_reel_edit")
-      .eq("id", veiculoId)
-      .single();
-    capaOk = atual?.marketing_reel_edit?.capa ?? null;
+    capaOk = (vAtual as any)?.marketing_reel_edit?.capa ?? null;
   }
 
   const { error: dbErr } = await supabaseAdmin
