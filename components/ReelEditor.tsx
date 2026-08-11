@@ -214,6 +214,7 @@ export default function ReelEditor({
   const [trilha, setTrilha] = useState("animado");
   const [transicao, setTransicao] = useState("fade");
   const [salvando, setSalvando] = useState(false);
+  const [gerandoLegendas, setGerandoLegendas] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [trilhaAberta, setTrilhaAberta] = useState(false);
   const [tocando, setTocando] = useState<string | null>(null);
@@ -271,6 +272,36 @@ export default function ReelEditor({
       [arr[i], arr[j]] = [arr[j], arr[i]];
       return arr;
     });
+  }
+
+  // Regera as legendas a partir da ficha do carro e recarrega as linhas. `forcar`
+  // porque o vendedor só clica nisso quando quer trocar o texto — o cache por
+  // ficha_hash devolveria o mesmo de sempre.
+  async function regerarLegendas() {
+    setGerandoLegendas(true);
+    setErro(null);
+    try {
+      const res = await fetch("/api/marketing/callouts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ veiculoId, forcar: true }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error ?? `HTTP ${res.status}`);
+      const d = await fetch(`/api/marketing/reel-edit?veiculoId=${veiculoId}`).then((r) => r.json());
+      // Só as legendas voltam da ficha; corte e ordem que o vendedor mexeu ficam.
+      setLinhas((prev) =>
+        prev
+          ? prev.map((l) => {
+              const novo = (d.clips ?? []).find((c: Linha) => c.tag && c.tag === l.tag);
+              return novo ? { ...l, callout: novo.callout, subCallout: novo.subCallout } : l;
+            })
+          : d.clips ?? []
+      );
+    } catch (e: any) {
+      setErro(e.message ?? "Erro ao gerar legendas");
+    } finally {
+      setGerandoLegendas(false);
+    }
   }
 
   async function salvar(gerar: boolean) {
@@ -336,6 +367,17 @@ export default function ReelEditor({
           onDelete={() => deletar(i)}
         />
       ))}
+
+      {/* Legendas a partir da ficha do carro */}
+      <button
+        onClick={regerarLegendas}
+        disabled={gerandoLegendas}
+        className="flex items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white py-2 text-[9px] font-black uppercase tracking-widest text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+        title="Reescreve a legenda de cada take usando opcionais, motor, câmbio e o resto da ficha do carro"
+      >
+        {gerandoLegendas ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+        {gerandoLegendas ? "Escrevendo..." : "Gerar legendas da ficha do carro"}
+      </button>
 
       {/* Transição */}
       <div className="rounded-xl border border-gray-100 bg-white p-2.5">

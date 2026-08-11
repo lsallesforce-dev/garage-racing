@@ -5,8 +5,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireVehicleOwner } from "@/lib/api-auth";
-import { SHOT_TAKES, type MarketingCapturas } from "@/lib/marketing-shotlist";
-import { calloutsDoVeiculo } from "@/lib/reel-callouts";
+import { SHOT_TAKES, ordenarTakes, segundosDoTake, type MarketingCapturas } from "@/lib/marketing-shotlist";
+import { calloutsDoVeiculo, resolverCallout } from "@/lib/reel-callouts";
+import { lerCalloutsSalvos } from "@/lib/reel-callouts-ia";
 
 export const dynamic = "force-dynamic";
 
@@ -38,19 +39,19 @@ export async function GET(req: NextRequest) {
   if (!veiculo) return NextResponse.json({ error: "Veículo não encontrado" }, { status: 404 });
 
   const capturas: MarketingCapturas = veiculo.marketing_capturas ?? {};
-  const ordemTag = SHOT_TAKES.map((s) => s.tag);
   // Todos os takes gravados no carro (ordem da shot list), pra label/preview.
   const gravados: { url: string; tag: string | null }[] = (capturas.takes?.length)
-    ? [...capturas.takes]
-        .sort((a, b) => ordemTag.indexOf(a.tag) - ordemTag.indexOf(b.tag))
-        .map((t) => ({ url: t.url, tag: t.tag }))
+    ? ordenarTakes(capturas.takes).map((t) => ({ url: t.url, tag: t.tag }))
     : (veiculo.video_takes ?? []).map((url: string) => ({ url, tag: null }));
 
   const callouts = calloutsDoVeiculo(veiculo);
+  // Legendas por take geradas da ficha. Query própria porque a coluna vem da
+  // migration 040, aplicada à mão: se ela não existir, isso devolve null e o
+  // editor cai no rodízio antigo em vez de derrubar a rota inteira.
+  const calloutsSalvos = await lerCalloutsSalvos(veiculoId);
   const salvos: any[] = Array.isArray(veiculo.marketing_reel_edit?.clips) ? veiculo.marketing_reel_edit.clips : [];
 
   const labelDe = (tag: string | null, idx: number) => (tag ? LABEL_TAKE[tag] ?? "Take" : `Take ${idx + 1}`);
-  const defaultCallout = (idx: number) => callouts[idx % Math.max(callouts.length, 1)] ?? "";
 
   let linhas: LinhaEdit[];
   if (salvos.length) {
@@ -60,34 +61,42 @@ export async function GET(req: NextRequest) {
     linhas = salvos
       .filter((e) => typeof e?.url === "string")
       .map((e, i) => {
-        const g = gravados.find((t) => t.url === e.url);
-        const tag = typeof e.tag === "string" ? e.tag : g?.tag ?? null;
+        // A url pode repetir (decupagem: N slots do mesmo arquivo-fonte), então a
+        // tag salva no clip manda; o find por url é só retrocompat de edição antiga.
+        const tag = typeof e.tag === "string" ? e.tag : gravados.find((t) => t.url === e.url)?.tag ?? null;
         const inicio = typeof e.inicio === "number" ? e.inicio : 0;
         const fim =
           typeof e.fim === "number" ? e.fim
             : typeof e.segundos === "number" ? inicio + e.segundos
-              : inicio + DEFAULT_SEG;
+              : inicio + segundosDoTake(tag);
+        const r = resolverCallout({
+          manual: typeof e.callout === "string" ? e.callout : null,
+          tag, idx: i, salvos: calloutsSalvos, lista: callouts,
+        });
         return {
           tag,
           label: labelDe(tag, i),
           url: e.url,
           inicio,
           fim,
-          callout: typeof e.callout === "string" ? e.callout : defaultCallout(i),
-          subCallout: typeof e.subCallout === "string" ? e.subCallout : "",
+          callout: r.callout,
+          subCallout: typeof e.subCallout === "string" && e.subCallout ? e.subCallout : r.subCallout,
         };
       });
   } else {
     // Sem edição salva: lista todos os takes com defaults.
-    linhas = gravados.map((t, i) => ({
-      tag: t.tag,
-      label: labelDe(t.tag, i),
-      url: t.url,
-      inicio: 0,
-      fim: DEFAULT_SEG,
-      callout: defaultCallout(i),
-      subCallout: "",
-    }));
+    linhas = gravados.map((t, i) => {
+      const r = resolverCallout({ tag: t.tag, idx: i, salvos: calloutsSalvos, lista: callouts });
+      return {
+        tag: t.tag,
+        label: labelDe(t.tag, i),
+        url: t.url,
+        inicio: 0,
+        fim: segundosDoTake(t.tag),
+        callout: r.callout,
+        subCallout: r.subCallout,
+      };
+    });
   }
 
   const trilha = typeof veiculo.marketing_reel_edit?.trilha === "string" ? veiculo.marketing_reel_edit.trilha : "animado";

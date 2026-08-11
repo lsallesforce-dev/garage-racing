@@ -10,6 +10,7 @@ import { cfgFromRow, gerarLegenda } from "@/lib/marketing-kit";
 import { fotoParaCapa, loadCapaFont, renderCapa, toDataUri } from "@/lib/marketing-capa";
 import { completarCapturas } from "@/lib/marketing-classificar";
 import { montarCarrossel, type MarketingCapturas } from "@/lib/marketing-shotlist";
+import { garantirCallouts } from "@/lib/reel-callouts-ia";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -86,7 +87,18 @@ export async function POST(req: NextRequest) {
     // Carrossel de feed: capa + fotos etiquetadas em ordem narrativa + resto da galeria
     const carrossel = montarCarrossel(capaUrl, capturas, veiculo.fotos);
 
-    const legenda = await gerarLegenda(veiculo, cfg);
+    // Legenda do post + legendas de cada take do reel saem juntas: as duas leem a
+    // mesma ficha e o vendedor espera o kit COMPLETO no clique. garantirCallouts é
+    // idempotente por ficha_hash, então regerar o kit não gasta Gemini à toa. Se
+    // falhar (ex: migration 040 não aplicada), o kit sai igual — o reel só cai no
+    // rodízio antigo de opcionais.
+    const [legenda] = await Promise.all([
+      gerarLegenda(veiculo, cfg),
+      garantirCallouts(veiculoId, veiculo).catch((e) => {
+        console.warn("⚠️ [pacote] legendas de take falharam:", String(e).slice(0, 160));
+        return null;
+      }),
+    ]);
 
     const { error: dbErr } = await supabaseAdmin
       .from("veiculos")

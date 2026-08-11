@@ -33,6 +33,44 @@ export function curtaOpcional(s: string): string {
   return t.toUpperCase();
 }
 
+// Precedência ÚNICA da legenda de um clipe. Existe pra que o preview do
+// ReelEditor e o reel renderizado mostrem exatamente o mesmo texto — antes o
+// cálculo estava duplicado em lib/reel-render.ts e em /api/marketing/reel-edit,
+// e qualquer mudança num só dos lados fazia o preview mentir.
+//
+//   1. edição manual do vendedor (não-vazia) — ele digitou, manda
+//   2. legenda gerada da ficha para AQUELE take (veiculos.marketing_callouts)
+//   3. rodízio da lista geral de opcionais — SÓ pra take sem etiqueta
+//   4. "" — sem legenda; o ClipScene não desenha o lower-third
+//
+// O passo 3 é o comportamento histórico e é ruim: distribui os opcionais por
+// índice, então "BANCOS EM COURO" cai no clipe do porta-malas por sorte. Ele
+// sobrevive apenas para o take LEGADO, que vem de video_takes sem tag e portanto
+// não tem slot pra respeitar. Take etiquetado que a ficha não sustenta fica sem
+// legenda — vazio é melhor que desconexo.
+export function resolverCallout(
+  opts: {
+    manual?: string | null;
+    tag?: string | null;
+    idx: number;
+    salvos?: { takes?: Record<string, { callout?: string; subCallout?: string }> } | null;
+    lista: string[];
+  }
+): { callout: string; subCallout: string } {
+  const manual = String(opts.manual ?? "").trim();
+  if (manual) return { callout: manual.toUpperCase(), subCallout: "" };
+
+  if (opts.tag) {
+    const doTake = opts.salvos?.takes?.[opts.tag];
+    return doTake?.callout
+      ? { callout: doTake.callout.toUpperCase(), subCallout: doTake.subCallout ?? "" }
+      : { callout: "", subCallout: "" };
+  }
+
+  const lista = opts.lista;
+  return { callout: lista.length ? lista[opts.idx % lista.length] : "", subCallout: "" };
+}
+
 // Lista de callouts únicos (sem repetir) a partir dos opcionais → pontos fortes.
 export function calloutsDoVeiculo(veiculo: any): string[] {
   const fontes: string[] = [...(veiculo?.opcionais ?? []), ...(veiculo?.pontos_fortes_venda ?? [])];

@@ -11,6 +11,8 @@
     "start": "next start",
     "lint": "eslint",
     "test:rls": "npx tsx scripts/test-rls.ts",
+    "test:callouts": "npx tsx scripts/test-callouts.ts",
+    "referencia:takes": "npx tsx scripts/gerar-referencia.ts",
     "worker": "npx tsx worker-server.ts"
   },
   "dependencies": {
