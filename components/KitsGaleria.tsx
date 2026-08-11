@@ -44,6 +44,7 @@ interface CarroKit {
   marketing_reel_url: string | null;
   marketing_reel_status: string | null;
   video_takes: string[] | null;
+  video_url: string | null;
   marketing_capturas: MarketingCapturas | null;
   roteiro_pitch: string | null;
 }
@@ -83,7 +84,7 @@ export default function KitsGaleria() {
     if (!effectiveUserId) return;
     supabase
       .from("veiculos")
-      .select("id, marca, modelo, versao, ano, ano_modelo, fotos, status_venda, marketing_capa_url, marketing_story_url, marketing_carrossel, marketing_legenda, marketing_reel_url, marketing_reel_status, video_takes, marketing_capturas, roteiro_pitch")
+      .select("id, marca, modelo, versao, ano, ano_modelo, fotos, status_venda, marketing_capa_url, marketing_story_url, marketing_carrossel, marketing_legenda, marketing_reel_url, marketing_reel_status, video_takes, video_url, marketing_capturas, roteiro_pitch")
       .eq("user_id", effectiveUserId)
       .neq("status_venda", "VENDIDO")
       .order("created_at", { ascending: false })
@@ -437,6 +438,7 @@ export default function KitsGaleria() {
                   <CapturaGuiada
                     veiculoId={c.id}
                     capturas={c.marketing_capturas ?? {}}
+                    videoUrl={c.video_url}
                     onChange={(cap) => patchCarro(c.id, { marketing_capturas: cap })}
                   />
                 )}

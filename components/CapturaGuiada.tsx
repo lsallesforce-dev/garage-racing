@@ -24,11 +24,14 @@ import {
 import { Camera, Check, Images, Loader2, PlayCircle } from "lucide-react";
 import SlotTake from "./captura/SlotTake";
 import VideoModeloModal from "./captura/VideoModeloModal";
+import VideoUnicoCard from "./captura/VideoUnicoCard";
 
 interface Props {
   veiculoId: string;
   capturas: MarketingCapturas;
   onChange: (c: MarketingCapturas) => void;
+  /** Vídeo do anúncio já cadastrado — habilita decupar sem subir nada. */
+  videoUrl?: string | null;
 }
 
 // Antes de gastar upload: o take tem que ser curto. Vertical é só aviso — take
@@ -49,7 +52,7 @@ async function inspecionarVideo(file: File): Promise<{ duracao: number; vertical
   });
 }
 
-export default function CapturaGuiada({ veiculoId, capturas, onChange }: Props) {
+export default function CapturaGuiada({ veiculoId, capturas, onChange, videoUrl }: Props) {
   const [subindo, setSubindo] = useState<string | null>(null);
   const [erroSlot, setErroSlot] = useState<Record<string, string>>({});
   const [classificando, setClassificando] = useState(false);
@@ -283,6 +286,12 @@ export default function CapturaGuiada({ veiculoId, capturas, onChange }: Props) 
           <p className="mt-1 text-[9px] font-bold text-green-600">Takes essenciais completos ✅</p>
         )}
       </div>
+
+      <VideoUnicoCard
+        veiculoId={veiculoId}
+        temVideoDoAnuncio={!!videoUrl}
+        onPronto={(c) => { onChange(c); setMsg({ tipo: "ok", texto: "Takes preenchidos a partir do vídeo ✅" }); }}
+      />
 
       {SHOT_BLOCOS.map(({ bloco, label }) => {
         const doBloco = SHOT_TAKES.filter((s) => s.bloco === bloco);

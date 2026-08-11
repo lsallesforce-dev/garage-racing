@@ -6,6 +6,7 @@ import express from "express";
 import { Receiver } from "@upstash/qstash";
 import { executarPipelineMarketing } from "./lib/marketing-pipeline";
 import { renderReel } from "./lib/reel-render";
+import { decuparVideoEmTakes } from "./lib/take-decupagem";
 import { supabaseAdmin } from "./lib/supabase-admin";
 
 const app = express();
@@ -57,6 +58,33 @@ app.post("/reel", async (req, res) => {
       console.error(`❌ [reel ${veiculoId}] erro:`, msg);
       await supabaseAdmin.from("veiculos").update({ marketing_reel_status: "erro" }).eq("id", veiculoId);
     });
+});
+
+// Decupagem: um vídeo contínuo do carro vira os takes etiquetados do grid.
+// ffmpeg (download, blackdetect, scene detect, cortes) + uma chamada de Gemini
+// pra rotular os trechos. ~40s por veículo — por isso roda aqui, não na Vercel.
+app.post("/decupar", async (req, res) => {
+  if (!(await verificaQStash(req))) return res.status(401).json({ error: "Assinatura inválida" });
+
+  const { veiculoId, sourceUrl, forcar } = req.body;
+  if (!veiculoId) return res.status(400).json({ error: "veiculoId obrigatório" });
+
+  const { data: check } = await supabaseAdmin
+    .from("veiculos")
+    .select("marketing_decupagem")
+    .eq("id", veiculoId)
+    .single();
+  const ant = check?.marketing_decupagem;
+  if (!forcar && ant?.status === "pronto" && ant?.source_url === sourceUrl) {
+    return res.json({ ok: true, skipped: true });
+  }
+
+  res.json({ ok: true, status: "processing" });
+
+  decuparVideoEmTakes(veiculoId, { sourceUrl, forcar })
+    .then((segs) => console.log(`✅ [decupar ${veiculoId}] ${segs.length} take(s)`))
+    // decuparVideoEmTakes já grava status "erro" no banco antes de propagar.
+    .catch((e: any) => console.error(`❌ [decupar ${veiculoId}] erro:`, e?.message ?? e));
 });
 
 app.post("/worker", async (req, res) => {
