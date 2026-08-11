@@ -11,6 +11,17 @@ export interface ReelClip {
   subCallout?: string;      // sublegenda menor, abaixo do callout (editável; opcional)
 }
 
+// Capa editável (primeira cena). Todo campo é OPCIONAL de propósito: ausente =
+// o automático de sempre (foto frente-3-4, título de marca/modelo, logo pela
+// config do tenant). Só o que o vendedor mexeu vira override.
+export interface ReelCapa {
+  fotoUrl?: string | null;  // foto de fundo escolhida
+  titulo?: string;          // "" = esconde o título
+  subtitulo?: string;       // "" = esconde a linha versão/ano
+  mostrarLogo?: boolean;    // default: o inverso de semMarca
+  segundos?: number;        // tempo de tela da capa (1–6s, default 2.5)
+}
+
 export interface ReelProps {
   marca: string;
   modelo: string;
@@ -29,6 +40,7 @@ export interface ReelProps {
   semMarca?: boolean;       // fotos já têm marca d'água → intro não sobrepõe logo/nome
   whatsapp: string | null;  // exibido no endcard
   clips: ReelClip[];
+  capa?: ReelCapa;          // edição manual da capa (ausente = tudo automático)
   transicao?: TipoTransicao;// transição entre cenas (default "fade")
   trilhaUrl: string | null;
 }

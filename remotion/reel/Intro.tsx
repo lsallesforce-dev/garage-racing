@@ -24,7 +24,12 @@ export const Intro: React.FC<{ dados: ReelProps }> = ({ dados }) => {
   const tituloOp = interpolate(frame, [8, 26], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
   const logoOp = interpolate(frame, [2, 16], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
 
-  const nomeCurto = `${dados.marca} ${dados.modelo}`.trim().toUpperCase();
+  // Overrides da capa editada. `??` (não `||`) porque "" é escolha legítima do
+  // vendedor — quer dizer "esconde essa linha", não "usa o automático".
+  const titulo = (dados.capa?.titulo ?? `${dados.marca} ${dados.modelo}`.trim()).toUpperCase();
+  const subtituloAuto = [dados.versao, dados.anoLabel].filter(Boolean).join(" • ");
+  const subtitulo = (dados.capa?.subtitulo ?? subtituloAuto).toUpperCase();
+  const mostrarLogo = dados.capa?.mostrarLogo ?? !dados.semMarca;
 
   return (
     <AbsoluteFill style={{ backgroundColor: REEL.bgFoto }}>
@@ -48,8 +53,9 @@ export const Intro: React.FC<{ dados: ReelProps }> = ({ dados }) => {
         }}
       />
 
-      {/* Logo / nome da loja no topo — some quando a foto já tem marca d'água */}
-      {!dados.semMarca && (
+      {/* Logo / nome da loja no topo — some quando a foto já tem marca d'água
+          (ou quando o vendedor desligou na edição da capa) */}
+      {mostrarLogo && (
       <div style={{ position: "absolute", top: 70, left: 64, opacity: logoOp }}>
         {dados.logoUrl ? (
           <div style={{ background: "rgba(255,255,255,0.94)", borderRadius: 24, padding: "16px 26px", display: "inline-flex" }}>
@@ -66,23 +72,27 @@ export const Intro: React.FC<{ dados: ReelProps }> = ({ dados }) => {
       {/* Bloco inferior: faixa + título */}
       <div style={{ position: "absolute", bottom: 210, left: 64, right: 64 }}>
         <div style={{ width: 160 * faixa, height: 16, backgroundColor: cor, borderRadius: 8, marginBottom: 30 }} />
-        <div
-          style={{
-            color: REEL.branco,
-            fontFamily: REEL.fonte,
-            fontWeight: 900,
-            fontSize: nomeCurto.length > 18 ? 86 : 104,
-            lineHeight: 1.02,
-            letterSpacing: 1,
-            transform: `translateY(${tituloY}px)`,
-            opacity: tituloOp,
-          }}
-        >
-          {nomeCurto}
-        </div>
-        <div style={{ color: REEL.brancoSuave, fontFamily: REEL.fonte, fontWeight: 900, fontSize: 40, letterSpacing: 2, marginTop: 14, opacity: tituloOp }}>
-          {[dados.versao, dados.anoLabel].filter(Boolean).join(" • ").toUpperCase()}
-        </div>
+        {titulo ? (
+          <div
+            style={{
+              color: REEL.branco,
+              fontFamily: REEL.fonte,
+              fontWeight: 900,
+              fontSize: titulo.length > 18 ? 86 : 104,
+              lineHeight: 1.02,
+              letterSpacing: 1,
+              transform: `translateY(${tituloY}px)`,
+              opacity: tituloOp,
+            }}
+          >
+            {titulo}
+          </div>
+        ) : null}
+        {subtitulo ? (
+          <div style={{ color: REEL.brancoSuave, fontFamily: REEL.fonte, fontWeight: 900, fontSize: 40, letterSpacing: 2, marginTop: 14, opacity: tituloOp }}>
+            {subtitulo}
+          </div>
+        ) : null}
       </div>
     </AbsoluteFill>
   );

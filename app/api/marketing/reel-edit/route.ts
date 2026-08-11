@@ -1,5 +1,6 @@
 // GET/POST /api/marketing/reel-edit — edição manual do reel (estilo CapCut):
-// duração de cada take + a legenda (callout) que aparece sobre ele.
+// a CAPA (foto, título, logo, tempo) + duração de cada take + a legenda (callout)
+// que aparece sobre ele.
 // GET devolve as linhas já preenchidas (edição salva OU defaults) pra UI renderizar.
 
 import { NextRequest, NextResponse } from "next/server";
@@ -8,10 +9,12 @@ import { requireVehicleOwner } from "@/lib/api-auth";
 import { SHOT_TAKES, ordenarTakes, segundosDoTake, type MarketingCapturas } from "@/lib/marketing-shotlist";
 import { calloutsDoVeiculo, resolverCallout } from "@/lib/reel-callouts";
 import { lerCalloutsSalvos } from "@/lib/reel-callouts-ia";
+import { anoLabelDe, cfgFromRow, cleanMarca, cleanModelo } from "@/lib/marketing-kit";
 
 export const dynamic = "force-dynamic";
 
 const DEFAULT_SEG = 2.2;
+const CAPA_SEG_PADRAO = 2.5; // = DUR.intro (75f @30fps) do remotion/theme.ts
 const LABEL_TAKE: Record<string, string> = Object.fromEntries(SHOT_TAKES.map((s) => [s.tag, s.label]));
 
 interface LinhaEdit {
@@ -33,7 +36,9 @@ export async function GET(req: NextRequest) {
 
   const { data: veiculo } = await supabaseAdmin
     .from("veiculos")
-    .select("marketing_capturas, video_takes, marketing_reel_edit, opcionais, pontos_fortes_venda")
+    // Uma literal só: o supabase-js infere o tipo do row lendo esta string, e
+    // concatenar com `+` faz a inferência desistir (row vira GenericStringError).
+    .select("user_id, marca, modelo, versao, ano, ano_modelo, fotos, marketing_capturas, video_takes, marketing_reel_edit, opcionais, pontos_fortes_venda")
     .eq("id", veiculoId)
     .single();
   if (!veiculo) return NextResponse.json({ error: "Veículo não encontrado" }, { status: 404 });
@@ -101,7 +106,44 @@ export async function GET(req: NextRequest) {
 
   const trilha = typeof veiculo.marketing_reel_edit?.trilha === "string" ? veiculo.marketing_reel_edit.trilha : "animado";
   const transicao = typeof veiculo.marketing_reel_edit?.transicao === "string" ? veiculo.marketing_reel_edit.transicao : "fade";
-  return NextResponse.json({ clips: linhas, trilha, transicao });
+
+  // --- CAPA -----------------------------------------------------------------
+  // O editor recebe os valores JÁ RESOLVIDOS (edição salva ou o automático que o
+  // Remotion aplicaria), pra caixa de texto nunca aparecer vazia mostrando uma
+  // capa que na verdade tem título. Junto vão as fotos candidatas pra troca.
+  const { data: cfgRows } = await supabaseAdmin
+    .from("config_garage")
+    .select("*")
+    .eq("user_id", veiculo.user_id)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  const cfg = cfgFromRow(cfgRows?.[0] ?? null);
+
+  const fotosCapturadas = (capturas.fotos ?? []).map((f) => f.url);
+  // Set preserva a ordem de inserção: as capturas guiadas vêm antes das fotos do anúncio.
+  const fotos = [...new Set([...fotosCapturadas, ...((veiculo.fotos as string[]) ?? [])])].filter(Boolean).slice(0, 40);
+  const fotoPadrao = capturas.fotos?.find((f) => f.tag === "frente-3-4")?.url ?? fotos[0] ?? null;
+
+  const capaSalva = veiculo.marketing_reel_edit?.capa ?? null;
+  const capa = {
+    fotoUrl: (typeof capaSalva?.fotoUrl === "string" && capaSalva.fotoUrl) || fotoPadrao,
+    titulo:
+      typeof capaSalva?.titulo === "string"
+        ? capaSalva.titulo
+        : `${cleanMarca(veiculo.marca)} ${cleanModelo(veiculo.modelo)}`.trim().toUpperCase(),
+    subtitulo:
+      typeof capaSalva?.subtitulo === "string"
+        ? capaSalva.subtitulo
+        : [veiculo.versao, anoLabelDe(veiculo)].filter(Boolean).join(" • ").toUpperCase(),
+    // cfg.fotoComMarca = a foto JÁ tem marca d'água → o Remotion não sobrepõe o logo.
+    mostrarLogo: typeof capaSalva?.mostrarLogo === "boolean" ? capaSalva.mostrarLogo : !cfg.fotoComMarca,
+    segundos: typeof capaSalva?.segundos === "number" ? capaSalva.segundos : CAPA_SEG_PADRAO,
+  };
+  const logoUrl = supabaseAdmin.storage
+    .from("configuracoes")
+    .getPublicUrl(`logos/${veiculo.user_id}.png`).data.publicUrl;
+
+  return NextResponse.json({ clips: linhas, trilha, transicao, capa, fotos, logoUrl });
 }
 
 const TRILHAS_OK = new Set([
@@ -115,7 +157,7 @@ const TRILHAS_OK = new Set([
 const TRANSICOES_OK = new Set(["fade", "corte", "deslizar", "zoom", "desfoque"]);
 
 export async function POST(req: NextRequest) {
-  const { veiculoId, clips, trilha, transicao } = await req.json();
+  const { veiculoId, clips, trilha, transicao, capa } = await req.json();
   if (!veiculoId || !Array.isArray(clips)) {
     return NextResponse.json({ error: "veiculoId e clips obrigatórios" }, { status: 400 });
   }
@@ -150,9 +192,33 @@ export async function POST(req: NextRequest) {
   const trilhaOk = typeof trilha === "string" && TRILHAS_OK.has(trilha) ? trilha : "animado";
   const transicaoOk = typeof transicao === "string" && TRANSICOES_OK.has(transicao) ? transicao : "fade";
 
+  // Capa. O update troca o jsonb inteiro, então quem não manda `capa` (chamada
+  // antiga) precisa ter a capa salva preservada — senão salvar os takes apagaria
+  // a edição da capa em silêncio.
+  let capaOk: Record<string, unknown> | null = null;
+  if (capa && typeof capa === "object") {
+    const seg = Number(capa.segundos);
+    capaOk = {
+      fotoUrl: typeof capa.fotoUrl === "string" && capa.fotoUrl.startsWith("https://") ? capa.fotoUrl : null,
+      titulo: String(capa.titulo ?? "").trim().slice(0, 30),
+      subtitulo: String(capa.subtitulo ?? "").trim().slice(0, 40),
+      mostrarLogo: capa.mostrarLogo !== false,
+      segundos: Number.isFinite(seg) ? Math.min(Math.max(seg, 1), 6) : CAPA_SEG_PADRAO,
+    };
+  } else {
+    const { data: atual } = await supabaseAdmin
+      .from("veiculos")
+      .select("marketing_reel_edit")
+      .eq("id", veiculoId)
+      .single();
+    capaOk = atual?.marketing_reel_edit?.capa ?? null;
+  }
+
   const { error: dbErr } = await supabaseAdmin
     .from("veiculos")
-    .update({ marketing_reel_edit: { clips: limpos, trilha: trilhaOk, transicao: transicaoOk } })
+    .update({
+      marketing_reel_edit: { clips: limpos, trilha: trilhaOk, transicao: transicaoOk, capa: capaOk },
+    })
     .eq("id", veiculoId);
   if (dbErr) return NextResponse.json({ error: dbErr.message }, { status: 500 });
 

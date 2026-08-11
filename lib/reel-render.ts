@@ -9,7 +9,7 @@ import os from "os";
 import { promises as fs } from "fs";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { cfgFromRow, formatFone, linhaSpecs, precoFormatado } from "@/lib/marketing-kit";
+import { anoLabelDe, cfgFromRow, cleanMarca, cleanModelo, formatFone, linhaSpecs, precoFormatado } from "@/lib/marketing-kit";
 import { fotoParaCapa } from "@/lib/marketing-capa";
 import { calloutsDoVeiculo, resolverCallout } from "@/lib/reel-callouts";
 import { ordenarTakes, segundosDoTake, type MarketingCapturas } from "@/lib/marketing-shotlist";
@@ -27,26 +27,6 @@ const r2 = new S3Client({
     secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
   },
 });
-
-// Marca costuma vir "VW - VolksWagen" → pega o nome depois do hífen.
-function cleanMarca(m: string | null | undefined): string {
-  if (!m) return "";
-  return (m.includes("-") ? m.split("-").pop()! : m).trim();
-}
-
-// Modelo costuma trazer a versão inteira ("Nivus Highline 1.0 200 TSI Flex Aut.")
-// — corta no primeiro token de motor/versão e limita a 2 palavras pro título do reel.
-const STOP_MODELO = /^(\d|TSI|TDI|MSI|FLEX|AUT|MEC|8V|16V|12V|V6|V8|4X4|4X2|4P|5P|2P|CV|TB|POWER|FIRE|TOTAL)/i;
-function cleanModelo(m: string | null | undefined): string {
-  if (!m) return "";
-  const out: string[] = [];
-  for (const w of m.split(/\s+/)) {
-    if (STOP_MODELO.test(w)) break;
-    out.push(w);
-    if (out.length >= 2) break;
-  }
-  return out.join(" ") || m.split(/\s+/)[0] || "";
-}
 
 // Monta os ReelProps a partir do veículo + config do tenant.
 export async function buildReelProps(veiculo: any, cfgRow: any): Promise<ReelProps> {
@@ -129,12 +109,17 @@ export async function buildReelProps(veiculo: any, cfgRow: any): Promise<ReelPro
   const TRANSICOES = ["fade", "corte", "deslizar", "zoom", "desfoque"];
   const transicao = TRANSICOES.includes(edit?.transicao) ? edit.transicao : "fade";
 
-  const anos = [veiculo.ano, veiculo.ano_modelo].filter(Boolean);
-  const anoLabel =
-    anos.length === 2 && anos[0] !== anos[1] ? `${anos[0]}/${anos[1]}` : anos.length ? String(anos[anos.length - 1]) : "";
+  const anoLabel = anoLabelDe(veiculo);
+
+  // Capa editada pelo vendedor (foto, título, logo, duração). Ausente = automático.
+  const capaEdit = edit?.capa && typeof edit.capa === "object" ? edit.capa : null;
 
   // Fundo da intro = FOTO CRUA (nunca a capa montada, que já tem texto embutido).
-  const capaUrl = capturas.fotos?.find((f) => f.tag === "frente-3-4")?.url ?? veiculo.fotos?.[0] ?? null;
+  const capaUrl =
+    (typeof capaEdit?.fotoUrl === "string" && capaEdit.fotoUrl) ||
+    capturas.fotos?.find((f) => f.tag === "frente-3-4")?.url ||
+    veiculo.fotos?.[0] ||
+    null;
   // Mede a foto pra intro decidir cover×contain (não cortar o carro em foto deitada).
   const medida = capaUrl ? await fotoParaCapa(capaUrl) : null;
 
@@ -156,6 +141,15 @@ export async function buildReelProps(veiculo: any, cfgRow: any): Promise<ReelPro
     semMarca: cfg.fotoComMarca,
     whatsapp: formatFone(cfg.telefoneLoja || cfg.whatsapp),
     clips,
+    capa: capaEdit
+      ? {
+          // fotoUrl já foi aplicada em capaUrl acima; aqui vai só o texto/tempo.
+          titulo: typeof capaEdit.titulo === "string" ? capaEdit.titulo : undefined,
+          subtitulo: typeof capaEdit.subtitulo === "string" ? capaEdit.subtitulo : undefined,
+          mostrarLogo: typeof capaEdit.mostrarLogo === "boolean" ? capaEdit.mostrarLogo : undefined,
+          segundos: typeof capaEdit.segundos === "number" ? capaEdit.segundos : undefined,
+        }
+      : undefined,
     transicao,
     trilhaUrl,
   };

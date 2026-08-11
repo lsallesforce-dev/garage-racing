@@ -1,11 +1,12 @@
 "use client";
 
-// Editor do reel (estilo CapCut). Por take: ponto de corte (scrubber que move o
-// vídeo — arrasta pra escolher de onde começa), duração, legenda; + reordenar e
-// escolher a trilha. "Salvar e gerar" persiste e dispara o render.
+// Editor do reel (estilo CapCut). A CAPA é a primeira linha, editável como um
+// take (foto, título, logo, tempo de tela). Por take: ponto de corte (scrubber
+// que move o vídeo — arrasta pra escolher de onde começa), duração, legenda;
+// + reordenar e escolher a trilha. "Salvar e gerar" persiste e dispara o render.
 
 import React, { useEffect, useRef, useState } from "react";
-import { Loader2, Film, Save, ChevronUp, ChevronDown, ChevronRight, Music, Pause, Play, Scissors, Trash2, Sparkles } from "lucide-react";
+import { Loader2, Film, Save, ChevronUp, ChevronDown, ChevronRight, Music, Pause, Play, Scissors, Trash2, Sparkles, Image as ImageIcon, Clock } from "lucide-react";
 
 interface Linha {
   tag: string | null;
@@ -15,6 +16,14 @@ interface Linha {
   fim: number;
   callout: string;
   subCallout: string;
+}
+
+interface Capa {
+  fotoUrl: string | null;
+  titulo: string;
+  subtitulo: string;
+  mostrarLogo: boolean;
+  segundos: number;
 }
 
 const TRILHAS: { id: string; nome: string }[] = [
@@ -48,10 +57,10 @@ const TRANSICOES: { id: string; nome: string }[] = [
   { id: "desfoque", nome: "Desfoque" },
 ];
 
-// Espelha duracaoReel do Remotion: intro 75f + clipes (com overlap) + endcard 96f.
-function segundosVideo(linhas: { inicio: number; fim: number }[], transicao: string): number {
+// Espelha duracaoReel do Remotion: capa + clipes (com overlap) + endcard 96f.
+function segundosVideo(linhas: { inicio: number; fim: number }[], transicao: string, capaSeg: number): number {
   const ov = transicao === "corte" ? 0 : 12;
-  let cursor = 75;
+  let cursor = Math.round(Math.min(Math.max(capaSeg, 1), 6) * 30);
   linhas.forEach((l, i) => {
     const dur = Math.round(Math.min(Math.max(l.fim - l.inicio, 1), 15) * 30);
     const from = cursor - (i === 0 ? 0 : ov);
@@ -63,6 +72,128 @@ function segundosVideo(linhas: { inicio: number; fim: number }[], transicao: str
 function toProxy(url: string): string {
   const m = url.match(/https?:\/\/[^/]+\/(.+)$/);
   return m && url.includes(".r2.dev") ? `/api/r2/${m[1]}` : url;
+}
+
+// A capa — primeira cena do reel. Não é um take (não tem vídeo, não reordena,
+// não deleta), mas edita igual: foto de fundo, título, sublinha, logo e tempo.
+function CapaRow({
+  capa,
+  fotos,
+  logoUrl,
+  onChange,
+}: {
+  capa: Capa;
+  fotos: string[];
+  logoUrl: string | null;
+  onChange: (patch: Partial<Capa>) => void;
+}) {
+  const [trocando, setTrocando] = useState(false);
+
+  return (
+    <div className="rounded-xl border-2 border-gray-900 bg-white p-2">
+      <div className="mb-1.5 flex items-center justify-between">
+        <span className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-gray-900">
+          <ImageIcon size={11} /> Capa
+          <span className="font-bold text-gray-300">· {capa.segundos.toFixed(1)}s</span>
+        </span>
+        <button
+          onClick={() => setTrocando((v) => !v)}
+          disabled={fotos.length <= 1}
+          className="text-[9px] font-black uppercase tracking-widest text-gray-400 hover:text-gray-900 disabled:opacity-30"
+        >
+          {trocando ? "Fechar" : `Trocar foto (${fotos.length})`}
+        </button>
+      </div>
+
+      <div className="flex gap-3">
+        {/* Miniatura com o que o reel vai mostrar: foto + logo + título */}
+        <div className="relative h-32 w-20 flex-shrink-0 overflow-hidden rounded-lg bg-black">
+          {capa.fotoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={capa.fotoUrl} alt="" className="h-full w-full object-cover" />
+          ) : (
+            <div className="flex h-full items-center justify-center text-[8px] font-bold text-gray-500">sem foto</div>
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
+          {capa.mostrarLogo && logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={logoUrl} alt="" className="absolute left-1 top-1 h-4 w-9 rounded bg-white/90 object-contain p-0.5" />
+          ) : null}
+          <div className="absolute bottom-1 left-1 right-1">
+            <div className="mb-0.5 h-0.5 w-4 rounded bg-red-600" />
+            <p className="truncate text-[7px] font-black uppercase leading-tight text-white">{capa.titulo}</p>
+            <p className="truncate text-[6px] font-bold uppercase leading-tight text-white/70">{capa.subtitulo}</p>
+          </div>
+        </div>
+
+        <div className="flex min-w-0 flex-1 flex-col justify-center gap-2">
+          <input
+            value={capa.titulo}
+            onChange={(e) => onChange({ titulo: e.target.value })}
+            maxLength={30}
+            placeholder="Título da capa (vazio = esconde)"
+            className="w-full rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px] font-bold uppercase"
+          />
+          <input
+            value={capa.subtitulo}
+            onChange={(e) => onChange({ subtitulo: e.target.value })}
+            maxLength={40}
+            placeholder="Linha de baixo (ex.: 2.0 GLS • 2011/2012)"
+            className="w-full rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-[10px] font-medium"
+          />
+
+          <div>
+            <div className="mb-0.5 flex items-center justify-between">
+              <span className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-gray-400">
+                <Clock size={10} /> Tempo na tela
+              </span>
+              <span className="text-[10px] font-black text-gray-700">{capa.segundos.toFixed(1)}s</span>
+            </div>
+            <input
+              type="range"
+              min={1}
+              max={6}
+              step={0.1}
+              value={capa.segundos}
+              onChange={(e) => onChange({ segundos: Number(e.target.value) })}
+              className="w-full accent-gray-900"
+            />
+          </div>
+        </div>
+      </div>
+
+      <label className="mt-2 flex items-center gap-2 text-[10px] font-bold text-gray-600">
+        <input
+          type="checkbox"
+          checked={capa.mostrarLogo}
+          onChange={(e) => onChange({ mostrarLogo: e.target.checked })}
+          className="h-3.5 w-3.5 accent-gray-900"
+        />
+        Mostrar a logo da loja na capa
+        <span className="text-gray-400">— desligue se a foto já tem marca d&apos;água</span>
+      </label>
+
+      {trocando ? (
+        <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1">
+          {fotos.map((f) => (
+            <button
+              key={f}
+              onClick={() => {
+                onChange({ fotoUrl: f });
+                setTrocando(false);
+              }}
+              className={`h-16 w-11 flex-shrink-0 overflow-hidden rounded-md border-2 ${
+                capa.fotoUrl === f ? "border-red-600" : "border-transparent"
+              }`}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={f} alt="" className="h-full w-full object-cover" />
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 // Uma linha = um take, com scrubber que move o vídeo pra escolher o ponto de corte.
@@ -211,6 +342,9 @@ export default function ReelEditor({
   onGerar: () => void;
 }) {
   const [linhas, setLinhas] = useState<Linha[] | null>(null);
+  const [capa, setCapa] = useState<Capa | null>(null);
+  const [fotos, setFotos] = useState<string[]>([]);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [trilha, setTrilha] = useState("animado");
   const [transicao, setTransicao] = useState("fade");
   const [salvando, setSalvando] = useState(false);
@@ -249,6 +383,9 @@ export default function ReelEditor({
       .then((r) => r.json())
       .then((d) => {
         setLinhas(d.clips ?? []);
+        if (d.capa) setCapa(d.capa);
+        setFotos(d.fotos ?? []);
+        setLogoUrl(d.logoUrl ?? null);
         if (d.trilha) setTrilha(d.trilha);
         if (d.transicao) setTransicao(d.transicao);
       })
@@ -316,6 +453,7 @@ export default function ReelEditor({
           veiculoId,
           trilha,
           transicao,
+          capa,
           clips: linhas.map((l) => ({ tag: l.tag, url: l.url, inicio: l.inicio, fim: l.fim, callout: l.callout, subCallout: l.subCallout })),
         }),
       });
@@ -340,7 +478,7 @@ export default function ReelEditor({
     return <p className="text-[10px] font-bold text-gray-400 py-2">Nenhum take gravado ainda.</p>;
   }
 
-  const videoSeg = segundosVideo(linhas, transicao);
+  const videoSeg = segundosVideo(linhas, transicao, capa?.segundos ?? 2.5);
 
   return (
     <div className="mt-2 space-y-2">
@@ -352,9 +490,18 @@ export default function ReelEditor({
         <span className="text-sm font-black">{videoSeg.toFixed(1)}s</span>
       </div>
       <p className="text-[9px] font-bold text-gray-400">
-        Arraste os cortes de início e fim pra escolher o trecho de cada take. A lixeira remove
-        o take do reel.
+        A capa é a primeira cena. Arraste os cortes de início e fim pra escolher o trecho de
+        cada take. A lixeira remove o take do reel.
       </p>
+
+      {capa ? (
+        <CapaRow
+          capa={capa}
+          fotos={fotos}
+          logoUrl={logoUrl}
+          onChange={(patch) => setCapa((c) => (c ? { ...c, ...patch } : c))}
+        />
+      ) : null}
 
       {linhas.map((l, i) => (
         <TakeRow

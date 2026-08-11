@@ -62,6 +62,38 @@ export function tituloVeiculo(v: any): string {
   return `${partes}${anoStr ? ` - ${anoStr}` : ""}`.toUpperCase();
 }
 
+// --- Nome curto pro reel (título da capa) -----------------------------------
+// Vive aqui, e não em lib/reel-render.ts, porque o editor da capa precisa do
+// MESMO texto pra mostrar como placeholder — e importar reel-render numa rota
+// da Vercel arrastaria o sharp/S3 junto.
+
+// Marca costuma vir "VW - VolksWagen" → pega o nome depois do hífen.
+export function cleanMarca(m: string | null | undefined): string {
+  if (!m) return "";
+  return (m.includes("-") ? m.split("-").pop()! : m).trim();
+}
+
+// Modelo costuma trazer a versão inteira ("Nivus Highline 1.0 200 TSI Flex Aut.")
+// — corta no primeiro token de motor/versão e limita a 2 palavras.
+const STOP_MODELO = /^(\d|TSI|TDI|MSI|FLEX|AUT|MEC|8V|16V|12V|V6|V8|4X4|4X2|4P|5P|2P|CV|TB|POWER|FIRE|TOTAL)/i;
+export function cleanModelo(m: string | null | undefined): string {
+  if (!m) return "";
+  const out: string[] = [];
+  for (const w of m.split(/\s+/)) {
+    if (STOP_MODELO.test(w)) break;
+    out.push(w);
+    if (out.length >= 2) break;
+  }
+  return out.join(" ") || m.split(/\s+/)[0] || "";
+}
+
+// "2024/2025" quando ano e ano_modelo diferem; senão só o mais recente.
+export function anoLabelDe(v: any): string {
+  const anos = [v?.ano, v?.ano_modelo].filter(Boolean);
+  if (anos.length === 2 && anos[0] !== anos[1]) return `${anos[0]}/${anos[1]}`;
+  return anos.length ? String(anos[anos.length - 1]) : "";
+}
+
 export function linhaSpecs(v: any): string {
   const km = v?.quilometragem_estimada
     ? `${Number(v.quilometragem_estimada).toLocaleString("pt-BR")} km`

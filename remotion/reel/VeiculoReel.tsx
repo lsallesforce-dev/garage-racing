@@ -2,7 +2,7 @@ import React from "react";
 import { AbsoluteFill, Audio, Sequence, useVideoConfig } from "remotion";
 import { DUR, REEL } from "../theme";
 import { ensureMontserrat } from "../loadFont";
-import type { ReelClip, ReelProps, TipoTransicao } from "../types";
+import type { ReelCapa, ReelClip, ReelProps, TipoTransicao } from "../types";
 import { Intro } from "./Intro";
 import { ClipScene } from "./ClipScene";
 import { Endcard } from "./Endcard";
@@ -12,12 +12,25 @@ function overlapDe(transicao?: TipoTransicao): number {
   return transicao === "corte" ? 0 : DUR.transicao;
 }
 
+// Tempo de tela da capa. Clamp 1–6s: abaixo de 1s a animação de entrada nem
+// completa, acima de 6s o reel começa arrastado.
+export function framesDaCapa(capa?: ReelCapa): number {
+  const s = capa?.segundos;
+  return typeof s === "number" && Number.isFinite(s)
+    ? Math.round(Math.min(Math.max(s, 1), 6) * REEL.fps)
+    : DUR.intro;
+}
+
 // Duração REAL do reel: soma as durações editadas de cada clip (não assume 2,2s).
 // É o que o worker passa pro Composition via calculateMetadata (ver Root.tsx).
-export function duracaoReel(clips: Pick<ReelClip, "durationInFrames">[], transicao?: TipoTransicao): number {
+export function duracaoReel(
+  clips: Pick<ReelClip, "durationInFrames">[],
+  transicao?: TipoTransicao,
+  capa?: ReelCapa,
+): number {
   const arr = clips.length ? clips : [{}];
   const ov = overlapDe(transicao);
-  let cursor = DUR.intro;
+  let cursor = framesDaCapa(capa);
   arr.forEach((c, i) => {
     const dur = c.durationInFrames ?? DUR.porClip;
     const from = cursor - (i === 0 ? 0 : ov);
@@ -35,7 +48,8 @@ export const VeiculoReel: React.FC<ReelProps> = (dados) => {
 
   let cursor = 0;
   const introFrom = cursor;
-  cursor += DUR.intro;
+  const introDur = framesDaCapa(dados.capa);
+  cursor += introDur;
 
   // Callouts = opcionais do carro, um por clipe (sem repetir enquanto houver).
   const callouts = dados.opcionais?.length ? dados.opcionais : dados.specs;
@@ -51,7 +65,7 @@ export const VeiculoReel: React.FC<ReelProps> = (dados) => {
 
   return (
     <AbsoluteFill style={{ backgroundColor: REEL.bg, fontFamily: REEL.fonte }}>
-      <Sequence from={introFrom} durationInFrames={DUR.intro + ov}>
+      <Sequence from={introFrom} durationInFrames={introDur + ov}>
         <Intro dados={dados} />
       </Sequence>
 
