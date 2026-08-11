@@ -15,10 +15,94 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import {
   ordenarTakes,
   normalizarTag,
+  segundosDoTake,
   type CapturaOrigem,
   type CapturaRegistro,
   type MarketingCapturas,
 } from "@/lib/marketing-shotlist";
+
+/** Um clipe do reel já resolvido: qual arquivo, em que slot, de onde até onde. */
+export interface ClipeResolvido {
+  tag: string | null;
+  url: string;
+  inicio: number;
+  fim: number;
+  /** o que o vendedor digitou naquele clipe ("" = seguir a legenda automática) */
+  manualCallout: string | null;
+  manualSub: string | null;
+}
+
+/**
+ * A lista de clipes do reel, na ordem final. Fonte única do editor
+ * (/api/marketing/reel-edit) e do render (lib/reel-render.ts) — enquanto isso
+ * viveu duplicado nos dois, o editor mostrava uma coisa e o reel gerava outra.
+ *
+ * Sem edição salva: todos os takes, na ordem da shot list.
+ * Com edição salva: ela manda na ORDEM, nos cortes e nos deletes, mas
+ *   · a FONTE de cada slot é o take gravado hoje (regravar o slot atualiza aqui);
+ *   · etiqueta que sumiu dos takes = take apagado → o clipe cai fora;
+ *   · take gravado depois da edição entra no fim, salvo se estiver em `removidos`.
+ */
+export function clipesDoReel(veiculo: any): ClipeResolvido[] {
+  const capturas: MarketingCapturas = veiculo?.marketing_capturas ?? {};
+  const gravados: { url: string; tag: string | null }[] = capturas.takes?.length
+    ? ordenarTakes(capturas.takes).map((t) => ({ url: t.url, tag: t.tag ?? null }))
+    : ((veiculo?.video_takes ?? []) as string[]).map((url) => ({ url, tag: null }));
+
+  const edit = veiculo?.marketing_reel_edit ?? null;
+  const salvos: any[] = Array.isArray(edit?.clips) ? edit.clips : [];
+  if (!salvos.length) {
+    return gravados.map((t) => ({
+      tag: t.tag,
+      url: t.url,
+      inicio: 0,
+      fim: segundosDoTake(t.tag),
+      manualCallout: null,
+      manualSub: null,
+    }));
+  }
+
+  const urlDaTag = new Map(gravados.filter((g) => g.tag).map((g) => [g.tag as string, g.url]));
+  const removidos: { tag?: string | null; url?: string }[] = Array.isArray(edit?.removidos) ? edit.removidos : [];
+  // A url entra na comparação de propósito: regravar o slot troca a url, e aí é
+  // take NOVO — volta a aparecer mesmo tendo sido removido antes.
+  const foiRemovido = (t: { url: string; tag: string | null }) =>
+    removidos.some((r) => (r.tag ? r.tag === t.tag && r.url === t.url : r.url === t.url));
+
+  const out: ClipeResolvido[] = [];
+  for (const e of salvos) {
+    if (typeof e?.url !== "string") continue;
+    // A url pode repetir (decupagem: N slots do mesmo arquivo-fonte), então a tag
+    // salva manda; o find por url é retrocompat de edição antiga, sem tag.
+    const tag = typeof e.tag === "string" ? e.tag : gravados.find((t) => t.url === e.url)?.tag ?? null;
+    const url = tag ? urlDaTag.get(tag) : e.url;
+    if (!url) continue;
+    // `removidos` ganha de tudo. Na prática os dois não coexistem (o POST calcula
+    // removidos como "gravado que não veio na lista"), mas deixar a regra
+    // explícita evita que um estado torto ressuscite um take apagado.
+    if (foiRemovido({ url, tag })) continue;
+    const inicio = typeof e.inicio === "number" ? Math.max(e.inicio, 0) : 0;
+    const fim =
+      typeof e.fim === "number" ? e.fim
+        : typeof e.segundos === "number" ? inicio + e.segundos
+          : inicio + segundosDoTake(tag);
+    out.push({
+      tag,
+      url,
+      inicio,
+      fim,
+      manualCallout: typeof e.callout === "string" ? e.callout : null,
+      manualSub: typeof e.subCallout === "string" ? e.subCallout : null,
+    });
+  }
+
+  const jaNaLista = new Set(out.map((c) => c.tag ?? c.url));
+  for (const t of gravados) {
+    if (jaNaLista.has(t.tag ?? t.url) || foiRemovido(t)) continue;
+    out.push({ tag: t.tag, url: t.url, inicio: 0, fim: segundosDoTake(t.tag), manualCallout: null, manualSub: null });
+  }
+  return out;
+}
 
 /** Espelho de video_takes a partir da lista canônica. */
 export function espelhoVideoTakes(takes: CapturaRegistro[]): string[] {

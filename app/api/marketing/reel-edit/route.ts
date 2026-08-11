@@ -6,7 +6,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireVehicleOwner } from "@/lib/api-auth";
-import { SHOT_TAKES, ordenarTakes, segundosDoTake, type MarketingCapturas } from "@/lib/marketing-shotlist";
+import { SHOT_TAKES, type MarketingCapturas } from "@/lib/marketing-shotlist";
+import { clipesDoReel } from "@/lib/marketing-capturas-merge";
 import { calloutsDoVeiculo, resolverCallout } from "@/lib/reel-callouts";
 import { lerCalloutsSalvos } from "@/lib/reel-callouts-ia";
 import { anoLabelDe, cfgFromRow, cleanMarca, cleanModelo } from "@/lib/marketing-kit";
@@ -44,10 +45,6 @@ export async function GET(req: NextRequest) {
   if (!veiculo) return NextResponse.json({ error: "Veículo não encontrado" }, { status: 404 });
 
   const capturas: MarketingCapturas = veiculo.marketing_capturas ?? {};
-  // Todos os takes gravados no carro (ordem da shot list), pra label/preview.
-  const gravados: { url: string; tag: string | null }[] = (capturas.takes?.length)
-    ? ordenarTakes(capturas.takes).map((t) => ({ url: t.url, tag: t.tag }))
-    : (veiculo.video_takes ?? []).map((url: string) => ({ url, tag: null }));
 
   const callouts = calloutsDoVeiculo(veiculo);
   // Legendas por take geradas da ficha. Query própria porque a coluna vem da
@@ -58,51 +55,26 @@ export async function GET(req: NextRequest) {
 
   const labelDe = (tag: string | null, idx: number) => (tag ? LABEL_TAKE[tag] ?? "Take" : `Take ${idx + 1}`);
 
-  let linhas: LinhaEdit[];
-  if (salvos.length) {
-    // Existe edição salva: ela manda (respeita ordem, deletes, cortes). Como o
-    // take deletado continua em marketing_capturas.takes, NÃO reanexamos os
-    // gravados que faltam — senão o delete "voltaria". Só o que está no edit sai.
-    linhas = salvos
-      .filter((e) => typeof e?.url === "string")
-      .map((e, i) => {
-        // A url pode repetir (decupagem: N slots do mesmo arquivo-fonte), então a
-        // tag salva no clip manda; o find por url é só retrocompat de edição antiga.
-        const tag = typeof e.tag === "string" ? e.tag : gravados.find((t) => t.url === e.url)?.tag ?? null;
-        const inicio = typeof e.inicio === "number" ? e.inicio : 0;
-        const fim =
-          typeof e.fim === "number" ? e.fim
-            : typeof e.segundos === "number" ? inicio + e.segundos
-              : inicio + segundosDoTake(tag);
-        const r = resolverCallout({
-          manual: typeof e.callout === "string" ? e.callout : null,
-          tag, idx: i, salvos: calloutsSalvos, lista: callouts,
-        });
-        return {
-          tag,
-          label: labelDe(tag, i),
-          url: e.url,
-          inicio,
-          fim,
-          callout: r.callout,
-          subCallout: typeof e.subCallout === "string" && e.subCallout ? e.subCallout : r.subCallout,
-        };
-      });
-  } else {
-    // Sem edição salva: lista todos os takes com defaults.
-    linhas = gravados.map((t, i) => {
-      const r = resolverCallout({ tag: t.tag, idx: i, salvos: calloutsSalvos, lista: callouts });
-      return {
-        tag: t.tag,
-        label: labelDe(t.tag, i),
-        url: t.url,
-        inicio: 0,
-        fim: segundosDoTake(t.tag),
-        callout: r.callout,
-        subCallout: r.subCallout,
-      };
+  // Lista final de clipes (ordem, cortes, deletes e takes novos) — mesma função
+  // que o render usa, pra o editor não mostrar uma coisa e o reel gerar outra.
+  const linhas: LinhaEdit[] = clipesDoReel(veiculo).map((c, i) => {
+    const r = resolverCallout({
+      manual: c.manualCallout,
+      tag: c.tag,
+      idx: i,
+      salvos: calloutsSalvos,
+      lista: callouts,
     });
-  }
+    return {
+      tag: c.tag,
+      label: labelDe(c.tag, i),
+      url: c.url,
+      inicio: c.inicio,
+      fim: c.fim,
+      callout: r.callout,
+      subCallout: c.manualSub || r.subCallout,
+    };
+  });
 
   const trilha = typeof veiculo.marketing_reel_edit?.trilha === "string" ? veiculo.marketing_reel_edit.trilha : "animado";
   const transicao = typeof veiculo.marketing_reel_edit?.transicao === "string" ? veiculo.marketing_reel_edit.transicao : "fade";
@@ -179,7 +151,7 @@ export async function POST(req: NextRequest) {
   // conseguia mais vencer. Só texto DIFERENTE do automático é edição de verdade.
   const { data: vAtual } = await supabaseAdmin
     .from("veiculos")
-    .select("opcionais, pontos_fortes_venda, preco_sugerido, cor, marketing_reel_edit")
+    .select("opcionais, pontos_fortes_venda, preco_sugerido, cor, marketing_reel_edit, marketing_capturas, video_takes")
     .eq("id", veiculoId)
     .single();
   const listaAuto = calloutsDoVeiculo(vAtual ?? {});
@@ -215,6 +187,18 @@ export async function POST(req: NextRequest) {
       };
     });
 
+  // Take gravado no carro que não veio na lista = o vendedor tirou do reel.
+  // Recalculado do zero a cada save (não acumula lixo) e guardado com a url:
+  // se o slot for regravado depois, a url muda e o take volta a aparecer.
+  const capAtuais: any = (vAtual as any)?.marketing_capturas ?? {};
+  const gravadosAtuais: { url: string; tag: string | null }[] = capAtuais.takes?.length
+    ? capAtuais.takes.map((t: any) => ({ url: t.url, tag: t.tag ?? null }))
+    : (((vAtual as any)?.video_takes ?? []) as string[]).map((url) => ({ url, tag: null }));
+  const enviadas = new Set(limpos.map((c) => c.tag ?? c.url));
+  const removidos = gravadosAtuais
+    .filter((t) => !enviadas.has(t.tag ?? t.url))
+    .map((t) => ({ tag: t.tag, url: t.url }));
+
   const trilhaOk = typeof trilha === "string" && TRILHAS_OK.has(trilha) ? trilha : "animado";
   const transicaoOk = typeof transicao === "string" && TRANSICOES_OK.has(transicao) ? transicao : "fade";
 
@@ -238,7 +222,7 @@ export async function POST(req: NextRequest) {
   const { error: dbErr } = await supabaseAdmin
     .from("veiculos")
     .update({
-      marketing_reel_edit: { clips: limpos, trilha: trilhaOk, transicao: transicaoOk, capa: capaOk },
+      marketing_reel_edit: { clips: limpos, trilha: trilhaOk, transicao: transicaoOk, capa: capaOk, removidos },
     })
     .eq("id", veiculoId);
   if (dbErr) return NextResponse.json({ error: dbErr.message }, { status: 500 });

@@ -336,9 +336,14 @@ function TakeRow({
 
 export default function ReelEditor({
   veiculoId,
+  capturasVersao = "",
   onGerar,
 }: {
   veiculoId: string;
+  /** Muda quando os takes do carro mudam (subiu/trocou/apagou na captura guiada).
+   *  Recarrega a lista — antes o editor ficava com a foto do momento em que
+   *  abriu e o vídeo novo só aparecia fechando e reabrindo a página. */
+  capturasVersao?: string;
   onGerar: () => void;
 }) {
   const [linhas, setLinhas] = useState<Linha[] | null>(null);
@@ -390,7 +395,7 @@ export default function ReelEditor({
         if (d.transicao) setTransicao(d.transicao);
       })
       .catch(() => setErro("Erro ao carregar os takes"));
-  }, [veiculoId]);
+  }, [veiculoId, capturasVersao]);
 
   function set(i: number, patch: Partial<Linha>) {
     setLinhas((prev) => (prev ? prev.map((l, j) => (j === i ? { ...l, ...patch } : l)) : prev));

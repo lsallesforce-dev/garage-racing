@@ -12,7 +12,8 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { anoLabelDe, cfgFromRow, cleanMarca, cleanModelo, formatFone, linhaSpecs, precoFormatado } from "@/lib/marketing-kit";
 import { fotoParaCapa } from "@/lib/marketing-capa";
 import { calloutsDoVeiculo, resolverCallout } from "@/lib/reel-callouts";
-import { ordenarTakes, segundosDoTake, type MarketingCapturas } from "@/lib/marketing-shotlist";
+import { type MarketingCapturas } from "@/lib/marketing-shotlist";
+import { clipesDoReel } from "@/lib/marketing-capturas-merge";
 import { REEL } from "@/remotion/theme";
 import type { ReelProps, ReelClip } from "@/remotion/types";
 
@@ -41,58 +42,27 @@ export async function buildReelProps(veiculo: any, cfgRow: any): Promise<ReelPro
   const edit = veiculo.marketing_reel_edit ?? null;
   const editClips: any[] | null = Array.isArray(edit?.clips) ? edit.clips : null;
 
-  let clips: ReelClip[];
-  if (editClips && editClips.length) {
-    clips = editClips
-      .map((e, i) => {
-        const src = typeof e?.url === "string" ? e.url : undefined;
-        if (!src) return null;
-        const inicio = typeof e?.inicio === "number" ? Math.max(e.inicio, 0) : 0;
-        // fim (novo) ou, retrocompat, inicio + segundos (edições antigas)
-        const fim =
-          typeof e?.fim === "number" ? e.fim
-            : typeof e?.segundos === "number" ? inicio + e.segundos
-              : null;
-        const dur = fim != null ? Math.min(Math.max(fim - inicio, 1), 15) : null;
-        const r = resolverCallout({
-          manual: e?.callout,
-          tag: typeof e?.tag === "string" ? e.tag : null,
-          idx: i,
-          salvos: veiculo.marketing_callouts ?? null,
-          lista: callouts,
-        });
-        const subManual = typeof e?.subCallout === "string" && e.subCallout.trim() ? e.subCallout.trim() : "";
-        return {
-          src,
-          startFrom: inicio,
-          durationInFrames: dur ? Math.round(dur * 30) : undefined,
-          callout: r.callout || undefined,
-          subCallout: (subManual || r.subCallout) || undefined,
-        };
-      })
-      .filter(Boolean) as ReelClip[];
-  } else {
-    const ordered: { src: string; tag: string | null }[] = capturas.takes?.length
-      ? ordenarTakes(capturas.takes).map((t) => ({ src: t.url, tag: t.tag }))
-      : (veiculo.video_takes ?? []).map((src: string) => ({ src, tag: null }));
-    clips = ordered.map((t, i) => {
-      const r = resolverCallout({
-        tag: t.tag,
-        idx: i,
-        salvos: veiculo.marketing_callouts ?? null,
-        lista: callouts,
-      });
-      // Sem edição manual, a duração vem da shot list (cada ângulo tem o tempo de
-      // tela que merece) em vez do 2,2s chapado pra todo mundo.
-      const seg = segundosDoTake(t.tag);
-      return {
-        src: t.src,
-        durationInFrames: Math.round(seg * REEL.fps),
-        callout: r.callout || undefined,
-        subCallout: r.subCallout || undefined,
-      };
+  // MESMA lista que o editor mostra (ordem, cortes, deletes, takes novos). Ver
+  // clipesDoReel: enquanto isso viveu duplicado aqui e na rota, dava pra editar
+  // um reel e gerar outro — trocar o vídeo de um slot não chegava no render.
+  const clips: ReelClip[] = clipesDoReel(veiculo).map((c, i) => {
+    const r = resolverCallout({
+      manual: c.manualCallout,
+      tag: c.tag,
+      idx: i,
+      salvos: veiculo.marketing_callouts ?? null,
+      lista: callouts,
     });
-  }
+    const subManual = c.manualSub?.trim() ?? "";
+    const dur = Math.min(Math.max(c.fim - c.inicio, 1), 15);
+    return {
+      src: c.url,
+      startFrom: c.inicio,
+      durationInFrames: Math.round(dur * REEL.fps),
+      callout: r.callout || undefined,
+      subCallout: (subManual || r.subCallout) || undefined,
+    };
+  });
 
   // Trilha: escolha do editor (ver TRILHAS_OK em app/api/marketing/reel-edit/route.ts), default animado.
   const TRILHAS = [

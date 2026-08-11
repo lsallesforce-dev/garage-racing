@@ -650,6 +650,7 @@ export default function KitsGaleria() {
                       {editando[c.id] && (
                         <ReelEditor
                           veiculoId={c.id}
+                          capturasVersao={(c.marketing_capturas?.takes ?? []).map((t) => `${t.tag}:${t.url}`).join("|")}
                           onGerar={() => {
                             setEditando((p) => ({ ...p, [c.id]: false }));
                             gerarReel(c.id);
