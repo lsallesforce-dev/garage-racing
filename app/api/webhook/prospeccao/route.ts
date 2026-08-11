@@ -17,10 +17,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { timingSafeEqual } from "crypto";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendAvisaMessage, extractWebhookToken } from "@/lib/avisa";
-import { debounceProspeccaoReply } from "@/lib/redis";
 import { gerarRespostaProspeccao } from "@/lib/process-prospeccao";
 import { bumpStats } from "@/lib/prospeccao-stats";
 import type { Prospect, ProspectMensagem } from "@/lib/prospeccao-types";
+
+// Espera antes de responder, pra deixar uma rajada se acomodar. Curto de
+// propósito: é a latência que o prospect sente, e bot dispara tudo em ~1s.
+const COALESCE_MS = 2500;
 
 export const maxDuration = 300;
 
@@ -251,12 +254,19 @@ export async function POST(req: NextRequest) {
   // ── Salva a mensagem recebida + conta a resposta do dia ─────────────────────
   const ehAutoreply = pareceAutoreply(text);
 
-  await supabaseAdmin.from("prospect_mensagens").insert({
-    prospect_id: prospect.id,
-    remetente: "prospect",
-    content: text,
-    wa_message_id: messageId,
-  });
+  // Guarda o id: a coalescência mais abaixo compara com a última mensagem do
+  // prospect pra saber se esta invocação ainda é a que deve responder.
+  const { data: msgSalva } = await supabaseAdmin
+    .from("prospect_mensagens")
+    .insert({
+      prospect_id: prospect.id,
+      remetente: "prospect",
+      content: text,
+      wa_message_id: messageId,
+    })
+    .select("id")
+    .maybeSingle();
+  const msgSalvaId = msgSalva?.id as string | undefined;
   // Autoreply é robô do outro lado, não resposta real → não infla a métrica.
   if (!ehAutoreply) await bumpStats({ respostas: 1 }).catch(() => {});
 
@@ -300,12 +310,26 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Guarda anti-rajada / anti-loop IA×IA ────────────────────────────────────
-  // (a) Debounce: atendentes automáticos do outro lado disparam várias mensagens
-  //     de uma vez; sem isso a Mari responde a cada (4-6 envios em segundos =
-  //     gatilho de ban 463). Só a 1ª da rajada (janela 30s) gera resposta.
-  if (!(await debounceProspeccaoReply(prospect.id))) {
+  // (a) Coalescência "a última vence". O debounce ANTIGO (SET NX EX 30) travava a
+  //     resposta por 30s e DESCARTAVA em silêncio tudo que chegasse na janela —
+  //     ótimo contra bot, péssimo com gente: quem manda "tem gol?" e 25s depois
+  //     "quanto tá?" nunca recebia a 2ª resposta, e a Mari parecia travada.
+  //     Agora esperamos um instante e checamos se ainda somos a última mensagem
+  //     do prospect. Rajada de bot → só a última invocação responde (com todo o
+  //     contexto). Humano digitando devagar → cada mensagem é respondida.
+  await new Promise((r) => setTimeout(r, COALESCE_MS));
+  const { data: ultimaMsg } = await supabaseAdmin
+    .from("prospect_mensagens")
+    .select("id")
+    .eq("prospect_id", prospect.id)
+    .eq("remetente", "prospect")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (ultimaMsg?.id && msgSalvaId && ultimaMsg.id !== msgSalvaId) {
     await supabaseAdmin.from("prospects").update(patchBase).eq("id", prospect.id);
-    return NextResponse.json({ status: "debounced" });
+    console.log(`⏭️ [prospeccao] Mensagem superada por outra mais nova de ${prospect.nome_empresa} — quem responde é a última.`);
+    return NextResponse.json({ status: "superseded" });
   }
   // (b) Loop: detecta RAJADA INSTANTÂNEA — atendente automático dispara 4-5 msgs
   //     no MESMO segundo. Janela curta (12s) de propósito: um humano engajado manda
