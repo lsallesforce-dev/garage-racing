@@ -118,11 +118,14 @@ function primeiroNome(nomeEmpresa: string | null): string {
 // A prova mais forte é a mais perto: um lojista da mesma cidade vale mais que
 // "revendas em geral". Rio Preto é a base da AutoZap (Marcos, Carmatti, APROVE),
 // e ~74 contatos da lista são de lá.
+// Começa em MAIÚSCULA de propósito: no template o gancho abre a 2ª linha, e o
+// teste real chegou como "...não uma pessoa.\ntem lojista aqui de Rio Preto",
+// com frase nova iniciando em minúscula.
 function ganchoProvaSocial(prospect: Prospect): string {
   const cidade = (prospect.cidade || "").trim();
-  if (/rio preto/i.test(cidade)) return "tem lojista aqui de Rio Preto usando";
-  if (cidade) return `tem lojista em ${cidade} usando`;
-  return "tem lojista de multimarcas usando";
+  if (/rio preto/i.test(cidade)) return "Tem lojista aqui de Rio Preto usando";
+  if (cidade) return `Tem lojista em ${cidade} usando`;
+  return "Tem lojista de multimarcas usando";
 }
 
 // ─── Substitui placeholders de template de abertura ───────────────────────────
