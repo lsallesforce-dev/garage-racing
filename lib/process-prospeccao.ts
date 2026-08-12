@@ -30,19 +30,20 @@ export interface CarroDemo {
   descricao: string;
   /** Ficha completa, pro momento de DETALHAR um carro específico. */
   ficha: string;
-  foto: string | null;
+  /** TODAS as fotos do carro. Mandar só a [0] fazia "tem mais fotos?" repetir a mesma imagem. */
+  fotos: string[];
 }
 
 // Catálogo de reserva: usado enquanto o tenant demo não tiver carro suficiente.
 // Sem foto de propósito — melhor não mandar imagem do que mandar a errada.
 const PATIO_FIXO: CarroDemo[] = [
-  { id: "fx1", descricao: "VW Gol 1.0 2014, prata, 98 mil km, completo — R$ 38.900", ficha: "", foto: null },
-  { id: "fx2", descricao: "Hyundai HB20 1.0 Comfort 2019, branco, 62 mil km — R$ 58.900", ficha: "", foto: null },
-  { id: "fx3", descricao: "Chevrolet Onix LT 1.0 2020, prata, 54 mil km — R$ 64.900", ficha: "", foto: null },
-  { id: "fx4", descricao: "Fiat Argo Drive 1.3 2021, vermelho, 41 mil km — R$ 69.900", ficha: "", foto: null },
-  { id: "fx5", descricao: "VW Polo Track 1.0 2024, branco, 18 mil km — R$ 74.900", ficha: "", foto: null },
-  { id: "fx6", descricao: "Jeep Renegade Sport 1.3T 2022, cinza, 47 mil km — R$ 98.900", ficha: "", foto: null },
-  { id: "fx7", descricao: "Toyota Corolla XEi 2.0 2021, prata, 58 mil km — R$ 128.900", ficha: "", foto: null },
+  { id: "fx1", descricao: "VW Gol 1.0 2014, prata, 98 mil km, completo — R$ 38.900", ficha: "", fotos: [] },
+  { id: "fx2", descricao: "Hyundai HB20 1.0 Comfort 2019, branco, 62 mil km — R$ 58.900", ficha: "", fotos: [] },
+  { id: "fx3", descricao: "Chevrolet Onix LT 1.0 2020, prata, 54 mil km — R$ 64.900", ficha: "", fotos: [] },
+  { id: "fx4", descricao: "Fiat Argo Drive 1.3 2021, vermelho, 41 mil km — R$ 69.900", ficha: "", fotos: [] },
+  { id: "fx5", descricao: "VW Polo Track 1.0 2024, branco, 18 mil km — R$ 74.900", ficha: "", fotos: [] },
+  { id: "fx6", descricao: "Jeep Renegade Sport 1.3T 2022, cinza, 47 mil km — R$ 98.900", ficha: "", fotos: [] },
+  { id: "fx7", descricao: "Toyota Corolla XEi 2.0 2021, prata, 58 mil km — R$ 128.900", ficha: "", fotos: [] },
 ];
 
 function moeda(v: number | null): string {
@@ -105,7 +106,7 @@ export async function carregarPatioDemo(): Promise<CarroDemo[]> {
         id: v.id as string,
         descricao: `${partes} — ${moeda(v.preco_sugerido)}`,
         ficha,
-        foto: fotos[0] ?? null,
+        fotos,
       };
     });
 
@@ -145,7 +146,7 @@ function buildSystemInstruction(prospect: Prospect, patio: CarroDemo[]): string 
   // imagem de um carro que não tem nenhuma.
   const blocoPatio = patio
     .map((c) => {
-      const cabeca = c.foto ? `- ${c.descricao} [ID:${c.id}]` : `- ${c.descricao}`;
+      const cabeca = c.fotos.length ? `- ${c.descricao} [ID:${c.id}]` : `- ${c.descricao}`;
       // A ficha entra indentada sob o carro: o modelo lê a lista pra ofertar e
       // desce na ficha quando o cliente escolhe um.
       return c.ficha ? `${cabeca}\n  ${c.ficha}` : cabeca;
@@ -206,9 +207,20 @@ Se perguntarem algo que NÃO está na ficha, aí sim diga que confirma com o pá
 Se pedirem um carro que NÃO está na lista, faça o que bom vendedor faz: diga que esse não tem no pátio agora e ofereça o mais parecido da lista. Nunca finja ter.
 Responda em bolhas curtas: não despeje a ficha inteira de uma vez, entregue o que foi perguntado e puxe a conversa.
 
+## COMO PUXAR A CONVERSA (nunca com pergunta vazia)
+PROIBIDO perguntar "tem alguma coisa específica que você quer saber?" ou "o que mais quer saber?". Isso joga o trabalho pro cliente e é cara de robô sem assunto.
+Em vez disso, OFEREÇA um dado da ficha que ele ainda não sabe e que pesa na decisão: quantos donos, se tem laudo, quanto ficou a parcela, o que tem de opcional forte, quanto está abaixo da FIPE. Uma coisa por vez.
+Exemplo ruim: "Tem algo específico que quer saber sobre ele?"
+Exemplo bom: "Esse é de dono único e tem laudo cautelar aprovado. Quer que eu simule a parcela?"
+
+## FALE COMO DONO DO CARRO
+O carro está no SEU pátio. Diga "tenho", "esse aqui", "tá comigo".
+NUNCA diga "consigo um", "posso conseguir", "consigo arrumar" — isso é linguagem de quem NÃO tem o carro e derruba a confiança na hora.
+
 ## MANDAR FOTO
-Quando a pessoa pedir foto de um carro (ou quando oferecer ajudar a decidir), preencha "foto_veiculo_id" com o ID entre colchetes do carro escolhido. O sistema envia a imagem junto com sua resposta.
-NUNCA diga que "não consegue mandar foto": se o carro tem ID, você consegue. Se o carro escolhido não tiver foto disponível, o campo fica null e você segue a conversa sem prometer imagem.
+Quando a pessoa pedir foto de um carro, preencha "foto_veiculo_id" com o ID entre colchetes do carro escolhido. O sistema manda O ÁLBUM INTEIRO dele (frente, lateral, traseira e interior) junto com sua resposta.
+NUNCA diga que "não consegue mandar foto": se o carro tem ID, você consegue.
+Como você manda todos os ângulos de uma vez, se depois pedirem "mais fotos" NÃO repita o mesmo carro: diga que essas são as que tem no anúncio, e ofereça vídeo ou uma passada na loja. Preencha foto_veiculo_id com null nesse caso.
 
 Depois de 2 ou 3 trocas assim, quebre a quarta parede UMA vez, com leveza: "foi mais ou menos assim que eu respondi agora. seus clientes teriam isso às 23h, no domingo, sem você precisar estar."
 Só uma vez. Não fique lembrando que é demonstração.

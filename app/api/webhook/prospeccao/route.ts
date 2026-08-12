@@ -25,6 +25,10 @@ import type { Prospect, ProspectMensagem } from "@/lib/prospeccao-types";
 // propósito: é a latência que o prospect sente, e bot dispara tudo em ~1s.
 const COALESCE_MS = 2500;
 
+// Teto de imagens por pedido de foto. 4 = o álbum típico de revenda
+// (frente, lateral, traseira, interior) sem virar rajada.
+const MAX_FOTOS_POR_CARRO = 4;
+
 export const maxDuration = 300;
 
 // ─── Credenciais da instância Avisa da AutoZap (não dos tenants) ──────────────
@@ -420,12 +424,20 @@ export async function POST(req: NextRequest) {
       // que existe no pátio E tem foto — ele não decide a URL, só qual carro.
       if (enviada && r.foto_veiculo_id) {
         const carro = patio.find((c) => c.id === r.foto_veiculo_id);
-        if (carro?.foto) {
-          try {
-            await sendAvisaImage(waId, carro.foto, undefined, creds);
-          } catch (err) {
-            // Foto é bônus da demo: falhar aqui não invalida a resposta enviada.
-            console.error("❌ [prospeccao webhook] Falha ao enviar foto do carro:", err);
+        if (carro?.fotos.length) {
+          // Manda TODAS (até o teto), não só a primeira: quando ia só a [0], o
+          // "tem mais fotos?" devolvia a mesma imagem de novo. Revenda manda o
+          // álbum do carro — frente, lateral, traseira e interior.
+          const fotosEnviar = carro.fotos.slice(0, MAX_FOTOS_POR_CARRO);
+          for (const foto of fotosEnviar) {
+            try {
+              await sendAvisaImage(waId, foto, undefined, creds);
+              await new Promise((res) => setTimeout(res, 900)); // respiro entre imagens
+            } catch (err) {
+              // Foto é bônus da demo: falhar aqui não invalida a resposta enviada.
+              console.error("❌ [prospeccao webhook] Falha ao enviar foto do carro:", err);
+              break;
+            }
           }
         } else {
           console.warn(`⚠️ [prospeccao webhook] foto_veiculo_id "${r.foto_veiculo_id}" sem foto no pátio — ignorado.`);
