@@ -2,7 +2,7 @@
 // Processamento assíncrono de mensagens WhatsApp
 // Executado via after() no webhook — não bloqueia o 200 OK para a Meta
 
-import { createDecipheriv, hkdfSync } from "node:crypto";
+
 import { geminiFlashSales, geminiFlashFallback, parseGeminiJson } from "@/lib/gemini";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendMetaMessage, sendMetaImage, sendMetaVideo, sendMetaAudio, sendMetaCtaButton, markMetaRead } from "@/lib/meta";
@@ -11,6 +11,7 @@ import { gerarRelatorioPista } from "@/lib/leads";
 import { resolverVendedor } from "@/lib/lead-routing";
 import { classificarLead, liberaAutomatico, origemProvaLead, MAX_MSGS_PARA_CLASSIFICAR } from "@/lib/lead-gate";
 import { transcreverAudioCliente } from "@/lib/transcribe";
+import { decryptWhatsAppAudio } from "@/lib/whatsapp-audio";
 import { sintetizarVoz, prepararTextoParaVoz } from "@/lib/tts";
 import { hybridVehicleSearch, findVehicleForMedia } from "@/lib/hybrid-search";
 import { urlVitrine } from "@/lib/repasse";
@@ -127,29 +128,6 @@ const execFileAsync = promisify(execFile);
   } catch (e) {
     console.warn(`⚠️ Compressão falhou, usando URL original:`, String(e).slice(0, 200));
     return videoUrl;
-  }
-}
-
-// ─── Decriptação de Áudio WhatsApp ────────────────────────────────────────────
-// O WhatsApp criptografa toda mídia com AES-256-CBC + HKDF-SHA256
-async function decryptWhatsAppAudio(encUrl: string, mediaKeyB64: string): Promise<Buffer | null> {
-  try {
-    const mediaKey = Buffer.from(mediaKeyB64, "base64");
-    const salt = Buffer.alloc(32, 0);
-    const derived = Buffer.from(hkdfSync("sha256", mediaKey, salt, "WhatsApp Audio Keys", 112));
-    const iv = derived.subarray(0, 16);
-    const cipherKey = derived.subarray(16, 48);
-
-    const resp = await fetch(encUrl);
-    if (!resp.ok) return null;
-    const enc = Buffer.from(await resp.arrayBuffer());
-    const encData = enc.subarray(0, enc.length - 10); // remove MAC
-
-    const decipher = createDecipheriv("aes-256-cbc", cipherKey, iv);
-    return Buffer.concat([decipher.update(encData), decipher.final()]);
-  } catch (e) {
-    console.warn("⚠️ Falha ao decriptar áudio WhatsApp:", e);
-    return null;
   }
 }
 

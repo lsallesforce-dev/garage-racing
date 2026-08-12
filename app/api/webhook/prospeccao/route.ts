@@ -20,6 +20,8 @@ import { sendAvisaMessage, sendAvisaImage, sendAvisaVideo, extractWebhookToken }
 import { gerarRespostaProspeccao, carregarPatioDemo } from "@/lib/process-prospeccao";
 import { montarAbertura } from "@/lib/prospeccao-abertura";
 import { bumpStats } from "@/lib/prospeccao-stats";
+import { baixarAudioWhatsApp } from "@/lib/whatsapp-audio";
+import { transcreverAudioCliente } from "@/lib/transcribe";
 import type { Prospect, ProspectMensagem } from "@/lib/prospeccao-types";
 
 // Espera antes de responder, pra deixar uma rajada se acomodar. Curto de
@@ -237,6 +239,8 @@ function extractFields(payload: any): {
   text: string;
   fromMe: boolean;
   messageId: string | null;
+  audioUrl?: string;
+  audioMediaKey?: string;
 } {
   let parsedData: any = payload;
   if (payload?.jsonData) {
@@ -259,7 +263,10 @@ function extractFields(payload: any): {
     const realJid = candidates.find((j: string) => j.endsWith("@s.whatsapp.net"));
     const phone = (realJid || info.Sender || "").replace(/@.*$/, "");
     const text = msg?.conversation || msg?.extendedTextMessage?.text || "";
-    return { phone, text: (text || "").trim(), fromMe, messageId: info.ID ?? null };
+    // Áudio: o lojista responde por voz o tempo todo. Sem isso a Mari ficava muda.
+    const audioUrl = msg?.audioMessage?.URL ?? msg?.audioMessage?.url;
+    const audioMediaKey = msg?.audioMessage?.mediaKey ?? msg?.audioMessage?.MediaKey;
+    return { phone, text: (text || "").trim(), fromMe, messageId: info.ID ?? null, audioUrl, audioMediaKey };
   }
 
   // Formato Avisa/Z-API simplificado (number/phone + message/text)
@@ -268,7 +275,9 @@ function extractFields(payload: any): {
     const text = parsedData.message || parsedData.text?.message || parsedData.body || "";
     const fromMe = parsedData.isGroup || parsedData.fromMe || false;
     const messageId = parsedData.messageId || parsedData.id || parsedData.text?.messageId || null;
-    return { phone, text: (text || "").trim(), fromMe, messageId };
+    const audioUrl = parsedData.audio?.audioUrl || parsedData.audioUrl;
+    const audioMediaKey = parsedData.audio?.mediaKey || parsedData.audioMediaKey;
+    return { phone, text: (text || "").trim(), fromMe, messageId, audioUrl, audioMediaKey };
   }
 
   // Formato Evolution API (data.key.remoteJid)
@@ -277,7 +286,9 @@ function extractFields(payload: any): {
     const msg = parsedData.data.message;
     const phone = (key.remoteJid || "").replace(/@.*$/, "");
     const text = msg?.conversation || msg?.extendedTextMessage?.text || "";
-    return { phone, text: (text || "").trim(), fromMe: key.fromMe || false, messageId: key.id ?? null };
+    const audioUrl = msg?.audioMessage?.URL ?? msg?.audioMessage?.url;
+    const audioMediaKey = msg?.audioMessage?.mediaKey ?? msg?.audioMessage?.MediaKey;
+    return { phone, text: (text || "").trim(), fromMe: key.fromMe || false, messageId: key.id ?? null, audioUrl, audioMediaKey };
   }
 
   return { phone: "", text: "", fromMe: true, messageId: null };
@@ -334,11 +345,30 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Extração + filtros básicos ──────────────────────────────────────────────
-  const { phone, text, fromMe, messageId } = extractFields(payload);
+  const { phone, text: textoRecebido, fromMe, messageId, audioUrl, audioMediaKey } = extractFields(payload);
+  let text = textoRecebido;
 
-  // Ignora ecos (fromMe) e mensagens vazias / sem texto.
+  // Ignora ecos (fromMe).
   if (fromMe) return NextResponse.json({ status: "ignored_from_me" });
-  if (!phone || !text) return NextResponse.json({ status: "empty_content" });
+  if (!phone) return NextResponse.json({ status: "empty_content" });
+
+  // ── Áudio → texto ───────────────────────────────────────────────────────────
+  // Lojista responde por voz o tempo todo. Antes, áudio caía em "empty_content"
+  // e a Mari simplesmente não respondia — na campanha isso seria perder o lead
+  // sem nem saber. Mesmo ASR do agente B2C (OpenAI, fallback Gemini).
+  if (!text && audioUrl) {
+    const buf = await baixarAudioWhatsApp(audioUrl, audioMediaKey);
+    if (buf) {
+      text = (await transcreverAudioCliente(buf, "audio/ogg; codecs=opus")).trim();
+      if (text) console.log(`🎤 [prospeccao] Áudio transcrito: "${text.slice(0, 80)}"`);
+    }
+    if (!text) {
+      console.warn("⚠️ [prospeccao] Áudio recebido mas não transcrito — sem resposta.");
+      return NextResponse.json({ status: "audio_nao_transcrito" });
+    }
+  }
+
+  if (!text) return NextResponse.json({ status: "empty_content" });
 
   const waId = normalizePhone(phone);
 
