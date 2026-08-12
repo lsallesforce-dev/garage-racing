@@ -144,6 +144,8 @@ export interface RespostaProspeccao {
   video_veiculo_id: string | null;
   /** Adiou ("depois eu vejo", "sem tempo"): encerra a conversa MAS segue elegível pra próxima rodada. */
   adiou: boolean;
+  /** Pediram a lista do estoque: o CÓDIGO monta as bolhas dos carros, não o modelo. */
+  listar_patio: boolean;
   /** true = os 2 modelos Gemini fora do ar — o caller NÃO deve responder o prospect (silêncio + alerta). */
   gemini_fora?: boolean;
 }
@@ -196,7 +198,7 @@ Fazer a pessoa te perguntar de um carro e sentir na pele como você responde. A 
 - No máximo 1 emoji, só quando sai natural. Nunca use travessão (—); use vírgula ou ponto.
 - NÃO comece bolhas com muleta repetida ("Entendi!", "Perfeito!", "Boa!", "né?", "sabe?").
 - NUNCA prefixe a mensagem com nome nem rótulo ("Lucas:", "Mari:", "Você:"). Você está no WhatsApp, não numa transcrição — a pessoa já sabe quem fala.
-- Quando listar mais de um carro, ponha CADA UM EM SUA PRÓPRIA LINHA. O sistema transforma cada linha numa mensagem separada; sem a quebra, os carros chegam grudados num parágrafo só.
+- Ao citar mais de um carro fora da lista automática, ponha CADA UM EM SUA PRÓPRIA LINHA: o sistema transforma cada linha numa mensagem separada.
 - Diga cada coisa UMA vez. Nunca repita um argumento que já usou.
 - NÃO faça pergunta de formulário ("você é o responsável que toma as decisões?"). Descubra no fluxo, de leve.
 
@@ -210,8 +212,9 @@ PARE IMEDIATAMENTE. Responda apenas: "opa, acho que caí no atendimento automát
 # QUANDO A PESSOA TE PERGUNTAR DE UM CARRO (é o que você quer)
 Ela vai te tratar como cliente comprador. RESPONDA COMO SE VOCÊ FOSSE O VENDEDOR DE IA DA LOJA DELA: com entusiasmo controlado, dando detalhe, oferecendo foto, perguntando o que ela procura. Capriche, porque essa resposta É o produto.
 PROIBIDO devolver a pergunta vazia ("qual tipo de carro você procura?", "que tipo te interessa mais?"). Vendedor bom oferece; só atendente ruim pergunta de volta.
-Se a pessoa pedir a LISTA ("quais carros você tem?", "o que tem aí?", "me mostra o estoque"), LISTE TODOS os carros do pátio abaixo, um por bolha, com ano e preço. São poucos, cabe. NUNCA responda "tenho sim, que tipo te interessa?" — isso é justamente a pergunta vazia.
-Se ela pedir um TIPO ("tem sedan?", "tem SUV?"), mostre os que se encaixam, com preço.
+Se a pessoa pedir a LISTA ("quais carros você tem?", "o que tem aí?", "me mostra o estoque"): marque "listar_patio": true e escreva em "resposta" APENAS uma frase curta de introdução, tipo "Tenho esses aqui, ó:". NÃO escreva os carros você mesma — o sistema anexa a lista formatada, um carro por mensagem. Se você listar junto, o cliente recebe tudo duplicado.
+NUNCA responda "tenho sim, que tipo te interessa?" — isso é a pergunta vazia.
+Se ela pedir um TIPO específico ("tem sedan?", "tem SUV?"), aí sim responda você mesma, citando só os que se encaixam, com preço — e deixe listar_patio em false.
 
 ## SEU PÁTIO DE DEMONSTRAÇÃO (é o estoque que você "tem")
 ${blocoPatio}
@@ -316,7 +319,8 @@ Responda EXCLUSIVAMENTE um JSON válido, sem markdown, sem comentários, exatame
   "opt_out": true | false,
   "foto_veiculo_id": "ID do carro cuja foto deve ir junto, ou null",
   "video_veiculo_id": "ID do carro cujo video deve ir junto, ou null",
-  "adiou": true | false
+  "adiou": true | false,
+  "listar_patio": true | false
 }`;
 }
 
@@ -376,6 +380,7 @@ const FALLBACK_REENVIO: RespostaProspeccao = {
   foto_veiculo_id: null,
   video_veiculo_id: null,
   adiou: false,
+  listar_patio: false,
 };
 
 // Gemini totalmente fora (cota/billing/erro nos 2 modelos): silêncio > desculpa
@@ -391,6 +396,7 @@ const GEMINI_FORA: RespostaProspeccao = {
   foto_veiculo_id: null,
   video_veiculo_id: null,
   adiou: false,
+  listar_patio: false,
   gemini_fora: true,
 };
 
@@ -432,6 +438,7 @@ function parseResposta(jsonText: string): RespostaProspeccao {
         : null,
     // opt_out vence: "não quero, me chama depois" é recusa, não adiamento.
     adiou: parsed.adiou === true && !opt_out,
+    listar_patio: parsed.listar_patio === true,
   };
 }
 

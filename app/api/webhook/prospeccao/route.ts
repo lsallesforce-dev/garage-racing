@@ -560,6 +560,15 @@ export async function POST(req: NextRequest) {
   // um bloco corrido. sendAvisaMessage já aplica o delay humanizado entre cada.
   const mensagensEnviar = quebrarEmBolhas(r.resposta);
 
+  // Lista do pátio montada pelo CÓDIGO, um carro por bolha. Deixar o modelo
+  // formatar falhou duas vezes: primeiro ele mandou os 5 carros grudados num
+  // parágrafo, depois mandou tudo corrido separado por vírgula e o split picou
+  // no meio dos nomes ("...Chevrolet Onix 1.0 LT," | "2024, R$ 69.958..."). Ele
+  // só sinaliza a intenção; a formatação é determinística aqui.
+  if (r.listar_patio) {
+    for (const carro of patio) mensagensEnviar.push(carro.descricao);
+  }
+
   const creds = autozapAvisaCreds();
   let enviada = false;
   if (!creds) {
