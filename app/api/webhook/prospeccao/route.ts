@@ -123,7 +123,22 @@ function quebrarEmBolhas(texto: string, MAX = 90): string[] {
     }
     if (atual) out.push(atual.trim());
   }
-  const limpo = out.map((b) => b.trim()).filter(Boolean);
+  let limpo = out.map((b) => b.trim()).filter(Boolean);
+
+  // Costura bolha ÓRFÃ de volta na anterior. Sem isso, a quebra por vírgula
+  // produzia coisas como "...com 100 mil km," | "por R$ 82.000." — o preço,
+  // que é o dado mais importante da mensagem, sozinho numa bolha.
+  const MIN_BOLHA = 32;
+  limpo = limpo.reduce<string[]>((acc, b) => {
+    const anterior = acc[acc.length - 1];
+    if (anterior && b.length < MIN_BOLHA && `${anterior} ${b}`.length <= MAX + MIN_BOLHA) {
+      acc[acc.length - 1] = `${anterior} ${b}`;
+      return acc;
+    }
+    acc.push(b);
+    return acc;
+  }, []);
+
   return (limpo.length ? limpo : [(texto || "").trim()]).filter(Boolean).slice(0, 6);
 }
 
