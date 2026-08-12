@@ -41,6 +41,7 @@ const FUNIL: { status: ProspectStatus; label: string }[] = [
 
 const STATUS_LABEL: Record<ProspectStatus, string> = {
   novo: "Na fila",
+  reservado: "Reservado",
   enviado: "Enviado",
   respondeu: "Respondeu",
   sem_resposta: "Sem resposta",
@@ -56,6 +57,7 @@ const STATUS_LABEL: Record<ProspectStatus, string> = {
 
 const STATUS_BADGE: Record<ProspectStatus, string> = {
   novo:         "bg-blue-50 text-blue-700 border-blue-100",
+  reservado:    "bg-slate-100 text-slate-600 border-slate-200",
   enviado:      "bg-purple-50 text-purple-700 border-purple-100",
   respondeu:    "bg-cyan-50 text-cyan-700 border-cyan-100",
   sem_resposta: "bg-gray-100 text-gray-500 border-gray-200",
@@ -69,7 +71,7 @@ const STATUS_BADGE: Record<ProspectStatus, string> = {
 };
 
 const ALL_STATUS: ProspectStatus[] = [
-  "novo", "enviado", "respondeu", "quente", "handoff", "sem_resposta", "ganho", "perdido", "opt_out",
+  "novo", "reservado", "enviado", "respondeu", "quente", "handoff", "sem_resposta", "ganho", "perdido", "opt_out",
 ];
 
 function fmtDateTime(iso?: string | null) {

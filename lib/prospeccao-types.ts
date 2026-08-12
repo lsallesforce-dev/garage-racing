@@ -15,6 +15,9 @@
 // hoje — a migration 042 converteu ambos.
 export type ProspectStatus =
   | "novo"
+  // Guardado de proposito: esta na base mas NAO deve ser abordado agora (o cron
+  // so le 'novo'). Usado pra segurar a lista da planilha do Marcos.
+  | "reservado"
   | "enviado"
   | "respondeu"
   | "sem_resposta"
