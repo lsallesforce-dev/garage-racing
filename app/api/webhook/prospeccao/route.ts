@@ -16,7 +16,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { timingSafeEqual } from "crypto";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { sendAvisaMessage, sendAvisaImage, extractWebhookToken } from "@/lib/avisa";
+import { sendAvisaMessage, sendAvisaImage, sendAvisaVideo, extractWebhookToken } from "@/lib/avisa";
 import { gerarRespostaProspeccao, carregarPatioDemo } from "@/lib/process-prospeccao";
 import { bumpStats } from "@/lib/prospeccao-stats";
 import type { Prospect, ProspectMensagem } from "@/lib/prospeccao-types";
@@ -456,6 +456,22 @@ export async function POST(req: NextRequest) {
           }
         } else {
           console.warn(`⚠️ [prospeccao webhook] foto_veiculo_id "${r.foto_veiculo_id}" sem foto no pátio — ignorado.`);
+        }
+      }
+
+      // Vídeo do carro. Mesma lógica da foto: o Gemini escolhe o carro, nunca a
+      // URL. Antes disso ela oferecia vídeo e depois voltava atrás com "aqui na
+      // demonstração não consigo" — promessa quebrada no pico do interesse.
+      if (enviada && r.video_veiculo_id) {
+        const carro = patio.find((c) => c.id === r.video_veiculo_id);
+        if (carro?.video) {
+          try {
+            await sendAvisaVideo(waId, carro.video, undefined, creds);
+          } catch (err) {
+            console.error("❌ [prospeccao webhook] Falha ao enviar vídeo do carro:", err);
+          }
+        } else {
+          console.warn(`⚠️ [prospeccao webhook] video_veiculo_id "${r.video_veiculo_id}" sem vídeo no pátio — ignorado.`);
         }
       }
     } catch (err) {

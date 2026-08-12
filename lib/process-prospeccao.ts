@@ -32,18 +32,20 @@ export interface CarroDemo {
   ficha: string;
   /** TODAS as fotos do carro. Mandar só a [0] fazia "tem mais fotos?" repetir a mesma imagem. */
   fotos: string[];
+  /** Vídeo do carro, quando existe. Sem isso ela prometia vídeo e não entregava. */
+  video: string | null;
 }
 
 // Catálogo de reserva: usado enquanto o tenant demo não tiver carro suficiente.
 // Sem foto de propósito — melhor não mandar imagem do que mandar a errada.
 const PATIO_FIXO: CarroDemo[] = [
-  { id: "fx1", descricao: "VW Gol 1.0 2014, prata, 98 mil km, completo — R$ 38.900", ficha: "", fotos: [] },
-  { id: "fx2", descricao: "Hyundai HB20 1.0 Comfort 2019, branco, 62 mil km — R$ 58.900", ficha: "", fotos: [] },
-  { id: "fx3", descricao: "Chevrolet Onix LT 1.0 2020, prata, 54 mil km — R$ 64.900", ficha: "", fotos: [] },
-  { id: "fx4", descricao: "Fiat Argo Drive 1.3 2021, vermelho, 41 mil km — R$ 69.900", ficha: "", fotos: [] },
-  { id: "fx5", descricao: "VW Polo Track 1.0 2024, branco, 18 mil km — R$ 74.900", ficha: "", fotos: [] },
-  { id: "fx6", descricao: "Jeep Renegade Sport 1.3T 2022, cinza, 47 mil km — R$ 98.900", ficha: "", fotos: [] },
-  { id: "fx7", descricao: "Toyota Corolla XEi 2.0 2021, prata, 58 mil km — R$ 128.900", ficha: "", fotos: [] },
+  { id: "fx1", descricao: "VW Gol 1.0 2014, prata, 98 mil km, completo — R$ 38.900", ficha: "", fotos: [], video: null },
+  { id: "fx2", descricao: "Hyundai HB20 1.0 Comfort 2019, branco, 62 mil km — R$ 58.900", ficha: "", fotos: [], video: null },
+  { id: "fx3", descricao: "Chevrolet Onix LT 1.0 2020, prata, 54 mil km — R$ 64.900", ficha: "", fotos: [], video: null },
+  { id: "fx4", descricao: "Fiat Argo Drive 1.3 2021, vermelho, 41 mil km — R$ 69.900", ficha: "", fotos: [], video: null },
+  { id: "fx5", descricao: "VW Polo Track 1.0 2024, branco, 18 mil km — R$ 74.900", ficha: "", fotos: [], video: null },
+  { id: "fx6", descricao: "Jeep Renegade Sport 1.3T 2022, cinza, 47 mil km — R$ 98.900", ficha: "", fotos: [], video: null },
+  { id: "fx7", descricao: "Toyota Corolla XEi 2.0 2021, prata, 58 mil km — R$ 128.900", ficha: "", fotos: [], video: null },
 ];
 
 function moeda(v: number | null): string {
@@ -61,7 +63,7 @@ export async function carregarPatioDemo(): Promise<CarroDemo[]> {
       .from("veiculos")
       // Select em UMA string literal: concatenar com + apaga a inferência de
       // tipos do supabase-js e todo campo vira GenericStringError.
-      .select("id, marca, modelo, versao, ano, ano_modelo, cor, quilometragem_estimada, preco_sugerido, fotos, combustivel, cambio, motor, potencia_cv, valor_fipe, abaixo_fipe, ipva_valor, parcelas, qtd_proprietarios, opcionais, pontos_fortes_venda, detalhes_inspecao, historico_manutencao, historico_sinistros, restricoes_veiculo, procedencia, estado_pneus, tipo_banco, categoria")
+      .select("id, marca, modelo, versao, ano, ano_modelo, cor, quilometragem_estimada, preco_sugerido, fotos, video_url, combustivel, cambio, motor, potencia_cv, valor_fipe, abaixo_fipe, ipva_valor, parcelas, qtd_proprietarios, opcionais, pontos_fortes_venda, detalhes_inspecao, historico_manutencao, historico_sinistros, restricoes_veiculo, procedencia, estado_pneus, tipo_banco, categoria")
       .eq("user_id", TENANT_DEMO)
       .eq("status_venda", "DISPONIVEL")
       .order("preco_sugerido", { ascending: true })
@@ -110,6 +112,7 @@ export async function carregarPatioDemo(): Promise<CarroDemo[]> {
         descricao: `${partes} — ${moeda(v.preco_sugerido)}`,
         ficha,
         fotos,
+        video: (v.video_url as string | null) ?? null,
       };
     });
 
@@ -137,6 +140,8 @@ export interface RespostaProspeccao {
   opt_out: boolean;
   /** ID do carro do pátio demo cuja foto deve ir junto com a resposta (null = sem foto). */
   foto_veiculo_id: string | null;
+  /** ID do carro cujo VÍDEO deve ir junto (null = sem vídeo). */
+  video_veiculo_id: string | null;
   /** true = os 2 modelos Gemini fora do ar — o caller NÃO deve responder o prospect (silêncio + alerta). */
   gemini_fora?: boolean;
 }
@@ -225,16 +230,22 @@ Exemplo bom: "Esse é de dono único e tem laudo cautelar aprovado. Quer ver as 
 O carro está no SEU pátio. Diga "tenho", "esse aqui", "tá comigo".
 NUNCA diga "consigo um", "posso conseguir", "consigo arrumar" — isso é linguagem de quem NÃO tem o carro e derruba a confiança na hora.
 
-## MANDAR FOTO
-Quando a pessoa pedir foto de um carro, preencha "foto_veiculo_id" com o ID entre colchetes do carro escolhido. O sistema manda O ÁLBUM INTEIRO dele (frente, lateral, traseira e interior) junto com sua resposta.
-NUNCA diga que "não consegue mandar foto": se o carro tem ID, você consegue.
-Como você manda todos os ângulos de uma vez, se depois pedirem "mais fotos" NÃO repita o mesmo carro: diga que essas são as que tem no anúncio, e ofereça vídeo ou uma passada na loja. Preencha foto_veiculo_id com null nesse caso.
+## MANDAR FOTO E VÍDEO
+Quando a pessoa pedir FOTO, preencha "foto_veiculo_id" com o ID entre colchetes do carro. O sistema manda o álbum inteiro (frente, lateral, traseira e interior) junto com sua resposta.
+Quando pedir VÍDEO, preencha "video_veiculo_id" com o ID. Os carros marcados com [ID] têm vídeo.
+NUNCA diga que "não consegue" mandar foto ou vídeo, e NUNCA diga que "aqui na demonstração não dá": se o carro tem ID, você manda de verdade, agora.
+Como o álbum vai todo de uma vez, se depois pedirem "mais fotos" NÃO repita o mesmo carro: diga que essas são as do anúncio e ofereça o vídeo ou uma passada na loja.
+
+## NUNCA OFEREÇA O QUE NÃO PODE ENTREGAR
+Você só pode entregar duas coisas: as informações da ficha e as mídias (foto e vídeo) dos carros com [ID].
+NÃO ofereça test-drive, visita agendada, reserva do carro, envio de documento, laudo em PDF, proposta por escrito nem simulação. Nada disso passa por você.
+Se a pessoa pedir algo assim, diga que quem resolve é o vendedor da loja e siga. Prometer e voltar atrás é o pior erro possível numa demonstração: destrói exatamente a confiança que você está tentando construir.
 
 Depois de 2 ou 3 trocas assim, quebre a quarta parede UMA vez, com leveza: "foi mais ou menos assim que eu respondi agora. seus clientes teriam isso às 23h, no domingo, sem você precisar estar."
 Só uma vez. Não fique lembrando que é demonstração.
 
 QUANDO NÃO quebrar a quarta parede (importante):
-- Na MESMA resposta em que você disse "vou confirmar", "já te passo" ou não soube responder algo. Virar pitch logo depois de enrolar destrói a demonstração: ele acabou de ver a IA falhar e você pede aplauso.
+- Na MESMA resposta em que você disse "vou confirmar", "já te passo", "não consigo", "aqui não dá" ou qualquer coisa que você NÃO entregou. Virar pitch logo depois de falhar destrói a demonstração: ele acabou de ver a IA não cumprir e você pede aplauso.
 - No meio de uma negociação em andamento (a pessoa falou de entrada, troca, condição, quer fechar). Termine o assunto primeiro.
 - Antes de ter entregado algo COMPLETO: uma ficha respondida, fotos enviadas, uma dúvida resolvida. A frase só funciona depois de um acerto.
 
@@ -273,7 +284,8 @@ Responda EXCLUSIVAMENTE um JSON válido, sem markdown, sem comentários, exatame
   "handoff": true | false,
   "motivo_handoff": "string curta ou null",
   "opt_out": true | false,
-  "foto_veiculo_id": "ID do carro cuja foto deve ir junto, ou null"
+  "foto_veiculo_id": "ID do carro cuja foto deve ir junto, ou null",
+  "video_veiculo_id": "ID do carro cujo video deve ir junto, ou null"
 }`;
 }
 
@@ -331,6 +343,7 @@ const FALLBACK_REENVIO: RespostaProspeccao = {
   motivo_handoff: null,
   opt_out: false,
   foto_veiculo_id: null,
+  video_veiculo_id: null,
 };
 
 // Gemini totalmente fora (cota/billing/erro nos 2 modelos): silêncio > desculpa
@@ -344,6 +357,7 @@ const GEMINI_FORA: RespostaProspeccao = {
   motivo_handoff: null,
   opt_out: false,
   foto_veiculo_id: null,
+  video_veiculo_id: null,
   gemini_fora: true,
 };
 
@@ -378,6 +392,10 @@ function parseResposta(jsonText: string): RespostaProspeccao {
     foto_veiculo_id:
       typeof parsed.foto_veiculo_id === "string" && parsed.foto_veiculo_id.trim()
         ? parsed.foto_veiculo_id.trim()
+        : null,
+    video_veiculo_id:
+      typeof parsed.video_veiculo_id === "string" && parsed.video_veiculo_id.trim()
+        ? parsed.video_veiculo_id.trim()
         : null,
   };
 }
