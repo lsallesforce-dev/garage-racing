@@ -30,6 +30,16 @@ const COALESCE_MS = 2500;
 // (frente, lateral, traseira, interior) sem virar rajada.
 const MAX_FOTOS_POR_CARRO = 4;
 
+// Teto de bolhas numa resposta comum. O modelo respondia "tá bom esse Corolla?"
+// com SEIS mensagens seguidas — vira metralhadora e cansa. A lista do pátio é
+// exceção e entra depois deste corte.
+const MAX_BOLHAS_RESPOSTA = 3;
+
+// Ela ofereceu foto ("quer ver umas fotos dele?") E mandou as 4 na mesma
+// resposta, sem esperar o sim. Ou pergunta, ou manda: se a própria resposta
+// está oferecendo, a foto espera a confirmação.
+const OFERTA_DE_MIDIA = /(quer|gostaria|posso)[^?]{0,40}(ver|mandar?|enviar|mando)[^?]{0,30}(fotos?|v[íi]deo)[^?]{0,20}\?/i;
+
 export const maxDuration = 300;
 
 // ─── Credenciais da instância Avisa da AutoZap (não dos tenants) ──────────────
@@ -558,7 +568,7 @@ export async function POST(req: NextRequest) {
   // ── Envia a resposta em BOLHAS curtas (graceful se credenciais ausentes) ─────
   // quebrarEmBolhas FORÇA mensagens de no máx ~2 linhas, mesmo se o Gemini mandar
   // um bloco corrido. sendAvisaMessage já aplica o delay humanizado entre cada.
-  const mensagensEnviar = quebrarEmBolhas(r.resposta);
+  const mensagensEnviar = quebrarEmBolhas(r.resposta).slice(0, MAX_BOLHAS_RESPOSTA);
 
   // Lista do pátio montada pelo CÓDIGO, um carro por bolha. Deixar o modelo
   // formatar falhou duas vezes: primeiro ele mandou os 5 carros grudados num
@@ -585,7 +595,7 @@ export async function POST(req: NextRequest) {
       // Foto do carro pedido. Vai DEPOIS do texto (o WhatsApp mostra a imagem
       // como resposta ao que ela acabou de dizer) e só se o Gemini apontou um ID
       // que existe no pátio E tem foto — ele não decide a URL, só qual carro.
-      if (enviada && r.foto_veiculo_id) {
+      if (enviada && r.foto_veiculo_id && !OFERTA_DE_MIDIA.test(r.resposta)) {
         const carro = patio.find((c) => c.id === r.foto_veiculo_id);
         if (carro?.fotos.length) {
           // Manda TODAS (até o teto), não só a primeira: quando ia só a [0], o
@@ -610,7 +620,7 @@ export async function POST(req: NextRequest) {
       // Vídeo do carro. Mesma lógica da foto: o Gemini escolhe o carro, nunca a
       // URL. Antes disso ela oferecia vídeo e depois voltava atrás com "aqui na
       // demonstração não consigo" — promessa quebrada no pico do interesse.
-      if (enviada && r.video_veiculo_id) {
+      if (enviada && r.video_veiculo_id && !OFERTA_DE_MIDIA.test(r.resposta)) {
         const carro = patio.find((c) => c.id === r.video_veiculo_id);
         if (carro?.video) {
           try {
