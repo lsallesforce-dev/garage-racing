@@ -26,20 +26,23 @@ const MIN_CARROS_DEMO = 3;
 
 export interface CarroDemo {
   id: string;
+  /** Uma linha, pro momento de OFERTAR (lista de 3 opções). */
   descricao: string;
+  /** Ficha completa, pro momento de DETALHAR um carro específico. */
+  ficha: string;
   foto: string | null;
 }
 
 // Catálogo de reserva: usado enquanto o tenant demo não tiver carro suficiente.
 // Sem foto de propósito — melhor não mandar imagem do que mandar a errada.
 const PATIO_FIXO: CarroDemo[] = [
-  { id: "fx1", descricao: "VW Gol 1.0 2014, prata, 98 mil km, completo — R$ 38.900", foto: null },
-  { id: "fx2", descricao: "Hyundai HB20 1.0 Comfort 2019, branco, 62 mil km — R$ 58.900", foto: null },
-  { id: "fx3", descricao: "Chevrolet Onix LT 1.0 2020, prata, 54 mil km — R$ 64.900", foto: null },
-  { id: "fx4", descricao: "Fiat Argo Drive 1.3 2021, vermelho, 41 mil km — R$ 69.900", foto: null },
-  { id: "fx5", descricao: "VW Polo Track 1.0 2024, branco, 18 mil km — R$ 74.900", foto: null },
-  { id: "fx6", descricao: "Jeep Renegade Sport 1.3T 2022, cinza, 47 mil km — R$ 98.900", foto: null },
-  { id: "fx7", descricao: "Toyota Corolla XEi 2.0 2021, prata, 58 mil km — R$ 128.900", foto: null },
+  { id: "fx1", descricao: "VW Gol 1.0 2014, prata, 98 mil km, completo — R$ 38.900", ficha: "", foto: null },
+  { id: "fx2", descricao: "Hyundai HB20 1.0 Comfort 2019, branco, 62 mil km — R$ 58.900", ficha: "", foto: null },
+  { id: "fx3", descricao: "Chevrolet Onix LT 1.0 2020, prata, 54 mil km — R$ 64.900", ficha: "", foto: null },
+  { id: "fx4", descricao: "Fiat Argo Drive 1.3 2021, vermelho, 41 mil km — R$ 69.900", ficha: "", foto: null },
+  { id: "fx5", descricao: "VW Polo Track 1.0 2024, branco, 18 mil km — R$ 74.900", ficha: "", foto: null },
+  { id: "fx6", descricao: "Jeep Renegade Sport 1.3T 2022, cinza, 47 mil km — R$ 98.900", ficha: "", foto: null },
+  { id: "fx7", descricao: "Toyota Corolla XEi 2.0 2021, prata, 58 mil km — R$ 128.900", ficha: "", foto: null },
 ];
 
 function moeda(v: number | null): string {
@@ -55,7 +58,9 @@ export async function carregarPatioDemo(): Promise<CarroDemo[]> {
   try {
     const { data } = await supabaseAdmin
       .from("veiculos")
-      .select("id, marca, modelo, versao, ano, ano_modelo, cor, quilometragem_estimada, preco_sugerido, fotos")
+      // Select em UMA string literal: concatenar com + apaga a inferência de
+      // tipos do supabase-js e todo campo vira GenericStringError.
+      .select("id, marca, modelo, versao, ano, ano_modelo, cor, quilometragem_estimada, preco_sugerido, fotos, combustivel, cambio, motor, potencia_cv, valor_fipe, abaixo_fipe, ipva_valor, parcelas, qtd_proprietarios, opcionais, pontos_fortes_venda, detalhes_inspecao, historico_manutencao, historico_sinistros, restricoes_veiculo, procedencia, estado_pneus, tipo_banco, categoria")
       .eq("user_id", TENANT_DEMO)
       .eq("status_venda", "DISPONIVEL")
       .order("preco_sugerido", { ascending: true })
@@ -66,14 +71,40 @@ export async function carregarPatioDemo(): Promise<CarroDemo[]> {
       const km = v.quilometragem_estimada
         ? `${Math.round(v.quilometragem_estimada / 1000)} mil km`
         : null;
-      const partes = [
-        [v.marca, v.modelo, v.versao].filter(Boolean).join(" "),
-        ano, v.cor, km,
-      ].filter(Boolean).join(", ");
+      const nome = [v.marca, v.modelo, v.versao].filter(Boolean).join(" ");
+      const partes = [nome, ano, v.cor, km].filter(Boolean).join(", ");
       const fotos: string[] = Array.isArray(v.fotos) ? v.fotos : [];
+      const lista = (x: unknown) => (Array.isArray(x) ? x.join(", ") : null);
+
+      // Ficha completa: é o que permite responder "quantos donos?", "bateu?",
+      // "tem câmera de ré?", "quanto de IPVA?" sem inventar nem enrolar.
+      const ficha = [
+        `${nome} ${ano ?? ""}`.trim(),
+        v.cor && `Cor: ${v.cor}`,
+        km && `KM: ${km}`,
+        `Preço: ${moeda(v.preco_sugerido)}`,
+        v.valor_fipe && `FIPE: ${moeda(v.valor_fipe)}${v.abaixo_fipe ? " (está abaixo da FIPE)" : ""}`,
+        v.parcelas && `Financiamento: ${v.parcelas}`,
+        v.ipva_valor && `IPVA: ${moeda(v.ipva_valor)}`,
+        v.motor && `Motor: ${v.motor}${v.potencia_cv ? `, ${v.potencia_cv} cv` : ""}`,
+        v.cambio && `Câmbio: ${v.cambio}`,
+        v.combustivel && `Combustível: ${v.combustivel}`,
+        v.qtd_proprietarios && `Donos: ${v.qtd_proprietarios}`,
+        v.procedencia && `Procedência: ${v.procedencia}`,
+        lista(v.opcionais) && `Opcionais: ${lista(v.opcionais)}`,
+        v.tipo_banco && `Bancos: ${v.tipo_banco}`,
+        v.estado_pneus && `Pneus: ${v.estado_pneus}`,
+        v.historico_sinistros && `Sinistro: ${v.historico_sinistros}`,
+        v.restricoes_veiculo && `Restrições: ${v.restricoes_veiculo}`,
+        v.historico_manutencao && `Manutenção: ${v.historico_manutencao}`,
+        v.detalhes_inspecao && `Estado: ${v.detalhes_inspecao}`,
+        lista(v.pontos_fortes_venda) && `Pontos fortes: ${lista(v.pontos_fortes_venda)}`,
+      ].filter(Boolean).join("\n  ");
+
       return {
         id: v.id as string,
         descricao: `${partes} — ${moeda(v.preco_sugerido)}`,
+        ficha,
         foto: fotos[0] ?? null,
       };
     });
@@ -113,8 +144,13 @@ function buildSystemInstruction(prospect: Prospect, patio: CarroDemo[]): string 
   // Só os carros COM foto ganham [ID]: assim o Gemini não consegue prometer
   // imagem de um carro que não tem nenhuma.
   const blocoPatio = patio
-    .map((c) => (c.foto ? `- ${c.descricao} [ID:${c.id}]` : `- ${c.descricao}`))
-    .join("\n");
+    .map((c) => {
+      const cabeca = c.foto ? `- ${c.descricao} [ID:${c.id}]` : `- ${c.descricao}`;
+      // A ficha entra indentada sob o carro: o modelo lê a lista pra ofertar e
+      // desce na ficha quando o cliente escolhe um.
+      return c.ficha ? `${cabeca}\n  ${c.ficha}` : cabeca;
+    })
+    .join("\n\n");
   const empresa = prospect.nome_empresa || "a revenda";
   const cidade = prospect.cidade ? ` (${prospect.cidade}${prospect.estado ? "/" + prospect.estado : ""})` : "";
 
@@ -164,8 +200,11 @@ PROIBIDO devolver a pergunta vazia ("qual tipo de carro você procura?"). Se ela
 
 ## SEU PÁTIO DE DEMONSTRAÇÃO (é o estoque que você "tem")
 ${blocoPatio}
-Todos aceitam troca e financiamento. Se perguntarem detalhe que não está aqui (motor, único dono, pneu), diga que confirma com o pátio e volta — NÃO invente ficha técnica.
+Cada carro vem com a ficha completa embaixo. Use ela pra responder QUALQUER pergunta: preço, FIPE, parcela, IPVA, motor, câmbio, quantos donos, se bateu, opcionais, pneus, revisões, estado. A resposta está ali — leia antes de dizer que vai confirmar.
+Todos aceitam troca e financiamento.
+Se perguntarem algo que NÃO está na ficha, aí sim diga que confirma com o pátio e volta. NUNCA invente dado técnico.
 Se pedirem um carro que NÃO está na lista, faça o que bom vendedor faz: diga que esse não tem no pátio agora e ofereça o mais parecido da lista. Nunca finja ter.
+Responda em bolhas curtas: não despeje a ficha inteira de uma vez, entregue o que foi perguntado e puxe a conversa.
 
 ## MANDAR FOTO
 Quando a pessoa pedir foto de um carro (ou quando oferecer ajudar a decidir), preencha "foto_veiculo_id" com o ID entre colchetes do carro escolhido. O sistema envia a imagem junto com sua resposta.
