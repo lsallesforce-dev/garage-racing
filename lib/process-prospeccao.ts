@@ -142,6 +142,8 @@ export interface RespostaProspeccao {
   foto_veiculo_id: string | null;
   /** ID do carro cujo VÍDEO deve ir junto (null = sem vídeo). */
   video_veiculo_id: string | null;
+  /** Adiou ("depois eu vejo", "sem tempo"): encerra a conversa MAS segue elegível pra próxima rodada. */
+  adiou: boolean;
   /** true = os 2 modelos Gemini fora do ar — o caller NÃO deve responder o prospect (silêncio + alerta). */
   gemini_fora?: boolean;
 }
@@ -274,8 +276,19 @@ Se insistirem muito no número, NÃO invente: repita que quem passa é o vendedo
 Você PODE mencionar que tem 30 DIAS GRÁTIS, sem cartão. NÃO invente outra promoção.
 
 # RESPEITE O NÃO NA PRIMEIRA VEZ
-Se a pessoa disser qualquer coisa na linha de "não tenho interesse", "já tenho", "no momento não", "obrigado", "depois eu vejo", "tô sem tempo": ACABOU. Agradeça em uma linha, deseje sucesso, e marque opt_out=true. NÃO tente contornar, não ofereça "só mais uma coisa", não pergunte o motivo, não deixe a porta aberta com "qualquer coisa me chama". Um "não" mal respeitado é o que queima chip e reputação.
+Qualquer sinal de recusa ou de adiamento ENCERRA a conversa na hora. Agradeça em UMA linha, deseje sucesso e pare. NÃO tente contornar, não ofereça "só mais uma coisa", não pergunte o motivo, não deixe a porta aberta com "qualquer coisa me chama". Um "não" mal respeitado é o que queima chip e reputação.
 Exemplo: "tranquilo. sucesso aí com a loja."
+
+Você para de falar nos dois casos abaixo — o que muda é só qual campo marcar:
+
+RECUSA DEFINITIVA → opt_out=true
+A pessoa não quer, ponto: "não tenho interesse", "já tenho um sistema", "não uso isso", "não me manda mais mensagem", "tira meu número", "para de me mandar", ou qualquer irritação.
+
+ADIAMENTO → adiou=true (e opt_out=false)
+A pessoa não disse não, disse AGORA não: "depois eu vejo", "tô sem tempo", "agora não dá", "to ocupado", "me chama outro dia", "semana que vem eu olho".
+Isso NÃO é recusa — é hora ruim. Encerre com a mesma elegância, sem cobrar e sem marcar retorno (você não faz follow-up).
+
+Na dúvida entre os dois, marque adiou. Tirar alguém da base por engano custa mais que esperar.
 
 # NÃO CONFUNDA EDUCAÇÃO COM INTERESSE
 "Bom dia", "tudo bem", "ok", "certo" NÃO são interesse: são educação. Responda curto e faça UMA pergunta que dê vontade de responder. Se vier outra resposta protocolar sem conteúdo, encerre educadamente e marque temperatura FRIO. Não fique cutucando quem só está sendo gentil.
@@ -286,7 +299,7 @@ Exemplo: "tranquilo. sucesso aí com a loja."
 - handoff=true quando: entrou em PREÇO (ancore UMA vez e passe na mesma resposta), pediu proposta/contrato, quis falar com uma pessoa, disse que quer assinar/testar, ficou irritado, OU você caiu num bot da loja. Curiosidade pura ("interessante", "me explica melhor") NÃO é handoff.
 - Quando handoff=true, a "resposta" é uma ponte curta: "boa, vou pedir pro Lucas te chamar pra fechar isso, pode ser?". Defina motivo_handoff curto.
 - MESMO após o handoff você CONTINUA respondendo normalmente até o humano assumir. Nunca suma.
-- opt_out=true em qualquer sinal de recusa (ver seção acima).
+- opt_out=true em recusa definitiva; adiou=true em adiamento (ver a seção "RESPEITE O NÃO"). Nunca os dois juntos.
 - Se handoff=false e opt_out=false, motivo_handoff deve ser null.
 - NUNCA prometa o que não pode cumprir. NUNCA pressione.${blocoSinais}
 
@@ -300,7 +313,8 @@ Responda EXCLUSIVAMENTE um JSON válido, sem markdown, sem comentários, exatame
   "motivo_handoff": "string curta ou null",
   "opt_out": true | false,
   "foto_veiculo_id": "ID do carro cuja foto deve ir junto, ou null",
-  "video_veiculo_id": "ID do carro cujo video deve ir junto, ou null"
+  "video_veiculo_id": "ID do carro cujo video deve ir junto, ou null",
+  "adiou": true | false
 }`;
 }
 
@@ -359,6 +373,7 @@ const FALLBACK_REENVIO: RespostaProspeccao = {
   opt_out: false,
   foto_veiculo_id: null,
   video_veiculo_id: null,
+  adiou: false,
 };
 
 // Gemini totalmente fora (cota/billing/erro nos 2 modelos): silêncio > desculpa
@@ -373,6 +388,7 @@ const GEMINI_FORA: RespostaProspeccao = {
   opt_out: false,
   foto_veiculo_id: null,
   video_veiculo_id: null,
+  adiou: false,
   gemini_fora: true,
 };
 
@@ -412,6 +428,8 @@ function parseResposta(jsonText: string): RespostaProspeccao {
       typeof parsed.video_veiculo_id === "string" && parsed.video_veiculo_id.trim()
         ? parsed.video_veiculo_id.trim()
         : null,
+    // opt_out vence: "não quero, me chama depois" é recusa, não adiamento.
+    adiou: parsed.adiou === true && !opt_out,
   };
 }
 

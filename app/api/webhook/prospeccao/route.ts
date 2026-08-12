@@ -397,8 +397,17 @@ export async function POST(req: NextRequest) {
 
   // ── Define o novo status conforme a leitura do agente ───────────────────────
   if (r.opt_out) {
+    // Recusa DEFINITIVA: sai da base pra sempre (cron e rodada nova filtram opt_out).
     patchBase.status = "opt_out";
     patchBase.opt_out = true;
+  } else if (r.adiou) {
+    // ADIAMENTO ("depois eu vejo", "tô sem tempo"). A Mari para de falar igual,
+    // mas isso não é um não: marcar opt_out tirava da base pra sempre quem só
+    // estava ocupado. Como `sem_resposta`, ele volta a ser elegível quando o
+    // Lucas abrir a próxima rodada — com mensagem diferente, meses depois.
+    patchBase.status = "sem_resposta";
+    patchBase.proximo_contato_at = null;
+    console.log(`⏸️ [prospeccao] ${prospect.nome_empresa} adiou — encerrado nesta rodada, elegível na próxima.`);
   } else {
     // Conversa viva. Desde a migration 042 não há follow-up automático, então não
     // há nada pra adiar: basta garantir que nenhum agendamento residual sobreviva.
