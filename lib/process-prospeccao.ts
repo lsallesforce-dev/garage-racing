@@ -127,6 +127,40 @@ export async function carregarPatioDemo(): Promise<CarroDemo[]> {
   }
 }
 
+export interface LojaDemo {
+  nome: string;
+  cidade: string | null;
+  estado: string | null;
+}
+
+/**
+ * Identidade da loja de demonstração. Sem isso o modelo INVENTAVA a cidade:
+ * disse a um lojista de Rio Preto que a loja era em São Paulo, ele respondeu
+ * "é muito longe, queria algo aqui em Rio Preto" — e a loja É de Rio Preto.
+ * A mentira criou a objeção que matou a conversa.
+ */
+export async function carregarLojaDemo(): Promise<LojaDemo> {
+  try {
+    const { data } = await supabaseAdmin
+      .from("config_garage")
+      .select("nome_empresa, nome_fantasia, cidade, estado")
+      .eq("user_id", TENANT_DEMO)
+      .order("created_at", { ascending: false })
+      .limit(1);
+    const row = data?.[0];
+    if (row) {
+      return {
+        nome: (row.nome_fantasia || row.nome_empresa || "a loja") as string,
+        cidade: (row.cidade as string | null) ?? null,
+        estado: (row.estado as string | null) ?? null,
+      };
+    }
+  } catch (err) {
+    console.error("❌ [prospeccao] Falha ao carregar loja demo:", err);
+  }
+  return { nome: "a loja", cidade: null, estado: null };
+}
+
 // Temperatura da conversa de prospecção (espelha o padrão FRIO/MORNO/QUENTE do B2C).
 export type ProspeccaoTemperatura = "FRIO" | "MORNO" | "QUENTE";
 
@@ -153,7 +187,7 @@ export interface RespostaProspeccao {
 const VALID_TEMPERATURAS: ProspeccaoTemperatura[] = ["FRIO", "MORNO", "QUENTE"];
 
 // ─── System instruction (persona + produto + regras) ─────────────────────────
-function buildSystemInstruction(prospect: Prospect, patio: CarroDemo[]): string {
+function buildSystemInstruction(prospect: Prospect, patio: CarroDemo[], loja: LojaDemo): string {
   // Só os carros COM foto ganham [ID]: assim o Gemini não consegue prometer
   // imagem de um carro que não tem nenhuma.
   const blocoPatio = patio
@@ -217,6 +251,11 @@ PROIBIDO devolver a pergunta vazia ("qual tipo de carro você procura?", "que ti
 Se a pessoa pedir a LISTA ("quais carros você tem?", "o que tem aí?", "me mostra o estoque"): marque "listar_patio": true e escreva em "resposta" APENAS uma frase curta de introdução, tipo "Tenho esses aqui, ó:". NÃO escreva os carros você mesma — o sistema anexa a lista formatada, um carro por mensagem. Se você listar junto, o cliente recebe tudo duplicado.
 NUNCA responda "tenho sim, que tipo te interessa?" — isso é a pergunta vazia.
 Se ela pedir um TIPO específico ("tem sedan?", "tem SUV?"), aí sim responda você mesma, citando só os que se encaixam, com preço — e deixe listar_patio em false.
+
+## A LOJA ONDE VOCÊ TRABALHA
+Nome: ${loja.nome}. Fica em ${loja.cidade ? `${loja.cidade}${loja.estado ? "/" + loja.estado : ""}` : "São José do Rio Preto/SP"}.
+Os carros abaixo estão NESSE pátio. Se perguntarem onde fica, onde está o carro ou se dá pra ver pessoalmente, é essa a cidade — NUNCA invente outra.
+Se pedirem o endereço exato ou quiserem agendar visita, diga que quem passa isso é o vendedor.
 
 ## SEU PÁTIO DE DEMONSTRAÇÃO (é o estoque que você "tem")
 ${blocoPatio}
@@ -456,12 +495,18 @@ export async function gerarRespostaProspeccao({
   prospect,
   mensagens,
   patio,
+  loja,
 }: {
   prospect: Prospect;
   mensagens: ProspectMensagem[];
   patio?: CarroDemo[];
+  loja?: LojaDemo;
 }): Promise<RespostaProspeccao> {
-  const systemInstruction = buildSystemInstruction(prospect, patio ?? (await carregarPatioDemo()));
+  const systemInstruction = buildSystemInstruction(
+    prospect,
+    patio ?? (await carregarPatioDemo()),
+    loja ?? (await carregarLojaDemo()),
+  );
   const historico = buildHistorico(mensagens);
 
   // Garante que sempre haja ao menos uma entrada "user" final para o modelo responder.

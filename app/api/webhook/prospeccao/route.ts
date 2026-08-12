@@ -17,7 +17,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { timingSafeEqual } from "crypto";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendAvisaMessage, sendAvisaImage, sendAvisaVideo, extractWebhookToken } from "@/lib/avisa";
-import { gerarRespostaProspeccao, carregarPatioDemo } from "@/lib/process-prospeccao";
+import { gerarRespostaProspeccao, carregarPatioDemo, carregarLojaDemo } from "@/lib/process-prospeccao";
 import { montarAbertura } from "@/lib/prospeccao-abertura";
 import { bumpStats } from "@/lib/prospeccao-stats";
 import { baixarAudioWhatsApp } from "@/lib/whatsapp-audio";
@@ -540,7 +540,7 @@ export async function POST(req: NextRequest) {
   // ── Carrega o histórico e gera a resposta do agente ─────────────────────────
   // O pátio vai junto: a Mari precisa dele pra ofertar carro E pra saber de qual
   // deles ela tem foto (só esses recebem [ID] no prompt).
-  const patio = await carregarPatioDemo();
+  const [patio, loja] = await Promise.all([carregarPatioDemo(), carregarLojaDemo()]);
   const { data: msgs } = await supabaseAdmin
     .from("prospect_mensagens")
     .select("*")
@@ -549,7 +549,7 @@ export async function POST(req: NextRequest) {
 
   const mensagens = (msgs ?? []) as ProspectMensagem[];
 
-  const r = await gerarRespostaProspeccao({ prospect, mensagens, patio });
+  const r = await gerarRespostaProspeccao({ prospect, mensagens, patio, loja });
 
   // ── Blindagem: Gemini fora do ar → silêncio + alerta (nunca desculpa técnica) ─
   // O prospect é um potencial assinante vendo a IA em ação; vendedor humano que
