@@ -129,10 +129,29 @@ const RECUSA_FORTE_PATTERNS: RegExp[] = [
   /\bdescadastr/i,
 ];
 
+function ehRecusaForte(text: string): boolean {
+  return RECUSA_FORTE_PATTERNS.some((re) => re.test((text || "").trim()));
+}
+
 function ehAdiamento(text: string): boolean {
   const t = (text || "").trim();
-  if (RECUSA_FORTE_PATTERNS.some((re) => re.test(t))) return false;
+  if (ehRecusaForte(t)) return false;
   return ADIAMENTO_PATTERNS.some((re) => re.test(t));
+}
+
+/**
+ * Decide o destino de um encerramento. Só roda quando o modelo já resolveu
+ * encerrar (opt_out OU adiou) — nunca transforma uma conversa viva em saída,
+ * porque "não tenho interesse NESSE carro" não é recusa da campanha.
+ * A recusa forte vence sempre: "não tenho interesse, me chama depois" sai da
+ * base, mesmo que o modelo tenha lido só o "me chama depois".
+ */
+function destinoDoEncerramento(r: { opt_out: boolean; adiou: boolean }, text: string):
+  "opt_out" | "adiou" | null {
+  if (!r.opt_out && !r.adiou) return null;
+  if (ehRecusaForte(text)) return "opt_out";
+  if (ehAdiamento(text)) return "adiou";
+  return r.opt_out ? "opt_out" : "adiou";
 }
 
 // ─── Quebra a resposta em BOLHAS curtas (no máx ~2 linhas cada) ───────────────
@@ -431,20 +450,19 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Define o novo status conforme a leitura do agente ───────────────────────
-  // Reclassificação determinística: o modelo marca opt_out em adiamento ("depois
-  // eu vejo"), e esse erro é caro — some da base pra sempre. A resposta enviada
-  // é a mesma nos dois casos (encerra com elegância), então trocar só o destino
-  // não muda nada pro prospect.
-  const adiouDeFato = r.adiou || (r.opt_out && ehAdiamento(text));
-  if (r.opt_out && adiouDeFato && !r.adiou) {
-    console.log(`🔀 [prospeccao] "${text.slice(0, 40)}" veio como opt_out mas é adiamento — reclassificado.`);
+  // Reclassificação determinística: o modelo confunde adiamento com recusa nos
+  // dois sentidos, e o erro é caro — opt_out tira o contato da base pra sempre.
+  // A resposta enviada é a mesma; muda só se ele volta na próxima rodada.
+  const destino = destinoDoEncerramento(r, text);
+  if (destino && ((destino === "adiou") !== r.adiou)) {
+    console.log(`🔀 [prospeccao] "${text.slice(0, 40)}" reclassificado como ${destino}.`);
   }
 
-  if (r.opt_out && !adiouDeFato) {
+  if (destino === "opt_out") {
     // Recusa DEFINITIVA: sai da base pra sempre (cron e rodada nova filtram opt_out).
     patchBase.status = "opt_out";
     patchBase.opt_out = true;
-  } else if (adiouDeFato) {
+  } else if (destino === "adiou") {
     // ADIAMENTO ("depois eu vejo", "tô sem tempo"). A Mari para de falar igual,
     // mas isso não é um não: marcar opt_out tirava da base pra sempre quem só
     // estava ocupado. Como `sem_resposta`, ele volta a ser elegível quando o
