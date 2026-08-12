@@ -159,13 +159,29 @@ function destinoDoEncerramento(r: { opt_out: boolean; adiou: boolean }, text: st
 // e reagrupa em pedaços de no máximo MAX chars. Cada pedaço vira uma mensagem
 // separada no WhatsApp (igual gente digitando "manda um pedaço, manda outro").
 function quebrarEmBolhas(texto: string, MAX = 90): string[] {
+  const MIN_BOLHA = 32;
+
+  // Uma LINHA por si só já é uma bolha. Quando o Gemini lista (um carro por
+  // linha), respeitar a quebra é o comportamento certo — antes o split só
+  // conhecia linha em branco, frase e vírgula, e uma lista sem ponto final
+  // entre os itens saía inteira numa bolha só, estourando o MAX sem ter onde
+  // cortar. Linhas NÃO são reagrupadas entre si: a lista morreria de novo.
+  const linhas = (texto || "").split(/\n+/).map((l) => l.trim()).filter(Boolean);
+  const ehLista = linhas.length > 1;
+
   const out: string[] = [];
-  const blocos = (texto || "").split(/\n\s*\n/).map((b) => b.trim()).filter(Boolean);
-  for (const bloco of blocos) {
-    // unidades = frases; frase longa demais é repartida por vírgula/ponto-e-vírgula
-    const unidades = bloco
+  for (const linha of linhas) {
+    if (linha.length <= MAX) {
+      out.push(linha);
+      continue;
+    }
+    // Linha comprida: pica por frase e, se ainda estourar, por vírgula —
+    // reagrupando até MAX (só DENTRO da linha).
+    const unidades = linha
       .split(/(?<=[.!?])\s+/)
-      .flatMap((f) => (f.length <= MAX ? [f] : f.split(/(?<=[,;])\s+/)));
+      .flatMap((f) => (f.length <= MAX ? [f] : f.split(/(?<=[,;])\s+/)))
+      .map((u) => u.trim())
+      .filter(Boolean);
     let atual = "";
     for (const u of unidades) {
       const cand = atual ? `${atual} ${u}` : u;
@@ -177,23 +193,27 @@ function quebrarEmBolhas(texto: string, MAX = 90): string[] {
     }
     if (atual) out.push(atual.trim());
   }
+
   let limpo = out.map((b) => b.trim()).filter(Boolean);
 
-  // Costura bolha ÓRFÃ de volta na anterior. Sem isso, a quebra por vírgula
-  // produzia coisas como "...com 100 mil km," | "por R$ 82.000." — o preço,
-  // que é o dado mais importante da mensagem, sozinho numa bolha.
-  const MIN_BOLHA = 32;
-  limpo = limpo.reduce<string[]>((acc, b) => {
-    const anterior = acc[acc.length - 1];
-    if (anterior && b.length < MIN_BOLHA && `${anterior} ${b}`.length <= MAX + MIN_BOLHA) {
-      acc[acc.length - 1] = `${anterior} ${b}`;
+  // Costura bolha ÓRFÃ de volta na anterior — o preço saía sozinho ("...100 mil
+  // km," | "por R$ 82.000."). Não vale em lista: ali as bolhas curtas são os
+  // próprios itens, e juntá-las desfaria a lista.
+  if (!ehLista) {
+    limpo = limpo.reduce<string[]>((acc, b) => {
+      const anterior = acc[acc.length - 1];
+      if (anterior && b.length < MIN_BOLHA && `${anterior} ${b}`.length <= MAX + MIN_BOLHA) {
+        acc[acc.length - 1] = `${anterior} ${b}`;
+        return acc;
+      }
+      acc.push(b);
       return acc;
-    }
-    acc.push(b);
-    return acc;
-  }, []);
+    }, []);
+  }
 
-  return (limpo.length ? limpo : [(texto || "").trim()]).filter(Boolean).slice(0, 6);
+  // Teto maior que 6: listar 5 carros + a frase de abertura já são 6 bolhas, e
+  // o corte antigo comia o último item da lista.
+  return (limpo.length ? limpo : [(texto || "").trim()]).filter(Boolean).slice(0, 8);
 }
 
 // ─── Extração de campos do payload Avisa (subset do webhook existente) ────────
