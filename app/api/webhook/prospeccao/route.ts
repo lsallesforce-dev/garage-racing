@@ -100,6 +100,41 @@ function pareceAutoreply(text: string): boolean {
   return AUTOREPLY_PATTERNS.some((re) => re.test(t));
 }
 
+// ─── Adiamento × recusa definitiva ────────────────────────────────────────────
+// O Gemini erra essa classificação: mesmo com "depois eu vejo" listado como
+// adiamento no prompt, ele marcava opt_out — e opt_out tira o contato da base
+// PRA SEMPRE (cron e rodada nova filtram por ele). Como o custo do erro é
+// assimétrico (perder um lojista que só estava ocupado vs. esperar 90 dias),
+// a decisão passa a ser determinística aqui.
+const ADIAMENTO_PATTERNS: RegExp[] = [
+  /\bdepois\s+(?:eu\s+)?(?:vejo|olho|te\s+falo|a\s+gente\s+v[êe]|vemos)\b/i,
+  /\bmais\s+pra\s+frente\b/i,
+  /\b(?:semana|m[êe]s)\s+que\s+vem\b/i,
+  /\boutro\s+dia\b/i,
+  /\bsem\s+tempo\b/i,
+  /\b(?:t[oô]|estou)\s+ocupad/i,
+  /\b(?:agora|hoje)\s+n[ãa]o\s*(?:d[áa])?\b/i,
+  /\bme\s+chama\s+(?:depois|outro|semana|m[êe]s)/i,
+];
+
+// Se QUALQUER um destes aparecer, é não de verdade — vence o adiamento.
+const RECUSA_FORTE_PATTERNS: RegExp[] = [
+  /\bn[ãa]o\s+(?:tenho|há|ha)\s+interesse\b/i,
+  /\bn[ãa]o\s+me\s+interessa\b/i,
+  /\bj[áa]\s+(?:tenho|uso|trabalho\s+com)\b/i,
+  /\bn[ãa]o\s+(?:quero|preciso|uso)\b/i,
+  /\b(?:tira|remove)\s+meu\s+n[úu]mero\b/i,
+  /\bn[ãa]o\s+(?:me\s+)?mand[ae]\b/i,
+  /\bpar[ae]\s+de\s+(?:me\s+)?mandar\b/i,
+  /\bdescadastr/i,
+];
+
+function ehAdiamento(text: string): boolean {
+  const t = (text || "").trim();
+  if (RECUSA_FORTE_PATTERNS.some((re) => re.test(t))) return false;
+  return ADIAMENTO_PATTERNS.some((re) => re.test(t));
+}
+
 // ─── Quebra a resposta em BOLHAS curtas (no máx ~2 linhas cada) ───────────────
 // Não depende de o Gemini formatar: pica por linha em branco -> frase -> vírgula
 // e reagrupa em pedaços de no máximo MAX chars. Cada pedaço vira uma mensagem
@@ -396,11 +431,20 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Define o novo status conforme a leitura do agente ───────────────────────
-  if (r.opt_out) {
+  // Reclassificação determinística: o modelo marca opt_out em adiamento ("depois
+  // eu vejo"), e esse erro é caro — some da base pra sempre. A resposta enviada
+  // é a mesma nos dois casos (encerra com elegância), então trocar só o destino
+  // não muda nada pro prospect.
+  const adiouDeFato = r.adiou || (r.opt_out && ehAdiamento(text));
+  if (r.opt_out && adiouDeFato && !r.adiou) {
+    console.log(`🔀 [prospeccao] "${text.slice(0, 40)}" veio como opt_out mas é adiamento — reclassificado.`);
+  }
+
+  if (r.opt_out && !adiouDeFato) {
     // Recusa DEFINITIVA: sai da base pra sempre (cron e rodada nova filtram opt_out).
     patchBase.status = "opt_out";
     patchBase.opt_out = true;
-  } else if (r.adiou) {
+  } else if (adiouDeFato) {
     // ADIAMENTO ("depois eu vejo", "tô sem tempo"). A Mari para de falar igual,
     // mas isso não é um não: marcar opt_out tirava da base pra sempre quem só
     // estava ocupado. Como `sem_resposta`, ele volta a ser elegível quando o
