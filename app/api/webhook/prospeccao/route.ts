@@ -18,6 +18,7 @@ import { timingSafeEqual } from "crypto";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendAvisaMessage, sendAvisaImage, sendAvisaVideo, extractWebhookToken } from "@/lib/avisa";
 import { gerarRespostaProspeccao, carregarPatioDemo } from "@/lib/process-prospeccao";
+import { montarAbertura } from "@/lib/prospeccao-abertura";
 import { bumpStats } from "@/lib/prospeccao-stats";
 import type { Prospect, ProspectMensagem } from "@/lib/prospeccao-types";
 
@@ -342,6 +343,53 @@ export async function POST(req: NextRequest) {
   if (!prospect) {
     console.warn(`⚠️ [prospeccao webhook] Sem prospect para ${waId} — mensagem ignorada.`);
     return NextResponse.json({ status: "prospect_not_found" });
+  }
+
+  // ── Comando !reset (só do número do Lucas) ──────────────────────────────────
+  // Zera a conversa e reenvia a abertura, pra testar o fluxo do começo sem mexer
+  // no banco à mão. Antes o "!reset" caía como mensagem normal no Gemini, que
+  // respondia qualquer coisa — parecia que o comando "não funcionava".
+  // Restrito ao AUTOZAP_ALERT_WHATSAPP: um lojista curioso digitando !reset não
+  // pode apagar o próprio histórico de atendimento.
+  if (/^!reset$/i.test(text.trim())) {
+    const dono = normalizePhone(process.env.AUTOZAP_ALERT_WHATSAPP || "");
+    if (!dono || waId !== dono) {
+      console.warn(`⛔ [prospeccao] !reset ignorado — veio de ${waId}, não do número do admin.`);
+      return NextResponse.json({ status: "reset_nao_autorizado" });
+    }
+
+    const creds = autozapAvisaCreds();
+    const agora = new Date().toISOString();
+
+    await supabaseAdmin.from("prospect_mensagens").delete().eq("prospect_id", prospect.id);
+    await supabaseAdmin
+      .from("prospects")
+      .update({
+        status: "enviado",
+        rodada: 1,
+        enviado_em: agora,
+        ultima_msg_at: agora,
+        proximo_contato_at: null,
+        followup_count: 0,
+        opt_out: false,
+        em_atendimento_humano: false,
+        updated_at: agora,
+      })
+      .eq("id", prospect.id);
+
+    const bolhas = await montarAbertura(prospect);
+    if (bolhas.length && creds) {
+      for (let i = 0; i < bolhas.length; i++) {
+        if (i > 0) await new Promise((r) => setTimeout(r, 5000)); // mesma pausa do cron
+        await sendAvisaMessage(waId, bolhas[i], creds, { typing: i === 0 });
+      }
+      await supabaseAdmin.from("prospect_mensagens").insert(
+        bolhas.map((b) => ({ prospect_id: prospect.id, remetente: "agente", content: b }))
+      );
+    }
+
+    console.log(`♻️ [prospeccao] !reset de ${prospect.nome_empresa} — conversa zerada, abertura reenviada.`);
+    return NextResponse.json({ status: "reset_ok", bolhas: bolhas.length });
   }
 
   // ── Salva a mensagem recebida + conta a resposta do dia ─────────────────────
