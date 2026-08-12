@@ -35,6 +35,10 @@ const MAX_FOTOS_POR_CARRO = 4;
 // exceção e entra depois deste corte.
 const MAX_BOLHAS_RESPOSTA = 3;
 
+// Teto do turno INTEIRO (resposta + lista do pátio). Listar é 1 intro + 5 carros;
+// acima disso vira rajada, e rajada é o que o WhatsApp pontua como spam.
+const MAX_MENSAGENS_TURNO = 6;
+
 // Ela ofereceu foto ("quer ver umas fotos dele?") E mandou as 4 na mesma
 // resposta, sem esperar o sim. Ou pergunta, ou manda: se a própria resposta
 // está oferecendo, a foto espera a confirmação.
@@ -575,8 +579,26 @@ export async function POST(req: NextRequest) {
   // parágrafo, depois mandou tudo corrido separado por vírgula e o split picou
   // no meio dos nomes ("...Chevrolet Onix 1.0 LT," | "2024, R$ 69.958..."). Ele
   // só sinaliza a intenção; a formatação é determinística aqui.
-  if (r.listar_patio) {
+  // Trava de lista repetida: o Gio mandou duas mensagens em 27s, o modelo marcou
+  // listar_patio nas duas e ele recebeu os 5 carros DUAS vezes — 13 mensagens em
+  // 40 segundos. Uma vez listado, o estoque não se repete na mesma conversa;
+  // se ele quiser rever, pergunta e a Mari responde com o carro que interessa.
+  const jaListou =
+    patio.length > 0 &&
+    (mensagens ?? []).some(
+      (m) => m.remetente !== "prospect" && (m.content || "").includes(patio[0].descricao)
+    );
+
+  if (r.listar_patio && !jaListou) {
     for (const carro of patio) mensagensEnviar.push(carro.descricao);
+  } else if (r.listar_patio) {
+    console.log(`🔁 [prospeccao] Lista do pátio já foi enviada a ${prospect.nome_empresa} — não repetindo.`);
+  }
+
+  // Teto global do turno. Mesmo com a lista, ninguém precisa receber mais que
+  // isso de uma vez: rajada de mensagem é o padrão que o WhatsApp pontua.
+  if (mensagensEnviar.length > MAX_MENSAGENS_TURNO) {
+    mensagensEnviar.length = MAX_MENSAGENS_TURNO;
   }
 
   const creds = autozapAvisaCreds();
