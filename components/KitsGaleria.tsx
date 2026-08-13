@@ -11,6 +11,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useUserRole } from "@/components/SidebarWrapper";
 import CapturaGuiada from "@/components/CapturaGuiada";
+import PisoRestauro from "@/components/PisoRestauro";
 import ReelEditor from "@/components/ReelEditor";
 import type { MarketingCapturas } from "@/lib/marketing-shotlist";
 import {
@@ -69,6 +70,7 @@ export default function KitsGaleria() {
   const [editando, setEditando] = useState<Record<string, boolean>>({});
   const [gerandoRoteiro, setGerandoRoteiro] = useState<Record<string, boolean>>({});
   const [roteiroAberto, setRoteiroAberto] = useState<Record<string, boolean>>({});
+  const [pisoAberto, setPisoAberto] = useState<Record<string, boolean>>({});
   const legendaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
 
   // Config da loja (nível tenant)
@@ -536,6 +538,25 @@ export default function KitsGaleria() {
                     capturas={c.marketing_capturas ?? {}}
                     videoUrl={c.video_url}
                     onChange={(cap) => patchCarro(c.id, { marketing_capturas: cap })}
+                  />
+                )}
+
+                {/* Piso e calçada (colapsável) */}
+                <button
+                  onClick={() => setPisoAberto((p) => ({ ...p, [c.id]: !p[c.id] }))}
+                  className="flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2 text-[9px] font-black uppercase tracking-widest text-gray-500 hover:bg-gray-100"
+                >
+                  <span className="flex items-center gap-1.5"><Wand2 size={12} /> Piso e calçada</span>
+                  <ChevronDown size={13} className={`transition-transform ${pisoAberto[c.id] ? "rotate-180" : ""}`} />
+                </button>
+                {pisoAberto[c.id] && (
+                  <PisoRestauro
+                    veiculoId={c.id}
+                    fotos={c.fotos ?? []}
+                    capturas={c.marketing_capturas ?? {}}
+                    onChange={(cap, fotosNovas) =>
+                      patchCarro(c.id, { marketing_capturas: cap, ...(fotosNovas ? { fotos: fotosNovas } : {}) })
+                    }
                   />
                 )}
 

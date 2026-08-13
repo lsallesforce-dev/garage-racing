@@ -109,9 +109,17 @@ export const SHOT_LIST: ShotItem[] = [...SHOT_FOTOS, ...SHOT_TAKES];
 // vídeo único; "classificado" = foto etiquetada pelo Gemini Vision.
 export type CapturaOrigem = "manual" | "auto" | "classificado";
 export interface CapturaRegistro { tag: string; url: string; origem?: CapturaOrigem }
+
+// Restauro de piso/calçada: guarda o par original→restaurada pra o antes/depois
+// e pra reversão. `aplicada` = a restaurada tomou o lugar da original em fotos[].
+// Mora aqui dentro (jsonb já existente) de propósito: coluna nova exigiria
+// migration, e migration não aplicada é modo de falha conhecido do projeto.
+export interface PisoRegistro { original: string; restaurada: string; aplicada?: boolean }
+
 export interface MarketingCapturas {
   fotos?: CapturaRegistro[];
   takes?: CapturaRegistro[];
+  piso?: PisoRegistro[];
 }
 
 export const TAG_FOTO_CAPA = "frente-3-4";
