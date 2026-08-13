@@ -24,6 +24,36 @@ export function primeiroNome(nomeEmpresa: string | null): string {
   return tok.charAt(0).toUpperCase() + tok.slice(1).toLowerCase();
 }
 
+// ─── Nome da loja, apresentável ───────────────────────────────────────────────
+// Os nomes vêm do Google Maps e chegam sujos: "MEDCAR | Seminovos em Barretos
+// Loja 2", "Jorjão Automóveis - Compra e Venda de Veículos", "FOX VEICULOS
+// MULTIMARCAS" em caixa alta. Abrir com isso denuncia raspagem de dados.
+export function nomeLoja(nomeEmpresa: string | null): string {
+  let n = (nomeEmpresa || "").trim();
+  if (!n) return "";
+
+  // Corta o rabo descritivo depois de | ou - ("Fulano Veículos - Compra e Venda").
+  n = n.split(/\s*[|]\s*/)[0];
+  const traco = n.split(/\s+[-–—]\s+/);
+  if (traco.length > 1 && traco[0].trim().length >= 4) n = traco[0];
+  n = n.trim();
+
+  // CAIXA ALTA vira Title Case; nome com maiúsculas normais fica como está.
+  const soLetras = n.replace(/[^\p{L}]/gu, "");
+  if (soLetras && soLetras === soLetras.toUpperCase()) {
+    n = n
+      .toLowerCase()
+      .replace(/(^|\s|')(\p{L})/gu, (_, sep, letra) => sep + letra.toUpperCase());
+  }
+
+  // Nome muito longo não cabe numa saudação — corta na palavra.
+  if (n.length > 32) {
+    const corte = n.slice(0, 32);
+    n = corte.slice(0, corte.lastIndexOf(" ") > 12 ? corte.lastIndexOf(" ") : 32).trim();
+  }
+  return n;
+}
+
 // ─── Gancho de prova social, por proximidade geográfica ───────────────────────
 // A prova mais forte é a mais perto: um lojista da mesma cidade vale mais que
 // "revendas em geral". Rio Preto é a base da AutoZap (Marcos, Carmatti, APROVE),
@@ -42,7 +72,12 @@ export function preencherTemplate(tpl: string, prospect: Prospect): string {
   // ("A/C MULTIMARCAS" → token de 2 letras); nesse caso sai só "Oi." em vez do
   // "Oi, ." que um placeholder vazio deixaria.
   const nome = primeiroNome(prospect.nome_empresa);
+  const loja = nomeLoja(prospect.nome_empresa);
   return tpl
+    // {loja} = nome da revenda, limpo. Sem nome utilizável, a saudação fica
+    // "Oi!" em vez de "Oi, !".
+    .replace(/\{loja\}/gi, loja)
+    .replace(/\{saudacao_loja\}/gi, loja ? `Oi, ${loja}!` : "Oi!")
     .replace(/\{saudacao\}/gi, nome ? `Oi, ${nome}` : "Oi")
     .replace(/\{primeiro_nome\}/gi, nome)
     .replace(/\{gancho\}/gi, ganchoProvaSocial(prospect))
