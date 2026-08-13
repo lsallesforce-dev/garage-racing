@@ -59,9 +59,11 @@ const LADO_MASCARA = 1024;
  *  da loja é piso UNIFORME, então 80: segura exposição e cast de cor (que são
  *  de frequência bem mais baixa) e larga o resto pro gerado. */
 const SIGMA_BAIXA = 80;
-/** Quanto o gerado pode divergir do original FORA do chão antes de o ladrilho
- *  ser descartado por desalinhamento. No teste alinhado deu 6,8. */
-const MAX_DIVERGENCIA_FORA = 22;
+/** Deslocamento testado, em px, na detecção de reenquadramento. */
+const DESLOC_MAX = 12;
+/** Se deslocar melhora o encaixe pra menos que esta fração, o modelo
+ *  reenquadrou. 0,85 = uma melhora de 15% já denuncia. */
+const GANHO_DESLOC = 0.85;
 /** Abaixo disso a máscara não achou chão que valha a pena. */
 const AREA_MINIMA_MASCARA = 0.04;
 /** Uma variante por temperatura. É o que o humano faz no Canva: olhar as opções
@@ -251,6 +253,70 @@ async function medirGrao(faixaPng: Buffer): Promise<number> {
   return Math.min(6, amostras[Math.floor(amostras.length / 2)] * 1.4826);
 }
 
+/**
+ * O modelo reenquadrou?
+ *
+ * O guard antigo media só "quanto mudou FORA do chão" e vetava acima de um
+ * limiar. Ele confundia duas coisas muito diferentes:
+ *   · REENQUADRAR — o conteúdo desloca. Compor isso é sobrepor fora de registro
+ *     e é o que precisa ser vetado.
+ *   · RE-RENDERIZAR NO LUGAR — o modelo redesenha o carro ao fundo, a placa, a
+ *     grade. Feio, mas a máscara do chão já descarta tudo isso na composição.
+ *
+ * Os dois davam a mesma nota alta, e o ladrilho da direita da foto do Kicks —
+ * que voltava com o concreto PERFEITO e o enquadramento intacto — vivia sendo
+ * vetado por 22 a 28, com o limiar em 22. Borrar antes de comparar não separa
+ * os casos (14,9 cru → 11,1 borrado).
+ *
+ * O teste certo é direto: se o conteúdo deslocou, deslocar de volta MELHORA o
+ * encaixe. Se foi redesenhado no lugar, nenhum deslocamento ajuda. Só o que
+ * está fora da máscara entra na conta — é lá que existe estrutura pra casar.
+ */
+function pareceDeslocado(
+  O: Buffer,
+  G: Buffer,
+  mascara: Buffer,
+  W: number,
+  rx: number,
+  ry: number,
+  S: number
+): boolean {
+  const encaixe = (dx: number, dy: number): number => {
+    let soma = 0;
+    let n = 0;
+    for (let v = DESLOC_MAX; v < S - DESLOC_MAX; v += 4) {
+      for (let u = DESLOC_MAX; u < S - DESLOC_MAX; u += 4) {
+        if (mascara[(ry + v) * W + rx + u] >= 64) continue;
+        const a = (v * S + u) * 3;
+        const b = ((v + dy) * S + (u + dx)) * 3;
+        soma += Math.abs(O[a] - G[b]);
+        n++;
+      }
+    }
+    return n > 200 ? soma / n : -1;
+  };
+
+  const parado = encaixe(0, 0);
+  if (parado < 0) return false; // fundo de menos pra julgar — deixa passar
+
+  let melhor = parado;
+  for (const dy of [-DESLOC_MAX, 0, DESLOC_MAX]) {
+    for (const dx of [-DESLOC_MAX, 0, DESLOC_MAX]) {
+      if (!dx && !dy) continue;
+      const e = encaixe(dx, dy);
+      if (e >= 0 && e < melhor) melhor = e;
+    }
+  }
+  if (melhor < parado * GANHO_DESLOC) {
+    console.warn(
+      `⚠️ [marketing-piso] variante descartada: reenquadrou ` +
+        `(encaixe ${parado.toFixed(1)} → ${melhor.toFixed(1)} deslocando)`
+    );
+    return true;
+  }
+  return false;
+}
+
 /** Energia de LINHA ESCURA dentro da máscara: o que trinca, mato na junta e
  *  borda quebrada têm em comum é serem mais escuros que a vizinhança. Serve de
  *  termômetro do "quanto ainda falta" num ladrilho. */
@@ -295,8 +361,8 @@ async function residuoEscuro(
  *     (~40px pra cima). É isso que pega o xadrez: alternar claro/escuro muda o
  *     tom local muito além do que um retoque honesto muda.
  *
- * E `fora` continua sendo veto duro: mudança fora do chão significa que o modelo
- * reenquadrou, e compor isso é sobrepor conteúdo deslocado.
+ * E `deslocou` é veto duro: se o modelo reenquadrou, compor é sobrepor conteúdo
+ * fora de registro. Ver `pareceDeslocado`.
  */
 async function escolherVariante(
   tilePng: Buffer,
@@ -327,34 +393,23 @@ async function escolherVariante(
     let altoG = 0;
     let desvio = 0;
     let nDentro = 0;
-    let fora = 0;
-    let nFora = 0;
     for (let v = 0; v < S; v += 2) {
       for (let u = 0; u < S; u += 2) {
-        const m = mascara[(ry + v) * W + rx + u];
+        if (mascara[(ry + v) * W + rx + u] <= 128) continue;
         const k = (v * S + u) * 3;
-        if (m > 128) {
-          // Só o que é LINHA ESCURA conta como defeito: trinca, mato na junta e
-          // borda quebrada são mais escuros que a vizinhança. Medir energia de
-          // alta frequência em geral engana — a variante que limpa a trinca mas
-          // devolve textura de concreto pontuava NEGATIVO e era descartada.
-          altoO += Math.max(0, sO[k] - O[k]);
-          altoG += Math.max(0, sG[k] - G[k]);
-          desvio += Math.abs(bO[k] - bG[k]);
-          nDentro++;
-        } else if (m < 64) {
-          fora += (Math.abs(O[k] - G[k]) + Math.abs(O[k + 1] - G[k + 1]) + Math.abs(O[k + 2] - G[k + 2])) / 3;
-          nFora++;
-        }
+        // Só o que é LINHA ESCURA conta como defeito: trinca, mato na junta e
+        // borda quebrada são mais escuros que a vizinhança. Medir energia de
+        // alta frequência em geral engana — a variante que limpa a trinca mas
+        // devolve textura de concreto pontuava NEGATIVO e era descartada.
+        altoO += Math.max(0, sO[k] - O[k]);
+        altoG += Math.max(0, sG[k] - G[k]);
+        desvio += Math.abs(bO[k] - bG[k]);
+        nDentro++;
       }
     }
     if (!nDentro) continue;
 
-    const divergenciaFora = nFora > 200 ? fora / nFora : 0;
-    if (divergenciaFora > MAX_DIVERGENCIA_FORA) {
-      console.warn(`⚠️ [marketing-piso] variante descartada: reenquadrou (fora ${divergenciaFora.toFixed(1)})`);
-      continue;
-    }
+    if (pareceDeslocado(O, G, mascara, W, rx, ry, S)) continue;
     const remocao = (altoO - altoG) / nDentro;
     const desvioTom = desvio / nDentro;
     if (remocao < REMOCAO_MINIMA) {
