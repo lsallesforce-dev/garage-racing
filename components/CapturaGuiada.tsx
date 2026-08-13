@@ -23,7 +23,7 @@ import {
   type MarketingCapturas,
   type ShotItem,
 } from "@/lib/marketing-shotlist";
-import { Camera, Check, Images, Loader2, PlayCircle } from "lucide-react";
+import { Camera, Check, ChevronDown, Images, Loader2, PlayCircle } from "lucide-react";
 import SlotTake from "./captura/SlotTake";
 import VideoModeloModal from "./captura/VideoModeloModal";
 import VideoUnicoCard from "./captura/VideoUnicoCard";
@@ -63,6 +63,7 @@ export default function CapturaGuiada({ veiculoId, capturas, onChange, videoUrl 
   const [classificando, setClassificando] = useState(false);
   const [msg, setMsg] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
   const [modeloAberto, setModeloAberto] = useState(false);
+  const [takesAberto, setTakesAberto] = useState(false);
   const [refAtivo, setRefAtivo] = useState<string | null>(null);
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
@@ -283,21 +284,26 @@ export default function CapturaGuiada({ veiculoId, capturas, onChange, videoUrl 
         {SHOT_FOTOS.map((s) => <SlotFoto key={s.tag} shot={s} />)}
       </div>
 
-      <div className="mb-1 flex items-center justify-between gap-2">
+      {/* Takes recolhidos por padrão: são 15 slots em 4 blocos e, abertos, sozinhos
+          esticam o card mais que todo o resto da aba junto. A barra de progresso
+          fica FORA do recolhido — é ela que diz se vale a pena abrir. */}
+      <button
+        type="button"
+        onClick={() => setTakesAberto((v) => !v)}
+        className="mb-1 flex w-full items-center justify-between gap-2 text-left"
+      >
         <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">
-          Takes de vídeo <span className="font-bold normal-case text-gray-300">(5-10s cada, celular em pé)</span>
+          Takes de vídeo{" "}
+          <span className="font-bold normal-case text-gray-300">
+            {takesAberto ? "(5-10s cada, celular em pé)" : `${takesOk}/${SHOT_TAKES.length}`}
+          </span>
         </p>
-        <button
-          type="button"
-          onClick={() => setModeloAberto(true)}
-          className="flex flex-shrink-0 items-center gap-1 rounded-lg bg-gray-100 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-gray-600 hover:bg-gray-200"
-        >
-          <PlayCircle size={11} /> Vídeo modelo
-        </button>
-      </div>
+        <ChevronDown
+          size={13}
+          className={`flex-shrink-0 text-gray-400 transition-transform ${takesAberto ? "rotate-180" : ""}`}
+        />
+      </button>
 
-      {/* Barra de progresso: o vendedor precisa ver o quanto falta, não descobrir
-          contando slot cinza. */}
       <div className="mb-2">
         <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
           <div
@@ -307,43 +313,60 @@ export default function CapturaGuiada({ veiculoId, capturas, onChange, videoUrl 
         </div>
         {obrigatoriosFalta.length ? (
           <p className="mt-1 text-[9px] font-bold text-gray-400">
-            Falta o essencial: {obrigatoriosFalta.map((s) => s.label).join(" · ")}
+            {/* Recolhido, a lista inteira ocupa duas linhas e derrota o objetivo. */}
+            {takesAberto
+              ? `Falta o essencial: ${obrigatoriosFalta.map((s) => s.label).join(" · ")}`
+              : `Faltam ${obrigatoriosFalta.length} take(s) essencia${obrigatoriosFalta.length > 1 ? "is" : "l"}`}
           </p>
         ) : (
           <p className="mt-1 text-[9px] font-bold text-green-600">Takes essenciais completos ✅</p>
         )}
       </div>
 
-      <VideoUnicoCard
-        veiculoId={veiculoId}
-        temVideoDoAnuncio={!!videoUrl}
-        onPronto={(c) => { onChange(c); setMsg({ tipo: "ok", texto: "Takes preenchidos a partir do vídeo ✅" }); }}
-      />
-
-      {SHOT_BLOCOS.map(({ bloco, label }) => {
-        const doBloco = SHOT_TAKES.filter((s) => s.bloco === bloco);
-        if (!doBloco.length) return null;
-        return (
-          <div key={bloco} className="mb-2">
-            <p className="mb-1 text-[9px] font-black uppercase tracking-widest text-gray-300">{label}</p>
-            <div className="grid grid-cols-3 gap-2">
-              {doBloco.map((s) => (
-                <SlotTake
-                  key={s.tag}
-                  shot={s}
-                  url={urlDe(s)}
-                  busy={subindo === s.tag}
-                  erro={erroSlot[s.tag]}
-                  refAtivo={refAtivo === s.tag}
-                  onRefVisivel={(v) => marcarRefVisivel(s.tag, v)}
-                  onArquivo={(f) => handleFile(s, f)}
-                  onRemover={() => removerTake(s)}
-                />
-              ))}
-            </div>
+      {takesAberto && (
+        <>
+          <div className="mb-1 flex justify-end">
+            <button
+              type="button"
+              onClick={() => setModeloAberto(true)}
+              className="flex flex-shrink-0 items-center gap-1 rounded-lg bg-gray-100 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-gray-600 hover:bg-gray-200"
+            >
+              <PlayCircle size={11} /> Vídeo modelo
+            </button>
           </div>
-        );
-      })}
+
+          <VideoUnicoCard
+            veiculoId={veiculoId}
+            temVideoDoAnuncio={!!videoUrl}
+            onPronto={(c) => { onChange(c); setMsg({ tipo: "ok", texto: "Takes preenchidos a partir do vídeo ✅" }); }}
+          />
+
+          {SHOT_BLOCOS.map(({ bloco, label }) => {
+            const doBloco = SHOT_TAKES.filter((s) => s.bloco === bloco);
+            if (!doBloco.length) return null;
+            return (
+              <div key={bloco} className="mb-2">
+                <p className="mb-1 text-[9px] font-black uppercase tracking-widest text-gray-300">{label}</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {doBloco.map((s) => (
+                    <SlotTake
+                      key={s.tag}
+                      shot={s}
+                      url={urlDe(s)}
+                      busy={subindo === s.tag}
+                      erro={erroSlot[s.tag]}
+                      refAtivo={refAtivo === s.tag}
+                      onRefVisivel={(v) => marcarRefVisivel(s.tag, v)}
+                      onArquivo={(f) => handleFile(s, f)}
+                      onRemover={() => removerTake(s)}
+                    />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </>
+      )}
 
       {msg ? (
         <p className={`mt-2 text-[10px] font-bold ${msg.tipo === "ok" ? "text-green-600" : "text-red-500"}`}>{msg.texto}</p>
