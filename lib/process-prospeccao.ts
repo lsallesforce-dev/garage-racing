@@ -161,6 +161,36 @@ export async function carregarLojaDemo(): Promise<LojaDemo> {
   return { nome: "a loja", cidade: null, estado: null };
 }
 
+// ─── Detector de chapéu ───────────────────────────────────────────────────────
+// O modelo alternava entre vender carro (a demo) e vender AutoZap sem perceber,
+// às vezes na mesma resposta — um lojista passou 13 minutos achando que estava
+// sendo vendido um Gol. A regra existe no prompt, mas prompt não garante nada:
+// ela já furou instrução escrita várias vezes. Quando estes marcadores aparecem,
+// o código injeta o lembrete no fim do system instruction, onde ele tem mais
+// peso, exatamente no turno em que importa.
+const MARCADORES_NEGOCIO_DELE: RegExp[] = [
+  /minha\s+(loja|revenda|garagem|empresa)/i,
+  /meu\s+(p[áa]tio|estoque|gerente|vendedor|funcion[áa]rio|neg[óo]cio)/i,
+  /meus\s+(carros|clientes|leads|vendedores|an[úu]ncios)/i,
+  /minhas\s+vendas/i,
+  /eu\s+(vendo|trabalho\s+com|revendo|comprei|tenho\s+no\s+p[áa]tio)/i,
+  /aqui\s+na\s+(loja|revenda|minha)/i,
+  /a\s+gente\s+(vende|trabalha\s+com|revende)/i,
+  // "quanto custa" exige objeto de SISTEMA: sozinho, pega preço de carro na
+  // demo ("quanto custa o Onix?") e trocaria o chapéu na hora errada.
+  /quanto\s+(custa|[ée]|fica|sai)[^?.!]{0,40}(sistema|servi[çc]o|autozap|isso|plano|mensalidade|pra\s+ter|por\s+m[êe]s)/i,
+  /(mensalidade|assinatura|contratar|assinar|implanta[çc][ãa]o|instala[çc][ãa]o)/i,
+  /(esse|este|o)\s+(sistema|servi[çc]o|programa)/i,
+  /autozap/i,
+];
+
+/** true = a pessoa está falando do NEGÓCIO dela, não agindo como compradora. */
+export function falaDoNegocioDele(texto: string): boolean {
+  const t = (texto || "").trim();
+  if (!t) return false;
+  return MARCADORES_NEGOCIO_DELE.some((re) => re.test(t));
+}
+
 // Temperatura da conversa de prospecção (espelha o padrão FRIO/MORNO/QUENTE do B2C).
 export type ProspeccaoTemperatura = "FRIO" | "MORNO" | "QUENTE";
 
@@ -187,7 +217,7 @@ export interface RespostaProspeccao {
 const VALID_TEMPERATURAS: ProspeccaoTemperatura[] = ["FRIO", "MORNO", "QUENTE"];
 
 // ─── System instruction (persona + produto + regras) ─────────────────────────
-function buildSystemInstruction(prospect: Prospect, patio: CarroDemo[], loja: LojaDemo): string {
+function buildSystemInstruction(prospect: Prospect, patio: CarroDemo[], loja: LojaDemo, reforcarChapeu2: boolean): string {
   // Só os carros COM foto ganham [ID]: assim o Gemini não consegue prometer
   // imagem de um carro que não tem nenhuma.
   const blocoPatio = patio
@@ -325,12 +355,29 @@ QUANDO NÃO quebrar a quarta parede (importante):
 - Antes de ter entregado algo COMPLETO: uma ficha respondida, fotos enviadas, uma dúvida resolvida. A frase só funciona depois de um acerto.
 
 # O PRODUTO (só quando perguntarem)
-Não despeje. Pinceladas curtas, e só aprofunde o que a pessoa puxar.
-- Atende: responde os leads do WhatsApp na hora, 24/7, qualifica e avisa o dono.
-- Divulga: vitrine de cada carro e vídeo do estoque prontos pra postar.
-- Anuncia: publica no OLX, Webmotors e Mercado Livre sem retrabalho.
-- Organiza: funil, comissão dos vendedores, cadastro do carro pela placa, contrato e nota fiscal.
-PREÇO DO AUTOZAP: você NÃO passa valor. Nem número, nem faixa, nem "a partir de".
+Não despeje. Pinceladas curtas, e só aprofunde o que a pessoa puxar. Você conhece tudo isso, mas entrega uma coisa por vez.
+
+ATENDIMENTO (é você)
+- Responde todo lead do WhatsApp na hora, 24h por dia, inclusive de madrugada e fim de semana.
+- Sabe o estoque inteiro da loja: preço, km, ano, opcionais, laudo, quantos donos.
+- Manda foto e vídeo do carro dentro da conversa, sem ninguém precisar procurar.
+- Qualifica o cliente e avisa o dono ou o vendedor quando esquenta.
+- Passa a conversa pro humano na hora que ele assumir, sem atropelar.
+
+DIVULGAÇÃO
+- Vitrine digital de cada carro, com link pra mandar pro cliente ou postar.
+- Vídeo de marketing do estoque, montado sozinho.
+- Publica anúncio no OLX, Webmotors e Mercado Livre sem redigitar nada.
+- Campanha no Facebook e Instagram que cai direto no WhatsApp da loja.
+- Anúncio de repasse automático em grupo de WhatsApp.
+
+ROTINA DA LOJA
+- Cadastro do veículo pela PLACA: puxa ficha, FIPE e opcionais.
+- Funil de vendas, vários vendedores com acesso e comissão de cada um.
+- Contrato de venda e nota fiscal pelo próprio sistema.
+- Relatório do mês: quantos leads entraram, o que virou venda.
+PREÇO E PRAZO DE IMPLANTAÇÃO: você NÃO passa nenhum dos dois. Nem valor, nem faixa, nem "a partir de", nem quanto tempo leva pra instalar. Quem trata disso é o vendedor — diga que ele entra em contato e siga.
+O QUE VOCÊ PODE ADIANTAR: o lojista tem 30 DIAS PRA TESTAR, sem compromisso. Isso costuma ser o que destrava a conversa, então use quando ele hesitar.
 O plano varia com o tamanho da loja, e quem monta a condição é o vendedor — se você cravar um número, tira dele a chance de negociar e ainda esfria a conversa no melhor momento.
 Quando perguntarem quanto custa, faça NESTA ordem, em bolhas curtas:
 1. Capitalize o que ele acabou de viver ("o atendimento que você acabou de receber é o que seu cliente teria às 23h de domingo").
@@ -369,6 +416,12 @@ Na dúvida entre os dois, marque adiou. Tirar alguém da base por engano custa m
 - Se handoff=false e opt_out=false, motivo_handoff deve ser null.
 - NUNCA prometa o que não pode cumprir. NUNCA pressione.${blocoSinais}
 
+${reforcarChapeu2 ? `
+# ATENÇÃO NESTE TURNO — CHAPÉU 2
+A última mensagem é sobre o NEGÓCIO DELE (a loja dele, a equipe dele, o estoque dele, ou o custo do sistema), não sobre comprar um carro.
+NESTA resposta: NÃO ofereça carro, NÃO cite modelo do pátio, NÃO mande foto. Responda como AutoZap — sobre o que o sistema faz pela loja dele — e, se esquentar, passe pro vendedor.
+Se ele citou carros que VENDE ("eu vendo Astra, Classic"), isso é o estoque DELE: responda que o sistema atende qualquer carro que ele cadastrar. NUNCA diga "esses eu não tenho no pátio".
+` : ""}
 # FORMATO DE SAÍDA (OBRIGATÓRIO)
 Responda EXCLUSIVAMENTE um JSON válido, sem markdown, sem comentários, exatamente neste formato:
 {
@@ -520,10 +573,17 @@ export async function gerarRespostaProspeccao({
   patio?: CarroDemo[];
   loja?: LojaDemo;
 }): Promise<RespostaProspeccao> {
+  // Chapéu decidido pela ÚLTIMA mensagem do prospect, não pelo julgamento do modelo.
+  const ultimaDoProspect = [...mensagens].reverse().find((m) => m.remetente === "prospect");
+  const reforcarChapeu2 = falaDoNegocioDele(ultimaDoProspect?.content ?? "");
+  if (reforcarChapeu2) {
+    console.log(`🎩 [prospeccao] "${(ultimaDoProspect?.content ?? "").slice(0, 50)}" → reforçando chapéu 2 (AutoZap).`);
+  }
   const systemInstruction = buildSystemInstruction(
     prospect,
     patio ?? (await carregarPatioDemo()),
     loja ?? (await carregarLojaDemo()),
+    reforcarChapeu2,
   );
   const historico = buildHistorico(mensagens);
 
