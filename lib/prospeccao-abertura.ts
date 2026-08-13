@@ -38,12 +38,29 @@ export function nomeLoja(nomeEmpresa: string | null): string {
   if (traco.length > 1 && traco[0].trim().length >= 4) n = traco[0];
   n = n.trim();
 
-  // CAIXA ALTA vira Title Case; nome com maiúsculas normais fica como está.
+  // Nome que é DESCRIÇÃO, não nome: "Venda e Compra de Carros Multimarcas Luiz
+  // Claudio" truncava em "Venda e Compra de Carros". Melhor abrir com "Oi!" seco
+  // do que com uma frase que não é o nome de ninguém.
+  if (/^(venda|compra|loja|revenda|com[ée]rcio|auto\s?pe[çc]as)\b/i.test(n)) return "";
+
+  // Normaliza caixa: CAIXA ALTA ("FOX VEICULOS") e tudo-minúsculo ("karrao
+  // veiculos") viram Title Case. Nome já capitalizado fica como está, pra não
+  // estragar grafia própria ("A3 multimarcas", "iCarros").
   const soLetras = n.replace(/[^\p{L}]/gu, "");
-  if (soLetras && soLetras === soLetras.toUpperCase()) {
+  const precisaAjuste =
+    soLetras && (soLetras === soLetras.toUpperCase() || soLetras === soLetras.toLowerCase());
+  if (precisaAjuste) {
+    // "de/da/do/e" continuam minúsculos no meio do nome.
+    const minusculas = new Set(["de", "da", "do", "das", "dos", "e"]);
     n = n
       .toLowerCase()
-      .replace(/(^|\s|')(\p{L})/gu, (_, sep, letra) => sep + letra.toUpperCase());
+      .split(/(\s+)/)
+      .map((tok, i) =>
+        /^\s+$/.test(tok) || (i > 0 && minusculas.has(tok))
+          ? tok
+          : tok.replace(/^(\p{L})/u, (c) => c.toUpperCase()),
+      )
+      .join("");
   }
 
   // Nome muito longo não cabe numa saudação — corta na palavra.
