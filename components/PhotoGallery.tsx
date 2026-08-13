@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react";
 import { supabase } from "@/lib/supabase";
+import { paraJpeg } from "@/lib/foto-jpeg";
 import { ImagePlus, Stamp, GripVertical } from "lucide-react";
 
 interface PhotoGalleryProps {
@@ -94,9 +95,13 @@ export const PhotoGallery = ({
   const isUploading = uploadingCount > 0;
 
   async function uploadSingleFile(file: File): Promise<string> {
-    const ext = watermarkEnabled ? "jpg" : (file.name.split(".").pop() || "jpg");
-    const fileName = `foto-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-    const uploadBlob: Blob = watermarkEnabled ? await applyWatermark(file, logoUrl) : file;
+    // Normaliza pra JPEG ANTES de tudo. Sem isso, com a marca d'água desligada o
+    // .HEIC do iPhone subia cru — extensão .HEIC com contentType image/jpeg — e
+    // entrava no anúncio como foto que nenhum navegador abre. Com a marca ligada
+    // dava um "Falha no canvas export" que não dizia nada.
+    const jpeg = await paraJpeg(file);
+    const fileName = `foto-${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`;
+    const uploadBlob: Blob = watermarkEnabled ? await applyWatermark(jpeg, logoUrl) : jpeg;
 
     const { data, error } = await supabase.storage
       .from("fotos-veiculos")

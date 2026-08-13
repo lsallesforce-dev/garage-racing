@@ -13,6 +13,7 @@
 
 import React, { useCallback, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { paraJpeg } from "@/lib/foto-jpeg";
 import {
   SHOT_BLOCOS,
   SHOT_FOTOS,
@@ -128,18 +129,21 @@ export default function CapturaGuiada({ veiculoId, capturas, onChange, videoUrl 
     setSubindo(shot.tag);
     setErroSlot((p) => ({ ...p, [shot.tag]: "" }));
     try {
+      // Converte ANTES de medir: medirFoto usa <img>, que não lê HEIC — a trava
+      // de orientação passava batido justo na foto que mais precisa dela.
+      const arquivo = shot.tipo === "foto" ? await paraJpeg(file) : file;
+
       if (shot.tag === TAG_FOTO_VERTICAL) {
-        const m = await medirFoto(file);
+        const m = await medirFoto(arquivo);
         if (m && m.w > m.h) {
           throw new Error("Essa foto está deitada. Tire de novo com o celular em pé — é o que esse slot serve pra resolver.");
         }
       }
       if (shot.tipo === "foto") {
-        const ext = file.name.split(".").pop() || "jpg";
-        const fileName = `marketing-${shot.tag}-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+        const fileName = `marketing-${shot.tag}-${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`;
         const { data, error } = await supabase.storage
           .from("fotos-veiculos")
-          .upload(fileName, file, { contentType: file.type || "image/jpeg", upsert: false });
+          .upload(fileName, arquivo, { contentType: "image/jpeg", upsert: false });
         if (error) throw new Error(error.message);
         const { data: { publicUrl } } = supabase.storage.from("fotos-veiculos").getPublicUrl(data.path);
         await registrar(shot, publicUrl);
