@@ -36,7 +36,13 @@ export async function classificarFotosVeiculo(
   const alvo = (fotos ?? []).slice(0, MAX_FOTOS);
   if (!alvo.length) return existentes;
 
-  const tagsLivres = SHOT_FOTOS.map((s) => s.tag).filter((t) => !existentes.some((e) => e.tag === t));
+  // `soManual` fica de fora: esses slots são definidos por COMO a foto foi
+  // tirada (a "frente-vertical" é a mesma frente, só que com o celular em pé) e
+  // o Vision, que olha o conteúdo, preencheria com a foto deitada de sempre —
+  // matando em silêncio o motivo do slot existir.
+  const tagsLivres = SHOT_FOTOS.filter((s) => !s.soManual)
+    .map((s) => s.tag)
+    .filter((t) => !existentes.some((e) => e.tag === t));
   if (!tagsLivres.length) return existentes;
 
   const partes = await Promise.all(alvo.map(fotoParaInline));
@@ -44,7 +50,7 @@ export async function classificarFotosVeiculo(
   partes.forEach((p, i) => { if (p) validas.push({ url: alvo[i], parte: p }); });
   if (!validas.length) return existentes;
 
-  const guia = SHOT_FOTOS.map((s) => `- "${s.tag}": ${s.dica}`).join("\n");
+  const guia = SHOT_FOTOS.filter((s) => !s.soManual).map((s) => `- "${s.tag}": ${s.dica}`).join("\n");
   const prompt =
     `Você vai ver ${validas.length} fotos de UM carro de revenda, na ordem (índice 0 a ${validas.length - 1}).\n` +
     `Classifique CADA foto em UMA etiqueta:\n${guia}\n- "outra": não encaixa em nenhuma.\n\n` +

@@ -17,6 +17,10 @@ export interface ShotItem {
   segundos?: number;   // duração alvo do clipe no reel (substitui o DEFAULT_SEG chapado)
   refInicio?: number;  // trecho correspondente no vídeo modelo (Takes padrão)
   refFim?: number;
+  /** Fora do classificador automático: o que define o slot é COMO a foto foi
+   *  tirada (enquadramento/orientação), não o que ela mostra — o Gemini Vision
+   *  olha o conteúdo e preencheria com a foto errada. */
+  soManual?: boolean;
 }
 
 // Bumpar quando a lista de takes mudar de forma que invalide decupagem já feita.
@@ -47,6 +51,7 @@ export function refPosterUrl(tag: string): string {
 // Fotos: a "frente-3-4" é a capa do carrossel (vira fundo da capa templatada).
 export const SHOT_FOTOS: ShotItem[] = [
   { tag: "frente-3-4",  label: "Frente 3/4",   dica: "De frente, levemente de lado. Carro inteiro no quadro, sem cortar rodas.", tipo: "foto", obrigatoria: true },
+  { tag: "frente-vertical", label: "Frente (story)", dica: "A MESMA frente, mas com o celular EM PÉ. É essa que vira o story e a capa do reel — sem ela, a foto deitada sobra tarja no 9:16.", tipo: "foto", obrigatoria: false, soManual: true },
   { tag: "lateral",     label: "Lateral",      dica: "Perfil completo do carro, câmera na altura da maçaneta.",                   tipo: "foto", obrigatoria: true },
   { tag: "traseira-3-4",label: "Traseira 3/4", dica: "De trás, levemente de lado — mesmo ângulo da frente, invertido.",           tipo: "foto", obrigatoria: true },
   { tag: "painel",      label: "Painel",       dica: "Do banco de trás, volante e central de mídia ligada.",                      tipo: "foto", obrigatoria: true },
@@ -107,6 +112,25 @@ export interface CapturaRegistro { tag: string; url: string; origem?: CapturaOri
 export interface MarketingCapturas {
   fotos?: CapturaRegistro[];
   takes?: CapturaRegistro[];
+}
+
+export const TAG_FOTO_CAPA = "frente-3-4";
+export const TAG_FOTO_VERTICAL = "frente-vertical";
+
+// Qual foto vira o fundo de cada formato.
+//
+// Feed é 4:5 e story/reel são 9:16. Uma foto deitada no 9:16 ou corta a frente e
+// a traseira do carro, ou entra inteira sobrando tarja escura em cima e embaixo
+// (é o que o cover×contain de renderCapa/Intro faz hoje). A foto tirada com o
+// celular em pé resolve — quando existir.
+export function fotoDoFormato(
+  capturas: MarketingCapturas | null | undefined,
+  galeria: string[] | null | undefined,
+  formato: "feed" | "story",
+): string | null {
+  const etiquetada = (tag: string) => capturas?.fotos?.find((f) => f.tag === tag)?.url ?? null;
+  const vertical = formato === "story" ? etiquetada(TAG_FOTO_VERTICAL) : null;
+  return vertical ?? etiquetada(TAG_FOTO_CAPA) ?? galeria?.[0] ?? null;
 }
 
 // Ordena os takes gravados na ordem narrativa da shot list. Tag desconhecida vai

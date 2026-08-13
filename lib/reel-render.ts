@@ -12,7 +12,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { anoLabelDe, cfgFromRow, cleanMarca, cleanModelo, formatFone, linhaSpecs, precoFormatado } from "@/lib/marketing-kit";
 import { fotoParaCapa } from "@/lib/marketing-capa";
 import { calloutsDoVeiculo, resolverCallout } from "@/lib/reel-callouts";
-import { type MarketingCapturas } from "@/lib/marketing-shotlist";
+import { fotoDoFormato, type MarketingCapturas } from "@/lib/marketing-shotlist";
 import { clipesDoReel } from "@/lib/marketing-capturas-merge";
 import { REEL } from "@/remotion/theme";
 import type { ReelProps, ReelClip } from "@/remotion/types";
@@ -85,11 +85,10 @@ export async function buildReelProps(veiculo: any, cfgRow: any): Promise<ReelPro
   const capaEdit = edit?.capa && typeof edit.capa === "object" ? edit.capa : null;
 
   // Fundo da intro = FOTO CRUA (nunca a capa montada, que já tem texto embutido).
+  // "story" porque o reel é 9:16: prefere a frente tirada com o celular em pé.
   const capaUrl =
     (typeof capaEdit?.fotoUrl === "string" && capaEdit.fotoUrl) ||
-    capturas.fotos?.find((f) => f.tag === "frente-3-4")?.url ||
-    veiculo.fotos?.[0] ||
-    null;
+    fotoDoFormato(capturas, veiculo.fotos, "story");
   // Mede a foto pra intro decidir cover×contain (não cortar o carro em foto deitada).
   const medida = capaUrl ? await fotoParaCapa(capaUrl) : null;
 

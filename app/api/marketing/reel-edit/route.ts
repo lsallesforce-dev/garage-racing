@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireVehicleOwner } from "@/lib/api-auth";
-import { SHOT_TAKES, type MarketingCapturas } from "@/lib/marketing-shotlist";
+import { SHOT_TAKES, fotoDoFormato, type MarketingCapturas } from "@/lib/marketing-shotlist";
 import { clipesDoReel } from "@/lib/marketing-capturas-merge";
 import { calloutsDoVeiculo, resolverCallout } from "@/lib/reel-callouts";
 import { lerCalloutsSalvos } from "@/lib/reel-callouts-ia";
@@ -94,7 +94,8 @@ export async function GET(req: NextRequest) {
   const fotosCapturadas = (capturas.fotos ?? []).map((f) => f.url);
   // Set preserva a ordem de inserção: as capturas guiadas vêm antes das fotos do anúncio.
   const fotos = [...new Set([...fotosCapturadas, ...((veiculo.fotos as string[]) ?? [])])].filter(Boolean).slice(0, 40);
-  const fotoPadrao = capturas.fotos?.find((f) => f.tag === "frente-3-4")?.url ?? fotos[0] ?? null;
+  // "story": o reel é 9:16, então o padrão da capa é a frente tirada em pé.
+  const fotoPadrao = fotoDoFormato(capturas, veiculo.fotos as string[], "story") ?? fotos[0] ?? null;
 
   const capaSalva = veiculo.marketing_reel_edit?.capa ?? null;
   const capa = {

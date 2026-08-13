@@ -17,6 +17,7 @@ import {
   SHOT_BLOCOS,
   SHOT_FOTOS,
   SHOT_TAKES,
+  TAG_FOTO_VERTICAL,
   normalizarTag,
   type MarketingCapturas,
   type ShotItem,
@@ -110,10 +111,29 @@ export default function CapturaGuiada({ veiculoId, capturas, onChange, videoUrl 
     }
   }
 
+  // Mede a foto antes de subir. Só interessa pro slot cuja razão de existir é a
+  // orientação (frente-vertical): mandar a deitada ali não daria erro nenhum e
+  // o story sairia com tarja, que é exatamente o que o slot veio evitar.
+  function medirFoto(file: File): Promise<{ w: number; h: number } | null> {
+    return new Promise((resolve) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => { URL.revokeObjectURL(url); resolve({ w: img.naturalWidth, h: img.naturalHeight }); };
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+      img.src = url;
+    });
+  }
+
   async function handleFile(shot: ShotItem, file: File) {
     setSubindo(shot.tag);
     setErroSlot((p) => ({ ...p, [shot.tag]: "" }));
     try {
+      if (shot.tag === TAG_FOTO_VERTICAL) {
+        const m = await medirFoto(file);
+        if (m && m.w > m.h) {
+          throw new Error("Essa foto está deitada. Tire de novo com o celular em pé — é o que esse slot serve pra resolver.");
+        }
+      }
       if (shot.tipo === "foto") {
         const ext = file.name.split(".").pop() || "jpg";
         const fileName = `marketing-${shot.tag}-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;

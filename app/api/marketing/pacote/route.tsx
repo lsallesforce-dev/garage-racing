@@ -9,7 +9,7 @@ import { requireVehicleOwner } from "@/lib/api-auth";
 import { cfgFromRow, gerarLegenda } from "@/lib/marketing-kit";
 import { fotoParaCapa, loadCapaFont, renderCapa, toDataUri } from "@/lib/marketing-capa";
 import { completarCapturas } from "@/lib/marketing-classificar";
-import { montarCarrossel, type MarketingCapturas } from "@/lib/marketing-shotlist";
+import { fotoDoFormato, montarCarrossel, type MarketingCapturas } from "@/lib/marketing-shotlist";
 import { garantirCallouts } from "@/lib/reel-callouts-ia";
 
 export const dynamic = "force-dynamic";
@@ -47,9 +47,10 @@ export async function POST(req: NextRequest) {
       await supabaseAdmin.from("veiculos").update({ marketing_capturas: capturas }).eq("id", veiculoId);
     }
 
-    // Foto de fundo da capa: "frente-3-4" etiquetada > primeira foto do carro
-    const fotoUrl: string | null =
-      capturas.fotos?.find((f) => f.tag === "frente-3-4")?.url ?? veiculo.fotos?.[0] ?? null;
+    // Fundo da capa. O story é 9:16 e ganha a foto tirada em pé quando ela
+    // existe — a deitada entra inteira, mas sobra tarja em cima e embaixo.
+    const fotoUrl = fotoDoFormato(capturas, veiculo.fotos, "feed");
+    const fotoStoryUrl = fotoDoFormato(capturas, veiculo.fotos, "story");
     if (!fotoUrl) {
       return NextResponse.json(
         { error: "Veículo sem foto — suba pelo menos a Frente 3/4 na captura guiada" },
@@ -61,8 +62,10 @@ export async function POST(req: NextRequest) {
       .from("configuracoes")
       .getPublicUrl(`logos/${veiculo.user_id}.png`).data.publicUrl;
 
-    const [foto, logoUri, fontData] = await Promise.all([
+    const [foto, fotoStory, logoUri, fontData] = await Promise.all([
       fotoParaCapa(fotoUrl),
+      // Só baixa duas vezes quando o story usa uma foto diferente.
+      fotoStoryUrl && fotoStoryUrl !== fotoUrl ? fotoParaCapa(fotoStoryUrl) : Promise.resolve(null),
       toDataUri(logoPublic),
       loadCapaFont(),
     ]);
@@ -73,7 +76,10 @@ export async function POST(req: NextRequest) {
     // Capa em dois formatos: feed 4:5 (slide 1 do carrossel) e story 9:16
     const ts = Date.now();
     async function renderEUpload(formato: "feed" | "story"): Promise<string> {
-      const img = renderCapa({ foto, logoUri, cfg, veiculo, fontData, formato });
+      const img = renderCapa({
+        foto: formato === "story" ? fotoStory ?? foto : foto,
+        logoUri, cfg, veiculo, fontData, formato,
+      });
       const png = Buffer.from(await img.arrayBuffer());
       const key = `marketing/${veiculoId}/${formato}-${ts}.png`;
       const { error: upErr } = await supabaseAdmin.storage
