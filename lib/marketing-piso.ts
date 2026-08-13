@@ -34,47 +34,65 @@ import { isOwnStorage } from "@/lib/marketing-capa";
 const apiKey = process.env.GEMINI_API_KEY!;
 const IMAGE_MODEL = "gemini-2.5-flash-image";
 
-/** Escala de trabalho. A 2048 o kit (feed 1080, story 1350) sobra resolução e a
- *  faixa do chão cabe em poucos ladrilhos — cabe no maxDuration de 300s. */
-const LARGURA_TRABALHO = 2048;
+/** Escala de trabalho. Bate com o teto de `MAX_LADO_FOTO` do upload (foto-jpeg),
+ *  então foto nova não é reescalada. O kit (feed 1080, story 1350) sobra
+ *  resolução e a faixa do chão cabe em poucos ladrilhos — cabe no maxDuration. */
+const LARGURA_TRABALHO = 2560;
 /** Lado do ladrilho. QUADRADO, ver nota no topo. */
 const TILE = 1024;
 const OVERLAP = 128;
 /** Miniatura usada pra derivar a máscara do chão. */
 const LADO_MASCARA = 1024;
-/** Raio do passa-baixa da separação de frequência. Alto de propósito: quanto
- *  maior, menos a trinca borrada do original sobrevive como fantasma — mas
- *  menos sombra local do original é preservada. 24 é o meio-termo. */
-const SIGMA_BAIXA = 24;
+/** Raio do passa-baixa da separação de frequência.
+ *
+ *  A correção de luz vem de `blur(original)`, e `blur(original)` carrega uma
+ *  versão BORRADA da trinca — que reaparece no resultado como um vulto escuro.
+ *  Quanto maior o sigma, mais fina fica essa sombra: uma trinca de ~4px com 60
+ *  de contraste deixa resíduo de ~7 em sigma 24 e de ~2 em sigma 80.
+ *
+ *  Em 24 o piso saía "bem conservado", com o vulto da trinca visível. O padrão
+ *  da loja é piso UNIFORME, então 80: segura exposição e cast de cor (que são
+ *  de frequência bem mais baixa) e larga o resto pro gerado. */
+const SIGMA_BAIXA = 80;
 /** Quanto o gerado pode divergir do original FORA do chão antes de o ladrilho
  *  ser descartado por desalinhamento. No teste alinhado deu 6,8. */
 const MAX_DIVERGENCIA_FORA = 22;
 /** Abaixo disso a máscara não achou chão que valha a pena. */
 const AREA_MINIMA_MASCARA = 0.04;
-const CONCORRENCIA = 2;
+const CONCORRENCIA = 3;
 const TIMEOUT_MS = 75_000;
 
-// O prompt é conservador de propósito. Pedir "como recém-executada" faz sair
-// CGI: piso chapado, sem fissura capilar e sem variação de tom não existe.
-const PROMPT_TILE = `Retoque fotográfico discreto APENAS no piso de concreto e na calçada desta imagem.
-Objetivo: piso BEM CONSERVADO E RECÉM-LAVADO. NÃO um piso novo de renderização 3D.
+// Alvo = o padrão de edição da loja: piso UNIFORME, como recém-executado. A
+// versão anterior pedia "bem conservado, não renderização 3D" e entregava piso
+// com trinca fina sobrevivendo — abaixo do padrão. O que segura o realismo aqui
+// não é deixar defeito, é manter desenho, perspectiva, luz e sombra.
+const PROMPT_TILE = `Restaure APENAS o piso de concreto e a calçada desta imagem, deixando os dois
+com aparência de NOVOS e UNIFORMES, como recém-executados e recém-lavados.
 
-REMOVER: trincas largas e ramificadas, fissuras em mapa, mato e vegetação nas frestas, manchas de
-óleo, marcas de pneu, poças e manchas escuras de água, sujeira no rejunte, cantos quebrados de
-lajota, trechos esborcinados da guia de meio-fio.
+REMOVER POR COMPLETO: todas as trincas, fissuras em mapa e fissuras capilares, mato e vegetação nas
+frestas, manchas de óleo, marcas de pneu, poças e manchas escuras de água, sujeira e falhas no
+rejunte, cantos quebrados de lajota, remendos, desníveis e trechos esborcinados da guia de meio-fio.
+O concreto deve ficar liso e de tonalidade homogênea; a calçada, com todas as peças íntegras.
 
-MANTER: fissuras capilares muito finas, marcas sutis de desempenadeira, mosqueado natural de
-tonalidade, variação de tom entre as lajotas, largura irregular do rejunte, a faixa de agregado
-exposto (brita lavada) no topo da guia, as juntas de dilatação serradas nas MESMAS posições (com
-poeira dentro, não pretas e não perfeitamente retas), e as sombras com a mesma forma e densidade —
-inclusive a sombra de contato escura na base dos pneus e do meio-fio.
+MANTER EXATAMENTE COMO ESTÁ:
+- o desenho do assentamento — as lajotas quadradas nas mesmas fiadas e nas mesmas posições, com
+  rejunte de largura constante e limpo, e cada peça com a MESMA cor e o MESMO tom que já tem
+  (não criar padrão alternado ou xadrez, não redistribuir as cores);
+- as juntas de dilatação serradas do concreto nas MESMAS posições, apenas limpas e bem definidas;
+- a guia de meio-fio, íntegra, com a faixa de agregado exposto (brita lavada) que já existe;
+- variação sutil de tonalidade entre as lajotas (calçada de cor 100% chapada fica falsa) e o
+  acabamento fosco do concreto — nada de piso espelhado ou polido;
+- as sombras com a mesma forma, direção e densidade, inclusive a sombra de contato escura na base
+  dos pneus e do meio-fio;
+- a perspectiva: o grão da textura diminui com a distância, primeiro plano com textura visível.
 
-Lajotas de reposição de cor destoante viram o mesmo bege das demais, com variação sutil entre peças.
-O grão da textura diminui com a distância: primeiro plano com textura visível, fundo suave.
+Lajotas de reposição de cor destoante viram o mesmo tom das demais.
 
 NÃO altere nada que não seja piso ou calçada: não mexa em carros, rodas, postes, grades, cobertura,
 placas, vegetação alta ou fundo. Mesma exposição, mesma luz, MESMO ENQUADRAMENTO e mesma resolução.
 Devolva a imagem inteira, sem cortar, sem dar zoom e sem reenquadrar.`;
+
+
 
 const PROMPT_MASCARA = `Repinte o chão desta foto com magenta chapado (#FF00FF).
 Cubra cada pixel da superfície onde os veículos estão estacionados: o piso de concreto do pátio, a
