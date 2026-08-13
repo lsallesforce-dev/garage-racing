@@ -65,9 +65,10 @@ const MAX_DIVERGENCIA_FORA = 22;
 /** Abaixo disso a máscara não achou chão que valha a pena. */
 const AREA_MINIMA_MASCARA = 0.04;
 /** Uma variante por temperatura. É o que o humano faz no Canva: olhar as opções
- *  e ficar com a que limpou sem redesenhar. Duas já separam bem — quatro só
- *  dobra o custo e o tempo. */
-const TEMPERATURAS = [0.15, 0.4, 0.7];
+ *  e ficar com a que limpou sem redesenhar. Duas, e não três: com PASSADAS=2 o
+ *  ladrilho difícil já ganha uma segunda chance, e três variantes por passada
+ *  levava o pior caso a ~24 chamadas e 80s+ — perto demais do maxDuration. */
+const TEMPERATURAS = [0.2, 0.55];
 /** Veto duro de redesenho. Medido no Kicks: as variantes honestas ficam entre
  *  3,4 e 7,1 de desvio de tom; as que trocaram a calçada por um xadrez
  *  branco/cinza, entre 9,8 e 16. Acima disto o modelo redesenhou — e redesenhar
@@ -80,6 +81,12 @@ const MAX_DESVIO_TOM = 9;
 const PESO_DESVIO_TOM = 0.25;
 /** Variante com remoção negativa ADICIONOU linha escura em vez de limpar. */
 const REMOCAO_MINIMA = 0;
+/** Passadas no mesmo ladrilho. Uma só não limpa: o modelo tira parte das
+ *  trincas e deixa parte. A 2ª roda em cima do canvas JÁ retocado e só nos
+ *  ladrilhos que sobraram sujos, então o custo extra é proporcional ao estrago. */
+const PASSADAS = 2;
+/** Quanto da linha escura o ladrilho precisa ter perdido pra sair da fila. */
+const GANHO_MINIMO = 0.25;
 const CONCORRENCIA = 2;
 const TIMEOUT_MS = 75_000;
 
@@ -244,6 +251,34 @@ async function medirGrao(faixaPng: Buffer): Promise<number> {
   return Math.min(6, amostras[Math.floor(amostras.length / 2)] * 1.4826);
 }
 
+/** Energia de LINHA ESCURA dentro da máscara: o que trinca, mato na junta e
+ *  borda quebrada têm em comum é serem mais escuros que a vizinhança. Serve de
+ *  termômetro do "quanto ainda falta" num ladrilho. */
+async function residuoEscuro(
+  tilePng: Buffer,
+  mascara: Buffer,
+  W: number,
+  rx: number,
+  ry: number,
+  S: number
+): Promise<number> {
+  const [X, sX] = await Promise.all([
+    sharp(tilePng).removeAlpha().raw().toBuffer(),
+    sharp(tilePng).removeAlpha().blur(2).raw().toBuffer(),
+  ]);
+  let soma = 0;
+  let n = 0;
+  for (let v = 0; v < S; v += 2) {
+    for (let u = 0; u < S; u += 2) {
+      if (mascara[(ry + v) * W + rx + u] <= 128) continue;
+      const k = (v * S + u) * 3;
+      soma += Math.max(0, sX[k] - X[k]);
+      n++;
+    }
+  }
+  return n ? soma / n : 0;
+}
+
 /**
  * Escolhe a melhor variante do ladrilho — o passo que faltava.
  *
@@ -403,67 +438,102 @@ export async function restaurarPiso(fotoUrl: string): Promise<ResultadoPiso> {
   const sigmaGrao = await medirGrao(faixaPng);
   const canvas = await sharp(trabalho).removeAlpha().raw().toBuffer();
 
-  let aplicados = 0;
+  // Ladrilhos que valem a chamada — os que têm chão suficiente na máscara.
+  const elegiveis = rects.filter((r) => {
+    let dentro = 0;
+    for (let v = 0; v < S; v += 4) for (let u = 0; u < S; u += 4) if (mascara[(r.y + v) * W + r.x + u] > 128) dentro++;
+    return dentro / ((S / 4) * (S / 4)) >= 0.05;
+  });
+
+  const recorteDoCanvas = (x: number, y: number) =>
+    sharp(canvas, { raw: { width: W, height: H, channels: 3 } })
+      .extract({ left: x, top: y, width: S, height: S })
+      .png()
+      .toBuffer();
+
+  // Set e não contador: com duas passadas o mesmo ladrilho pode ser composto
+  // duas vezes, e contar 2 mentiria. Pior, `aplicados++` só na 1ª passada fazia
+  // a foto voltar como "não editada" quando só a repescagem tinha pegado.
+  const aplicados = new Set<string>();
   let descartados = 0;
-  for (let i = 0; i < rects.length; i += CONCORRENCIA) {
-    const lote = rects.slice(i, i + CONCORRENCIA);
-    const resultados = await Promise.all(
-      lote.map(async (r) => {
-        // Ladrilho com pouco chão não vale a chamada.
-        let dentro = 0;
-        for (let v = 0; v < S; v += 4) for (let u = 0; u < S; u += 4) if (mascara[(r.y + v) * W + r.x + u] > 128) dentro++;
-        if (dentro / ((S / 4) * (S / 4)) < 0.05) return { r, tilePng: null, escolhido: null };
-        const tilePng = await sharp(trabalho).extract({ left: r.x, top: r.y, width: S, height: S }).png().toBuffer();
-        const brutos = await Promise.all(TEMPERATURAS.map((t) => gerarImagem(tilePng, PROMPT_TILE, t)));
-        const escolhido = await escolherVariante(tilePng, brutos, mascara, W, r.x, r.y, S);
-        return { r, tilePng, escolhido };
-      })
-    );
+  // Fila da passada 2: uma passada só não dá conta. Ou o ladrilho não teve
+  // variante aprovada, ou a aprovada limpou pouco e sobrou trinca — foi o que
+  // o Lucas apontou em três pontos da mesma foto. A repescagem roda em cima do
+  // canvas JÁ retocado, então ela ataca só o que restou.
+  let fila = elegiveis;
 
-    for (const { r, tilePng, escolhido } of resultados) {
-      if (!tilePng) continue;
-      if (!escolhido) {
-        descartados++;
-        continue;
-      }
-      try {
-        const gPng = escolhido;
-        const [G, loO, loG] = await Promise.all([
-          sharp(gPng).raw().toBuffer(),
-          sharp(tilePng).removeAlpha().blur(SIGMA_BAIXA).raw().toBuffer(),
-          sharp(gPng).blur(SIGMA_BAIXA).raw().toBuffer(),
-        ]);
+  for (let passada = 1; passada <= PASSADAS && fila.length; passada++) {
+    const reprovados: { x: number; y: number }[] = [];
+    if (passada > 1) console.log(`🔁 [marketing-piso] passada ${passada} em ${fila.length} ladrilho(s)`);
 
-        for (let v = 0; v < S; v++) {
-          const gy = r.y + v;
-          const fCima = r.y === 0 ? 1 : v / OVERLAP;
-          const fBaixo = r.y + S >= H ? 1 : (S - v) / OVERLAP;
-          for (let u = 0; u < S; u++) {
-            const gx = r.x + u;
-            const mMascara = mascara[gy * W + gx] / 255;
-            if (mMascara <= 0.004) continue;
-            const fEsq = r.x === 0 ? 1 : u / OVERLAP;
-            const fDir = r.x + S >= W ? 1 : (S - u) / OVERLAP;
-            const m = mMascara * Math.min(1, fCima, fBaixo, fEsq, fDir);
-            if (m <= 0.004) continue;
+    for (let i = 0; i < fila.length; i += CONCORRENCIA) {
+      const lote = fila.slice(i, i + CONCORRENCIA);
+      const resultados = await Promise.all(
+        lote.map(async (r) => {
+          const tilePng = await recorteDoCanvas(r.x, r.y);
+          const antes = await residuoEscuro(tilePng, mascara, W, r.x, r.y, S);
+          const brutos = await Promise.all(TEMPERATURAS.map((t) => gerarImagem(tilePng, PROMPT_TILE, t)));
+          const escolhido = await escolherVariante(tilePng, brutos, mascara, W, r.x, r.y, S);
+          return { r, tilePng, escolhido, antes };
+        })
+      );
 
-            const src = (v * S + u) * 3;
-            const dst = (gy * W + gx) * 3;
-            const ruido = sigmaGrao > 0 ? gauss() * sigmaGrao : 0;
-            for (let ch = 0; ch < 3; ch++) {
-              const novo = G[src + ch] - loG[src + ch] + loO[src + ch] + ruido;
-              canvas[dst + ch] = clamp255(canvas[dst + ch] * (1 - m) + clamp255(novo) * m);
+      for (const { r, tilePng, escolhido, antes } of resultados) {
+        if (!escolhido) {
+          if (passada === PASSADAS) descartados++;
+          else reprovados.push(r);
+          continue;
+        }
+        try {
+          const gPng = escolhido;
+          const [G, loO, loG] = await Promise.all([
+            sharp(gPng).raw().toBuffer(),
+            sharp(tilePng).removeAlpha().blur(SIGMA_BAIXA).raw().toBuffer(),
+            sharp(gPng).blur(SIGMA_BAIXA).raw().toBuffer(),
+          ]);
+
+          for (let v = 0; v < S; v++) {
+            const gy = r.y + v;
+            const fCima = r.y === 0 ? 1 : v / OVERLAP;
+            const fBaixo = r.y + S >= H ? 1 : (S - v) / OVERLAP;
+            for (let u = 0; u < S; u++) {
+              const gx = r.x + u;
+              const mMascara = mascara[gy * W + gx] / 255;
+              if (mMascara <= 0.004) continue;
+              const fEsq = r.x === 0 ? 1 : u / OVERLAP;
+              const fDir = r.x + S >= W ? 1 : (S - u) / OVERLAP;
+              const m = mMascara * Math.min(1, fCima, fBaixo, fEsq, fDir);
+              if (m <= 0.004) continue;
+
+              const src = (v * S + u) * 3;
+              const dst = (gy * W + gx) * 3;
+              const ruido = sigmaGrao > 0 ? gauss() * sigmaGrao : 0;
+              for (let ch = 0; ch < 3; ch++) {
+                const novo = G[src + ch] - loG[src + ch] + loO[src + ch] + ruido;
+                canvas[dst + ch] = clamp255(canvas[dst + ch] * (1 - m) + clamp255(novo) * m);
+              }
             }
           }
+          aplicados.add(`${r.x},${r.y}`);
+
+          // Sobrou defeito? Volta pra fila. O critério é relativo ao próprio
+          // ladrilho — não existe limiar absoluto de "linha escura" que sirva
+          // pra calçada de lajota e pra laje de concreto ao mesmo tempo.
+          if (passada < PASSADAS) {
+            const depois = await residuoEscuro(await recorteDoCanvas(r.x, r.y), mascara, W, r.x, r.y, S);
+            const ganho = antes > 0 ? 1 - depois / antes : 1;
+            console.log(`   resíduo ${antes.toFixed(2)} → ${depois.toFixed(2)} (limpou ${(ganho * 100).toFixed(0)}%)`);
+            if (ganho < GANHO_MINIMO) reprovados.push(r);
+          }
+        } catch (e) {
+          console.warn("⚠️ [marketing-piso] composição do ladrilho falhou:", (e as any)?.message);
         }
-        aplicados++;
-      } catch (e) {
-        console.warn("⚠️ [marketing-piso] composição do ladrilho falhou:", (e as any)?.message);
       }
     }
+    fila = reprovados;
   }
 
-  if (!aplicados) {
+  if (!aplicados.size) {
     return {
       buffer: originalBuf,
       editado: false,
@@ -477,8 +547,8 @@ export async function restaurarPiso(fotoUrl: string): Promise<ResultadoPiso> {
     .toBuffer();
 
   console.log(
-    `🧱 [marketing-piso] ${aplicados}/${rects.length} ladrilho(s)` +
+    `🧱 [marketing-piso] ${aplicados.size}/${elegiveis.length} ladrilho(s)` +
       `${descartados ? `, ${descartados} descartado(s)` : ""}, chão ${(area * 100).toFixed(0)}%, grão σ=${sigmaGrao.toFixed(2)}, ${W}x${H}`
   );
-  return { buffer: saida, editado: true, tiles: aplicados };
+  return { buffer: saida, editado: true, tiles: aplicados.size };
 }
