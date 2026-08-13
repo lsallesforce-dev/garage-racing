@@ -31,7 +31,10 @@ import VideoUnicoCard from "./captura/VideoUnicoCard";
 interface Props {
   veiculoId: string;
   capturas: MarketingCapturas;
-  onChange: (c: MarketingCapturas) => void;
+  /** `fotos` vem preenchido quando o registro alterou a galeria do veículo —
+   *  quem chama precisa atualizar o estado local junto, senão a foto recém-subida
+   *  só aparece depois de recarregar a página. */
+  onChange: (c: MarketingCapturas, fotos?: string[]) => void;
   /** Vídeo do anúncio já cadastrado — habilita decupar sem subir nada. */
   videoUrl?: string | null;
 }
@@ -75,8 +78,8 @@ export default function CapturaGuiada({ veiculoId, capturas, onChange, videoUrl 
       body: JSON.stringify({ veiculoId, tipo: shot.tipo, tag: shot.tag, url, origem: "manual" }),
     });
     if (!res.ok) throw new Error((await res.json()).error ?? `HTTP ${res.status}`);
-    const { marketing_capturas } = await res.json();
-    onChange(marketing_capturas);
+    const { marketing_capturas, fotos } = await res.json();
+    onChange(marketing_capturas, fotos);
   }
 
   async function subirTake(shot: ShotItem, file: File) {

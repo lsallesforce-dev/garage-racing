@@ -68,12 +68,16 @@ export async function POST(req: NextRequest) {
 
     const updates: Record<string, any> = { marketing_capturas: novas };
     const fotos: string[] = v.fotos ?? [];
-    if (!fotos.includes(url)) updates.fotos = [...fotos, url];
+    const fotosNovas = fotos.includes(url) ? fotos : [...fotos, url];
+    if (!fotos.includes(url)) updates.fotos = fotosNovas;
 
     const { error: dbErr } = await supabaseAdmin.from("veiculos").update(updates).eq("id", veiculoId);
     if (dbErr) throw new Error(dbErr.message);
 
-    return NextResponse.json({ ok: true, marketing_capturas: novas });
+    // `fotos` volta junto: quem chama guarda a galeria em estado local e, sem
+    // isso, a foto recém-subida só aparecia depois de recarregar a página —
+    // some da aba Piso e do carrossel sem ninguém entender por quê.
+    return NextResponse.json({ ok: true, marketing_capturas: novas, fotos: fotosNovas });
   } catch (e: any) {
     console.error("❌ [marketing/capturas]", e?.message ?? e);
     return NextResponse.json({ error: e?.message ?? "Erro ao registrar captura" }, { status: 500 });

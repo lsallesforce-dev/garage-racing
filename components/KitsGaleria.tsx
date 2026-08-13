@@ -537,7 +537,9 @@ export default function KitsGaleria() {
                     veiculoId={c.id}
                     capturas={c.marketing_capturas ?? {}}
                     videoUrl={c.video_url}
-                    onChange={(cap) => patchCarro(c.id, { marketing_capturas: cap })}
+                    onChange={(cap, fotosNovas) =>
+                      patchCarro(c.id, { marketing_capturas: cap, ...(fotosNovas ? { fotos: fotosNovas } : {}) })
+                    }
                   />
                 )}
 

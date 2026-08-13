@@ -31,13 +31,23 @@ export default function PisoRestauro({ veiculoId, fotos, capturas, onChange }: P
   // Fotos já aplicadas aparecem pela URL restaurada em fotos[] — o card tem que
   // continuar mostrando o par pela ORIGINAL, senão a foto "some" da lista depois
   // de aplicar e o vendedor perde o botão de reverter.
+  // Etiqueta da captura guiada, quando a foto veio de lá.
+  const etiquetas = new Map<string, string>();
+  for (const f of capturas.fotos ?? []) etiquetas.set(f.url, f.tag);
+
   const lista = fotos
     .map((u) => {
       const porOriginal = piso.find((p) => p.original === u);
       const porRestaurada = piso.find((p) => p.restaurada === u);
-      return { url: porRestaurada?.original ?? u, reg: porOriginal ?? porRestaurada ?? null };
+      const url = porRestaurada?.original ?? u;
+      return { url, reg: porOriginal ?? porRestaurada ?? null, tag: etiquetas.get(url) ?? null };
     })
     .filter((item, i, arr) => arr.findIndex((x) => x.url === item.url) === i)
+    // Foto da captura guiada primeiro. Ela entra no FIM de fotos[] (atrás de
+    // toda a galeria do estoque) e é justamente a que o vendedor acabou de
+    // tirar pro kit — no fim da fila ela some abaixo do corte e parece que o
+    // upload não valeu.
+    .sort((a, b) => Number(!!b.tag) - Number(!!a.tag))
     .slice(0, MAX_FOTOS);
 
   function setPiso(reg: PisoRegistro, fotosNovas?: string[]) {
@@ -103,7 +113,7 @@ export default function PisoRestauro({ veiculoId, fotos, capturas, onChange }: P
       </p>
 
       <div className="grid grid-cols-2 gap-2">
-        {lista.map(({ url, reg }) => {
+        {lista.map(({ url, reg, tag }) => {
           const ocupado = busy[url];
           const mostrandoAntes = antes[url] ?? false;
           const preview = reg && !mostrandoAntes ? reg.restaurada : url;
@@ -123,6 +133,11 @@ export default function PisoRestauro({ veiculoId, fotos, capturas, onChange }: P
                   >
                     {mostrandoAntes ? "Antes" : "Segure p/ ver o antes"}
                   </button>
+                )}
+                {tag && (
+                  <span className="absolute left-1 top-1 rounded-full bg-gray-900/80 px-2 py-0.5 text-[8px] font-black uppercase tracking-widest text-white">
+                    {tag.replace(/-/g, " ")}
+                  </span>
                 )}
                 {reg?.aplicada && (
                   <span className="absolute right-1 top-1 rounded-full bg-green-600 px-2 py-0.5 text-[8px] font-black uppercase tracking-widest text-white">
