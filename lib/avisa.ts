@@ -239,6 +239,16 @@ export async function getAvisaInstanceStatus(creds: AvisaCreds): Promise<AvisaSe
   }
 }
 
+// ─── Credenciais Avisa da AutoZap (instância separada da dos tenants) ────────
+// Mora aqui, e não dentro de um route, porque QUATRO lugares usam o mesmo par:
+// o cron da prospeccao, a repescagem manual, o monitor de sessao e os alertas.
+export function autozapAvisaCreds(): AvisaCreds | null {
+  const baseUrl = process.env.AUTOZAP_AVISA_BASE_URL;
+  const token = process.env.AUTOZAP_AVISA_TOKEN;
+  if (!baseUrl || !token) return null;
+  return { baseUrl, token };
+}
+
 function resolveCreds(creds?: Partial<AvisaCreds>): AvisaCreds | null {
   const baseUrl = creds?.baseUrl ?? "";
   const token = creds?.token ?? "";

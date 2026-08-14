@@ -24,7 +24,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Receiver } from "@upstash/qstash";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { sendAvisaMessage, registrarWebhookAvisa, extractWebhookToken } from "@/lib/avisa";
+import { sendAvisaMessage, registrarWebhookAvisa, extractWebhookToken, autozapAvisaCreds } from "@/lib/avisa";
 import { bumpStats } from "@/lib/prospeccao-stats";
 import { preencherTemplate } from "@/lib/prospeccao-abertura";
 import type { Prospect, ProspeccaoConfig } from "@/lib/prospeccao-types";
@@ -57,14 +57,6 @@ async function isAuthorized(req: NextRequest, rawBody: string): Promise<boolean>
   if (!secret && !signature && process.env.NODE_ENV !== "production") return true;
 
   return false;
-}
-
-// ─── Credenciais Avisa da AutoZap (instância separada dos tenants) ────────────
-function autozapAvisaCreds(): { baseUrl: string; token: string } | null {
-  const baseUrl = process.env.AUTOZAP_AVISA_BASE_URL;
-  const token = process.env.AUTOZAP_AVISA_TOKEN;
-  if (!baseUrl || !token) return null;
-  return { baseUrl, token };
 }
 
 // ─── Self-heal do webhook de respostas (idempotente) ──────────────────────────

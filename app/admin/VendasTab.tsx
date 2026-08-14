@@ -1084,6 +1084,100 @@ function PainelRodada({
   );
 }
 
+// ─── Repescagem: o follow-up que É a demonstração ────────────────────────────
+// Diferente da "próxima rodada", que é pra quem NUNCA respondeu. Aqui é o
+// lojista que conversou, viu a demo e esfriou: 24h depois a Mari volta em
+// personagem ("ficou alguma dúvida sobre o Onix?") e então explica que é isso
+// que ela faria com os clientes dele. Ação manual, nunca automática.
+function PainelRepescagem({
+  headers,
+  onFeito,
+}: {
+  headers: Record<string, string>;
+  onFeito: () => void;
+}) {
+  const [elegiveis, setElegiveis] = useState<number | null>(null);
+  const [horas, setHoras] = useState(24);
+  const [nomes, setNomes] = useState<string[]>([]);
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [resultado, setResultado] = useState<string | null>(null);
+
+  const carregarPrevia = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/vendas/repescagem", { headers });
+      if (!res.ok) return;
+      const json = await res.json();
+      setElegiveis(json.elegiveis ?? 0);
+      setHoras(json.horas ?? 24);
+      setNomes((json.prospects ?? []).map((p: { nome_empresa: string }) => p.nome_empresa));
+    } catch {
+      /* prévia é informativa: falhar aqui não quebra a aba */
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { carregarPrevia(); }, [carregarPrevia]);
+
+  const repescar = async () => {
+    if (!confirm(`Mandar a repescagem para ${elegiveis} lojista(s) que conversaram e esfriaram? Cada um recebe UMA vez.`)) return;
+    setEnviando(true);
+    setErro(null);
+    setResultado(null);
+    try {
+      const res = await fetch("/api/admin/vendas/repescagem", { method: "POST", headers });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Falha na repescagem");
+      setResultado(`${json.enviados} enviada(s)${json.falhas ? `, ${json.falhas} falha(s)` : ""}.`);
+      await carregarPrevia();
+      onFeito();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro inesperado");
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  const temAlguem = (elegiveis ?? 0) > 0;
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div>
+          <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">Repescagem</p>
+          <p className="text-sm font-bold text-gray-900">
+            {elegiveis === null
+              ? "Carregando..."
+              : temAlguem
+                ? `${elegiveis} conversaram e esfriaram há mais de ${horas}h`
+                : "Ninguém esfriado no momento"}
+          </p>
+        </div>
+        {temAlguem && (
+          <button
+            onClick={repescar}
+            disabled={enviando}
+            className="px-4 py-2 rounded-xl bg-cyan-600 text-white text-[11px] font-black uppercase tracking-widest hover:bg-cyan-700 transition disabled:opacity-50"
+          >
+            {enviando ? "Enviando..." : `Repescar (${elegiveis})`}
+          </button>
+        )}
+      </div>
+
+      {nomes.length > 0 && (
+        <p className="text-[10px] text-gray-500 leading-relaxed">{nomes.join(" · ")}</p>
+      )}
+
+      <p className="text-[10px] text-gray-400 leading-relaxed">
+        A Mari volta perguntando se ficou dúvida sobre o carro e, em seguida, mostra que aquilo
+        foi a repescagem que ela faria com os clientes da loja dele. Uma vez por lojista.
+      </p>
+
+      {resultado && <p className="text-[11px] font-bold text-cyan-700">{resultado}</p>}
+      {erro && <p className="text-[11px] font-bold text-red-600">{erro}</p>}
+    </div>
+  );
+}
+
 function Metricas({ headers }: { headers: Record<string, string> }) {
   const [funil, setFunil] = useState<Record<string, number>>({});
   const [dias, setDias] = useState<DiaStat[]>([]);
@@ -1132,6 +1226,9 @@ function Metricas({ headers }: { headers: Record<string, string> }) {
 
       {/* Progresso da rodada + disparo da próxima */}
       <PainelRodada funil={funil} headers={headers} onFeito={carregar} />
+
+      {/* Repescagem manual de quem conversou e esfriou */}
+      <PainelRepescagem headers={headers} onFeito={carregar} />
 
       {/* Perdidos / opt-out */}
       <div className="grid grid-cols-2 gap-3 max-w-md">
