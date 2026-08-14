@@ -26,7 +26,12 @@ import type { Prospect, ProspectMensagem } from "@/lib/prospeccao-types";
 
 // Espera antes de responder, pra deixar uma rajada se acomodar. Curto de
 // propósito: é a latência que o prospect sente, e bot dispara tudo em ~1s.
-const COALESCE_MS = 2500;
+// 2500 era curto demais pra como lojista digita. Caso real (André Moi, 14/08):
+// "OK" 18:52:52 e "OBRIGADO" 18:52:56 — 4s de intervalo, duas execuções em
+// paralelo: uma se despediu ("Sucesso aí com a loja") e a outra, que já estava
+// no ar, emendou mais um argumento de venda DEPOIS da despedida. 8s cobre a
+// pausa natural entre duas mensagens da mesma ideia sem deixar a resposta lenta.
+const COALESCE_MS = 8000;
 
 // Teto de imagens por pedido de foto. 4 = o álbum típico de revenda
 // (frente, lateral, traseira, interior) sem virar rajada.
@@ -602,7 +607,20 @@ export async function POST(req: NextRequest) {
   // ── Envia a resposta em BOLHAS curtas (graceful se credenciais ausentes) ─────
   // quebrarEmBolhas FORÇA mensagens de no máx ~2 linhas, mesmo se o Gemini mandar
   // um bloco corrido. sendAvisaMessage já aplica o delay humanizado entre cada.
-  const mensagensEnviar = quebrarEmBolhas(r.resposta).slice(0, MAX_BOLHAS_RESPOSTA);
+  // A PONTE ("foi mais ou menos assim que eu respondi agora. seus clientes
+  // teriam isso às 23h...") é UMA frase, mas o modelo a quebra em duas bolhas e
+  // o teto de MAX_BOLHAS_RESPOSTA comia a segunda — foi o que o André Moi
+  // recebeu: "Foi mais ou menos assim que eu respondi agora." e ponto, sem o
+  // argumento. Cortada no meio ela não quer dizer nada, e é o momento mais
+  // importante da demo. Cola as duas de volta ANTES do corte.
+  const bolhasCruas = quebrarEmBolhas(r.resposta);
+  for (let i = 0; i < bolhasCruas.length - 1; i++) {
+    if (/foi mais ou menos assim/i.test(bolhasCruas[i]) && /seus clientes/i.test(bolhasCruas[i + 1])) {
+      bolhasCruas.splice(i, 2, `${bolhasCruas[i]} ${bolhasCruas[i + 1]}`);
+      break;
+    }
+  }
+  const mensagensEnviar = bolhasCruas.slice(0, MAX_BOLHAS_RESPOSTA);
 
   // Lista do pátio montada pelo CÓDIGO, um carro por bolha. Deixar o modelo
   // formatar falhou duas vezes: primeiro ele mandou os 5 carros grudados num
@@ -629,6 +647,27 @@ export async function POST(req: NextRequest) {
   // isso de uma vez: rajada de mensagem é o padrão que o WhatsApp pontua.
   if (mensagensEnviar.length > MAX_MENSAGENS_TURNO) {
     mensagensEnviar.length = MAX_MENSAGENS_TURNO;
+  }
+
+  // ── Corrida in-flight: a conversa acabou enquanto esta execução pensava? ────
+  // O Gemini leva ~10-20s. Nesse intervalo OUTRA execução (mensagem seguinte do
+  // lojista) pode ter encerrado a rodada. Foi o que o André Moi viu: às 18:53:04
+  // ela se despediu ("Sucesso aí com a loja") e 4s depois emendou um argumento
+  // de venda do MyLink — a resposta do "OK" já estava no ar quando a do
+  // "OBRIGADO" fechou a conversa. Despedir e continuar vendendo é pior que
+  // qualquer uma das duas sozinha.
+  if (!destino) {
+    const { data: agora } = await supabaseAdmin
+      .from("prospects")
+      .select("status, opt_out")
+      .eq("id", prospect.id)
+      .maybeSingle();
+    const encerradoPorOutraExecucao =
+      agora?.opt_out === true || agora?.status === "opt_out" || agora?.status === "sem_resposta";
+    if (encerradoPorOutraExecucao) {
+      console.log(`🛑 [prospeccao] ${prospect.nome_empresa}: rodada encerrada por outra execução — resposta descartada.`);
+      return NextResponse.json({ status: "encerrado_in_flight" });
+    }
   }
 
   const creds = autozapAvisaCreds();

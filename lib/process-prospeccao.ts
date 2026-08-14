@@ -220,6 +220,24 @@ export function confirmouSerOResponsavel(texto: string): boolean {
   return MARCADORES_SOU_EU.some((re) => re.test(t));
 }
 
+// ─── Detector: só cumprimento ─────────────────────────────────────────────────
+// Caso real (André Moi, 14/08 18:51): ele mandou "OLA" e, 12s depois, "GOSTEI DO
+// ONIX". Respondendo o "OLA" sozinho, ela ofereceu um Gol 2016 do nada — carro
+// que ninguém pediu — e teve que se desdizer na mensagem seguinte ("Ah,
+// desculpe!"). A culpa é da regra "vendedor bom OFERECE, não devolve pergunta":
+// sem nada pra ir atrás, o modelo inventa uma oferta. Num "oi" seco não há o que
+// oferecer — o certo é cumprimentar e devolver o convite.
+const SO_CUMPRIMENTO =
+  /^(?:ol[áa]|oi+|opa|e\s*a[íi]|bom\s*dia|boa\s*tarde|boa\s*noite|tudo\s*(?:bem|bom|joia)|blz|beleza|salve)[\s!.,?]*$/i;
+
+/** true = a mensagem é só um cumprimento, sem nenhum pedido dentro. */
+export function ehSoCumprimento(texto: string): boolean {
+  // Emoji sai antes do teste: "Oi 👋" e "Bom dia 😊" são o mesmo caso que "Oi".
+  const t = (texto || "").replace(/\p{Extended_Pictographic}/gu, "").trim();
+  if (!t || t.length > 30) return false;
+  return SO_CUMPRIMENTO.test(t);
+}
+
 // Temperatura da conversa de prospecção (espelha o padrão FRIO/MORNO/QUENTE do B2C).
 export type ProspeccaoTemperatura = "FRIO" | "MORNO" | "QUENTE";
 
@@ -252,6 +270,7 @@ function buildSystemInstruction(
   loja: LojaDemo,
   reforcarChapeu2: boolean,
   apresentarAutozap: boolean,
+  soCumprimento: boolean,
 ): string {
   // Só os carros COM foto ganham [ID]: assim o Gemini não consegue prometer
   // imagem de um carro que não tem nenhuma.
@@ -466,6 +485,12 @@ Responda em exatamente 3 bolhas, nesta ordem:
   3. O convite, exatamente com este sentido: "quer fazer um teste de como eu atenderia os seus clientes?"
 PROIBIDO nesta resposta: oferecer carro, citar modelo do pátio, mandar foto, falar de preço do sistema, dizer "pode me perguntar de qualquer carro do pátio" ou "quer ver como eu atenderia um cliente seu". A explicação vem ANTES do convite — ninguém aceita testar o que não sabe o que é.
 ` : ""}
+${soCumprimento ? `
+# ATENÇÃO NESTE TURNO — ELE SÓ CUMPRIMENTOU
+A última mensagem é só um "oi"/"bom dia", sem nenhum pedido dentro. NÃO HÁ NADA PARA OFERECER.
+NESTA resposta: NÃO cite carro nenhum, NÃO dê preço, NÃO mande foto. Devolva o cumprimento em UMA bolha curta e, na segunda, o convite pra ele te perguntar de um carro como se fosse cliente dele.
+Inventar uma oferta aqui ("tenho um Gol 2016 por 40 mil") é o pior erro possível: ele não pediu, e você tem que se desdizer na mensagem seguinte quando ele disser o que queria.
+` : ""}
 # FORMATO DE SAÍDA (OBRIGATÓRIO)
 Responda EXCLUSIVAMENTE um JSON válido, sem markdown, sem comentários, exatamente neste formato:
 {
@@ -635,12 +660,19 @@ export async function gerarRespostaProspeccao({
     console.log(`👋 [prospeccao] "${(ultimaDoProspect?.content ?? "").slice(0, 40)}" → apresentando o AutoZap antes do convite.`);
   }
 
+  // "OLA" sozinho: sem nada pra ir atras, o modelo inventa uma oferta.
+  const soCumprimento = ehSoCumprimento(ultimaDoProspect?.content ?? "");
+  if (soCumprimento) {
+    console.log(`[prospeccao] "${(ultimaDoProspect?.content ?? "").slice(0, 20)}" -> so cumprimento, sem oferta de carro.`);
+  }
+
   const systemInstruction = buildSystemInstruction(
     prospect,
     patio ?? (await carregarPatioDemo()),
     loja ?? (await carregarLojaDemo()),
     reforcarChapeu2,
     apresentarAutozap,
+    soCumprimento,
   );
   const historico = buildHistorico(mensagens);
 
