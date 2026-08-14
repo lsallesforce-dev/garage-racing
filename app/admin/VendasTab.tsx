@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   Loader2, RefreshCw, CheckCircle2, XCircle, Send, Bot, UserCheck,
   Download, Save, Inbox as InboxIcon, Users, ListChecks,
-  Megaphone, Activity, Ban, Search, Plus, X, Pencil,
+  Megaphone, Activity, Ban, Search, Plus, X, Pencil, Undo2,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -560,6 +560,52 @@ function Inbox({ headers }: { headers: Record<string, string> }) {
   const [loadingThread, setLoadingThread] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [repescando, setRepescando] = useState(false);
+
+  // ─── Elegibilidade da repescagem, com o MOTIVO ────────────────────────────
+  // O botão fica visível sempre e desabilitado com o porquê no tooltip: sumir
+  // com ele deixaria a dúvida de "cadê?". A regra é a mesma da rota — que não
+  // confia nesta checagem, ela é só pra UI não deixar clicar à toa.
+  const repescagem: { pode: boolean; motivo: string } = (() => {
+    if (!prospectAtivo) return { pode: false, motivo: "" };
+    if (prospectAtivo.opt_out) return { pode: false, motivo: "Pediu para não receber mais mensagens." };
+    if (prospectAtivo.em_atendimento_humano) return { pode: false, motivo: "Você assumiu a conversa — a Mari está em stand-by." };
+    if (prospectAtivo.repescagem_em) {
+      return { pode: false, motivo: `Já repescado em ${fmtDateTime(prospectAtivo.repescagem_em)}. Uma vez por lojista.` };
+    }
+    if (!mensagens.some((m) => m.remetente === "prospect")) {
+      return { pode: false, motivo: "Ele nunca respondeu — repescagem é só para quem conversou." };
+    }
+    const horas = prospectAtivo.ultima_msg_at
+      ? (Date.now() - new Date(prospectAtivo.ultima_msg_at).getTime()) / 3600_000
+      : 0;
+    if (horas < 24) {
+      return { pode: false, motivo: `Faltam ${Math.ceil(24 - horas)}h: a repescagem sai 24h depois da última mensagem.` };
+    }
+    return { pode: true, motivo: "Manda a repescagem: pergunta se ficou dúvida sobre o carro e mostra que aquilo é o produto." };
+  })();
+
+  const repescar = async () => {
+    if (!prospectAtivo) return;
+    if (!confirm(`Mandar a repescagem para ${prospectAtivo.nome_empresa}? Ele recebe uma vez só.`)) return;
+    setRepescando(true);
+    try {
+      const res = await fetch("/api/admin/vendas/repescagem", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ prospect_id: prospectAtivo.id }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Falha na repescagem");
+      if (json.falhas > 0) throw new Error(json.detalhe?.[0]?.erro || "Envio recusado");
+      await carregarThread(prospectAtivo.id, true);
+      await carregarLista();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Erro inesperado");
+    } finally {
+      setRepescando(false);
+    }
+  };
 
   const carregarLista = useCallback(async () => {
     const res = await fetch("/api/admin/vendas/prospects", { headers });
@@ -697,6 +743,15 @@ function Inbox({ headers }: { headers: Record<string, string> }) {
               </div>
               {prospectAtivo && (
                 <div className="flex items-center gap-2 shrink-0">
+                  {/* Repescagem: o follow-up que é a própria demonstração */}
+                  <button
+                    onClick={repescar}
+                    disabled={!repescagem.pode || repescando}
+                    title={repescagem.motivo}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest bg-cyan-50 text-cyan-700 border border-cyan-200 hover:bg-cyan-100 transition whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Undo2 size={11} /> {repescando ? "Enviando..." : "Repescar"}
+                  </button>
                   {/* Mudar status */}
                   <select
                     value={prospectAtivo.status}
@@ -1084,100 +1139,6 @@ function PainelRodada({
   );
 }
 
-// ─── Repescagem: o follow-up que É a demonstração ────────────────────────────
-// Diferente da "próxima rodada", que é pra quem NUNCA respondeu. Aqui é o
-// lojista que conversou, viu a demo e esfriou: 24h depois a Mari volta em
-// personagem ("ficou alguma dúvida sobre o Onix?") e então explica que é isso
-// que ela faria com os clientes dele. Ação manual, nunca automática.
-function PainelRepescagem({
-  headers,
-  onFeito,
-}: {
-  headers: Record<string, string>;
-  onFeito: () => void;
-}) {
-  const [elegiveis, setElegiveis] = useState<number | null>(null);
-  const [horas, setHoras] = useState(24);
-  const [nomes, setNomes] = useState<string[]>([]);
-  const [enviando, setEnviando] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
-  const [resultado, setResultado] = useState<string | null>(null);
-
-  const carregarPrevia = useCallback(async () => {
-    try {
-      const res = await fetch("/api/admin/vendas/repescagem", { headers });
-      if (!res.ok) return;
-      const json = await res.json();
-      setElegiveis(json.elegiveis ?? 0);
-      setHoras(json.horas ?? 24);
-      setNomes((json.prospects ?? []).map((p: { nome_empresa: string }) => p.nome_empresa));
-    } catch {
-      /* prévia é informativa: falhar aqui não quebra a aba */
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => { carregarPrevia(); }, [carregarPrevia]);
-
-  const repescar = async () => {
-    if (!confirm(`Mandar a repescagem para ${elegiveis} lojista(s) que conversaram e esfriaram? Cada um recebe UMA vez.`)) return;
-    setEnviando(true);
-    setErro(null);
-    setResultado(null);
-    try {
-      const res = await fetch("/api/admin/vendas/repescagem", { method: "POST", headers });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Falha na repescagem");
-      setResultado(`${json.enviados} enviada(s)${json.falhas ? `, ${json.falhas} falha(s)` : ""}.`);
-      await carregarPrevia();
-      onFeito();
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : "Erro inesperado");
-    } finally {
-      setEnviando(false);
-    }
-  };
-
-  const temAlguem = (elegiveis ?? 0) > 0;
-
-  return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">Repescagem</p>
-          <p className="text-sm font-bold text-gray-900">
-            {elegiveis === null
-              ? "Carregando..."
-              : temAlguem
-                ? `${elegiveis} conversaram e esfriaram há mais de ${horas}h`
-                : "Ninguém esfriado no momento"}
-          </p>
-        </div>
-        {temAlguem && (
-          <button
-            onClick={repescar}
-            disabled={enviando}
-            className="px-4 py-2 rounded-xl bg-cyan-600 text-white text-[11px] font-black uppercase tracking-widest hover:bg-cyan-700 transition disabled:opacity-50"
-          >
-            {enviando ? "Enviando..." : `Repescar (${elegiveis})`}
-          </button>
-        )}
-      </div>
-
-      {nomes.length > 0 && (
-        <p className="text-[10px] text-gray-500 leading-relaxed">{nomes.join(" · ")}</p>
-      )}
-
-      <p className="text-[10px] text-gray-400 leading-relaxed">
-        A Mari volta perguntando se ficou dúvida sobre o carro e, em seguida, mostra que aquilo
-        foi a repescagem que ela faria com os clientes da loja dele. Uma vez por lojista.
-      </p>
-
-      {resultado && <p className="text-[11px] font-bold text-cyan-700">{resultado}</p>}
-      {erro && <p className="text-[11px] font-bold text-red-600">{erro}</p>}
-    </div>
-  );
-}
-
 function Metricas({ headers }: { headers: Record<string, string> }) {
   const [funil, setFunil] = useState<Record<string, number>>({});
   const [dias, setDias] = useState<DiaStat[]>([]);
@@ -1226,9 +1187,6 @@ function Metricas({ headers }: { headers: Record<string, string> }) {
 
       {/* Progresso da rodada + disparo da próxima */}
       <PainelRodada funil={funil} headers={headers} onFeito={carregar} />
-
-      {/* Repescagem manual de quem conversou e esfriou */}
-      <PainelRepescagem headers={headers} onFeito={carregar} />
 
       {/* Perdidos / opt-out */}
       <div className="grid grid-cols-2 gap-3 max-w-md">

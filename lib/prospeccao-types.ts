@@ -77,6 +77,8 @@ export interface Prospect {
   rodada: number;
   /** Quando a abertura da rodada atual saiu — relógio das 48h. */
   enviado_em?: string | null;
+  /** Quando a repescagem manual foi enviada (migration 045). Uma vez por lojista. */
+  repescagem_em?: string | null;
   /** @deprecated Sem follow-up automático desde a migration 042. */
   followup_count: number;
   /** @deprecated Idem — o cron não reagenda mais ninguém. */

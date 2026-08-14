@@ -107,8 +107,24 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const lista = (await elegiveis()).slice(0, MAX_POR_CLIQUE);
+  // Um prospect específico (botão no Inbox) ou todos os elegíveis (lote).
+  // O caminho de UM ainda passa pelo mesmo filtro: o botão fica desabilitado
+  // antes das 24h, mas a rota não confia na UI — dois cliques rápidos ou uma
+  // aba velha não podem furar a régua nem repescar duas vezes.
+  const body = (await req.json().catch(() => ({}))) as { prospect_id?: string };
+  const todos = await elegiveis();
+
+  const lista = body.prospect_id
+    ? todos.filter((p) => p.id === body.prospect_id)
+    : todos.slice(0, MAX_POR_CLIQUE);
+
   if (lista.length === 0) {
+    if (body.prospect_id) {
+      return NextResponse.json(
+        { error: `Não elegível: precisa ter conversado, ter passado ${HORAS_ATE_REPESCAGEM}h da última mensagem e ainda não ter sido repescado.` },
+        { status: 409 },
+      );
+    }
     return NextResponse.json({ ok: true, enviados: 0, falhas: 0, detalhe: [] });
   }
 
