@@ -162,6 +162,17 @@ function nomeCompletoModelo(veiculo: any): string {
   return [marca, modelo, versaoERedundante(modelo, versao) ? "" : versao, ano].filter(Boolean).join(" ");
 }
 
+// Escapa antes de interpolar no HTML. Os campos do veículo não são todos digitados
+// pelo dono da loja — chegam de FIPE, consulta de placa e importação de portais —
+// então tratamos como conteúdo externo. Mesmo padrão do renderText do ZapWidget.
+const esc = (s: unknown) =>
+  String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
 // ── Geração do HTML da tag (layout único, reusado por impressão e PDF) ────────
 // Layout fiel ao PDF de referência: logo topo → Modelo → tag → QR abaixo-centralizado.
 // logoSrc/qrSrc já vêm resolvidos (URL pública ou data-URL) para reuso entre os fluxos.
@@ -212,7 +223,7 @@ function buildTagInnerHtml(
 
   // Logo centralizado no topo
   const logoBlock = logoSrc
-    ? `<img src="${logoSrc}" style="max-height:${L ? 80 : 120}px;max-width:${L ? 250 : 320}px;object-fit:contain;display:block;margin:0 auto;" />`
+    ? `<img src="${esc(logoSrc)}" style="max-height:${L ? 80 : 120}px;max-width:${L ? 250 : 320}px;object-fit:contain;display:block;margin:0 auto;" />`
     : "";
 
   const nomeModelo = nomeCompletoModelo(veiculo);
@@ -222,7 +233,7 @@ function buildTagInnerHtml(
   const qrBlock = qrSrc ? `
   <div style="display:flex;justify-content:center;margin-top:${L ? 14 : 18}px;">
     <div style="text-align:center;">
-      <img src="${qrSrc}" width="${qrSize}" height="${qrSize}" style="display:block;margin:0 auto;" />
+      <img src="${esc(qrSrc)}" width="${qrSize}" height="${qrSize}" style="display:block;margin:0 auto;" />
       <p style="margin:8px auto 0;font-size:${f.qrTxt}px;font-weight:700;color:#555;font-family:Arial,sans-serif;text-align:center;">Acesse nosso site para ver todos os nossos carros.</p>
     </div>
   </div>` : "";
@@ -232,7 +243,7 @@ function buildTagInnerHtml(
   ${logoBlock ? `<!-- LOGO --><div style="text-align:center;margin-bottom:${L ? 10 : 8}px;">${logoBlock}</div>` : ""}
 
   <!-- MODELO -->
-  <p style="text-align:center;font-size:${f.modelo}px;font-weight:700;color:#333;margin:0 0 ${mb};font-family:Arial,sans-serif;">Modelo: ${nomeModelo}</p>
+  <p style="text-align:center;font-size:${f.modelo}px;font-weight:700;color:#333;margin:0 0 ${mb};font-family:Arial,sans-serif;">Modelo: ${esc(nomeModelo)}</p>
 
   <!-- ══ TAG ══ -->
   <div style="border:2.5px solid #1a237e;border-radius:12px;padding:${pad};${tagExtra}">
@@ -241,11 +252,11 @@ function buildTagInnerHtml(
     <div style="display:flex;gap:${gap};margin-bottom:${mb};align-items:flex-end;">
       <div style="display:flex;align-items:flex-end;gap:8px;">
         <span style="font-size:${f.label}px;font-weight:900;text-transform:uppercase;white-space:nowrap;line-height:1;">ANO</span>
-        <div style="border-bottom:1.5px solid #111;min-width:${L ? 100 : 80}px;padding-bottom:2px;font-size:${f.val}px;font-weight:700;line-height:1.4;">&nbsp;${tag.ano}</div>
+        <div style="border-bottom:1.5px solid #111;min-width:${L ? 100 : 80}px;padding-bottom:2px;font-size:${f.val}px;font-weight:700;line-height:1.4;">&nbsp;${esc(tag.ano)}</div>
       </div>
       <div style="display:flex;align-items:flex-end;gap:8px;flex:1;">
         <span style="font-size:${f.label}px;font-weight:900;text-transform:uppercase;white-space:nowrap;line-height:1;">MOTOR</span>
-        <div style="border-bottom:1.5px solid #111;flex:1;padding-bottom:2px;font-size:${f.val}px;font-weight:700;line-height:1.4;">&nbsp;${tag.motor}</div>
+        <div style="border-bottom:1.5px solid #111;flex:1;padding-bottom:2px;font-size:${f.val}px;font-weight:700;line-height:1.4;">&nbsp;${esc(tag.motor)}</div>
       </div>
     </div>
 
@@ -270,11 +281,11 @@ function buildTagInnerHtml(
     <div style="display:flex;gap:${gap};align-items:flex-end;">
       <div style="display:flex;align-items:flex-end;gap:8px;flex:1.5;">
         <span style="font-size:${f.label}px;font-weight:900;white-space:nowrap;line-height:1;">OBS,</span>
-        <div style="border-bottom:1.5px solid #111;flex:1;padding-bottom:2px;font-size:${f.label}px;font-weight:600;line-height:1.4;">&nbsp;${tag.obs}</div>
+        <div style="border-bottom:1.5px solid #111;flex:1;padding-bottom:2px;font-size:${f.label}px;font-weight:600;line-height:1.4;">&nbsp;${esc(tag.obs)}</div>
       </div>
       <div style="display:flex;align-items:flex-end;gap:8px;flex:1;">
         <span style="font-size:${f.val}px;font-weight:900;white-space:nowrap;line-height:1;">R$</span>
-        <div style="border-bottom:1.5px solid #111;flex:1;padding-bottom:2px;font-size:${f.val}px;font-weight:700;line-height:1.4;">&nbsp;${tag.preco}</div>
+        <div style="border-bottom:1.5px solid #111;flex:1;padding-bottom:2px;font-size:${f.val}px;font-weight:700;line-height:1.4;">&nbsp;${esc(tag.preco)}</div>
       </div>
     </div>
   </div>
@@ -307,7 +318,7 @@ function buildPrintHtml(
 
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8">
-<title>Tag Pátio — ${nomeCompletoModelo(veiculo)}</title>
+<title>Tag Pátio — ${esc(nomeCompletoModelo(veiculo))}</title>
 <style>
   @page { size:${pageSize}; margin:${pageMargin}; }
   body  { margin:0; font-family:Arial,sans-serif; }
