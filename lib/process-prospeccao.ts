@@ -191,6 +191,35 @@ export function falaDoNegocioDele(texto: string): boolean {
   return MARCADORES_NEGOCIO_DELE.some((re) => re.test(t));
 }
 
+// ─── Detector: "sou eu" ───────────────────────────────────────────────────────
+// A abertura agora pergunta QUEM CUIDA do marketing da loja (ou pede o dono pelo
+// nome). Quando a pessoa responde "sou eu", esse é o turno mais valioso da
+// campanha inteira: é a primeira vez que a gente sabe estar falando com quem
+// decide. O modelo, solto, respondia "Show de bola! Quer ver como eu atenderia
+// um cliente seu?" — pula direto pro convite sem nunca dizer o que é o AutoZap,
+// e a pessoa aceita um teste sem saber do quê.
+const MARCADORES_SOU_EU: RegExp[] = [
+  /\b(sou|s[ãa]o)\s+eu\b/i,
+  /\b(?:sou|é)\s+o?\s*(dono|propriet[áa]ri[oa]|respons[áa]vel|gerente)\b/i,
+  /\bpode\s+falar\b/i,
+  /\b(comigo|é\s+comigo|falo\s+eu|quem\s+cuida\s+sou\s+eu)\b/i,
+  /\beu\s+(mesmo|que\s+cuido|cuido)\b/i,
+];
+
+/**
+ * true = a pessoa acabou de se identificar como quem cuida/decide.
+ * Só faz sentido no PRIMEIRO retorno dela (logo após a abertura) — depois disso
+ * a conversa já andou e o reforço só atrapalharia.
+ */
+export function confirmouSerOResponsavel(texto: string): boolean {
+  const t = (texto || "").trim();
+  if (!t) return false;
+  // Frase curta: "sou eu" é resposta ao "quem cuida?". Num texto longo o mesmo
+  // trecho pode ser outra coisa ("o dono sou eu mas quem decide é meu sócio").
+  if (t.length > 60) return false;
+  return MARCADORES_SOU_EU.some((re) => re.test(t));
+}
+
 // Temperatura da conversa de prospecção (espelha o padrão FRIO/MORNO/QUENTE do B2C).
 export type ProspeccaoTemperatura = "FRIO" | "MORNO" | "QUENTE";
 
@@ -217,7 +246,13 @@ export interface RespostaProspeccao {
 const VALID_TEMPERATURAS: ProspeccaoTemperatura[] = ["FRIO", "MORNO", "QUENTE"];
 
 // ─── System instruction (persona + produto + regras) ─────────────────────────
-function buildSystemInstruction(prospect: Prospect, patio: CarroDemo[], loja: LojaDemo, reforcarChapeu2: boolean): string {
+function buildSystemInstruction(
+  prospect: Prospect,
+  patio: CarroDemo[],
+  loja: LojaDemo,
+  reforcarChapeu2: boolean,
+  apresentarAutozap: boolean,
+): string {
   // Só os carros COM foto ganham [ID]: assim o Gemini não consegue prometer
   // imagem de um carro que não tem nenhuma.
   const blocoPatio = patio
@@ -247,7 +282,7 @@ function buildSystemInstruction(prospect: Prospect, patio: CarroDemo[], loja: Lo
   return `Você é a Mari, a inteligência artificial da AutoZap. Está no WhatsApp com "${empresa}"${cidade}, dono ou responsável por uma revenda de carros.
 
 # A REGRA QUE MANDA EM TODAS AS OUTRAS
-Esta é uma campanha de UM CONTATO SÓ. A abertura já foi enviada e prometeu, com todas as letras: "se não fizer sentido, é só ignorar, não te mando mais nada". Você vai cumprir essa promessa. NUNCA cobre resposta, NUNCA pergunte se a pessoa viu a mensagem, NUNCA mande "e aí?", "tudo joia?", "conseguiu ver?". Se a pessoa não responder, a conversa acabou.
+Esta é uma campanha de UM CONTATO SÓ: a abertura já foi enviada e, se a pessoa não responder, acabou. (NÃO cite nenhuma promessa que você teria feito na abertura — o texto dela muda, e inventar que "eu disse que não te mandaria mais nada" é mentir sobre a própria mensagem.) NUNCA cobre resposta, NUNCA pergunte se a pessoa viu a mensagem, NUNCA mande "e aí?", "tudo joia?", "conseguiu ver?". Se a pessoa não responder, a conversa acabou.
 
 # QUEM VOCÊ É
 Você é uma IA e assume isso com naturalidade desde o primeiro segundo. Não é confissão nem piada: é o argumento. O produto que você vende é uma IA que atende revenda no WhatsApp, e a pessoa está falando com uma agora. Se perguntarem "é robô?", responda "sou, sim" e siga sem drama.
@@ -422,6 +457,15 @@ A última mensagem é sobre o NEGÓCIO DELE (a loja dele, a equipe dele, o estoq
 NESTA resposta: NÃO ofereça carro, NÃO cite modelo do pátio, NÃO mande foto. Responda como AutoZap — sobre o que o sistema faz pela loja dele — e, se esquentar, passe pro vendedor.
 Se ele citou carros que VENDE ("eu vendo Astra, Classic"), isso é o estoque DELE: responda que o sistema atende qualquer carro que ele cadastrar. NUNCA diga "esses eu não tenho no pátio".
 ` : ""}
+${apresentarAutozap ? `
+# ATENÇÃO NESTE TURNO — ELE ACABOU DE SE IDENTIFICAR
+A abertura perguntou quem cuida da loja e ele respondeu que é ele. É a primeira vez que você sabe estar falando com quem decide, e ele AINDA NÃO SABE o que é o AutoZap. Não pule essa parte.
+Responda em exatamente 3 bolhas, nesta ordem:
+  1. Um cumprimento de 2 ou 3 palavras usando o nome dele, se você souber.
+  2. O que é o AutoZap, em NO MÁXIMO 2 linhas: uma IA que atende os clientes da loja dele no WhatsApp, responde na hora a qualquer hora, manda foto e preço, e chama o vendedor quando o cliente esquenta.
+  3. O convite, exatamente com este sentido: "quer fazer um teste de como eu atenderia os seus clientes?"
+PROIBIDO nesta resposta: oferecer carro, citar modelo do pátio, mandar foto, falar de preço do sistema, dizer "pode me perguntar de qualquer carro do pátio" ou "quer ver como eu atenderia um cliente seu". A explicação vem ANTES do convite — ninguém aceita testar o que não sabe o que é.
+` : ""}
 # FORMATO DE SAÍDA (OBRIGATÓRIO)
 Responda EXCLUSIVAMENTE um JSON válido, sem markdown, sem comentários, exatamente neste formato:
 {
@@ -579,11 +623,24 @@ export async function gerarRespostaProspeccao({
   if (reforcarChapeu2) {
     console.log(`🎩 [prospeccao] "${(ultimaDoProspect?.content ?? "").slice(0, 50)}" → reforçando chapéu 2 (AutoZap).`);
   }
+
+  // "Sou eu" logo depois da abertura = a pessoa que decide acabou de aparecer.
+  // Só vale na PRIMEIRA resposta dela: contando as mensagens dela no histórico,
+  // se esta é a única, o turno é este. Depois disso a conversa já andou e um
+  // "deixa eu te explicar o que é o AutoZap" soaria fora de hora.
+  const totalDoProspect = mensagens.filter((m) => m.remetente === "prospect").length;
+  const apresentarAutozap =
+    totalDoProspect === 1 && confirmouSerOResponsavel(ultimaDoProspect?.content ?? "");
+  if (apresentarAutozap) {
+    console.log(`👋 [prospeccao] "${(ultimaDoProspect?.content ?? "").slice(0, 40)}" → apresentando o AutoZap antes do convite.`);
+  }
+
   const systemInstruction = buildSystemInstruction(
     prospect,
     patio ?? (await carregarPatioDemo()),
     loja ?? (await carregarLojaDemo()),
     reforcarChapeu2,
+    apresentarAutozap,
   );
   const historico = buildHistorico(mensagens);
 
