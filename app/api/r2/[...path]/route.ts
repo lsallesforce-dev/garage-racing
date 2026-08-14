@@ -5,9 +5,26 @@ export const maxDuration = 60;
 
 const R2_ORIGIN = process.env.R2_PUBLIC_URL!; // https://pub-xxx.r2.dev
 
+// Formato aceito de chave. O bucket tem objetos na raiz (upload/ig-download) e em
+// prefixos (marketing/, takes/, fonte/, reels/, musicas/), então não dá pra usar
+// allowlist de prefixo — o que se valida é o FORMATO: sem "..", sem "//", sem ":"
+// (evita `https:` virar origem nova) e só o charset que os nossos uploads geram.
+const KEY_RE = /^[A-Za-z0-9][A-Za-z0-9._\-/]{0,250}$/;
+
+function keyOk(key: string): boolean {
+  if (!KEY_RE.test(key)) return false;
+  if (key.includes("..") || key.includes("//")) return false;
+  return true;
+}
+
 export async function GET(req: Request, { params }: { params: { path: string[] } }) {
   const key = (await params).path.join("/");
-  const upstream = await fetch(`${R2_ORIGIN}/${key}`, {
+
+  // Chave fora do formato nunca existiu no bucket — 404 direto, sem tocar no R2.
+  // Fecha manipulação de path contra a origem e sondagem de enumeração.
+  if (!keyOk(key)) return new Response("Not found", { status: 404 });
+
+  const upstream = await fetch(`${R2_ORIGIN}/${encodeURI(key)}`, {
     headers: {
       ...(req.headers.get("range") ? { range: req.headers.get("range")! } : {}),
     },
