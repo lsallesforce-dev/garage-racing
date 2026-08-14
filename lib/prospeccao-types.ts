@@ -57,6 +57,12 @@ export interface Prospect {
 
   sinais?: Record<string, unknown> | null;
 
+  /** Nome do dono/responsável, de fonte pública (migration 044). */
+  dono_nome?: string | null;
+  dono_fonte?: "review" | "nome_loja" | "manual" | null;
+  /** 0-100. Abaixo de CONFIANCA_MINIMA_DONO a abertura não cita o nome. */
+  dono_confianca?: number | null;
+
   fonte: "apify" | "manual" | "planilha_lojistas";
   raw?: Record<string, unknown> | null;
 

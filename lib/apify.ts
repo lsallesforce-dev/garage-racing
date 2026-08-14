@@ -11,6 +11,8 @@
 // nomes possíveis e caímos em null/defaults quando ausente.
 // =============================================================================
 
+import { descobrirDono, type DonoFonte } from "@/lib/prospeccao-dono";
+
 // -----------------------------------------------------------------------------
 // Tipo normalizado de uma revenda coletada (alinhado às colunas de `prospects`).
 // -----------------------------------------------------------------------------
@@ -27,6 +29,11 @@ export interface RevendaColetada {
   rating: number | null;
   num_reviews: number | null;
   categoria: string | null;
+  /** Nome do DONO/responsável, quando descoberto em fonte pública. */
+  dono_nome: string | null;
+  dono_fonte: DonoFonte | null;
+  /** 0-100; abaixo de CONFIANCA_MINIMA_DONO a abertura não usa o nome. */
+  dono_confianca: number | null;
   // Sinais úteis para o pitch (ex.: reviews reclamando de demora no atendimento).
   sinais: Record<string, unknown>;
   // Payload bruto do item do dataset Apify (para auditoria / re-processamento).
@@ -183,8 +190,19 @@ function normalizarItem(item: Record<string, unknown>): RevendaColetada {
   if (reclamaDemora) sinais.termos_demora = Array.from(new Set(termosEncontrados));
   if (textosReviews.length > 0) sinais.reviews_analisados = textosReviews.length;
 
+  // Quem manda na loja. O telefone do Maps é a linha de VENDAS — sem um nome
+  // pra pedir, a abordagem morre no balconista. Ver lib/prospeccao-dono.ts.
+  const nomeEmpresa = pickString(item, ["title", "name", "nome", "placeName"]) ?? "Sem nome";
+  const dono = descobrirDono(nomeEmpresa, textosReviews);
+  if (dono) {
+    sinais.dono_mencoes = dono.mencoes ?? null;
+  }
+
   return {
-    nome_empresa: pickString(item, ["title", "name", "nome", "placeName"]) ?? "Sem nome",
+    dono_nome: dono?.nome ?? null,
+    dono_fonte: dono?.fonte ?? null,
+    dono_confianca: dono?.confianca ?? null,
+    nome_empresa: nomeEmpresa,
     telefone: pickString(item, ["phone", "phoneUnformatted", "phoneNumber", "telephone"]),
     cidade: pickString(item, ["city", "cidade"]),
     estado: pickString(item, ["state", "estado", "region"]),
@@ -229,6 +247,14 @@ export async function coletarRevendas({
     searchStringsArray: queries,
     language: "pt-BR",
     maxCrawledPlacesPerSearch: maxPerSearch,
+    // Reviews são a ÚNICA fonte pública que diz quem toca a loja ("fui atendido
+    // pelo Fabiano, dono"). Sem isto o dataset traz só `reviewsCount` — foi por
+    // isso que `reclama_demora_atendimento` veio false pra todo mundo desde
+    // sempre: nunca houve texto pra analisar. 20 é o suficiente pra um nome se
+    // repetir e não multiplica o custo por lugar como 100 multiplicaria.
+    maxReviews: 20,
+    reviewsSort: "newest",
+    language_reviews: "pt-BR",
   };
 
   const res = await fetch(endpoint, {

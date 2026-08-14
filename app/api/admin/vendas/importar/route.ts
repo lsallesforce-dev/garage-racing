@@ -83,14 +83,27 @@ export async function POST(req: NextRequest) {
   // 2) Descobre quais já existem (e o status atual) para preservar cadência.
   //    Em conflito só atualizamos contato/score; status só volta a 'novo' se o
   //    prospect ainda estiver 'novo' (quem já avançou na cadência é preservado).
-  const existentes = new Map<string, string>(); // place_id → status atual
+  type Existente = {
+    status: string;
+    dono_nome: string | null;
+    dono_fonte: string | null;
+    dono_confianca: number | null;
+  };
+  const existentes = new Map<string, Existente>(); // place_id → o que já está salvo
   if (placeIds.length > 0) {
     const { data: jaExistem } = await supabaseAdmin
       .from("prospects")
-      .select("google_place_id, status")
+      .select("google_place_id, status, dono_nome, dono_fonte, dono_confianca")
       .in("google_place_id", placeIds);
     for (const row of jaExistem ?? []) {
-      if (row.google_place_id) existentes.set(row.google_place_id, row.status);
+      if (row.google_place_id) {
+        existentes.set(row.google_place_id, {
+          status: row.status,
+          dono_nome: row.dono_nome ?? null,
+          dono_fonte: row.dono_fonte ?? null,
+          dono_confianca: row.dono_confianca ?? null,
+        });
+      }
     }
   }
 
@@ -106,11 +119,21 @@ export async function POST(req: NextRequest) {
     vistos.add(placeId);
 
     const { score, motivo, sinais: sinaisScore } = calcularScore(r);
-    const statusAtual = existentes.get(placeId);
-    const jaExiste = statusAtual !== undefined;
+    const atual = existentes.get(placeId);
+    const statusAtual = atual?.status;
+    const jaExiste = atual !== undefined;
 
     if (jaExiste) atualizados++;
     else novos++;
+
+    // Dono: o upsert do PostgREST é colunar, então mandar null aqui APAGARIA um
+    // dono já descoberto — e a re-coleta pega os 20 reviews mais NOVOS, que
+    // podem não citar ninguém. Fica o de maior confiança entre o salvo e o novo.
+    const donoSalvoVence =
+      !!atual?.dono_nome && (atual.dono_confianca ?? 0) >= (r.dono_confianca ?? 0);
+    const dono = donoSalvoVence
+      ? { nome: atual!.dono_nome, fonte: atual!.dono_fonte, confianca: atual!.dono_confianca }
+      : { nome: r.dono_nome, fonte: r.dono_fonte as string | null, confianca: r.dono_confianca };
 
     // Merge: sinais da Apify (análise de reviews) + sinais do scoring (whats_direto, etc.)
     const sinaisMerged: Record<string, unknown> = { ...(r.sinais ?? {}), ...(sinaisScore ?? {}) };
@@ -129,6 +152,9 @@ export async function POST(req: NextRequest) {
       rating: r.rating,
       num_reviews: r.num_reviews,
       categoria: r.categoria,
+      dono_nome: dono.nome,
+      dono_fonte: dono.fonte,
+      dono_confianca: dono.confianca,
       sinais: sinaisMerged,
       raw: r.raw,
       score,

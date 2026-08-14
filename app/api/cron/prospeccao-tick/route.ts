@@ -199,17 +199,35 @@ export async function POST(req: NextRequest) {
   // ── 5. Escolhe 1 prospect da FILA ───────────────────────────────────────────
   // NÃO existe mais caminho de follow-up: uma rodada = uma mensagem por contato.
   // Fila = status 'novo' (nunca abordado nesta rodada), respeitando opt_out e o
-  // teto de rodadas. Ordena por score desc e, no empate, pelos mais antigos.
-  const { data: fila } = await supabaseAdmin
-    .from("prospects")
-    .select("*")
-    .eq("status", "novo")
-    .eq("opt_out", false)
-    .eq("em_atendimento_humano", false)
-    .lt("rodada", MAX_RODADAS)
+  // teto de rodadas. Ordena por CONFIANÇA NO DONO antes do score: abordar
+  // sabendo o nome de quem manda é o que separa "pitch pro balconista" de
+  // conversa com quem decide — vale mais que qualquer ponto de ICP.
+  const filaBase = () =>
+    supabaseAdmin
+      .from("prospects")
+      .select("*")
+      .eq("status", "novo")
+      .eq("opt_out", false)
+      .eq("em_atendimento_humano", false)
+      .lt("rodada", MAX_RODADAS);
+
+  let { data: fila, error: erroFila } = await filaBase()
+    .order("dono_confianca", { ascending: false, nullsFirst: false })
     .order("score", { ascending: false })
     .order("created_at", { ascending: true })
     .limit(10);
+
+  // Enquanto a migration 044 não roda, `dono_confianca` não existe e o PostgREST
+  // devolve erro — o que deixaria `fila` nula e a campanha PARADA em silêncio
+  // (o mesmo modo de falha do incidente Carmatti de 29/07). Cai pra ordenação
+  // antiga em vez de morrer.
+  if (erroFila) {
+    console.warn(`⚠️ [prospeccao-tick] ordenação por dono indisponível (${erroFila.message}) — usando score.`);
+    ({ data: fila } = await filaBase()
+      .order("score", { ascending: false })
+      .order("created_at", { ascending: true })
+      .limit(10));
+  }
 
   // Sem telefone não há o que enviar — pula sem gastar a vez do cron.
   const novo = ((fila ?? []) as Prospect[]).find((c) => c.wa_id || c.telefone) ?? null;
