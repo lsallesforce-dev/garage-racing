@@ -244,6 +244,7 @@ export async function POST(req: NextRequest) {
   const PAUSA_ENTRE_BOLHAS_MS = 5000;
 
   let okAbertura = false;
+  const erroEnvio: { message?: string } = {};
   try {
     okAbertura = true;
     for (let i = 0; i < bolhasAbertura.length; i++) {
@@ -252,16 +253,46 @@ export async function POST(req: NextRequest) {
       // typing humanizado só na 1ª (saudação parece digitada); nas seguintes
       // typing:false pra a pausa percebida ser exatamente os 5s, sem somar o
       // delay variável de "digitando..." do sendAvisaMessage.
-      const ok = await sendAvisaMessage(alvoTel, bolhasAbertura[i], creds, { typing: i === 0 });
+      const ok = await sendAvisaMessage(alvoTel, bolhasAbertura[i], creds, { typing: i === 0 }, erroEnvio);
       if (!ok) { okAbertura = false; break; }
     }
   } catch (err) {
     console.error("❌ [prospeccao-tick] Erro inesperado ao enviar abertura:", err);
   }
   if (!okAbertura) {
-    console.error("❌ [prospeccao-tick] Abertura NÃO enviada (envio recusado — ex.: 463).");
+    // Duas falhas MUITO diferentes chegam aqui, e tratá-las igual travou a
+    // campanha por 2 dias (14/08: 49 tentativas, 0 envios):
+    //
+    //  a) NÚMERO inválido/sem WhatsApp ("Could not validate the provided
+    //     number") — culpa do contato, não do chip. Como o prospect continua
+    //     'novo' e é o primeiro da fila por score, o cron reescolhia ELE em
+    //     todo tick, pra sempre. Um contato ruim segurava a fila inteira.
+    //     → tira da fila (perdido) e deixa o próximo tick seguir.
+    //
+    //  b) CHIP recusando envio (463/soft-ban) — aí o contato é inocente e
+    //     precisa continuar na fila pra quando o chip voltar.
+    //     → conta bloqueio e não mexe no prospect (comportamento antigo).
+    const motivo = erroEnvio.message ?? "";
+    const numeroInvalido = /could not validate the provided number/i.test(motivo);
+
+    if (numeroInvalido) {
+      console.warn(`⚠️ [prospeccao-tick] ${novo.nome_empresa}: número ${alvoTel} sem WhatsApp — fora da fila.`);
+      await supabaseAdmin
+        .from("prospects")
+        .update({
+          status: "perdido",
+          notas: [novo.notas, `Número ${alvoTel} recusado pela Avisa (sem WhatsApp) em ${nowIso.slice(0, 10)}.`]
+            .filter(Boolean)
+            .join(" • "),
+          updated_at: nowIso,
+        })
+        .eq("id", novo.id);
+      return NextResponse.json({ skip: "numero_invalido", prospect_id: novo.id, alvo: alvoTel });
+    }
+
+    console.error(`❌ [prospeccao-tick] Abertura NÃO enviada (envio recusado — ex.: 463): ${motivo}`);
     await bumpStats({ bloqueios: 1 }).catch(() => {});
-    return NextResponse.json({ error: "falha_envio", acao: "abertura" }, { status: 500 });
+    return NextResponse.json({ error: "falha_envio", acao: "abertura", motivo }, { status: 500 });
   }
 
   await Promise.all([
