@@ -26,8 +26,10 @@ import { Receiver } from "@upstash/qstash";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendAvisaMessage, registrarWebhookAvisa, extractWebhookToken, autozapAvisaCreds } from "@/lib/avisa";
 import { bumpStats } from "@/lib/prospeccao-stats";
-import { preencherTemplate } from "@/lib/prospeccao-abertura";
-import type { Prospect, ProspeccaoConfig } from "@/lib/prospeccao-types";
+import { preencherTemplate, primeiroNome } from "@/lib/prospeccao-abertura";
+import { carregarPatioDemo } from "@/lib/process-prospeccao";
+import { HORAS_ATE_REPESCAGEM, carroDaConversa, montarRepescagem } from "@/lib/prospeccao-repescagem";
+import type { Prospect, ProspeccaoConfig, ProspectMensagem } from "@/lib/prospeccao-types";
 
 export const maxDuration = 300;
 
@@ -115,6 +117,83 @@ async function encerrarSemResposta(): Promise<number> {
   return n;
 }
 
+// ─── Repescagem armada que já venceu as 24h ───────────────────────────────────
+// O Lucas arma o gatilho no Inbox durante a conversa; quem dispara é aqui, 24h
+// depois da ÚLTIMA mensagem (se o papo continuou, o relógio andou junto).
+// Roda DEPOIS dos gates de janela/quota/intervalo e ANTES da fila: repescar quem
+// já conversou vale mais que abordar um contato novo no mesmo tick.
+// Retorna o prospect repescado, ou null se não havia nenhum vencido.
+async function enviarRepescagemDevida(
+  creds: { baseUrl: string; token: string },
+): Promise<Prospect | null> {
+  const limite = new Date(Date.now() - HORAS_ATE_REPESCAGEM * 3600_000).toISOString();
+
+  const { data, error } = await supabaseAdmin
+    .from("prospects")
+    .select("*")
+    .not("repescagem_armada_em", "is", null)
+    .is("repescagem_em", null)
+    .eq("opt_out", false)
+    .eq("em_atendimento_humano", false)
+    .lt("ultima_msg_at", limite)
+    .order("ultima_msg_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  // Enquanto a migration 046 não roda, a coluna não existe: seguir a vida em vez
+  // de derrubar o tick inteiro (a campanha não pode parar por causa disto).
+  if (error) {
+    if (!/repescagem_armada_em/.test(error.message)) {
+      console.error("❌ [prospeccao-tick] falha ao buscar repescagem:", error.message);
+    }
+    return null;
+  }
+  if (!data) return null;
+
+  const p = data as Prospect;
+  const alvo = p.wa_id || p.telefone;
+  if (!alvo) return null;
+
+  const { data: msgs } = await supabaseAdmin
+    .from("prospect_mensagens")
+    .select("*")
+    .eq("prospect_id", p.id)
+    .order("created_at", { ascending: true });
+
+  const patio = await carregarPatioDemo();
+  const carro = carroDaConversa((msgs ?? []) as ProspectMensagem[], patio);
+  const bolhas = montarRepescagem(carro, primeiroNome(p.nome_empresa) || null);
+
+  const erroRef: { message?: string } = {};
+  for (let i = 0; i < bolhas.length; i++) {
+    if (i > 0) await new Promise((r) => setTimeout(r, 4000));
+    const ok = await sendAvisaMessage(alvo, bolhas[i], creds, { typing: i === 0 }, erroRef);
+    if (!ok) {
+      // NÃO marca repescagem_em: ele não recebeu, então continua armado e o
+      // próximo tick tenta de novo.
+      console.error(`❌ [prospeccao-tick] repescagem de ${p.nome_empresa} falhou: ${erroRef.message ?? "envio recusado"}`);
+      return null;
+    }
+  }
+
+  const agora = new Date().toISOString();
+  await Promise.all([
+    supabaseAdmin.from("prospect_mensagens").insert(
+      bolhas.map((c) => ({ prospect_id: p.id, remetente: "agente", content: c })),
+    ),
+    // Volta pra "respondeu": a conversa está viva de novo e o webhook trata a
+    // resposta dele normalmente. `repescagem_em` é o que impede repetir.
+    supabaseAdmin
+      .from("prospects")
+      .update({ repescagem_em: agora, status: "respondeu", ultima_msg_at: agora, updated_at: agora })
+      .eq("id", p.id),
+    bumpStats({ enviadas: 1 }),
+  ]);
+
+  console.log(`🎣 [prospeccao-tick] Repescagem enviada a ${p.nome_empresa}${carro ? ` (${carro.descricao})` : ""}.`);
+  return p;
+}
+
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
 
@@ -187,6 +266,23 @@ export async function POST(req: NextRequest) {
 
   const nowIso = new Date().toISOString();
   const creds = autozapAvisaCreds();
+
+  // ── 4b. Repescagem armada e vencida tem prioridade sobre contato novo ───────
+  // Passou pelos mesmos gates (janela, quota, intervalo), então não estoura o
+  // ritmo do chip — só decide QUEM recebe a mensagem deste tick. Lojista que já
+  // conversou vale mais que um contato frio da fila.
+  if (creds) {
+    const repescado = await enviarRepescagemDevida(creds);
+    if (repescado) {
+      return NextResponse.json({
+        ok: true,
+        acao: "repescagem",
+        prospect_id: repescado.id,
+        prospect: repescado.nome_empresa,
+        encerrados,
+      });
+    }
+  }
 
   // ── 5. Escolhe 1 prospect da FILA ───────────────────────────────────────────
   // NÃO existe mais caminho de follow-up: uma rodada = uma mensagem por contato.

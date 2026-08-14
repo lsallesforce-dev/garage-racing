@@ -562,44 +562,50 @@ function Inbox({ headers }: { headers: Record<string, string> }) {
   const [refreshing, setRefreshing] = useState(false);
   const [repescando, setRepescando] = useState(false);
 
-  // ─── Elegibilidade da repescagem, com o MOTIVO ────────────────────────────
-  // O botão fica visível sempre e desabilitado com o porquê no tooltip: sumir
-  // com ele deixaria a dúvida de "cadê?". A regra é a mesma da rota — que não
-  // confia nesta checagem, ela é só pra UI não deixar clicar à toa.
-  const repescagem: { pode: boolean; motivo: string } = (() => {
-    if (!prospectAtivo) return { pode: false, motivo: "" };
-    if (prospectAtivo.opt_out) return { pode: false, motivo: "Pediu para não receber mais mensagens." };
-    if (prospectAtivo.em_atendimento_humano) return { pode: false, motivo: "Você assumiu a conversa — a Mari está em stand-by." };
+  // ─── Repescagem: o Lucas ARMA, o cron dispara 24h depois ──────────────────
+  // O fluxo é esse porque ele acompanha as conversas ao vivo: vendo que rolou,
+  // aperta na hora. Esperar 24h pra lembrar de voltar no painel não acontece.
+  // O relógio conta a partir da ÚLTIMA mensagem, então se o papo continuar
+  // depois de armado o disparo anda junto — repescar é pra quando esfriou.
+  const repescagem: { pode: boolean; armada: boolean; motivo: string } = (() => {
+    if (!prospectAtivo) return { pode: false, armada: false, motivo: "" };
+    const armada = !!prospectAtivo.repescagem_armada_em && !prospectAtivo.repescagem_em;
     if (prospectAtivo.repescagem_em) {
-      return { pode: false, motivo: `Já repescado em ${fmtDateTime(prospectAtivo.repescagem_em)}. Uma vez por lojista.` };
+      return { pode: false, armada: false, motivo: `Já repescado em ${fmtDateTime(prospectAtivo.repescagem_em)}. É uma vez só.` };
+    }
+    if (prospectAtivo.opt_out) {
+      return { pode: false, armada, motivo: "Pediu para não receber mais mensagens." };
     }
     if (!mensagens.some((m) => m.remetente === "prospect")) {
-      return { pode: false, motivo: "Ele nunca respondeu — repescagem é só para quem conversou." };
+      return { pode: false, armada, motivo: "Ele nunca respondeu — repescagem é só para quem conversou." };
     }
-    const horas = prospectAtivo.ultima_msg_at
-      ? (Date.now() - new Date(prospectAtivo.ultima_msg_at).getTime()) / 3600_000
-      : 0;
-    if (horas < 24) {
-      return { pode: false, motivo: `Faltam ${Math.ceil(24 - horas)}h: a repescagem sai 24h depois da última mensagem.` };
+    if (armada) {
+      const quando = prospectAtivo.ultima_msg_at
+        ? fmtDateTime(new Date(new Date(prospectAtivo.ultima_msg_at).getTime() + 24 * 3600_000).toISOString())
+        : "24h após a última mensagem";
+      return { pode: true, armada: true, motivo: `Agendada para ${quando}. Se a conversa continuar, o horário acompanha. Clique para desarmar.` };
     }
-    return { pode: true, motivo: "Manda a repescagem: pergunta se ficou dúvida sobre o carro e mostra que aquilo é o produto." };
+    return {
+      pode: true,
+      armada: false,
+      motivo: "Agenda a repescagem: 24h depois da última mensagem, a Mari volta perguntando se ficou dúvida sobre o carro e mostra que aquilo é o produto.",
+    };
   })();
 
   const repescar = async () => {
     if (!prospectAtivo) return;
-    if (!confirm(`Mandar a repescagem para ${prospectAtivo.nome_empresa}? Ele recebe uma vez só.`)) return;
+    const armando = !repescagem.armada;
+    if (armando && !confirm(`Agendar a repescagem para ${prospectAtivo.nome_empresa}? Ela sai 24h depois da última mensagem da conversa.`)) return;
     setRepescando(true);
     try {
       const res = await fetch("/api/admin/vendas/repescagem", {
         method: "POST",
         headers,
-        body: JSON.stringify({ prospect_id: prospectAtivo.id }),
+        body: JSON.stringify({ prospect_id: prospectAtivo.id, armar: armando }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Falha na repescagem");
-      if (json.falhas > 0) throw new Error(json.detalhe?.[0]?.erro || "Envio recusado");
+      if (!res.ok) throw new Error(json.error || "Falha ao agendar a repescagem");
       await carregarThread(prospectAtivo.id, true);
-      await carregarLista();
     } catch (e) {
       alert(e instanceof Error ? e.message : "Erro inesperado");
     } finally {
@@ -748,9 +754,14 @@ function Inbox({ headers }: { headers: Record<string, string> }) {
                     onClick={repescar}
                     disabled={!repescagem.pode || repescando}
                     title={repescagem.motivo}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest bg-cyan-50 text-cyan-700 border border-cyan-200 hover:bg-cyan-100 transition whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+                    className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest border transition whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed ${
+                      repescagem.armada
+                        ? "bg-cyan-600 text-white border-cyan-600 hover:bg-cyan-700"
+                        : "bg-cyan-50 text-cyan-700 border-cyan-200 hover:bg-cyan-100"
+                    }`}
                   >
-                    <Undo2 size={11} /> {repescando ? "Enviando..." : "Repescar"}
+                    <Undo2 size={11} />
+                    {repescando ? "..." : repescagem.armada ? "Repescagem armada" : "Repescar em 24h"}
                   </button>
                   {/* Mudar status */}
                   <select

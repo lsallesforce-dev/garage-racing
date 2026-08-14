@@ -77,7 +77,9 @@ export interface Prospect {
   rodada: number;
   /** Quando a abertura da rodada atual saiu — relógio das 48h. */
   enviado_em?: string | null;
-  /** Quando a repescagem manual foi enviada (migration 045). Uma vez por lojista. */
+  /** Quando o Lucas armou a repescagem no Inbox (migration 046). */
+  repescagem_armada_em?: string | null;
+  /** Quando a repescagem foi enviada (migration 045). Uma vez por lojista. */
   repescagem_em?: string | null;
   /** @deprecated Sem follow-up automático desde a migration 042. */
   followup_count: number;

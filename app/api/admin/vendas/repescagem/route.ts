@@ -1,195 +1,109 @@
 // app/api/admin/vendas/repescagem/route.ts
 // =============================================================================
-// Repescagem manual dos lojistas que conversaram e esfriaram (ação do Lucas).
+// Arma/desarma a repescagem de UM lojista (botão no Inbox da aba Vendas).
 // =============================================================================
-// NÃO é follow-up de campanha: quem nunca respondeu continua intocado, a regra
-// de tiro único vale. Aqui é o oposto — o lojista que ENGAJOU, viu a demo e
-// sumiu. A mensagem que ele recebe é a própria demonstração da repescagem que o
-// AutoZap faria com os clientes dele. Ver lib/prospeccao-repescagem.ts.
+// Esta rota NÃO envia nada. O Lucas acompanha a conversa ao vivo e, quando vê
+// que rolou, arma o gatilho na hora — quem dispara é o cron da prospecção, 24h
+// depois da ÚLTIMA mensagem da conversa. Se o papo continuar depois de armado,
+// o relógio anda junto: repescar faz sentido quando esfriou, não 24h após o
+// clique.
 //
-// GET  → prévia (quem entraria, sem enviar nada)
-// POST → envia, um por vez, espaçado
+// NÃO confunde com a "próxima rodada": aquela é pra quem NUNCA respondeu, e a
+// regra de tiro único continua valendo pra eles. Aqui é o lojista que conversou,
+// viu a demo e sumiu — e a mensagem que ele recebe é a demonstração da
+// repescagem que o AutoZap faria com os clientes DELE.
 // =============================================================================
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireAdminSecret } from "@/lib/api-auth";
-import { sendAvisaMessage, autozapAvisaCreds } from "@/lib/avisa";
-import { carregarPatioDemo } from "@/lib/process-prospeccao";
-import { primeiroNome } from "@/lib/prospeccao-abertura";
-import {
-  HORAS_ATE_REPESCAGEM,
-  carroDaConversa,
-  montarRepescagem,
-} from "@/lib/prospeccao-repescagem";
-import type { Prospect, ProspectMensagem } from "@/lib/prospeccao-types";
-
-// Envio espaçado ocupa a request; o teto da Vercel é o limite real.
-export const maxDuration = 300;
-
-// Teto por clique. Mesmo que 30 estejam elegíveis, 30 disparos seguidos é
-// rajada — o padrão que queima chip. O que sobrar continua elegível no próximo.
-const MAX_POR_CLIQUE = 10;
-// Espaço entre um lojista e outro. Não é o intervalo do cron (40-60min): aqui
-// são poucos contatos e uma ação consciente, mas seguidas no mesmo segundo
-// seria burrice.
-const PAUSA_ENTRE_PROSPECTS_MS = 20_000;
-const PAUSA_ENTRE_BOLHAS_MS = 4_000;
+import { HORAS_ATE_REPESCAGEM } from "@/lib/prospeccao-repescagem";
+import type { Prospect } from "@/lib/prospeccao-types";
 
 /**
- * Quem está elegível: conversou de verdade (tem mensagem dele no histórico),
- * a última troca passou de HORAS_ATE_REPESCAGEM, não pediu pra sair e não está
- * com humano. `sem_resposta` ENTRA de propósito: é o status de quem encerrou
- * educado ("ok, obrigado") — exatamente o cara que a repescagem existe pra
- * reacender. Quem nunca respondeu não aparece aqui: sem mensagem dele, fora.
+ * Por que este prospect NÃO pode ter a repescagem armada — ou null se pode.
+ * Mesmas regras da UI, refeitas aqui: a rota não confia no botão (aba velha,
+ * clique duplo, chamada manual).
  */
-async function elegiveis(): Promise<Prospect[]> {
-  const limite = new Date(Date.now() - HORAS_ATE_REPESCAGEM * 3600_000).toISOString();
-
-  const { data, error } = await supabaseAdmin
-    .from("prospects")
-    .select("*")
-    .in("status", ["respondeu", "quente", "sem_resposta", "handoff"])
-    .eq("opt_out", false)
-    .eq("em_atendimento_humano", false)
-    .is("repescagem_em", null)
-    .lt("ultima_msg_at", limite)
-    .order("ultima_msg_at", { ascending: true });
-
-  if (error) {
-    console.error("❌ [vendas/repescagem] falha ao listar elegíveis:", error.message);
-    return [];
-  }
-
-  // Filtro que o SQL não faz: precisa ter falado. `status` sozinho não garante
-  // — um prospect pode ter virado sem_resposta sem nunca ter escrito nada.
-  const ids = (data ?? []).map((p) => p.id);
-  if (ids.length === 0) return [];
-
-  const { data: falantes } = await supabaseAdmin
-    .from("prospect_mensagens")
-    .select("prospect_id")
-    .in("prospect_id", ids)
-    .eq("remetente", "prospect");
-
-  const comFala = new Set((falantes ?? []).map((m) => m.prospect_id));
-  return ((data ?? []) as Prospect[]).filter((p) => comFala.has(p.id));
+function motivoRecusa(p: Prospect, falou: boolean): string | null {
+  if (p.opt_out) return "Pediu para não receber mais mensagens.";
+  if (p.repescagem_em) return "Este lojista já foi repescado — é uma vez só.";
+  if (!falou) return "Ele nunca respondeu. Repescagem é só para quem conversou.";
+  return null;
 }
 
+// GET ?prospect_id= → estado da repescagem deste lojista.
 export async function GET(req: NextRequest) {
   const authError = await requireAdminSecret(req);
   if (authError) return authError;
 
-  const lista = await elegiveis();
+  const id = req.nextUrl.searchParams.get("prospect_id");
+  if (!id) return NextResponse.json({ error: "prospect_id é obrigatório" }, { status: 400 });
+
+  const { data } = await supabaseAdmin.from("prospects").select("*").eq("id", id).maybeSingle();
+  if (!data) return NextResponse.json({ error: "prospect não encontrado" }, { status: 404 });
+
+  const p = data as Prospect;
+  const dispara = p.ultima_msg_at
+    ? new Date(new Date(p.ultima_msg_at).getTime() + HORAS_ATE_REPESCAGEM * 3600_000).toISOString()
+    : null;
+
   return NextResponse.json({
-    elegiveis: lista.length,
+    armada: !!p.repescagem_armada_em && !p.repescagem_em,
+    enviada_em: p.repescagem_em ?? null,
+    dispara_em: p.repescagem_em ? null : dispara,
     horas: HORAS_ATE_REPESCAGEM,
-    max_por_clique: MAX_POR_CLIQUE,
-    prospects: lista.slice(0, MAX_POR_CLIQUE).map((p) => ({
-      id: p.id,
-      nome_empresa: p.nome_empresa,
-      cidade: p.cidade,
-      status: p.status,
-      ultima_msg_at: p.ultima_msg_at,
-    })),
   });
 }
 
+// POST { prospect_id, armar } → arma (true) ou desarma (false) o gatilho.
 export async function POST(req: NextRequest) {
   const authError = await requireAdminSecret(req);
   if (authError) return authError;
 
-  const creds = autozapAvisaCreds();
-  if (!creds) {
-    return NextResponse.json(
-      { error: "AUTOZAP_AVISA_* ausentes — instância da Mari não configurada." },
-      { status: 400 },
-    );
+  const body = (await req.json().catch(() => ({}))) as { prospect_id?: string; armar?: boolean };
+  if (!body.prospect_id) {
+    return NextResponse.json({ error: "prospect_id é obrigatório" }, { status: 400 });
+  }
+  const armar = body.armar !== false; // default: armar
+
+  const { data } = await supabaseAdmin
+    .from("prospects")
+    .select("*")
+    .eq("id", body.prospect_id)
+    .maybeSingle();
+  if (!data) return NextResponse.json({ error: "prospect não encontrado" }, { status: 404 });
+  const p = data as Prospect;
+
+  // Desarmar é sempre permitido: se o Lucas mudou de ideia, não há o que checar.
+  if (!armar) {
+    await supabaseAdmin
+      .from("prospects")
+      .update({ repescagem_armada_em: null, updated_at: new Date().toISOString() })
+      .eq("id", p.id);
+    console.log(`🎣 [vendas/repescagem] ${p.nome_empresa}: gatilho desarmado.`);
+    return NextResponse.json({ ok: true, armada: false });
   }
 
-  // Um prospect específico (botão no Inbox) ou todos os elegíveis (lote).
-  // O caminho de UM ainda passa pelo mesmo filtro: o botão fica desabilitado
-  // antes das 24h, mas a rota não confia na UI — dois cliques rápidos ou uma
-  // aba velha não podem furar a régua nem repescar duas vezes.
-  const body = (await req.json().catch(() => ({}))) as { prospect_id?: string };
-  const todos = await elegiveis();
+  const { count } = await supabaseAdmin
+    .from("prospect_mensagens")
+    .select("*", { count: "exact", head: true })
+    .eq("prospect_id", p.id)
+    .eq("remetente", "prospect");
 
-  const lista = body.prospect_id
-    ? todos.filter((p) => p.id === body.prospect_id)
-    : todos.slice(0, MAX_POR_CLIQUE);
+  const recusa = motivoRecusa(p, (count ?? 0) > 0);
+  if (recusa) return NextResponse.json({ error: recusa }, { status: 409 });
 
-  if (lista.length === 0) {
-    if (body.prospect_id) {
-      return NextResponse.json(
-        { error: `Não elegível: precisa ter conversado, ter passado ${HORAS_ATE_REPESCAGEM}h da última mensagem e ainda não ter sido repescado.` },
-        { status: 409 },
-      );
-    }
-    return NextResponse.json({ ok: true, enviados: 0, falhas: 0, detalhe: [] });
-  }
+  const agora = new Date().toISOString();
+  await supabaseAdmin
+    .from("prospects")
+    .update({ repescagem_armada_em: agora, updated_at: agora })
+    .eq("id", p.id);
 
-  const patio = await carregarPatioDemo();
-  const detalhe: { prospect: string; ok: boolean; carro: string | null; erro?: string }[] = [];
-  let enviados = 0;
-  let falhas = 0;
+  const dispara = p.ultima_msg_at
+    ? new Date(new Date(p.ultima_msg_at).getTime() + HORAS_ATE_REPESCAGEM * 3600_000).toISOString()
+    : null;
 
-  for (let i = 0; i < lista.length; i++) {
-    const p = lista[i];
-    if (i > 0) await new Promise((r) => setTimeout(r, PAUSA_ENTRE_PROSPECTS_MS));
-
-    const alvo = p.wa_id || p.telefone;
-    if (!alvo) {
-      falhas++;
-      detalhe.push({ prospect: p.nome_empresa, ok: false, carro: null, erro: "sem telefone" });
-      continue;
-    }
-
-    const { data: msgs } = await supabaseAdmin
-      .from("prospect_mensagens")
-      .select("*")
-      .eq("prospect_id", p.id)
-      .order("created_at", { ascending: true });
-
-    const carro = carroDaConversa((msgs ?? []) as ProspectMensagem[], patio);
-    const bolhas = montarRepescagem(carro, primeiroNome(p.nome_empresa) || null);
-
-    let ok = true;
-    const erroRef: { message?: string } = {};
-    for (let b = 0; b < bolhas.length; b++) {
-      if (b > 0) await new Promise((r) => setTimeout(r, PAUSA_ENTRE_BOLHAS_MS));
-      const enviou = await sendAvisaMessage(alvo, bolhas[b], creds, { typing: b === 0 }, erroRef);
-      if (!enviou) { ok = false; break; }
-    }
-
-    if (ok) {
-      enviados++;
-      const agora = new Date().toISOString();
-      await Promise.all([
-        supabaseAdmin.from("prospect_mensagens").insert(
-          bolhas.map((c) => ({ prospect_id: p.id, remetente: "agente", content: c })),
-        ),
-        // Volta pra "respondeu": a conversa está viva de novo e o webhook trata
-        // a resposta dele normalmente. `repescagem_em` é o que impede repetir.
-        supabaseAdmin
-          .from("prospects")
-          .update({ repescagem_em: agora, status: "respondeu", ultima_msg_at: agora, updated_at: agora })
-          .eq("id", p.id),
-      ]);
-    } else {
-      falhas++;
-      // NÃO marca repescagem_em quando falhou: ele não recebeu nada, então
-      // continua elegível pro próximo clique.
-      console.error(`❌ [vendas/repescagem] ${p.nome_empresa}: ${erroRef.message ?? "envio recusado"}`);
-    }
-
-    detalhe.push({
-      prospect: p.nome_empresa,
-      ok,
-      carro: carro ? carro.descricao : null,
-      ...(ok ? {} : { erro: erroRef.message ?? "envio recusado" }),
-    });
-  }
-
-  console.log(`🎣 [vendas/repescagem] ${enviados} enviada(s), ${falhas} falha(s).`);
-  return NextResponse.json({ ok: true, enviados, falhas, detalhe });
+  console.log(`🎣 [vendas/repescagem] ${p.nome_empresa}: gatilho armado (dispara ~${dispara}).`);
+  return NextResponse.json({ ok: true, armada: true, dispara_em: dispara });
 }
