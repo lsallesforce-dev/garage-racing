@@ -17,7 +17,7 @@ function keyOk(key: string): boolean {
   return true;
 }
 
-export async function GET(req: Request, { params }: { params: { path: string[] } }) {
+export async function GET(req: Request, { params }: { params: Promise<{ path: string[] }> }) {
   const key = (await params).path.join("/");
 
   // Chave fora do formato nunca existiu no bucket — 404 direto, sem tocar no R2.

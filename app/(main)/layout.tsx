@@ -31,7 +31,7 @@ export default async function MainLayout({ children }: { children: React.ReactNo
     // Busca dados do vendedor + config do dono em paralelo — server-side, zero roundtrip no cliente
     const [{ data: vendedor }, { data: ownerConfigRows }] = await Promise.all([
       supabase.from("vendedores").select("nome, especialidade").eq("auth_user_id", user.id).maybeSingle(),
-      supabase.from("config_garage").select("nome_empresa, nome_fantasia, vitrine_slug, webhook_token").eq("user_id", effectiveUserId).limit(1),
+      supabase.from("config_garage").select("nome_empresa, nome_fantasia, vitrine_slug").eq("user_id", effectiveUserId).limit(1),
     ]);
 
     const ownerConfig = ownerConfigRows?.[0];
@@ -45,7 +45,10 @@ export default async function MainLayout({ children }: { children: React.ReactNo
           nomeEmpresa:  ownerConfig?.nome_fantasia || ownerConfig?.nome_empresa || "",
           nomeUsuario:  vendedor?.nome || "",
           cargoUsuario: vendedor?.especialidade || "Vendedor",
-          vitrineSlug:  ownerConfig?.vitrine_slug || ownerConfig?.webhook_token || null,
+          // Só o slug. O webhook_token NÃO entra aqui: ele é a credencial do
+          // /api/webhook/avisa, e usá-lo como URL pública da vitrine publicava
+          // o segredo em todo link que a loja manda pro cliente.
+          vitrineSlug:  ownerConfig?.vitrine_slug || null,
         }}
         paginasPermitidas={Array.isArray(paginasPermitidas) ? paginasPermitidas : undefined}
       >
@@ -58,7 +61,7 @@ export default async function MainLayout({ children }: { children: React.ReactNo
   // Uma única query traz tudo que o sidebar + verificação de plano precisam
   const { data: config } = await supabase
     .from("config_garage")
-    .select("nome_empresa, nome_fantasia, nome_usuario, cargo_usuario, vitrine_slug, webhook_token, plano_ativo, trial_ends_at, plano_vence_em")
+    .select("nome_empresa, nome_fantasia, nome_usuario, cargo_usuario, vitrine_slug, plano_ativo, trial_ends_at, plano_vence_em")
     .eq("user_id", user.id)
     .maybeSingle();
 
@@ -79,7 +82,7 @@ export default async function MainLayout({ children }: { children: React.ReactNo
         nomeEmpresa:  config.nome_fantasia || config.nome_empresa || "",
         nomeUsuario:  config.nome_usuario || "",
         cargoUsuario: config.cargo_usuario || "",
-        vitrineSlug:  config.vitrine_slug || config.webhook_token || null,
+        vitrineSlug:  config.vitrine_slug || null,   // nunca o webhook_token — ver comentário acima
       }}
     >
       {children}

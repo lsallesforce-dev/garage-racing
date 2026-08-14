@@ -14,7 +14,7 @@ import { after } from "next/server";
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { processWhatsAppMessage } from "@/lib/process-whatsapp";
-import { isDuplicateMessage, debounceClientImages, debounceFirstContact, isAgentEcho, isAgentAudioEcho } from "@/lib/redis";
+import { isDuplicateMessage, debounceClientImages, debounceFirstContact, isAgentEcho, isAgentAudioEcho, rateLimit } from "@/lib/redis";
 import { logWebhookError } from "@/lib/error-log";
 import { resolveAvisaLid, sendAvisaMessage } from "@/lib/avisa";
 import { RE_CODIGO_ANUNCIO } from "@/lib/repasse";
@@ -443,6 +443,18 @@ export async function POST(req: NextRequest) {
       // (nunca usar primeira linha do banco como fallback — risco de cross-tenant)
       console.warn(`⛔ Webhook recebido sem token válido — rejeitado.`);
       return NextResponse.json({ status: "invalid_token" }, { status: 400 });
+    }
+
+    // ── Teto por tenant ───────────────────────────────────────────────────────
+    // O webhook_token é a única credencial aqui, e ele circula como URL (painel,
+    // suporte, links antigos da vitrine). Quem tiver o token não consegue mais do
+    // que 300 eventos/min — o suficiente pro pico real de um tenant, longe do que
+    // um flood forjado precisaria pra queimar cota do Gemini. Fail-open se o Redis
+    // cair (o rateLimit já trata) — melhor processar do que ficar mudo.
+    const rl = await rateLimit(`webhook:avisa:${tenantUserId}`, 300, 60);
+    if (!rl.allowed) {
+      console.warn(`⛔ Rate limit do webhook estourado para tenant ${tenantUserId}`);
+      return NextResponse.json({ status: "rate_limited" }, { status: 429 });
     }
 
     // ── Gate de Assinatura ────────────────────────────────────────────────────
