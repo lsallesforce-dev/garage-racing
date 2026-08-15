@@ -226,10 +226,16 @@ export async function POST(req: NextRequest) {
   // ── 2. Janela (timezone America/Sao_Paulo) ──────────────────────────────────
   const { hora, dow } = brasiliaHourAndIsoDow();
   const diasSemana = Array.isArray(config.dias_semana) ? config.dias_semana : [];
-  const dentroDaJanela = hora >= config.janela_inicio && hora < config.janela_fim;
+  // Sábado tem expediente curto: revenda fecha por volta das 13h, e mensagem
+  // comercial chegando de tarde no fim de semana é o tipo de coisa que faz o
+  // lojista bloquear. Ele só é abordado se o Lucas puser 6 em `dias_semana`, e
+  // ainda assim a janela morre ao meio-dia, independente do janela_fim.
+  const FIM_SABADO = 12;
+  const fimHoje = dow === 6 ? Math.min(config.janela_fim, FIM_SABADO) : config.janela_fim;
+  const dentroDaJanela = hora >= config.janela_inicio && hora < fimHoje;
   const diaPermitido = diasSemana.includes(dow);
   if (!dentroDaJanela || !diaPermitido) {
-    return NextResponse.json({ skip: "fora_janela", hora, dow });
+    return NextResponse.json({ skip: "fora_janela", hora, dow, fim_hoje: fimHoje });
   }
 
   // ── 3. Quota diária ──────────────────────────────────────────────────────────

@@ -42,7 +42,8 @@
     },
     {
       "path": "/api/cron/prospeccao-tick",
-      "schedule": "*/10 12-21 * * 1-5"
+      "_comment": "UTC. 11-21 = 8h-18h BRT; 1-6 inclui sabado. Quem manda de verdade e a janela em prospeccao_config (e no sabado o cron corta ao meio-dia) — isto aqui so precisa ser MAIOR ou igual que ela, senao o tick nem chega a rodar.",
+      "schedule": "*/10 11-21 * * 1-6"
     },
     {
       "path": "/api/cron/meta-warmup",
