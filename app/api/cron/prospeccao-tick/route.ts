@@ -231,9 +231,11 @@ export async function POST(req: NextRequest) {
   // comercial chegando de tarde no fim de semana é o tipo de coisa que faz o
   // lojista bloquear. Ele só é abordado se o Lucas puser 6 em `dias_semana`, e
   // ainda assim a janela morre ao meio-dia, independente do janela_fim.
-  // Domingo tem o mesmo teto do sabado, e por motivo mais forte: mensagem
-  // comercial de domingo a tarde e a que mais rende bloqueio.
-  const FIM_FIM_DE_SEMANA = 12;
+  // Fim de semana termina cedo: revenda fecha ~13h no sabado, e mensagem
+  // comercial de domingo A TARDE e a que mais rende bloqueio. 13h ainda e
+  // horario de almoco, nao tarde — e e o que permite a cota do dia caber
+  // sem apertar o intervalo entre envios, que e o que a plataforma mede.
+  const FIM_FIM_DE_SEMANA = 13;
   const fimHoje = dow >= 6 ? Math.min(config.janela_fim, FIM_FIM_DE_SEMANA) : config.janela_fim;
   const dentroDaJanela = hora >= config.janela_inicio && hora < fimHoje;
   const diaPermitido = diasSemana.includes(dow);
