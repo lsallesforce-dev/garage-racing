@@ -24,6 +24,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Receiver } from "@upstash/qstash";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { bolhasParaLinhas } from "@/lib/prospeccao-historico";
 import { sendAvisaMessage, registrarWebhookAvisa, extractWebhookToken, autozapAvisaCreds } from "@/lib/avisa";
 import { bumpStats } from "@/lib/prospeccao-stats";
 import { preencherTemplate, primeiroNome } from "@/lib/prospeccao-abertura";
@@ -179,7 +180,7 @@ async function enviarRepescagemDevida(
   const agora = new Date().toISOString();
   await Promise.all([
     supabaseAdmin.from("prospect_mensagens").insert(
-      bolhas.map((c) => ({ prospect_id: p.id, remetente: "agente", content: c })),
+      bolhasParaLinhas(p.id, bolhas),
     ),
     // Volta pra "respondeu": a conversa está viva de novo e o webhook trata a
     // resposta dele normalmente. `repescagem_em` é o que impede repetir.
@@ -409,7 +410,7 @@ export async function POST(req: NextRequest) {
 
   await Promise.all([
     supabaseAdmin.from("prospect_mensagens").insert(
-      bolhasAbertura.map((b) => ({ prospect_id: novo.id, remetente: "agente", content: b }))
+      bolhasParaLinhas(novo.id, bolhasAbertura)
     ),
     supabaseAdmin
       .from("prospects")

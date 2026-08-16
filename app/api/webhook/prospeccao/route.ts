@@ -16,6 +16,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { timingSafeEqual } from "crypto";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { bolhasParaLinhas } from "@/lib/prospeccao-historico";
 import { sendAvisaMessage, sendAvisaImage, sendAvisaVideo, extractWebhookToken } from "@/lib/avisa";
 import { gerarRespostaProspeccao, carregarPatioDemo, carregarLojaDemo } from "@/lib/process-prospeccao";
 import { montarAbertura } from "@/lib/prospeccao-abertura";
@@ -433,7 +434,7 @@ export async function POST(req: NextRequest) {
         await sendAvisaMessage(waId, bolhas[i], creds, { typing: i === 0 });
       }
       await supabaseAdmin.from("prospect_mensagens").insert(
-        bolhas.map((b) => ({ prospect_id: prospect.id, remetente: "agente", content: b }))
+        bolhasParaLinhas(prospect.id, bolhas)
       );
     }
 
@@ -738,7 +739,7 @@ export async function POST(req: NextRequest) {
   // Só salva as msgs do agente se de fato enviou (evita histórico fantasma).
   if (enviada) {
     await supabaseAdmin.from("prospect_mensagens").insert(
-      mensagensEnviar.map((b) => ({ prospect_id: prospect.id, remetente: "agente", content: b }))
+      bolhasParaLinhas(prospect.id, mensagensEnviar)
     );
   }
 

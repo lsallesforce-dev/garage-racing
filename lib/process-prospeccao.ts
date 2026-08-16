@@ -230,6 +230,11 @@ export function confirmouSerOResponsavel(texto: string): boolean {
 const SO_CUMPRIMENTO =
   /^(?:ol[áa]|oi+|opa|e\s*a[íi]|bom\s*dia|boa\s*tarde|boa\s*noite|tudo\s*(?:bem|bom|joia)|blz|beleza|salve)[\s!.,?]*$/i;
 
+// Recusa curta na primeira resposta ("não temos interesse", "já uso"). Não é
+// caso de insistir pelo dono — é caso de respeitar e sair.
+const RECUSA_NA_PORTA =
+  /\b(n[ãa]o\s+(?:tenho|temos|h[áa])\s+interesse|n[ãa]o\s+(?:me|nos)\s+interessa|n[ãa]o\s+(?:quero|queremos|preciso|precisamos|obrigad)|j[áa]\s+(?:tenho|temos|uso|usamos|trabalho\s+com|trabalhamos\s+com)|tira\s+meu\s+n[úu]mero|par[ae]\s+de\s+mandar)\b/i;
+
 /** true = a mensagem é só um cumprimento, sem nenhum pedido dentro. */
 export function ehSoCumprimento(texto: string): boolean {
   // Emoji sai antes do teste: "Oi 👋" e "Bom dia 😊" são o mesmo caso que "Oi".
@@ -271,6 +276,7 @@ function buildSystemInstruction(
   reforcarChapeu2: boolean,
   apresentarAutozap: boolean,
   soCumprimento: boolean,
+  acharODono: boolean,
 ): string {
   // Só os carros COM foto ganham [ID]: assim o Gemini não consegue prometer
   // imagem de um carro que não tem nenhuma.
@@ -485,6 +491,16 @@ Responda em exatamente 3 bolhas, nesta ordem:
   3. O convite, exatamente com este sentido: "quer fazer um teste de como eu atenderia os seus clientes?"
 PROIBIDO nesta resposta: oferecer carro, citar modelo do pátio, mandar foto, falar de preço do sistema, dizer "pode me perguntar de qualquer carro do pátio" ou "quer ver como eu atenderia um cliente seu". A explicação vem ANTES do convite — ninguém aceita testar o que não sabe o que é.
 ` : ""}
+${acharODono ? `
+# ATENÇÃO NESTE TURNO — VOCÊ AINDA NÃO SABE COM QUEM ESTÁ FALANDO
+A abertura perguntou quem cuida da loja, e a resposta dele NÃO disse que é ele. Pode ser o balconista, o filho do dono, alguém que só atende o WhatsApp de vendas.
+NESTA resposta o ÚNICO objetivo é chegar em quem decide:
+  1. Se ele cumprimentou, devolva o cumprimento em 2 ou 3 palavras.
+  2. Pergunte, leve e direto, quem é o dono/responsável — ou se é com ele mesmo. Uma pergunta só.
+PROIBIDO nesta resposta: explicar o AutoZap, oferecer carro, citar modelo, convidar pro teste, mandar foto.
+Gastar a demonstração com quem não decide foi exatamente o que fez esta campanha não converter: em 39 abordagens, 12 respostas vieram do robô de atendimento da própria loja e uma perguntou "que modelo você se interessou?", achando que você era cliente. Descubra com quem fala ANTES de vender.
+Se ele não quiser dizer, tudo bem: siga a conversa normalmente na próxima mensagem, sem insistir de novo.
+` : ""}
 ${soCumprimento ? `
 # ATENÇÃO NESTE TURNO — ELE SÓ CUMPRIMENTOU
 A última mensagem é só um "oi"/"bom dia", sem nenhum pedido dentro. NÃO HÁ NADA PARA OFERECER.
@@ -654,14 +670,27 @@ export async function gerarRespostaProspeccao({
   // se esta é a única, o turno é este. Depois disso a conversa já andou e um
   // "deixa eu te explicar o que é o AutoZap" soaria fora de hora.
   const totalDoProspect = mensagens.filter((m) => m.remetente === "prospect").length;
-  const apresentarAutozap =
-    totalDoProspect === 1 && confirmouSerOResponsavel(ultimaDoProspect?.content ?? "");
+  const primeiraResposta = totalDoProspect === 1;
+  const textoUltima = ultimaDoProspect?.content ?? "";
+  const confirmou = confirmouSerOResponsavel(textoUltima);
+  const apresentarAutozap = primeiraResposta && confirmou;
+
+  // A abertura PERGUNTA quem cuida da loja. Quando a resposta nao confirma que e
+  // ele ("nao sei", "bom dia"), a Mari abandonava a pergunta e ja partia pro
+  // pitch/demo — pra alguem que pode nao decidir nada. Foi o que aconteceu com a
+  // Spacecar ("Nao sei" -> explicou o AutoZap) e a Vita Motors ("Bom dia" ->
+  // convidou pro teste). Enquanto nao souber com quem fala, o unico objetivo do
+  // turno e chegar em quem decide.
+  const acharODono = primeiraResposta && !confirmou && !RECUSA_NA_PORTA.test(textoUltima);
+  if (acharODono) {
+    console.log(`[prospeccao] "${textoUltima.slice(0, 30)}" -> ainda nao sei com quem falo, procurando o dono.`);
+  }
   if (apresentarAutozap) {
     console.log(`👋 [prospeccao] "${(ultimaDoProspect?.content ?? "").slice(0, 40)}" → apresentando o AutoZap antes do convite.`);
   }
 
   // "OLA" sozinho: sem nada pra ir atras, o modelo inventa uma oferta.
-  const soCumprimento = ehSoCumprimento(ultimaDoProspect?.content ?? "");
+  const soCumprimento = !acharODono && ehSoCumprimento(textoUltima);
   if (soCumprimento) {
     console.log(`[prospeccao] "${(ultimaDoProspect?.content ?? "").slice(0, 20)}" -> so cumprimento, sem oferta de carro.`);
   }
@@ -673,6 +702,7 @@ export async function gerarRespostaProspeccao({
     reforcarChapeu2,
     apresentarAutozap,
     soCumprimento,
+    acharODono,
   );
   const historico = buildHistorico(mensagens);
 
