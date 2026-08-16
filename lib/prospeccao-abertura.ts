@@ -132,6 +132,43 @@ export function preencherTemplate(tpl: string, prospect: Prospect): string {
     .trim();
 }
 
+// ─── Template por dia da semana ───────────────────────────────────────────────
+// Domingo pede outra abordagem: a loja está FECHADA e os leads continuam
+// entrando, então a dor está acontecendo enquanto ele lê. E tem um efeito
+// colateral valioso: quem lê o WhatsApp da loja no domingo é o DONO — balconista
+// não trabalha domingo. Ou seja, o domingo resolve sozinho o problema do
+// porteiro, e a abertura nem precisa perguntar quem cuida da loja.
+//
+// Marcado por PREFIXO no próprio texto, e não por coluna nova, pra continuar
+// editável no banco sem migration: template que começa com "[dom]" só sai no
+// domingo, e no domingo só saem esses (se houver algum).
+const TAG_DOMINGO = /^\s*\[dom\]\s*/i;
+
+/** Escolhe um template do conjunto certo pro dia. `dow` em ISO (7 = domingo). */
+export function escolherTemplate(templates: string[], dow: number): string | null {
+  const lista = templates.map(String).filter((t) => t.trim());
+  if (lista.length === 0) return null;
+
+  const domingo = lista.filter((t) => TAG_DOMINGO.test(t));
+  const comuns = lista.filter((t) => !TAG_DOMINGO.test(t));
+
+  // No domingo usa os de domingo; sem nenhum configurado, cai nos comuns.
+  const pool = dow === 7 ? (domingo.length > 0 ? domingo : comuns) : comuns;
+  if (pool.length === 0) return null;
+
+  return pool[Math.floor(Math.random() * pool.length)].replace(TAG_DOMINGO, "");
+}
+
+/** Dia da semana em ISO (1=segunda … 7=domingo), no fuso de Brasília. */
+export function diaDaSemanaBrasilia(): number {
+  const wd = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Sao_Paulo",
+    weekday: "short",
+  }).format(new Date());
+  const map: Record<string, number> = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 };
+  return map[wd] ?? 1;
+}
+
 /**
  * Monta a abertura pronta pra enviar, já dividida em bolhas (linha em branco =
  * nova mensagem). Retorna [] se não houver template configurado.
@@ -146,7 +183,8 @@ export async function montarAbertura(prospect: Prospect): Promise<string[]> {
   const templates = Array.isArray(cfg?.templates_abertura) ? cfg.templates_abertura : [];
   if (templates.length === 0) return [];
 
-  const tpl = String(templates[Math.floor(Math.random() * templates.length)] ?? "");
+  const tpl = escolherTemplate(templates as string[], diaDaSemanaBrasilia());
+  if (!tpl) return [];
   const mensagem = preencherTemplate(tpl, prospect);
   if (!mensagem) return [];
 

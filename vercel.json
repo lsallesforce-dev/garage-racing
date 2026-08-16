@@ -42,7 +42,7 @@
     },
     {
       "path": "/api/cron/prospeccao-tick",
-      "schedule": "*/10 11-21 * * 1-6"
+      "schedule": "*/10 11-21 * * *"
     },
     {
       "path": "/api/cron/meta-warmup",

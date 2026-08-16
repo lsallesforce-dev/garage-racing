@@ -27,7 +27,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { bolhasParaLinhas } from "@/lib/prospeccao-historico";
 import { sendAvisaMessage, registrarWebhookAvisa, extractWebhookToken, autozapAvisaCreds } from "@/lib/avisa";
 import { bumpStats } from "@/lib/prospeccao-stats";
-import { preencherTemplate, primeiroNome } from "@/lib/prospeccao-abertura";
+import { preencherTemplate, primeiroNome, escolherTemplate } from "@/lib/prospeccao-abertura";
 import { carregarPatioDemo } from "@/lib/process-prospeccao";
 import { HORAS_ATE_REPESCAGEM, carroDaConversa, montarRepescagem } from "@/lib/prospeccao-repescagem";
 import type { Prospect, ProspeccaoConfig, ProspectMensagem } from "@/lib/prospeccao-types";
@@ -231,8 +231,10 @@ export async function POST(req: NextRequest) {
   // comercial chegando de tarde no fim de semana é o tipo de coisa que faz o
   // lojista bloquear. Ele só é abordado se o Lucas puser 6 em `dias_semana`, e
   // ainda assim a janela morre ao meio-dia, independente do janela_fim.
-  const FIM_SABADO = 12;
-  const fimHoje = dow === 6 ? Math.min(config.janela_fim, FIM_SABADO) : config.janela_fim;
+  // Domingo tem o mesmo teto do sabado, e por motivo mais forte: mensagem
+  // comercial de domingo a tarde e a que mais rende bloqueio.
+  const FIM_FIM_DE_SEMANA = 12;
+  const fimHoje = dow >= 6 ? Math.min(config.janela_fim, FIM_FIM_DE_SEMANA) : config.janela_fim;
   const dentroDaJanela = hora >= config.janela_inicio && hora < fimHoje;
   const diaPermitido = diasSemana.includes(dow);
   if (!dentroDaJanela || !diaPermitido) {
@@ -336,8 +338,13 @@ export async function POST(req: NextRequest) {
   if (templates.length === 0) {
     return NextResponse.json({ skip: "sem_templates" });
   }
-  const tplBruto = templates[Math.floor(Math.random() * templates.length)];
-  const mensagem = preencherTemplate(String(tplBruto ?? ""), novo);
+  // Domingo tem template proprio (prefixo "[dom]"): loja fechada, lead entrando,
+  // e quem le o WhatsApp e o DONO. Ver escolherTemplate.
+  const tplBruto = escolherTemplate(templates as string[], dow);
+  if (!tplBruto) {
+    return NextResponse.json({ skip: "sem_template_pro_dia", dow });
+  }
+  const mensagem = preencherTemplate(tplBruto, novo);
   if (!mensagem) {
     return NextResponse.json({ skip: "template_vazio" });
   }

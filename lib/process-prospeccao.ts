@@ -230,6 +230,11 @@ export function confirmouSerOResponsavel(texto: string): boolean {
 const SO_CUMPRIMENTO =
   /^(?:ol[áa]|oi+|opa|e\s*a[íi]|bom\s*dia|boa\s*tarde|boa\s*noite|tudo\s*(?:bem|bom|joia)|blz|beleza|salve)[\s!.,?]*$/i;
 
+// A abertura padrão PERGUNTA quem cuida da loja ("Quem cuida do marketing da
+// loja?" ou "O Fabiano está?"). A de domingo não pergunta nada — lá o dono é
+// quem lê. Só faz sentido insistir pelo responsável se a pergunta foi feita.
+const ABERTURA_PEDIU_ROTEAMENTO = /\bquem\s+cuida\b|\bquem\s+[ée]\s+o\s+respons|\best[áa]\s*\?/i;
+
 // Recusa curta na primeira resposta ("não temos interesse", "já uso"). Não é
 // caso de insistir pelo dono — é caso de respeitar e sair.
 const RECUSA_NA_PORTA =
@@ -681,7 +686,14 @@ export async function gerarRespostaProspeccao({
   // Spacecar ("Nao sei" -> explicou o AutoZap) e a Vita Motors ("Bom dia" ->
   // convidou pro teste). Enquanto nao souber com quem fala, o unico objetivo do
   // turno e chegar em quem decide.
-  const acharODono = primeiraResposta && !confirmou && !RECUSA_NA_PORTA.test(textoUltima);
+  // ...mas só faz sentido se a ABERTURA tiver perguntado. O template de domingo
+  // não pergunta — no domingo a loja está fechada e quem lê o WhatsApp já é o
+  // dono. Cobrar "quem é o responsável?" sem ter perguntado nada sai do nada.
+  const primeiraDoAgente = mensagens.find((m) => m.remetente !== "prospect")?.content ?? "";
+  const aberturaPediuRoteamento = ABERTURA_PEDIU_ROTEAMENTO.test(primeiraDoAgente);
+
+  const acharODono =
+    primeiraResposta && aberturaPediuRoteamento && !confirmou && !RECUSA_NA_PORTA.test(textoUltima);
   if (acharODono) {
     console.log(`[prospeccao] "${textoUltima.slice(0, 30)}" -> ainda nao sei com quem falo, procurando o dono.`);
   }
