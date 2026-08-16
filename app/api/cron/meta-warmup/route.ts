@@ -101,6 +101,7 @@ export async function GET(req: NextRequest) {
   let totalCalls = 0;
   let totalSuccess = 0;
   let totalErrors = 0;
+  let primeiroErro: any = null; // diag 16/08: 100% erro — capturar 1 amostra p/ ver o code (#3 basic / #190 token vencido / #200 escopo)
 
   for (const tenant of tenants) {
     // Busca ad_account_id da meta_paginas
@@ -139,7 +140,17 @@ export async function GET(req: NextRequest) {
 
         if (data.error) {
           totalErrors++;
-          // Não loga cada erro pra não poluir — só conta
+          // Não loga cada erro pra não poluir — só conta.
+          // diag 16/08: guarda a 1ª amostra (endpoint + code/subcode/message) pra achar a causa do 100% erro.
+          if (!primeiroErro) {
+            primeiroErro = {
+              path: ep.path || "(root)",
+              code: data.error.code,
+              subcode: data.error.error_subcode,
+              type: data.error.type,
+              message: String(data.error.message ?? "").slice(0, 160),
+            };
+          }
         } else {
           totalSuccess++;
         }
@@ -153,7 +164,8 @@ export async function GET(req: NextRequest) {
   const errorRate = totalCalls > 0 ? ((totalErrors / totalCalls) * 100).toFixed(1) : "0";
 
   console.log(
-    `🔥 [meta-warmup] calls=${totalCalls} success=${totalSuccess} errors=${totalErrors} errorRate=${errorRate}%`
+    `🔥 [meta-warmup] calls=${totalCalls} success=${totalSuccess} errors=${totalErrors} errorRate=${errorRate}%` +
+    (primeiroErro ? ` | 1oErro=${JSON.stringify(primeiroErro)}` : "")
   );
 
   return NextResponse.json({
