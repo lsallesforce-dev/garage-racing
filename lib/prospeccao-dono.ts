@@ -185,27 +185,25 @@ export function nomeDonoPorNomeLoja(nomeEmpresa: string | null): DonoEncontrado 
 }
 
 /**
- * Melhor palpite do dono, combinando as fontes. Review ganha do nome da loja
- * quando tem confiança comparável: o nome da loja pode ser do fundador que
- * morreu ou vendeu o ponto; o review é de quem está no balcão AGORA.
+ * Quem toca a loja, SÓ pelo que os reviews dizem.
+ *
+ * O nome da loja foi descartado como fonte de propósito (`nomeDonoPorNomeLoja`
+ * segue exportada, mas ninguém a chama). Revenda leva nome de fundador o tempo
+ * todo, e uma boa parte desses fundadores morreu ou vendeu o ponto — "O Fabiano
+ * está?" pro filho dele é um erro que não tem como desfazer, e nenhuma melhora
+ * de roteamento paga esse risco. Review é diferente: "fui atendido pelo
+ * Fabiano" é registro de alguém que ESTAVA no balcão, não dedução a partir da
+ * fachada.
+ *
+ * Mesmo assim o nome NÃO vai pra mensagem — serve como informação pro humano no
+ * Inbox saber com quem está falando. Ver lib/prospeccao-abertura.ts.
  */
 export function descobrirDono(
-  nomeEmpresa: string | null,
+  _nomeEmpresa: string | null,
   textosReviews: string[],
 ): DonoEncontrado | null {
-  const porReview = nomeDonoPorReviews(textosReviews);
-  const porNome = nomeDonoPorNomeLoja(nomeEmpresa);
-
-  if (porReview && porNome) {
-    // As duas fontes concordam → é ele, sem dúvida.
-    if (normalizar(porReview.nome) === normalizar(porNome.nome)) {
-      return { ...porReview, confianca: 100 };
-    }
-    return porReview.confianca >= porNome.confianca ? porReview : porNome;
-  }
-
-  return porReview ?? porNome;
+  return nomeDonoPorReviews(textosReviews);
 }
 
-/** Confiança mínima pra Mari citar o nome na abordagem. */
+/** Confiança mínima pra levar o nome a sério no painel. */
 export const CONFIANCA_MINIMA_DONO = 60;

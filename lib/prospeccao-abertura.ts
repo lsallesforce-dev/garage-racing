@@ -10,20 +10,19 @@
 
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import type { Prospect } from "@/lib/prospeccao-types";
-import { CONFIANCA_MINIMA_DONO } from "@/lib/prospeccao-dono";
 
-// ─── Nome do dono, se descoberto com confiança ────────────────────────────────
-// O número que a gente aborda é a LINHA DE VENDAS da loja — atendida por
-// balconista ou pelo robô de atendimento dela. Pedir pelo dono NOMINALMENTE é o
-// que faz o atendente rotear em vez de tratar a Mari como cliente.
-// Abaixo do corte de confiança devolve "" e o template cai no caminho sem nome:
-// chamar o dono de "Berlim" (nome fantasia) queima a abordagem na primeira linha.
-export function nomeDono(prospect: Prospect): string {
-  const nome = (prospect.dono_nome || "").trim();
-  if (!nome) return "";
-  if ((prospect.dono_confianca ?? 0) < CONFIANCA_MINIMA_DONO) return "";
-  return nome;
-}
+// ─── Por que a abertura NÃO chama ninguém pelo nome ───────────────────────────
+// A ideia era pedir pelo dono nominalmente ("O Fabiano está?") pra o atendente
+// rotear em vez de tratar a Mari como cliente. Está descartada.
+//
+// Revenda leva nome de fundador o tempo todo, e boa parte desses fundadores
+// morreu ou vendeu o ponto. Perguntar por um morto pro filho dele é um erro que
+// não tem desfazer — e o ganho, um atendente roteando melhor, não chega perto de
+// pagar esse risco. O `dono_nome` continua sendo coletado dos reviews, mas fica
+// no painel, pro humano saber com quem fala antes de assumir a conversa.
+//
+// {pede_dono} vira sempre a pergunta neutra, que funciona sem saber nome nenhum.
+const PERGUNTA_DE_ROTEAMENTO = "Quem cuida do marketing da loja?";
 
 // ─── Primeiro nome do contato ─────────────────────────────────────────────────
 // A lista de lojistas é de PESSOAS ("Adailton Votuporanga", "Alex Master Veic RP"),
@@ -104,16 +103,12 @@ export function preencherTemplate(tpl: string, prospect: Prospect): string {
   // "Oi, ." que um placeholder vazio deixaria.
   const nome = primeiroNome(prospect.nome_empresa);
   const loja = nomeLoja(prospect.nome_empresa);
-  const dono = nomeDono(prospect);
   return tpl
-    // {dono} = nome do dono quando descoberto; "" quando não. {pede_dono} monta
-    // a frase inteira, pra o template não precisar de condicional: com nome vira
-    // "O Fabiano está?", sem nome vira "Quem cuida do marketing da loja?".
-    .replace(/\{dono\}/gi, dono)
-    .replace(
-      /\{pede_dono\}/gi,
-      dono ? `O ${dono} está?` : "Quem cuida do marketing da loja?",
-    )
+    // {dono} sai VAZIO e {pede_dono} é sempre a pergunta neutra — ver o comentário
+    // no topo do arquivo. Os dois placeholders continuam existindo pra template
+    // antigo salvo no banco não vazar "{pede_dono}" cru pro lojista.
+    .replace(/\{dono\}/gi, "")
+    .replace(/\{pede_dono\}/gi, PERGUNTA_DE_ROTEAMENTO)
     // {loja} = nome da revenda, limpo. Sem nome utilizável, a saudação fica
     // "Oi!" em vez de "Oi, !".
     .replace(/\{loja\}/gi, loja)
