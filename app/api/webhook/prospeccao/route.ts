@@ -117,6 +117,21 @@ const AUTOREPLY_PATTERNS: RegExp[] = [
   /aguarde[\s\S]{0,20}(?:retorn|atend|momento)/i,
 ];
 
+// ─── Handoff porque caiu num robô ─────────────────────────────────────────────
+// Diferente de todo outro handoff: aqui não há humano do outro lado esperando,
+// então a IA precisa CALAR, não seguir conversando até alguém assumir.
+// Olha tanto o motivo que o modelo deu quanto a própria fala de despedida que o
+// prompt manda usar ("caí no atendimento automático de vocês").
+// `\b` no fim não serve: o word-boundary do JS é ASCII e "robô" termina em "ô",
+// que ele não considera letra — /\brob[ôo]\b/ NUNCA casa "robô". Usa lookahead
+// unicode no lugar.
+const HANDOFF_POR_ROBO =
+  /\b(?:rob[ôo]|bot|atendimento autom[áa]tico|autoreply|resposta autom[áa]tica|IA da loja|outra IA)(?!\p{L})/iu;
+
+function ehHandoffPorRobo(motivo: string | null | undefined, resposta: string): boolean {
+  return HANDOFF_POR_ROBO.test(`${motivo ?? ""} ${resposta ?? ""}`);
+}
+
 function pareceAutoreply(text: string): boolean {
   const t = (text || "").trim();
   if (t.length < 6) return false;
@@ -543,6 +558,57 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ status: "loop_guard" });
   }
 
+  // ── (c) Disjuntor de VOLUME — pega loop que a rajada não pega ───────────────
+  // Caso real (Interior Automóveis, 16/08): a loja tem uma IA de atendimento
+  // própria, a "Lara". As duas conversaram 20 minutos e 122 mensagens, cada uma
+  // tentando vender carro pra outra — a Lara oferecendo o Onix dela do estoque,
+  // a Mari insistindo no Onix do pátio de demonstração.
+  //
+  // Nenhuma das travas existentes pegou, e por bons motivos:
+  //   - `pareceAutoreply` procura frase de robô de recado ("agradecemos seu
+  //     contato"). A Lara escreve como gente: "Olá Mari, tudo bem?".
+  //   - a rajada exige 4 mensagens em 12s. A Lara mandava 2 ou 3 por vez, a cada
+  //     ~19s — ritmo mais humano que o de muito humano.
+  //   - a regra no prompt disparou... no minuto 19, depois de 120 mensagens. E
+  //     mesmo depois de dizer "vou deixar pro responsável ver depois", ela
+  //     mandou mais duas.
+  //
+  // Este aqui não tenta adivinhar SE é robô: olha só o tamanho. Conversa de
+  // demonstração com lojista de verdade não passa de ~20 mensagens nossas, e
+  // nunca a esse ritmo. Estourou o teto, cala e chama humano.
+  const janelaVolume = new Date(Date.now() - 15 * 60_000).toISOString();
+  const [{ count: totalAgente }, { count: agenteNaJanela }] = await Promise.all([
+    supabaseAdmin
+      .from("prospect_mensagens")
+      .select("*", { count: "exact", head: true })
+      .eq("prospect_id", prospect.id)
+      .eq("remetente", "agente"),
+    supabaseAdmin
+      .from("prospect_mensagens")
+      .select("*", { count: "exact", head: true })
+      .eq("prospect_id", prospect.id)
+      .eq("remetente", "agente")
+      .gte("created_at", janelaVolume),
+  ]);
+
+  const MAX_AGENTE_CONVERSA = 30;
+  const MAX_AGENTE_15MIN = 14;
+  const estourou =
+    (totalAgente ?? 0) >= MAX_AGENTE_CONVERSA || (agenteNaJanela ?? 0) >= MAX_AGENTE_15MIN;
+
+  if (estourou) {
+    await supabaseAdmin
+      .from("prospects")
+      .update({ ...patchBase, em_atendimento_humano: true, status: "handoff" })
+      .eq("id", prospect.id);
+    await alertarHandoff(
+      prospect,
+      `Conversa longa demais (${totalAgente} mensagens nossas, ${agenteNaJanela} nos últimos 15min) — provável IA×IA. Assuma pelo Inbox.`,
+    );
+    console.warn(`🔌 [prospeccao] Disjuntor: ${prospect.nome_empresa} — ${totalAgente} msgs do agente (${agenteNaJanela} em 15min). IA travada.`);
+    return NextResponse.json({ status: "disjuntor_volume" });
+  }
+
   // ── Carrega o histórico e gera a resposta do agente ─────────────────────────
   // O pátio vai junto: a Mari precisa dele pra ofertar carro E pra saber de qual
   // deles ela tem foto (só esses recebem [ID] no prompt).
@@ -595,9 +661,18 @@ export async function POST(req: NextRequest) {
     patchBase.proximo_contato_at = null;
     if (r.handoff) {
       patchBase.status = "handoff";
-      // NÃO seta em_atendimento_humano aqui: a IA continua respondendo o cliente
-      // até o HUMANO assumir de fato (via /api/admin/vendas/enviar, que marca o
-      // stand-by). Evita o "vácuo" em que o agente cala e ninguém responde.
+      // Em geral NÃO seta em_atendimento_humano: a IA continua respondendo até o
+      // HUMANO assumir de fato (via /api/admin/vendas/enviar), pra não deixar o
+      // vácuo em que o agente cala e ninguém responde.
+      //
+      // EXCEÇÃO: handoff por ter caído em robô. Aí continuar respondendo é
+      // exatamente o que não pode — do outro lado não tem ninguém pra esperar.
+      // A Mari chegou a dizer "vou deixar pro responsável ver depois" e mandou
+      // mais DUAS mensagens depois disso, porque a fala dela não calava nada.
+      if (ehHandoffPorRobo(r.motivo_handoff, r.resposta)) {
+        patchBase.em_atendimento_humano = true;
+        console.warn(`🤖 [prospeccao] ${prospect.nome_empresa}: handoff por robô — IA travada de verdade.`);
+      }
     } else if (r.temperatura === "QUENTE") {
       patchBase.status = "quente";
     } else {
