@@ -126,6 +126,9 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
   const [publicando, setPublicando]     = useState(false);
   const [erro, setErro]                 = useState<string | null>(null);
   const [erroToken, setErroToken]       = useState(false);
+  // Distingue "nunca conectou" de "conectou e o token venceu" — o remédio é o
+  // mesmo (refazer o OAuth), mas o texto tem que fazer sentido pro lojista.
+  const [tokenExpirado, setTokenExpirado] = useState(false);
   const [sucesso, setSucesso]           = useState(false);
 
   // Configuração
@@ -330,7 +333,14 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
       });
       const data = await res.json();
       if (!res.ok) {
-        if (data.error?.includes("Token Meta Ads não configurado")) { setErroToken(true); }
+        // Token ausente OU expirado levam ao MESMO lugar: reconectar o OAuth.
+        // Só "não configurado" batia aqui, então o token vencido (code 190, que
+        // acontece a cada 60 dias) caía na caixa vermelha genérica — texto
+        // mandando o lojista procurar um botão, em vez do botão.
+        if (res.status === 401 || /Token Meta Ads (não configurado|expirado)/.test(data.error ?? "")) {
+          setErroToken(true);
+          if (/expirado/.test(data.error ?? "") || res.status === 401) setTokenExpirado(true);
+        }
         // A Meta pode recusar vídeo nesta conta — desabilita o formato e joga o
         // lojista de volta pra foto em vez de deixá-lo tentando de novo.
         if (data.formatoIndisponivel === "reel") { setReelBloqueado(true); setFormato("foto"); }
@@ -537,16 +547,25 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
                     <div className="flex items-start gap-2">
                       <AlertCircle size={16} className="text-amber-500 shrink-0 mt-0.5" />
                       <div>
-                        <p className="text-[12px] font-bold text-amber-800 mb-1">Autorização Meta Ads necessária</p>
+                        <p className="text-[12px] font-bold text-amber-800 mb-1">
+                          {tokenExpirado ? "Conexão com o Meta venceu" : "Autorização Meta Ads necessária"}
+                        </p>
                         <p className="text-[11px] text-amber-700 leading-snug">
-                          Para criar campanhas você precisa conectar sua conta de Ads do Meta uma vez.
+                          {tokenExpirado
+                            ? "O Meta vence a autorização a cada 60 dias. Reconecte na aba que vai abrir e volte aqui para publicar."
+                            : "Para criar campanhas você precisa conectar sua conta de Ads do Meta uma vez."}
                         </p>
                       </div>
                     </div>
-                    <a href="/api/meta/connect"
+                    {/* Abre em outra aba de propósito: navegar na mesma perderia
+                        tudo que o lojista já configurou neste anúncio. */}
+                    <a href="/api/meta/connect" target="_blank" rel="noopener noreferrer"
                       className="flex items-center justify-center gap-2 w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-black uppercase tracking-wider rounded-xl transition-colors">
-                      Conectar Meta Ads agora
+                      {tokenExpirado ? "Reconectar Meta Ads" : "Conectar Meta Ads agora"}
                     </a>
+                    <p className="text-[9px] text-amber-600 text-center">
+                      Depois de autorizar, feche a aba e clique em Publicar de novo.
+                    </p>
                   </div>
                 )}
 
