@@ -9,8 +9,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { sendAvisaMessage } from "@/lib/avisa";
 import { logEventoAdmin } from "@/lib/admin-eventos";
+import { alertaInterno } from "@/lib/alerta-interno";
 import {
   diasAteBrt,
   ymdBrt,
@@ -43,11 +43,12 @@ async function alertarInterno(texto: string): Promise<boolean> {
     (process.env.AUTOZAP_AVISA_BASE_URL && process.env.AUTOZAP_AVISA_TOKEN
       ? { baseUrl: process.env.AUTOZAP_AVISA_BASE_URL, token: process.env.AUTOZAP_AVISA_TOKEN }
       : null);
-  if (!creds) {
-    console.warn("⚠️ [cobranca-vencimento] sem credenciais Avisa do remetente AutoZap — alerta não enviado.");
-    return false;
-  }
-  return sendAvisaMessage(alvo, texto, creds, { typing: false });
+  // creds pode ser null: o alerta ainda sai por e-mail. Antes, sem remetente
+  // Avisa, o cron simplesmente desistia de avisar.
+  const { entregue } = await alertaInterno(
+    "cobranca-vencimento", "Cobrança / vencimento", texto, { credsWhatsApp: creds },
+  );
+  return entregue;
 }
 
 export async function GET(req: NextRequest) {

@@ -26,6 +26,7 @@ import { sendAvisaMessage, sendAvisaImage } from "@/lib/avisa";
 import { montarMensagemEnvio } from "@/lib/transmissao";
 import { chaveDataBRT } from "@/lib/frases-motivacionais";
 import { outboundLiberado } from "@/lib/assinatura";
+import { alertaInterno } from "@/lib/alerta-interno";
 
 export const maxDuration = 300;
 
@@ -60,18 +61,9 @@ function isAuthorized(req: NextRequest): boolean {
 // Alerta interno pro gerente da AutoZap (mesmo padrão do healthcheck-agentes):
 // AUTOZAP_ALERT_WHATSAPP via instância Avisa interna AUTOZAP_AVISA_*.
 async function alertarGerente(texto: string) {
-  const alvo = process.env.AUTOZAP_ALERT_WHATSAPP;
-  const baseUrl = process.env.AUTOZAP_AVISA_BASE_URL;
-  const token = process.env.AUTOZAP_AVISA_TOKEN;
-  if (!alvo || !baseUrl || !token) {
-    console.warn("⚠️ [transmissao] AUTOZAP_ALERT_WHATSAPP/AUTOZAP_AVISA_* ausentes — alerta não enviado.");
-    return;
-  }
-  try {
-    await sendAvisaMessage(alvo, texto, { baseUrl, token }, { typing: false });
-  } catch (err) {
-    console.error("❌ [transmissao] falha ao enviar alerta interno:", err);
-  }
+  // Cai pra e-mail se a instância interna estiver fora — alerta de chip banido
+  // é exatamente o que não pode se perder.
+  await alertaInterno("transmissao-envios", "Alerta da transmissão", texto);
 }
 
 // ─── GET Handler ──────────────────────────────────────────────────────────────

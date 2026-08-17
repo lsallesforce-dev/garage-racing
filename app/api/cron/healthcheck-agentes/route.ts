@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { sendAvisaMessage } from "@/lib/avisa";
+import { alertaInterno } from "@/lib/alerta-interno";
 
 export const maxDuration = 60;
 
@@ -53,26 +53,16 @@ export async function GET(req: NextRequest) {
 
   let alertado = false;
   if (total > 0) {
-    const alvo = process.env.AUTOZAP_ALERT_WHATSAPP;
-    const baseUrl = process.env.AUTOZAP_AVISA_BASE_URL;
-    const token = process.env.AUTOZAP_AVISA_TOKEN;
-    if (alvo && baseUrl && token) {
-      const corpo =
-        `🩺 *Healthcheck dos agentes IA*\n\n` +
-        `⚠️ ${total} mensagem(ns) de fallback nas últimas 24h:\n` +
-        `• Agente das revendas (B2C): ${b2c}\n` +
-        `• Prospecção (B2B): ${b2b}\n\n` +
-        `Causa provável: cota/billing do Gemini ou JSON inválido. ` +
-        `Cheque o faturamento no Google AI Studio e os logs da Vercel.`;
-      try {
-        await sendAvisaMessage(alvo, corpo, { baseUrl, token }, { typing: false });
-        alertado = true;
-      } catch (err) {
-        console.error("❌ [healthcheck-agentes] falha ao enviar alerta:", err);
-      }
-    } else {
-      console.warn("⚠️ [healthcheck-agentes] AUTOZAP_ALERT_WHATSAPP/AUTOZAP_AVISA_* ausentes — alerta não enviado.");
-    }
+    const corpo =
+      `🩺 *Healthcheck dos agentes IA*\n\n` +
+      `⚠️ ${total} mensagem(ns) de fallback nas últimas 24h:\n` +
+      `• Agente das revendas (B2C): ${b2c}\n` +
+      `• Prospecção (B2B): ${b2b}\n\n` +
+      `Causa provável: cota/billing do Gemini ou JSON inválido. ` +
+      `Cheque o faturamento no Google AI Studio e os logs da Vercel.`;
+    ({ entregue: alertado } = await alertaInterno(
+      "healthcheck-agentes", "Agentes IA caindo em fallback", corpo,
+    ));
   }
 
   return NextResponse.json({ ok: true, desde, b2c, b2b, total, alertado });

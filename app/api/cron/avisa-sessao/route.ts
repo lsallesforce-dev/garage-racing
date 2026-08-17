@@ -19,7 +19,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { getAvisaInstanceStatus, sendAvisaMessage } from "@/lib/avisa";
+import { getAvisaInstanceStatus } from "@/lib/avisa";
+import { alertaInterno } from "@/lib/alerta-interno";
 import { avisaSessaoRegistrarQueda, avisaSessaoRegistrarVolta } from "@/lib/redis";
 import { assinaturaAtiva } from "@/lib/assinatura";
 
@@ -32,22 +33,15 @@ function isAuthorized(req: NextRequest): boolean {
 }
 
 // Alerta vai pro WhatsApp do Lucas pela instância da AutoZap — nunca pela
-// instância do tenant, que é justamente a que está fora do ar.
+// instância do tenant, que é justamente a que está fora do ar. Se essa
+// instância também estiver fora (foi o que aconteceu), cai pra e-mail.
+//
+// A versão antiga retornava `true` mesmo quando a Avisa recusava: só tratava
+// exceção, e token inválido responde HTTP 400 sem lançar. Este cron achava que
+// tinha avisado das 21h de agente mudo do Carmatti.
 async function alertar(corpo: string): Promise<boolean> {
-  const alvo = process.env.AUTOZAP_ALERT_WHATSAPP;
-  const baseUrl = process.env.AUTOZAP_AVISA_BASE_URL;
-  const token = process.env.AUTOZAP_AVISA_TOKEN;
-  if (!alvo || !baseUrl || !token) {
-    console.warn("⚠️ [avisa-sessao] AUTOZAP_ALERT_WHATSAPP/AUTOZAP_AVISA_* ausentes — alerta não enviado.");
-    return false;
-  }
-  try {
-    await sendAvisaMessage(alvo, corpo, { baseUrl, token }, { typing: false });
-    return true;
-  } catch (err) {
-    console.error("❌ [avisa-sessao] falha ao enviar alerta:", err);
-    return false;
-  }
+  const { entregue } = await alertaInterno("avisa-sessao", "Sessão de WhatsApp caiu", corpo);
+  return entregue;
 }
 
 export async function GET(req: NextRequest) {
