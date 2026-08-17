@@ -9,9 +9,27 @@ import { criarCampanhaLeadAd } from "@/lib/meta-ads";
 export async function POST(req: NextRequest) {
   const body = await req.json();
   const { veiculoId, paginaId, placement, orcamentoDiario, duracaoDias, raioKm, idadeMin, idadeMax,
-          genero, interesses, comportamentos, renda, cidadesExtras } = body;
+          genero, interesses, comportamentos, cidadesExtras,
+          objetivo, tipoOrcamento, orcamentoTotal, semDataFim, iniciaEm, regioes } = body;
 
   if (!veiculoId) return NextResponse.json({ error: "veiculoId obrigatório" }, { status: 400 });
+
+  // Pisos da Meta — barrar aqui dá mensagem em português; deixar passar dá
+  // erro 100 cru da API depois de já ter criado campanha e lead form órfãos.
+  if (tipoOrcamento === "total") {
+    if (!orcamentoTotal || Number(orcamentoTotal) < 6 * (duracaoDias ?? 7)) {
+      return NextResponse.json({
+        error: `Para ${duracaoDias ?? 7} dias, o valor total mínimo é R$ ${6 * (duracaoDias ?? 7)},00 (o Meta exige R$ 6,00 por dia).`,
+      }, { status: 400 });
+    }
+    if (semDataFim) {
+      return NextResponse.json({
+        error: "Orçamento total exige data de fim — escolha uma duração ou mude para orçamento diário.",
+      }, { status: 400 });
+    }
+  } else if (orcamentoDiario != null && Number(orcamentoDiario) < 6) {
+    return NextResponse.json({ error: "O Meta exige no mínimo R$ 6,00 por dia." }, { status: 400 });
+  }
 
   const auth = await requireVehicleOwner(veiculoId);
   if (auth.error) return auth.error;
@@ -126,38 +144,69 @@ export async function POST(req: NextRequest) {
       },
       configuracao: {
         placement:       placement ?? "facebook,instagram",
+        objetivo:        objetivo === "whatsapp" ? "whatsapp" : "leads",
         orcamentoDiario: orcamentoDiario ?? 30,
+        tipoOrcamento:   tipoOrcamento === "total" ? "total" : "diario",
+        orcamentoTotal:  orcamentoTotal ?? undefined,
         duracaoDias:     duracaoDias ?? 7,
+        semDataFim:      !!semDataFim,
+        iniciaEm:        iniciaEm ?? null,
         raioKm:          raioKm ?? 30,
         idadeMin:        idadeMin ?? 25,
         idadeMax:        idadeMax ?? 55,
         genero:          genero ?? "todos",
         interesses:      interesses ?? [],
         comportamentos:  comportamentos ?? [],
-        renda:           renda ?? "todos",
+        regioes:         regioes ?? [],
         cidadesExtras:   cidadesExtras ?? [],
       },
     });
 
     // Salva campanha no banco
-    const encerraEm = new Date(Date.now() + (duracaoDias ?? 7) * 24 * 60 * 60 * 1000);
-    await supabaseAdmin.from("meta_campanhas").insert({
-      user_id:         userId,
-      veiculo_id:      veiculoId,
-      pagina_id:       pagina.id,
-      campaign_id:     result.campaignId,
-      adset_id:        result.adsetId,
-      ad_id:           result.adId,
-      leadform_id:     result.leadformId,
-      status:          "ativo",
-      placement:       placement ?? "facebook,instagram",
+    const inicioMs = iniciaEm ? new Date(iniciaEm).getTime() : Date.now();
+    const encerraEm = new Date(inicioMs + (duracaoDias ?? 7) * 24 * 60 * 60 * 1000);
+
+    // Campos que existem desde a migration 006 — sempre gravam.
+    const linhaBase: Record<string, any> = {
+      user_id:          userId,
+      veiculo_id:       veiculoId,
+      pagina_id:        pagina.id,
+      campaign_id:      result.campaignId,
+      adset_id:         result.adsetId,
+      ad_id:            result.adId,
+      leadform_id:      result.leadformId,
+      status:           "ativo",
+      placement:        placement ?? "facebook,instagram",
       orcamento_diario: orcamentoDiario ?? 30,
-      duracao_dias:    duracaoDias ?? 7,
-      raio_km:         raioKm ?? 30,
-      idade_min:       idadeMin ?? 25,
-      idade_max:       idadeMax ?? 55,
-      encerra_em:      encerraEm.toISOString(),
-    });
+      duracao_dias:     duracaoDias ?? 7,
+      raio_km:          raioKm ?? 30,
+      idade_min:        idadeMin ?? 25,
+      idade_max:        idadeMax ?? 55,
+      encerra_em:       semDataFim ? null : encerraEm.toISOString(),
+    };
+
+    // Campos da migration 047. Se ela ainda não foi aplicada no Supabase, o
+    // insert falharia inteiro com "column does not exist" e o lojista perderia
+    // a campanha que JÁ subiu na Meta — por isso o retry só com a base.
+    const linhaCompleta = {
+      ...linhaBase,
+      objetivo:        objetivo === "whatsapp" ? "whatsapp" : "leads",
+      tipo_orcamento:  tipoOrcamento === "total" ? "total" : "diario",
+      orcamento_total: orcamentoTotal ?? null,
+      sem_data_fim:    !!semDataFim,
+      inicia_em:       iniciaEm ?? null,
+      regioes:         regioes ?? [],
+      cidades:         cidadesExtras ?? [],
+      interesses:      interesses ?? [],
+      genero:          genero ?? "todos",
+    };
+
+    const { error: insErr } = await supabaseAdmin.from("meta_campanhas").insert(linhaCompleta);
+    if (insErr) {
+      console.warn(`⚠️ [meta/ads/criar] insert completo falhou (migration 047 aplicada?): ${insErr.message}`);
+      const { error: baseErr } = await supabaseAdmin.from("meta_campanhas").insert(linhaBase);
+      if (baseErr) console.error("❌ [meta/ads/criar] insert base também falhou:", baseErr.message);
+    }
 
     return NextResponse.json({ ok: true, ...result });
   } catch (err: any) {

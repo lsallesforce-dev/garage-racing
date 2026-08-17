@@ -41,20 +41,34 @@ export interface CriarCampanhaParams {
     whatsapp: string;           // número do gerente para CTA
     privacyPolicyUrl?: string;
   };
-  configuracao: {
-    placement: string;          // "facebook" | "instagram" | "facebook,instagram"
-    orcamentoDiario: number;    // R$/dia
-    duracaoDias: number;
-    raioKm: number;
-    idadeMin: number;
-    idadeMax: number;
-    genero?: "todos" | "masculino" | "feminino";
-    interesses?: Array<{ id: string; nome: string }>;
-    comportamentos?: Array<{ id: string; nome: string }>;
-    renda?: string;
-    // cidadesExtras: se tem `key` (Meta), usa cities[]; senão usa custom_locations lat/lng
-    cidadesExtras?: Array<{ key?: string | null; lat?: number; lng?: number; nome: string }>;
-  };
+  configuracao: ConfigCampanha;
+}
+
+export type ObjetivoAnuncio = "leads" | "whatsapp";
+
+export interface ConfigCampanha {
+  placement: string;          // "facebook" | "instagram" | "facebook,instagram"
+  /** "leads" = formulário instantâneo | "whatsapp" = abre conversa (CTWA) */
+  objetivo?: ObjetivoAnuncio;
+  orcamentoDiario: number;    // R$/dia — usado quando tipoOrcamento = "diario"
+  /** "total" usa lifetime_budget e EXIGE data de fim (regra da Meta). */
+  tipoOrcamento?: "diario" | "total";
+  orcamentoTotal?: number;    // R$ no período inteiro
+  duracaoDias: number;
+  /** Campanha sem data de fim — roda até o lojista pausar. Só com orçamento diário. */
+  semDataFim?: boolean;
+  /** ISO — começa a veicular no futuro. Vazio = já. */
+  iniciaEm?: string | null;
+  raioKm: number;
+  idadeMin: number;
+  idadeMax: number;
+  genero?: "todos" | "masculino" | "feminino";
+  interesses?: Array<{ id: string; nome: string }>;
+  comportamentos?: Array<{ id: string; nome: string }>;
+  /** Estados inteiros (key de adgeolocation type=region). Ignora o teto de raio. */
+  regioes?: Array<{ key: string; nome: string }>;
+  // cidadesExtras: se tem `key` (Meta), usa cities[]; senão usa custom_locations lat/lng
+  cidadesExtras?: Array<{ key?: string | null; lat?: number; lng?: number; nome: string }>;
 }
 
 export interface CampanhaResult {
@@ -164,6 +178,115 @@ export async function criarLeadForm(
   return data.id as string;
 }
 
+// ─── Targeting ────────────────────────────────────────────────────────────────
+
+/**
+ * Teto de raio do custom_locations. A Meta documenta 0.63–50 milhas nos EUA e,
+ * fora deles, a escala vira km com máximo de 70. O preset de 80 km que existia
+ * na UI estourava esse limite e derrubava o adset com erro 100.
+ * Para alcançar além disso o caminho é `regions` (estado inteiro), que não tem
+ * teto de raio — não adianta aumentar o número aqui.
+ */
+export const RAIO_MAX_KM = 70;
+export const RAIO_MIN_KM = 1;
+
+/**
+ * Monta o targeting_spec. Exportado porque o delivery_estimate precisa
+ * EXATAMENTE do mesmo objeto — estimativa feita com targeting diferente do que
+ * vai ao ar é pior que estimativa nenhuma.
+ */
+export function montarTargeting(
+  cfg: ConfigCampanha,
+  garagem: { latitude: number; longitude: number },
+): Record<string, any> {
+  const publisherPlatforms: string[] = [];
+  const facebookPositions: string[] = [];
+  const instagramPositions: string[] = [];
+  if (cfg.placement.includes("facebook")) {
+    publisherPlatforms.push("facebook");
+    facebookPositions.push("feed", "marketplace");
+  }
+  if (cfg.placement.includes("instagram")) {
+    publisherPlatforms.push("instagram");
+    instagramPositions.push("stream", "story", "reels");
+  }
+
+  // Gênero: 1=masculino, 2=feminino, vazio=todos
+  const genders: number[] =
+    cfg.genero === "masculino" ? [1] :
+    cfg.genero === "feminino"  ? [2] : [];
+
+  // Interesses + Comportamentos → flexible_spec
+  const flexSpec: Array<Record<string, any>> = [];
+  if (cfg.interesses?.length) {
+    flexSpec.push({ interests: cfg.interesses.map(i => ({ id: i.id, name: i.nome })) });
+  }
+  if (cfg.comportamentos?.length) {
+    flexSpec.push({ behaviors: cfg.comportamentos.map(b => ({ id: b.id, name: b.nome })) });
+  }
+
+  const raioKm = Math.min(Math.max(cfg.raioKm || 30, RAIO_MIN_KM), RAIO_MAX_KM);
+
+  // Separa cidades extras: com key Meta → cities[]; com lat/lng → custom_locations
+  const extrasComKey = (cfg.cidadesExtras ?? []).filter(c => c.key);
+  const extrasSemKey = (cfg.cidadesExtras ?? []).filter(c => !c.key && c.lat && c.lng);
+
+  const customLocations = [
+    { latitude: garagem.latitude, longitude: garagem.longitude, radius: raioKm, distance_unit: "kilometer" },
+    ...extrasSemKey.map(c => ({
+      latitude: c.lat!, longitude: c.lng!, radius: raioKm, distance_unit: "kilometer",
+    })),
+  ];
+
+  const citiesTargeting = extrasComKey.map(c => ({
+    key: c.key, radius: raioKm, distance_unit: "kilometer",
+  }));
+
+  const regions = (cfg.regioes ?? []).filter(r => r.key).map(r => ({ key: r.key }));
+
+  // Estado inteiro selecionado torna o pino de raio redundante e conflitante:
+  // a Meta soma as áreas, então o custom_location só encolheria o relatório de
+  // alcance sem mudar a entrega. Com região, o pino sai.
+  const geo: Record<string, any> = regions.length
+    ? { regions, ...(citiesTargeting.length ? { cities: citiesTargeting } : {}) }
+    : {
+        custom_locations: customLocations,
+        ...(citiesTargeting.length ? { cities: citiesTargeting } : {}),
+      };
+
+  return {
+    geo_locations: geo,
+    age_min: cfg.idadeMin,
+    age_max: cfg.idadeMax,
+    publisher_platforms: publisherPlatforms,
+    targeting_automation: { advantage_audience: 0 }, // Meta exige a flag (0 = público manual)
+    ...(facebookPositions.length  ? { facebook_positions: facebookPositions }   : {}),
+    ...(instagramPositions.length ? { instagram_positions: instagramPositions } : {}),
+    ...(genders.length            ? { genders }                                 : {}),
+    ...(flexSpec.length           ? { flexible_spec: flexSpec }                 : {}),
+  };
+}
+
+/** Público estimado para um targeting, antes de gastar 1 centavo. */
+export async function estimarAlcance(
+  adAccountId: string,
+  adToken: string,
+  targeting: Record<string, any>,
+  optimizationGoal: string,
+): Promise<{ pronto: boolean; dau: number | null; mau: number | null }> {
+  const data = await graphGet(`${adAccountId}/delivery_estimate`, adToken, {
+    optimization_goal: optimizationGoal,
+    targeting_spec: JSON.stringify(targeting),
+  });
+  const e = data.data?.[0];
+  if (!e) return { pronto: false, dau: null, mau: null };
+  return {
+    pronto: e.estimate_ready ?? true,
+    dau: e.estimate_dau ?? null,
+    mau: e.estimate_mau ?? null,
+  };
+}
+
 // ─── Criar Campanha Completa ──────────────────────────────────────────────────
 
 export async function criarCampanhaLeadAd(p: CriarCampanhaParams): Promise<CampanhaResult> {
@@ -188,18 +311,24 @@ export async function criarCampanhaLeadAd(p: CriarCampanhaParams): Promise<Campa
     console.warn(`⚠️ /adimages indisponível (${e.message?.slice(0, 80)}) — usando picture URL no creative`);
   }
 
-  // 2. Lead Form — usa pageAccessToken (operação no Page)
+  // 2. Lead Form — só no objetivo de formulário. No CTWA o "formulário" é a
+  //    própria conversa do WhatsApp, então não existe leadgen_form.
+  const objetivo: ObjetivoAnuncio = configuracao.objetivo ?? "leads";
+  const ehWhatsApp = objetivo === "whatsapp";
+
   const privacyUrl = garagem.privacyPolicyUrl ??
     `${process.env.NEXT_PUBLIC_APP_URL ?? "https://www.autozap.digital"}/privacidade`;
-  const leadformId = await criarLeadForm(pageId, pageAccessToken, veiculoNome, privacyUrl);
+  const leadformId = ehWhatsApp
+    ? ""
+    : await criarLeadForm(pageId, pageAccessToken, veiculoNome, privacyUrl);
 
   // 3. Campaign — usa adToken
   // is_adset_budget_sharing_enabled é OBRIGATÓRIO desde a mudança da Meta
   // (erro 100/4834011 se omitido). false = cada ad set tem seu próprio
-  // orçamento (nosso modelo: daily_budget no ad set, não na campanha).
+  // orçamento (nosso modelo: budget no ad set, não na campanha).
   const campaign = await graphPost(`${adAccountId}/campaigns`, adToken, {
     name: `AutoZap — ${veiculoNome}`,
-    objective: "OUTCOME_LEADS",
+    objective: "OUTCOME_LEADS", // CTWA também aceita OUTCOME_LEADS (otimiza por conversa)
     status: "ACTIVE",
     special_ad_categories: [],
     is_adset_budget_sharing_enabled: false,
@@ -208,84 +337,37 @@ export async function criarCampanhaLeadAd(p: CriarCampanhaParams): Promise<Campa
 
   // 4. Ad Set (targeting + budget)
   const agora = new Date();
-  const encerraEm = new Date(agora.getTime() + configuracao.duracaoDias * 24 * 60 * 60 * 1000);
+  const inicio = configuracao.iniciaEm ? new Date(configuracao.iniciaEm) : agora;
+  const encerraEm = new Date(inicio.getTime() + configuracao.duracaoDias * 24 * 60 * 60 * 1000);
 
-  // Placements: facebook e/ou instagram
-  const publisherPlatforms: string[] = [];
-  const facebookPositions: string[] = [];
-  const instagramPositions: string[] = [];
-  if (configuracao.placement.includes("facebook")) {
-    publisherPlatforms.push("facebook");
-    facebookPositions.push("feed", "marketplace");
-  }
-  if (configuracao.placement.includes("instagram")) {
-    publisherPlatforms.push("instagram");
-    instagramPositions.push("stream", "story", "reels");
-  }
+  const targeting = montarTargeting(configuracao, garagem);
+  const flexSpec = targeting.flexible_spec ?? [];
 
-  // Gênero: 1=masculino, 2=feminino, vazio=todos
-  const genders: number[] =
-    configuracao.genero === "masculino" ? [1] :
-    configuracao.genero === "feminino"  ? [2] : [];
-
-  // Interesses + Comportamentos → flexible_spec
-  const flexSpec: Array<Record<string, any>> = [];
-  if (configuracao.interesses?.length) {
-    flexSpec.push({ interests: configuracao.interesses.map(i => ({ id: i.id, name: i.nome })) });
-  }
-  if (configuracao.comportamentos?.length) {
-    flexSpec.push({ behaviors: configuracao.comportamentos.map(b => ({ id: b.id, name: b.nome })) });
-  }
-
-  // Separa cidades extras: com key Meta → cities[]; com lat/lng → custom_locations
-  const extrasComKey  = (configuracao.cidadesExtras ?? []).filter(c => c.key);
-  const extrasSemKey  = (configuracao.cidadesExtras ?? []).filter(c => !c.key && c.lat && c.lng);
-
-  // Meta limita custom_locations a 50 milhas (~80 km). Raios maiores (presets
-  // 100/200/500) dão erro 100 "raio muito grande" — então clampa em 80.
-  const raioKm = Math.min(Math.max(configuracao.raioKm || 30, 1), 80);
-
-  const customLocations = [
-    { latitude: garagem.latitude, longitude: garagem.longitude, radius: raioKm, distance_unit: "kilometer" },
-    ...extrasSemKey.map(c => ({
-      latitude: c.lat!, longitude: c.lng!, radius: raioKm, distance_unit: "kilometer",
-    })),
-  ];
-
-  const citiesTargeting = extrasComKey.map(c => ({
-    key:           c.key,
-    radius:        raioKm,
-    distance_unit: "kilometer",
-  }));
-
-  const targeting: Record<string, any> = {
-    geo_locations: {
-      custom_locations: customLocations,
-      ...(citiesTargeting.length ? { cities: citiesTargeting } : {}),
-    },
-    age_min: configuracao.idadeMin,
-    age_max: configuracao.idadeMax,
-    publisher_platforms: publisherPlatforms,
-    targeting_automation: { advantage_audience: 0 }, // Meta exige a flag (0 = público manual)
-    ...(facebookPositions.length  ? { facebook_positions: facebookPositions }   : {}),
-    ...(instagramPositions.length ? { instagram_positions: instagramPositions } : {}),
-    ...(genders.length            ? { genders }                                 : {}),
-    ...(flexSpec.length           ? { flexible_spec: flexSpec }                 : {}),
-  };
+  // Orçamento: diário (roda indefinidamente) ou total (lifetime, exige fim).
+  // A Meta rejeita lifetime_budget sem end_time — por isso a data volta a ser
+  // obrigatória quando o lojista escolhe "valor total".
+  const usaTotal = configuracao.tipoOrcamento === "total" && !!configuracao.orcamentoTotal;
+  const semFim = !usaTotal && !!configuracao.semDataFim;
 
   // 4. AdSet — usa adToken
   const adsetBody: Record<string, any> = {
     campaign_id:       campaignId,
     name:              `AdSet — ${veiculoNome}`,
-    optimization_goal: "LEAD_GENERATION",
+    optimization_goal: ehWhatsApp ? "CONVERSATIONS" : "LEAD_GENERATION",
     billing_event:     "IMPRESSIONS",
     bid_strategy:      "LOWEST_COST_WITHOUT_CAP", // lance automático (sem bid_amount)
-    destination_type:  "ON_AD",                   // lead form abre no anúncio (instant form)
-    daily_budget:      Math.round(configuracao.orcamentoDiario * 100), // centavos
-    start_time:        agora.toISOString(),
-    end_time:          encerraEm.toISOString(),
+    // ON_AD = instant form no próprio anúncio; WHATSAPP = abre a conversa
+    destination_type:  ehWhatsApp ? "WHATSAPP" : "ON_AD",
+    ...(usaTotal
+      ? { lifetime_budget: Math.round(configuracao.orcamentoTotal! * 100) }
+      : { daily_budget:    Math.round(configuracao.orcamentoDiario * 100) }),
+    start_time:        inicio.toISOString(),
+    ...(semFim ? {} : { end_time: encerraEm.toISOString() }),
     targeting,
-    promoted_object:   { page_id: pageId },
+    promoted_object:   {
+      page_id: pageId,
+      ...(ehWhatsApp && garagem.whatsapp ? { whatsapp_phone_number: garagem.whatsapp } : {}),
+    },
     status:            "ACTIVE",
   };
 
@@ -311,17 +393,43 @@ export async function criarCampanhaLeadAd(p: CriarCampanhaParams): Promise<Campa
   const adMessage =
     `🚗 ${veiculoNome}${veiculo.cor ? ` — ${veiculo.cor}` : ""}\n` +
     `💰 ${precoFormatado} | ${kmFormatado}\n\n` +
-    `Preencha o formulário e nossa equipe entra em contato pelo WhatsApp! 📲`;
+    (ehWhatsApp
+      ? `Chama no WhatsApp que a gente te manda fotos, ficha e condições na hora! 📲`
+      : `Preencha o formulário e nossa equipe entra em contato pelo WhatsApp! 📲`);
 
   const linkData: Record<string, any> = {
     message:         adMessage,
     name:            veiculoNome,
     description:     `${precoFormatado} — ${garagem.nome}`,
-    link:            process.env.NEXT_PUBLIC_APP_URL ?? "https://www.autozap.digital",
     // image_hash se o upload funcionou; senão picture (URL) — evita o #3 do /adimages
     ...(imageHash ? { image_hash: imageHash } : { picture: veiculo.fotoUrl }),
-    // lead_gen_form_id vai DENTRO de call_to_action.value (não no topo do link_data)
-    call_to_action:  { type: "LEARN_MORE", value: { lead_gen_form_id: leadformId } },
+    ...(ehWhatsApp
+      ? {
+          // CTWA: o link é sempre o endpoint do WhatsApp — o número vem do
+          // promoted_object/Página, não da URL.
+          link: "https://api.whatsapp.com/send",
+          call_to_action: { type: "WHATSAPP_MESSAGE", value: { app_destination: "WHATSAPP" } },
+          // Primeira bolha já sai preenchida com o carro: é isso que o agente lê
+          // pra saber qual veículo o cliente viu (mesmo papel do origem_mensagem).
+          page_welcome_message: JSON.stringify({
+            type: "VISUAL_EDITOR",
+            version: 2,
+            landing_screen_type: "welcome_message",
+            media_type: "text",
+            text_format: { customer_action_type: "autofill_message" },
+            user_edit: false,
+            surface: "visual_editor_new",
+            message: {
+              autofill_message: { content: `Olá! Tenho interesse no ${veiculoNome} (${precoFormatado}).` },
+              text: `Oi! Vi o ${veiculoNome} e quero mais informações.`,
+            },
+          }),
+        }
+      : {
+          link: process.env.NEXT_PUBLIC_APP_URL ?? "https://www.autozap.digital",
+          // lead_gen_form_id vai DENTRO de call_to_action.value (não no topo do link_data)
+          call_to_action: { type: "LEARN_MORE", value: { lead_gen_form_id: leadformId } },
+        }),
   };
 
   const storySpec: Record<string, any> = { page_id: pageId, link_data: linkData };
@@ -344,10 +452,14 @@ export async function criarCampanhaLeadAd(p: CriarCampanhaParams): Promise<Campa
   });
   const adId = ad.id as string;
 
-  // 7. Inscreve a página para receber webhook de leadgen
-  await graphPost(`${pageId}/subscribed_apps`, pageAccessToken, {
-    subscribed_fields: ["leadgen"],
-  }).catch((e) => console.warn("⚠️ subscribed_apps falhou (pode já estar inscrito):", e.message));
+  // 7. Inscreve a página para receber webhook de leadgen.
+  //    No CTWA não há leadgen: o lead entra pelo webhook do próprio WhatsApp,
+  //    com o adReferral que o process-whatsapp já lê pra marcar origem=meta_ads.
+  if (!ehWhatsApp) {
+    await graphPost(`${pageId}/subscribed_apps`, pageAccessToken, {
+      subscribed_fields: ["leadgen"],
+    }).catch((e) => console.warn("⚠️ subscribed_apps falhou (pode já estar inscrito):", e.message));
+  }
 
   return { campaignId, adsetId, adId, leadformId };
 }
