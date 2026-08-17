@@ -5,6 +5,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { normalizarOrigem, origemLabel } from "@/lib/origens";
+
+// O PostgREST devolve no máximo 1000 linhas por request. Tenant com mais leads
+// que isso na janela tinha o card de origem truncado sem avisar — por isso a
+// query de origens é paginada.
+const PAGINA = 1000;
+const TETO_ORIGENS = 20000;
+
+/** Leads da janela de origem, paginados — devolve no formato do Promise.all. */
+async function buscarOrigens(userId: string, desde: string) {
+  const rows: any[] = [];
+  for (let from = 0; from < TETO_ORIGENS; from += PAGINA) {
+    const { data, error } = await supabaseAdmin.from("leads")
+      .select("id, origem, etapa_funil, status, veiculos(preco_sugerido, preco_venda_final)")
+      .eq("user_id", userId)
+      .gte("created_at", desde)
+      .order("created_at", { ascending: true })
+      .range(from, from + PAGINA - 1);
+    if (error) { console.error("❌ [funil] erro ao paginar origens:", error); break; }
+    const linhas = data ?? [];
+    rows.push(...linhas);
+    if (linhas.length < PAGINA) break;
+  }
+  return { data: rows };
+}
 
 export async function GET(req: NextRequest) {
   const { user, error: authError } = await requireAuth();
@@ -37,6 +62,7 @@ export async function GET(req: NextRequest) {
     { count: followupsEnviados },
     { count: leadsQuente },
     { data: semAtendimentoRows },
+    { data: agendaLeadIds },
   ] = await Promise.all([
     // Todos os leads dos últimos 6 meses com dados do veículo
     supabaseAdmin.from("leads")
@@ -96,10 +122,7 @@ export async function GET(req: NextRequest) {
       .eq("em_atendimento_humano", true),
 
     // Origens dos leads (últimos 6 meses) — com etapa/status/valor para medir conversão por canal
-    supabaseAdmin.from("leads")
-      .select("origem, etapa_funil, status, veiculos(preco_sugerido)")
-      .eq("user_id", userId)
-      .gte("created_at", limite6m.toISOString()),
+    buscarOrigens(userId, limite6m.toISOString()),
 
     // Mensagens enviadas pela IA — hoje
     supabaseAdmin.from("mensagens")
@@ -138,6 +161,16 @@ export async function GET(req: NextRequest) {
     // Regra centralizada na função SQL leads_sem_atendimento_ids — a mesma usada no
     // filtro "Sem Atendimento" do chat, pra dashboard e chat baterem sempre.
     supabaseAdmin.rpc("leads_sem_atendimento_ids", { p_user_id: userId }),
+
+    // Leads com agendamento REAL — é isso que conta como "visita" por canal.
+    // etapa_funil='AGENDADO' é o estágio ATUAL: quem visitou e comprou já saiu
+    // dele, então o card subcontava visita justamente nos canais que vendem.
+    supabaseAdmin.from("agenda")
+      .select("lead_id")
+      .eq("user_id", userId)
+      .not("lead_id", "is", null)
+      .gte("created_at", limite6m.toISOString())
+      .limit(TETO_ORIGENS),
   ]);
 
   const leadsSemAtendimento = (semAtendimentoRows as { lead_id: string }[] | null)?.length ?? 0;
@@ -184,39 +217,30 @@ export async function GET(req: NextRequest) {
   });
 
   // ── Origem dos leads (volume + conversão + valor por canal) ───────────────────
-  const ORIGEM_LABELS: Record<string, string> = {
-    meta_ads:      "Meta Ads",
-    olx:           "OLX",
-    webmotors:     "Webmotors",
-    icarros:       "iCarros",
-    napista:       "Na Pista",
-    manual:        "Cadastro Manual",
-    site:          "Site / Vitrine",
-    portal:        "Portal AutoZap",
-    link_whatsapp: "Link WhatsApp",
-    ligacao:       "Ligação",
-    whatsapp:      "WhatsApp Direto",
-  };
+  // Mesma semântica da página /origem-leads: visita = registro real na `agenda`,
+  // valor = preço realizado. Labels vêm do mapa único em lib/origens.ts.
+  const leadsComAgenda = new Set(
+    ((agendaLeadIds ?? []) as { lead_id: string | null }[]).map(a => a.lead_id).filter(Boolean) as string[]
+  );
 
   type OrigemAgg = { count: number; quentes: number; agendados: number; vendas: number; valorVendido: number };
   const origemMap: Record<string, OrigemAgg> = {};
   for (const row of (origensRaw ?? []) as any[]) {
-    const origem = (row.origem as string) || "whatsapp";
+    const origem = normalizarOrigem(row.origem);
     const agg = (origemMap[origem] ??= { count: 0, quentes: 0, agendados: 0, vendas: 0, valorVendido: 0 });
     agg.count++;
-    const etapa = row.etapa_funil as string;
     if (row.status === "QUENTE") agg.quentes++;
-    if (etapa === "AGENDADO") agg.agendados++;
-    if (etapa === "VENDIDO") {
+    if (leadsComAgenda.has(row.id)) agg.agendados++;
+    if (row.etapa_funil === "VENDIDO") {
       agg.vendas++;
       const v = Array.isArray(row.veiculos) ? row.veiculos[0] : row.veiculos;
-      agg.valorVendido += Number(v?.preco_sugerido) || 0;
+      agg.valorVendido += Number(v?.preco_venda_final) || Number(v?.preco_sugerido) || 0;
     }
   }
   const origens = Object.entries(origemMap)
     .map(([key, a]) => ({
       key,
-      label: ORIGEM_LABELS[key] ?? key,
+      label: origemLabel(key),
       count: a.count,
       quentes: a.quentes,
       agendados: a.agendados,

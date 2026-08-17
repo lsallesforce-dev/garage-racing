@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useUserRole } from "@/components/SidebarWrapper";
+import { origemCfg } from "@/lib/origens";
 import {
   Send, MessageSquare, Phone, Bot, ArrowLeft,
   Search, User, Zap, ChevronDown, Trash2, Kanban, X, Mic,
@@ -52,25 +53,8 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; dot: string 
   FRIO:     { label: "Frio",      color: "text-blue-600 bg-blue-50 border-blue-100",       dot: "bg-blue-400"  },
 };
 
-// De onde o lead veio (campo `origem`). Mantém os MESMOS símbolos/labels/cores do card
-// "Origem dos Leads" do dashboard — ver app/(main)/dashboard/page.tsx (ORIGEM_CONFIG) e
-// app/api/dashboard/funil/route.ts (ORIGEM_LABELS). Alterou um, alinhe o outro.
-const ORIGEM_CONFIG: Record<string, { label: string; emoji: string; color: string }> = {
-  whatsapp:      { label: "WhatsApp Direto", emoji: "💬", color: "bg-green-50 text-green-600 border-green-200"       },
-  meta_ads:      { label: "Meta Ads",        emoji: "📘", color: "bg-blue-50 text-blue-600 border-blue-200"          },
-  olx:           { label: "OLX",             emoji: "🟠", color: "bg-orange-50 text-orange-600 border-orange-200"    },
-  webmotors:     { label: "Webmotors",       emoji: "🔴", color: "bg-red-50 text-red-600 border-red-200"            },
-  icarros:       { label: "iCarros",         emoji: "🚗", color: "bg-purple-50 text-purple-600 border-purple-200"   },
-  napista:       { label: "Na Pista",        emoji: "🏁", color: "bg-green-50 text-green-600 border-green-200"       },
-  site:          { label: "Site / Vitrine",  emoji: "🌐", color: "bg-teal-50 text-teal-600 border-teal-200"         },
-  link_whatsapp: { label: "Link WhatsApp",   emoji: "🔗", color: "bg-emerald-50 text-emerald-600 border-emerald-200"},
-  manual:        { label: "Cadastro Manual", emoji: "✍️", color: "bg-gray-50 text-gray-500 border-gray-200"         },
-  ligacao:       { label: "Ligação",         emoji: "📞", color: "bg-amber-50 text-amber-600 border-amber-200"      },
-};
-function origemCfg(origem: string | null | undefined) {
-  const key = origem || "whatsapp"; // sem origem = WhatsApp Direto (igual ao dashboard)
-  return ORIGEM_CONFIG[key] ?? { label: key, emoji: "📥", color: "bg-gray-50 text-gray-500 border-gray-200" };
-}
+// De onde o lead veio (campo `origem`) — mapa único em lib/origens.ts, o mesmo
+// usado pelo dashboard e pela página /origem-leads.
 
 const FILTROS = ["Todos", "QUENTE", "MORNO", "FRIO", "HUMANO", "AGUARDANDO_IA", "SEM_ATENDIMENTO", "PROBLEMA"] as const;
 type Filtro = typeof FILTROS[number];
@@ -598,7 +582,7 @@ function CentralChatInner() {
                       {/* Origem do lead */}
                       <span
                         title={lead.origem_mensagem || `Origem: ${origem.label}`}
-                        className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[8px] font-black uppercase tracking-wider border ${origem.color}`}
+                        className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[8px] font-black uppercase tracking-wider border ${origem.badge}`}
                       >
                         <span className="not-italic">{origem.emoji}</span>
                         {origem.label}
@@ -667,7 +651,7 @@ function CentralChatInner() {
                   {origemInfo && (
                     <span
                       title={selectedLead.origem_mensagem || `Origem: ${origemInfo.label}`}
-                      className={`inline-flex items-center gap-1 text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full border ${origemInfo.color}`}
+                      className={`inline-flex items-center gap-1 text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full border ${origemInfo.badge}`}
                     >
                       <span className="not-italic">{origemInfo.emoji}</span>
                       {origemInfo.label}
