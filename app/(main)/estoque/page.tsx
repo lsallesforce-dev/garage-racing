@@ -4,7 +4,77 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import { useUserRole } from "@/components/SidebarWrapper";
-import { Edit3, Plus, Car, Zap, Search, ArrowRight, Trash2, Share2, Copy, Check, X, Loader2, RotateCcw, Save } from "lucide-react";
+import PublicarMetaButton from "@/components/PublicarMetaButton";
+import { midiaDoVeiculo, melhorFormato } from "@/lib/veiculo-midia";
+import { Edit3, Plus, Car, Zap, Search, ArrowRight, Trash2, Share2, Copy, Check, X, Loader2, RotateCcw, Save, Megaphone, Store } from "lucide-react";
+
+/**
+ * Ação "Anunciar" no card do estoque.
+ * Meta abre o mesmo modal usado em /marketing (reuso, nada novo); os portais
+ * (OLX/Webmotors/ML) continuam morando em /marketing → Portais, então aqui vai
+ * só um atalho pra lá em vez de duplicar aquele fluxo.
+ */
+function AnunciarEstoque({ carro }: { carro: any }) {
+  const [aberto, setAberto] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const midia = midiaDoVeiculo(carro);
+  const semArte = midia.formatosDisponiveis.length === 0;
+
+  return (
+    <>
+      <div className="relative">
+        <button
+          onClick={() => setMenu(v => !v)}
+          onBlur={() => setTimeout(() => setMenu(false), 180)}
+          className="flex items-center gap-2 px-4 py-3 md:px-6 md:py-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white text-[10px] font-black uppercase italic rounded-2xl hover:from-blue-700 hover:to-purple-700 transition-all tracking-widest shadow-lg shadow-blue-200"
+        >
+          <Megaphone size={14} /> Anunciar
+        </button>
+
+        {menu && (
+          <div className="absolute right-0 top-full mt-2 w-56 bg-white border border-gray-100 rounded-2xl shadow-xl z-30 overflow-hidden">
+            <button
+              onMouseDown={() => { setMenu(false); if (!semArte) setAberto(true); }}
+              disabled={semArte}
+              className="w-full flex items-start gap-2.5 px-4 py-3 hover:bg-blue-50 transition-colors text-left disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Megaphone size={13} className="text-blue-600 mt-0.5 shrink-0" />
+              <span>
+                <span className="block text-[11px] font-black text-gray-900">Meta Ads</span>
+                <span className="block text-[9px] text-gray-400">
+                  {semArte ? "Adicione uma foto primeiro" : `Facebook e Instagram · ${melhorFormato(midia)}`}
+                </span>
+              </span>
+            </button>
+            <Link
+              href="/marketing?tab=portais"
+              className="w-full flex items-start gap-2.5 px-4 py-3 hover:bg-gray-50 transition-colors text-left border-t border-gray-50"
+            >
+              <Store size={13} className="text-gray-500 mt-0.5 shrink-0" />
+              <span>
+                <span className="block text-[11px] font-black text-gray-900">Portais</span>
+                <span className="block text-[9px] text-gray-400">OLX, Webmotors e Mercado Livre</span>
+              </span>
+            </Link>
+          </div>
+        )}
+      </div>
+
+      {aberto && (
+        <PublicarMetaButton
+          veiculoId={carro.id}
+          marca={carro.marca ?? ""}
+          modelo={carro.modelo ?? ""}
+          ano={carro.ano_modelo ?? carro.ano ?? ""}
+          fotoUrl={midia.imagemPadrao}
+          formatoInicial={melhorFormato(midia)}
+          defaultOpen
+          onClose={() => setAberto(false)}
+        />
+      )}
+    </>
+  );
+}
 
 export default function ListaEstoque() {
   const { effectiveUserId, isVendedor } = useUserRole();
@@ -355,6 +425,11 @@ export default function ListaEstoque() {
                           >
                             <Share2 size={14} /> Repasse
                           </button>
+                        )}
+                        {/* Anunciar direto do estoque — antes a página só listava
+                            e editava; toda publicação vivia em /marketing. */}
+                        {carro.status_venda !== "VENDIDO" && (
+                          <AnunciarEstoque carro={carro} />
                         )}
                         <Link
                             href={`/veiculo/${carro.id}`}

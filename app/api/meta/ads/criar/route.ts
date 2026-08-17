@@ -4,13 +4,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireVehicleOwner, getEffectiveUserId } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { criarCampanhaLeadAd } from "@/lib/meta-ads";
+import { criarCampanhaLeadAd, MetaVideoBloqueadoError } from "@/lib/meta-ads";
+import { midiaDoVeiculo, COLUNAS_MIDIA, type FormatoAnuncio } from "@/lib/veiculo-midia";
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
   const { veiculoId, paginaId, placement, orcamentoDiario, duracaoDias, raioKm, idadeMin, idadeMax,
           genero, interesses, comportamentos, cidadesExtras,
-          objetivo, tipoOrcamento, orcamentoTotal, semDataFim, iniciaEm, regioes } = body;
+          objetivo, tipoOrcamento, orcamentoTotal, semDataFim, iniciaEm, regioes,
+          formato, legenda, usarCapaKit } = body;
 
   if (!veiculoId) return NextResponse.json({ error: "veiculoId obrigatório" }, { status: 400 });
 
@@ -38,13 +40,31 @@ export async function POST(req: NextRequest) {
   // Busca dados do veículo
   const { data: veiculo } = await supabaseAdmin
     .from("veiculos")
-    .select("id, marca, modelo, versao, ano, ano_modelo, preco_sugerido, quilometragem_estimada, cor, capa_marketing_url, fotos")
+    .select(`id, marca, modelo, versao, ano, ano_modelo, preco_sugerido, quilometragem_estimada, cor, ${COLUNAS_MIDIA}`)
     .eq("id", veiculoId)
     .single();
 
   if (!veiculo) return NextResponse.json({ error: "Veículo não encontrado" }, { status: 404 });
 
-  const fotoUrl = veiculo.capa_marketing_url ?? veiculo.fotos?.[0];
+  // Artes do Kit de Postagem. Antes daqui o anúncio lia só `capa_marketing_url`
+  // e caía na foto crua — a capa templatada do kit vivia em OUTRA coluna
+  // (`marketing_capa_url`) que nenhum caminho de anúncio olhava.
+  const midia = midiaDoVeiculo(veiculo as any);
+  const formatoEscolhido: FormatoAnuncio =
+    formato === "carrossel" || formato === "reel" ? formato : "foto";
+
+  if (!midia.formatosDisponiveis.includes(formatoEscolhido)) {
+    return NextResponse.json({
+      error: formatoEscolhido === "reel"
+        ? "Este carro ainda não tem reel pronto — gere no Kit de Postagem."
+        : formatoEscolhido === "carrossel"
+          ? "Este carro não tem carrossel com 2+ imagens — gere no Kit de Postagem."
+          : "Veículo sem foto — adicione uma foto antes de criar o anúncio",
+    }, { status: 400 });
+  }
+
+  // usarCapaKit=false = lojista pediu explicitamente a foto original.
+  const fotoUrl = (usarCapaKit === false ? midia.fotoCrua : midia.imagemPadrao) ?? midia.fotoCrua;
   if (!fotoUrl) return NextResponse.json({ error: "Veículo sem foto — adicione uma foto antes de criar o anúncio" }, { status: 400 });
 
   // Busca página conectada
@@ -135,6 +155,9 @@ export async function POST(req: NextRequest) {
         km:     veiculo.quilometragem_estimada ?? 0,
         cor:    veiculo.cor ?? undefined,
         fotoUrl,
+        storyUrl:  midia.storyKit,
+        carrossel: midia.carrossel,
+        reelUrl:   midia.reel,
       },
       garagem: {
         nome:      garage?.nome_fantasia || garage?.nome_empresa || "AutoZap",
@@ -145,6 +168,8 @@ export async function POST(req: NextRequest) {
       configuracao: {
         placement:       placement ?? "facebook,instagram",
         objetivo:        objetivo === "whatsapp" ? "whatsapp" : "leads",
+        formato:         formatoEscolhido,
+        legenda:         typeof legenda === "string" ? legenda : null,
         orcamentoDiario: orcamentoDiario ?? 30,
         tipoOrcamento:   tipoOrcamento === "total" ? "total" : "diario",
         orcamentoTotal:  orcamentoTotal ?? undefined,
@@ -199,6 +224,8 @@ export async function POST(req: NextRequest) {
       cidades:         cidadesExtras ?? [],
       interesses:      interesses ?? [],
       genero:          genero ?? "todos",
+      formato:         formatoEscolhido,
+      criativo_url:    formatoEscolhido === "reel" ? midia.reel : formatoEscolhido === "carrossel" ? midia.carrossel[0] : fotoUrl,
     };
 
     const { error: insErr } = await supabaseAdmin.from("meta_campanhas").insert(linhaCompleta);
@@ -213,6 +240,13 @@ export async function POST(req: NextRequest) {
     console.error("❌ Erro ao criar campanha Meta:", err.message);
 
     const msg = err.message ?? "";
+
+    // Vídeo bloqueado: mensagem própria e 400, porque a saída não é mexer em
+    // permissão — é republicar como foto ou carrossel. Vem ANTES do check de #3
+    // (o motivo original costuma ser exatamente um #3 no /advideos).
+    if (err instanceof MetaVideoBloqueadoError) {
+      return NextResponse.json({ error: msg, formatoIndisponivel: "reel" }, { status: 400 });
+    }
 
     // Erro #3 = App sem Standard Access na Marketing API
     if (msg.includes("(#3)") || msg.includes("does not have the capability")) {

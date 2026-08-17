@@ -13,7 +13,9 @@ import { useUserRole } from "@/components/SidebarWrapper";
 import CapturaGuiada from "@/components/CapturaGuiada";
 import PisoRestauro from "@/components/PisoRestauro";
 import ReelEditor from "@/components/ReelEditor";
+import PublicarMetaButton from "@/components/PublicarMetaButton";
 import type { MarketingCapturas } from "@/lib/marketing-shotlist";
+import { midiaDoVeiculo, melhorFormato } from "@/lib/veiculo-midia";
 import {
   Check,
   ChevronDown,
@@ -22,6 +24,7 @@ import {
   ExternalLink,
   Film,
   Loader2,
+  Megaphone,
   RefreshCw,
   Save,
   Sparkles,
@@ -53,6 +56,50 @@ interface CarroKit {
 function reelToProxy(url: string): string {
   const m = url.match(/https?:\/\/[^/]+\/(.+)$/);
   return m && url.includes(".r2.dev") ? `/api/r2/${m[1]}` : url;
+}
+
+/**
+ * Botão de anúncio pago no card do kit.
+ * Reusa o PublicarMetaButton com defaultOpen, igual a página de Marketing já faz
+ * — nenhum modal novo. `formatoInicial` = o formato mais forte que este carro
+ * tem arte pra publicar (reel > carrossel > foto).
+ */
+function PublicarKit({ carro }: { carro: CarroKit }) {
+  const [aberto, setAberto] = useState(false);
+  const midia = midiaDoVeiculo(carro as any);
+  const semArte = midia.formatosDisponiveis.length === 0;
+
+  return (
+    <>
+      <button
+        onClick={() => setAberto(true)}
+        disabled={semArte}
+        title={semArte ? "Sem foto nem arte pra anunciar" : undefined}
+        className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 py-3 text-[10px] font-black uppercase tracking-widest text-white transition-all hover:from-blue-700 hover:to-purple-700 disabled:opacity-40"
+      >
+        <Megaphone size={13} />
+        Publicar no Meta
+        {!semArte && (
+          <span className="rounded-full bg-white/20 px-1.5 py-0.5 text-[8px] capitalize">
+            {melhorFormato(midia)}
+          </span>
+        )}
+      </button>
+
+      {aberto && (
+        <PublicarMetaButton
+          veiculoId={carro.id}
+          marca={carro.marca ?? ""}
+          modelo={carro.modelo ?? ""}
+          ano={carro.ano_modelo ?? carro.ano ?? ""}
+          fotoUrl={midia.imagemPadrao}
+          formatoInicial={melhorFormato(midia)}
+          defaultOpen
+          onClose={() => setAberto(false)}
+        />
+      )}
+    </>
+  );
 }
 
 export default function KitsGaleria() {
@@ -683,6 +730,10 @@ export default function KitsGaleria() {
                     </>
                   )}
                 </div>
+
+                {/* Publicar direto daqui — gerou a arte, anuncia sem trocar de aba.
+                    O modal abre já no formato mais forte que este carro tem. */}
+                <PublicarKit carro={c} />
 
                 <div className="min-h-[14px]">
                   {salvando[c.id] === "salvando" && <span className="text-[9px] font-bold text-gray-400">Salvando legenda...</span>}

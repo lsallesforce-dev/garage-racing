@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
   // Colunas da migration 047 — pedidas à parte para que a listagem continue
   // funcionando se ela ainda não tiver sido aplicada (o SELECT inteiro falharia
   // com "column does not exist" e o modal ficaria sem campanha nenhuma).
-  const COLUNAS_PRO = `${COLUNAS_BASE}, objetivo, tipo_orcamento, orcamento_total, sem_data_fim, inicia_em`;
+  const COLUNAS_PRO = `${COLUNAS_BASE}, objetivo, tipo_orcamento, orcamento_total, sem_data_fim, inicia_em, formato, criativo_url`;
 
   const listar = (colunas: string) => supabaseAdmin
     .from("meta_campanhas")

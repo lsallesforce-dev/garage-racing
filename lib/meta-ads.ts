@@ -1,6 +1,8 @@
 // lib/meta-ads.ts
 // Meta Marketing API — Lead Ads para veículos
 
+import { CARROSSEL_MAX } from "@/lib/veiculo-midia";
+
 const GRAPH = "https://graph.facebook.com/v21.0";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -32,7 +34,13 @@ export interface CriarCampanhaParams {
     preco: number;
     km: number;
     cor?: string;
-    fotoUrl: string;            // URL pública da foto principal
+    fotoUrl: string;            // URL pública da imagem principal (capa do kit ou foto crua)
+    /** Arte 9:16 do kit — usada nas posições de story quando existir. */
+    storyUrl?: string | null;
+    /** Imagens do carrossel do kit (formato "carrossel"). */
+    carrossel?: string[];
+    /** Reel pronto (formato "reel"). */
+    reelUrl?: string | null;
   };
   garagem: {
     nome: string;
@@ -50,6 +58,10 @@ export interface ConfigCampanha {
   placement: string;          // "facebook" | "instagram" | "facebook,instagram"
   /** "leads" = formulário instantâneo | "whatsapp" = abre conversa (CTWA) */
   objetivo?: ObjetivoAnuncio;
+  /** Formato do criativo — decide a forma do object_story_spec. */
+  formato?: "foto" | "carrossel" | "reel";
+  /** Texto do anúncio. Vazio = usa o texto montado a partir do veículo. */
+  legenda?: string | null;
   orcamentoDiario: number;    // R$/dia — usado quando tipoOrcamento = "diario"
   /** "total" usa lifetime_budget e EXIGE data de fim (regra da Meta). */
   tipoOrcamento?: "diario" | "total";
@@ -148,6 +160,62 @@ export async function uploadFotoParaMeta(
   const hash = Object.values(data.images as Record<string, any>)?.[0]?.hash;
   if (!hash) throw new Error("image_hash não retornado pelo Meta");
   return hash as string;
+}
+
+// ─── Upload de Vídeo ──────────────────────────────────────────────────────────
+// Sobe o reel para o Ad Account e devolve o video_id.
+//
+// Diferente da foto, vídeo NÃO tem atalho: o creative aceita `picture` (URL
+// pública) no lugar de image_hash quando o /adimages dá #3, mas video_data
+// exige video_id — não existe "video_url". Se o /advideos vier bloqueado, o
+// formato reel simplesmente não sai, e o erro precisa dizer isso em português.
+
+export class MetaVideoBloqueadoError extends Error {
+  constructor(motivo: string) {
+    super(`O Meta ainda não libera anúncio em vídeo nesta conta (${motivo}). Publique como foto ou carrossel.`);
+    this.name = "MetaVideoBloqueadoError";
+  }
+}
+
+export async function uploadVideoParaMeta(
+  adAccountId: string,
+  videoUrl: string,
+  adToken: string,
+): Promise<string> {
+  let data: any;
+  try {
+    data = await graphPost(`${adAccountId}/advideos`, adToken, {
+      file_url: videoUrl,
+      name: `AutoZap reel ${Date.now()}`,
+    });
+  } catch (e: any) {
+    const msg = e.message ?? "";
+    if (/code 3\b|does not have the capability|\(#3\)/.test(msg)) {
+      throw new MetaVideoBloqueadoError("acesso à API de vídeo");
+    }
+    throw e;
+  }
+
+  const videoId = data.id as string | undefined;
+  if (!videoId) throw new MetaVideoBloqueadoError("upload sem id de retorno");
+
+  // A Meta transcodifica de forma assíncrona e recusa o creative enquanto o
+  // vídeo está "processing". ~60s de espera cobre reel curto; passando disso,
+  // seguimos em frente — a Meta aceita o creative e termina de processar.
+  for (let tentativa = 0; tentativa < 20; tentativa++) {
+    await new Promise(r => setTimeout(r, 3000));
+    try {
+      const st = await graphGet(videoId, adToken, { fields: "status" });
+      const situacao = st?.status?.video_status;
+      if (situacao === "ready") break;
+      if (situacao === "error") throw new MetaVideoBloqueadoError("o Meta recusou o arquivo do reel");
+    } catch (e: any) {
+      if (e instanceof MetaVideoBloqueadoError) throw e;
+      break; // erro de leitura de status não é motivo pra abortar o publish
+    }
+  }
+
+  return videoId;
 }
 
 // ─── Lead Form ────────────────────────────────────────────────────────────────
@@ -390,21 +458,26 @@ export async function criarCampanhaLeadAd(p: CriarCampanhaParams): Promise<Campa
   const adsetId = adset.id as string;
 
   // 5. Ad Creative — usa adToken
-  const adMessage =
-    `🚗 ${veiculoNome}${veiculo.cor ? ` — ${veiculo.cor}` : ""}\n` +
-    `💰 ${precoFormatado} | ${kmFormatado}\n\n` +
-    (ehWhatsApp
-      ? `Chama no WhatsApp que a gente te manda fotos, ficha e condições na hora! 📲`
-      : `Preencha o formulário e nossa equipe entra em contato pelo WhatsApp! 📲`);
+  // Texto: o que o lojista escreveu/ajustou no modal (que já vem preenchido com
+  // a legenda do Kit de Postagem). Vazio = monta a partir do veículo, como antes.
+  const adMessage = configuracao.legenda?.trim()
+    ? configuracao.legenda.trim()
+    : `🚗 ${veiculoNome}${veiculo.cor ? ` — ${veiculo.cor}` : ""}\n` +
+      `💰 ${precoFormatado} | ${kmFormatado}\n\n` +
+      (ehWhatsApp
+        ? `Chama no WhatsApp que a gente te manda fotos, ficha e condições na hora! 📲`
+        : `Preencha o formulário e nossa equipe entra em contato pelo WhatsApp! 📲`);
 
-  const linkData: Record<string, any> = {
-    message:         adMessage,
-    name:            veiculoNome,
-    description:     `${precoFormatado} — ${garagem.nome}`,
-    // image_hash se o upload funcionou; senão picture (URL) — evita o #3 do /adimages
-    ...(imageHash ? { image_hash: imageHash } : { picture: veiculo.fotoUrl }),
-    ...(ehWhatsApp
-      ? {
+  // Formato do criativo. O carrossel e o reel usam as artes que o Kit de
+  // Postagem já gerou — antes elas nunca saíam da galeria.
+  const formato = configuracao.formato ?? "foto";
+  const carrossel = (veiculo.carrossel ?? []).filter(Boolean).slice(0, CARROSSEL_MAX);
+  const ehCarrossel = formato === "carrossel" && carrossel.length >= 2;
+  const ehReel = formato === "reel" && !!veiculo.reelUrl;
+
+  // Destino e CTA são iguais nos três formatos — só a mídia muda.
+  const destino = ehWhatsApp
+    ? {
           // CTWA: o link é sempre o endpoint do WhatsApp — o número vem do
           // promoted_object/Página, não da URL.
           link: "https://api.whatsapp.com/send",
@@ -424,23 +497,131 @@ export async function criarCampanhaLeadAd(p: CriarCampanhaParams): Promise<Campa
               text: `Oi! Vi o ${veiculoNome} e quero mais informações.`,
             },
           }),
-        }
-      : {
-          link: process.env.NEXT_PUBLIC_APP_URL ?? "https://www.autozap.digital",
-          // lead_gen_form_id vai DENTRO de call_to_action.value (não no topo do link_data)
-          call_to_action: { type: "LEARN_MORE", value: { lead_gen_form_id: leadformId } },
-        }),
-  };
+      }
+    : {
+        link: process.env.NEXT_PUBLIC_APP_URL ?? "https://www.autozap.digital",
+        // lead_gen_form_id vai DENTRO de call_to_action.value (não no topo do link_data)
+        call_to_action: { type: "LEARN_MORE", value: { lead_gen_form_id: leadformId } },
+      };
 
-  const storySpec: Record<string, any> = { page_id: pageId, link_data: linkData };
+  const storySpec: Record<string, any> = { page_id: pageId };
+
+  if (ehReel) {
+    // video_data exige video_id — não existe "video_url". Se o /advideos
+    // estiver bloqueado, uploadVideoParaMeta lança MetaVideoBloqueadoError e a
+    // rota devolve isso em português, sem publicar nada pela metade.
+    const videoId = await uploadVideoParaMeta(adAccountId, veiculo.reelUrl!, adToken);
+    storySpec.video_data = {
+      video_id:  videoId,
+      message:   adMessage,
+      title:     veiculoNome,
+      link_description: `${precoFormatado} — ${garagem.nome}`,
+      // Thumbnail: a capa do kit já vem com preço e marca da loja.
+      image_url: veiculo.fotoUrl,
+      call_to_action: destino.call_to_action,
+      ...(ehWhatsApp && (destino as any).page_welcome_message
+        ? { page_welcome_message: (destino as any).page_welcome_message }
+        : {}),
+    };
+  } else if (ehCarrossel) {
+    // Carrossel: um card por imagem do kit. `picture` (URL) evita depender do
+    // /adimages, que é justamente o endpoint que dá #3 sem Acesso Avançado.
+    storySpec.link_data = {
+      message: adMessage,
+      link: (destino as any).link,
+      // multi_share_end_card = card final com a página; desligado porque o
+      // último card do kit já é o de contato.
+      multi_share_end_card: false,
+      multi_share_optimized: true,
+      child_attachments: carrossel.map((url, i) => ({
+        link: (destino as any).link,
+        picture: url,
+        name: i === 0 ? veiculoNome : `${veiculoNome} — ${i + 1}`,
+        description: `${precoFormatado} — ${garagem.nome}`,
+        call_to_action: destino.call_to_action,
+      })),
+      ...(ehWhatsApp && (destino as any).page_welcome_message
+        ? { page_welcome_message: (destino as any).page_welcome_message }
+        : {}),
+    };
+  } else {
+    storySpec.link_data = {
+      message:     adMessage,
+      name:        veiculoNome,
+      description: `${precoFormatado} — ${garagem.nome}`,
+      // image_hash se o upload funcionou; senão picture (URL) — evita o #3 do /adimages
+      ...(imageHash ? { image_hash: imageHash } : { picture: veiculo.fotoUrl }),
+      ...destino,
+    };
+  }
+
   if (instagramActorId && configuracao.placement.includes("instagram")) {
     storySpec.instagram_actor_id = instagramActorId;
   }
 
-  const creative = await graphPost(`${adAccountId}/adcreatives`, adToken, {
-    name:               `Creative — ${veiculoNome}`,
-    object_story_spec:  storySpec,
-  });
+  const creativeBody: Record<string, any> = {
+    name:              `Creative — ${veiculoNome}`,
+    object_story_spec: storySpec,
+  };
+
+  // Arte 9:16 do kit nas posições de story. Sem isso a Meta recorta a imagem
+  // 4:5 pra caber no story e o preço sai fora do enquadramento.
+  // Só entra no formato foto: carrossel e reel já têm proporção própria.
+  const querStory = !ehReel && !ehCarrossel
+    && !!veiculo.storyUrl
+    && configuracao.placement.includes("instagram");
+  if (querStory) {
+    try {
+      const hashFeed  = imageHash ?? await uploadFotoParaMeta(adAccountId, veiculo.fotoUrl, adToken);
+      const hashStory = await uploadFotoParaMeta(adAccountId, veiculo.storyUrl!, adToken);
+      // asset_feed_spec SUBSTITUI o object_story_spec — os dois juntos a Meta
+      // recusa. Daí montar o pacote inteiro aqui dentro.
+      creativeBody.asset_feed_spec = {
+        images: [{ hash: hashFeed }, { hash: hashStory }],
+        bodies: [{ text: adMessage }],
+        titles: [{ text: veiculoNome }],
+        descriptions: [{ text: `${precoFormatado} — ${garagem.nome}` }],
+        link_urls: [{ website_url: (destino as any).link }],
+        call_to_action_types: [destino.call_to_action.type],
+        ad_formats: ["SINGLE_IMAGE"],
+        asset_customization_rules: [
+          {
+            customization_spec: { publisher_platforms: ["instagram"], instagram_positions: ["story", "reels"] },
+            image_label: { name: hashStory },
+          },
+          {
+            customization_spec: { publisher_platforms: ["facebook", "instagram"] },
+            image_label: { name: hashFeed },
+          },
+        ],
+      };
+      delete creativeBody.object_story_spec;
+      creativeBody.object_story_spec = { page_id: pageId, ...(storySpec.instagram_actor_id ? { instagram_actor_id: storySpec.instagram_actor_id } : {}) };
+    } catch (e: any) {
+      // Story é melhoria, não requisito: se o /adimages recusar, publica o
+      // criativo simples em vez de derrubar a campanha inteira.
+      console.warn(`⚠️ Variante 9:16 de story indisponível (${e.message?.slice(0, 80)}) — publicando criativo único`);
+      delete creativeBody.asset_feed_spec;
+      creativeBody.object_story_spec = storySpec;
+    }
+  }
+
+  let creative: any;
+  try {
+    creative = await graphPost(`${adAccountId}/adcreatives`, adToken, creativeBody);
+  } catch (e: any) {
+    // Última rede: asset_feed_spec é o pedaço mais frágil (labels, formatos,
+    // regras). Falhando, tenta o criativo simples antes de desistir.
+    if (creativeBody.asset_feed_spec) {
+      console.warn(`⚠️ Creative com asset_feed_spec falhou — retry simples: ${e.message?.slice(0, 120)}`);
+      creative = await graphPost(`${adAccountId}/adcreatives`, adToken, {
+        name: `Creative — ${veiculoNome}`,
+        object_story_spec: storySpec,
+      });
+    } else {
+      throw e;
+    }
+  }
   const creativeId = creative.id as string;
 
   // 6. Ad — usa adToken

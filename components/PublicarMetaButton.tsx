@@ -12,8 +12,10 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Loader2, CheckCircle2, AlertCircle, Facebook, Instagram, X, ChevronDown,
   MapPin, Zap, Search, Users, Target, Wallet, CalendarClock, Play, Pause,
-  Trash2, Pencil, MessageCircle, FileText, Info,
+  Trash2, Pencil, MessageCircle, FileText, Info, Image as ImageIcon,
+  LayoutGrid, Film, Sparkles,
 } from "lucide-react";
+import { melhorFormato, motivoIndisponivel, type FormatoAnuncio, type MidiaVeiculo } from "@/lib/veiculo-midia";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -39,6 +41,7 @@ interface Campanha {
   objetivo?: string;
   tipo_orcamento?: string;
   orcamento_total?: number | null;
+  formato?: string;
 }
 
 interface Interesse {
@@ -65,6 +68,8 @@ interface Props {
   fotoUrl?: string | null;
   defaultOpen?: boolean;
   onClose?: () => void;
+  /** Pré-seleciona o formato — o card do Kit abre já no mais forte disponível. */
+  formatoInicial?: FormatoAnuncio;
 }
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
@@ -104,7 +109,13 @@ function Secao({ icone, titulo, children, dica }: {
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 
-export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, fotoUrl, defaultOpen = false, onClose }: Props) {
+const FORMATOS: { id: FormatoAnuncio; titulo: string; icone: React.ReactNode }[] = [
+  { id: "foto",      titulo: "Foto",      icone: <ImageIcon size={16} /> },
+  { id: "carrossel", titulo: "Carrossel", icone: <LayoutGrid size={16} /> },
+  { id: "reel",      titulo: "Reel",      icone: <Film size={16} /> },
+];
+
+export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, fotoUrl, defaultOpen = false, onClose, formatoInicial }: Props) {
   const [open, setOpen] = useState(defaultOpen);
 
   const handleClose = () => { setOpen(false); onClose?.(); };
@@ -121,6 +132,14 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
   const [paginaId, setPaginaId]   = useState("");
   const [objetivo, setObjetivo]   = useState<"leads" | "whatsapp">("leads");
   const [placement, setPlacement] = useState<"facebook" | "instagram" | "facebook,instagram">("facebook,instagram");
+
+  // Criativo — artes do Kit de Postagem
+  const [midia, setMidia]         = useState<MidiaVeiculo | null>(null);
+  const [formato, setFormato]     = useState<FormatoAnuncio>(formatoInicial ?? "foto");
+  const [usarCapaKit, setUsarCapaKit] = useState(true);
+  const [legenda, setLegenda]     = useState("");
+  const [legendaTocada, setLegendaTocada] = useState(false);
+  const [reelBloqueado, setReelBloqueado] = useState(false);
 
   // Orçamento e prazo
   const [tipoOrcamento, setTipoOrcamento] = useState<"diario" | "total">("diario");
@@ -195,12 +214,26 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
       fetch(`/api/meta/ads?veiculoId=${veiculoId}`).then(r => r.json()).catch(() => ({ campanhas: [] })),
       fetch("/api/meta/regioes").then(r => r.json()).catch(() => ({ regioes: [] })),
       fetch("/api/meta/interesses").then(r => r.json()).catch(() => ({ atalhos: [] })),
-    ]).then(([paginasData, campanhasData, regioesData, interessesData]) => {
+      fetch(`/api/veiculo/midia?veiculoId=${veiculoId}`).then(r => r.json()).catch(() => null),
+    ]).then(([paginasData, campanhasData, regioesData, interessesData, midiaData]) => {
       if (paginasData.error) { setErro(paginasData.error); return; }
       setPaginas(paginasData.salvas ?? []);
       setCampanhas(campanhasData.campanhas ?? []);
       setRegioesDisponiveis(regioesData.regioes ?? []);
       setAtalhos(interessesData.atalhos ?? []);
+
+      if (midiaData && !midiaData.error) {
+        const m = midiaData as MidiaVeiculo;
+        setMidia(m);
+        // Legenda do kit vira o texto inicial do anúncio — antes esse texto era
+        // hardcoded na lib e o lojista nunca via.
+        if (!legendaTocada && m.legenda) setLegenda(m.legenda);
+        // Respeita o formato pedido por quem abriu o modal, se estiver disponível.
+        const desejado = formatoInicial && m.formatosDisponiveis.includes(formatoInicial)
+          ? formatoInicial
+          : melhorFormato(m);
+        setFormato(desejado);
+      }
       if (paginasData.salvas?.[0]) setPaginaId(paginasData.salvas[0].id);
       if (paginasData.cidade) setCidade(paginasData.cidade);
       const conectado = paginasData.adsConectado ?? false;
@@ -276,6 +309,9 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
           paginaId: paginaId || undefined,
           objetivo,
           placement,
+          formato,
+          legenda: legenda.trim() || undefined,
+          usarCapaKit,
           tipoOrcamento,
           orcamentoDiario: orcamento,
           orcamentoTotal: tipoOrcamento === "total" ? orcamentoTotal : undefined,
@@ -295,6 +331,9 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
       const data = await res.json();
       if (!res.ok) {
         if (data.error?.includes("Token Meta Ads não configurado")) { setErroToken(true); }
+        // A Meta pode recusar vídeo nesta conta — desabilita o formato e joga o
+        // lojista de volta pra foto em vez de deixá-lo tentando de novo.
+        if (data.formatoIndisponivel === "reel") { setReelBloqueado(true); setFormato("foto"); }
         throw new Error(data.error || "Erro ao criar campanha");
       }
       setSucesso(true);
@@ -349,6 +388,9 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
   const orcamentoInvalido = tipoOrcamento === "diario"
     ? orcamento < ORCAMENTO_MINIMO
     : orcamentoTotal < ORCAMENTO_MINIMO * duracao;
+  // midia null = ainda carregando ou rota falhou; nesse caso não travamos o
+  // publish (o backend valida de novo e responde com o motivo).
+  const formatoInvalido = !!midia && !midia.formatosDisponiveis.includes(formato);
 
   return (
     <>
@@ -406,6 +448,7 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
                               <span className="text-[10px] text-gray-400 capitalize truncate">
                                 · {c.placement.replace(",", " + ")}
                                 {c.objetivo === "whatsapp" && " · WhatsApp"}
+                                {c.formato && c.formato !== "foto" && ` · ${c.formato}`}
                               </span>
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
@@ -554,6 +597,117 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
                             <span className="text-[9px] text-gray-400">{o.sub}</span>
                           </button>
                         ))}
+                      </div>
+                    </Secao>
+
+                    {/* ── CRIATIVO (Kit de Postagem) ────────────────── */}
+                    <Secao icone={<Sparkles size={11} />} titulo="Arte do anúncio">
+                      <div className="grid grid-cols-3 gap-2">
+                        {FORMATOS.map(f => {
+                          const bloqueado = f.id === "reel" && reelBloqueado;
+                          const motivo = bloqueado
+                            ? "O Meta não libera vídeo nesta conta"
+                            : midia ? motivoIndisponivel(f.id, midia) : null;
+                          const off = !!motivo;
+                          const detalhe =
+                            f.id === "carrossel" && midia?.carrossel.length
+                              ? `${midia.carrossel.length} imagens`
+                              : f.id === "reel" && midia?.reel
+                                ? "vídeo pronto"
+                                : f.id === "foto" && midia?.capaKit
+                                  ? "capa do kit"
+                                  : f.id === "foto" ? "foto do carro" : "";
+                          return (
+                            <button key={f.id} onClick={() => !off && setFormato(f.id)} disabled={off}
+                              title={motivo ?? undefined}
+                              className={`flex flex-col items-center gap-1 py-3 rounded-2xl border-2 transition-all ${
+                                off
+                                  ? "border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed"
+                                  : formato === f.id
+                                    ? "border-blue-500 bg-blue-50"
+                                    : "border-gray-100 bg-gray-50 hover:border-gray-200"
+                              }`}>
+                              <span className={formato === f.id && !off ? "text-blue-600" : "text-gray-400"}>{f.icone}</span>
+                              <span className={`text-[10px] font-black uppercase tracking-wide ${formato === f.id && !off ? "text-blue-700" : "text-gray-500"}`}>
+                                {f.titulo}
+                              </span>
+                              <span className="text-[8px] text-gray-400 text-center leading-tight px-1">
+                                {off ? motivo : detalhe}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Capa do kit x foto original — só faz sentido no formato foto */}
+                      {formato === "foto" && midia?.capaKit && midia?.fotoCrua && (
+                        <div className="mt-3">
+                          <p className="text-[9px] text-gray-400 mb-1.5">Qual imagem vai ao ar</p>
+                          <div className="grid grid-cols-2 gap-2">
+                            {([
+                              { on: true,  url: midia.capaKit,  label: "Capa do kit", sub: "com logo e preço" },
+                              { on: false, url: midia.fotoCrua, label: "Foto original", sub: "sem tratamento" },
+                            ] as const).map(op => (
+                              <button key={String(op.on)} onClick={() => setUsarCapaKit(op.on)}
+                                className={`rounded-2xl border-2 overflow-hidden text-left transition-all ${
+                                  usarCapaKit === op.on ? "border-blue-500" : "border-gray-100 hover:border-gray-200"
+                                }`}>
+                                <img src={op.url!} alt={op.label} className="w-full h-24 object-cover" />
+                                <div className="p-2">
+                                  <p className={`text-[10px] font-black ${usarCapaKit === op.on ? "text-blue-700" : "text-gray-600"}`}>{op.label}</p>
+                                  <p className="text-[8px] text-gray-400">{op.sub}</p>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Prévia do carrossel */}
+                      {formato === "carrossel" && !!midia?.carrossel.length && (
+                        <div className="mt-3 flex gap-1.5 overflow-x-auto pb-1">
+                          {midia.carrossel.slice(0, 10).map((u, i) => (
+                            <img key={i} src={u} alt={`Card ${i + 1}`}
+                              className="w-16 h-16 rounded-xl object-cover shrink-0 border border-gray-100" />
+                          ))}
+                        </div>
+                      )}
+
+                      {formato === "reel" && midia?.reel && (
+                        <p className="text-[9px] text-gray-400 mt-2 leading-snug">
+                          O reel é enviado para o Meta e leva alguns minutos processando lá — é normal a campanha
+                          demorar mais que nos outros formatos.
+                        </p>
+                      )}
+
+                      {midia && !midia.capaKit && (
+                        <div className="flex items-start gap-1.5 mt-3 bg-amber-50 rounded-xl p-2.5 border border-amber-100">
+                          <Info size={11} className="text-amber-500 shrink-0 mt-0.5" />
+                          <p className="text-[9px] text-amber-700 leading-snug">
+                            Este carro ainda não tem kit gerado — o anúncio vai com a foto crua.
+                            Gere em <strong>Marketing → Kits de Postagem</strong> para sair com a marca da loja.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Texto do anúncio */}
+                      <div className="mt-3">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <p className="text-[9px] text-gray-400">Texto do anúncio</p>
+                          {midia?.legenda && legenda !== midia.legenda && (
+                            <button onClick={() => { setLegenda(midia.legenda!); setLegendaTocada(false); }}
+                              className="text-[9px] font-black uppercase tracking-wide text-blue-500 hover:text-blue-700">
+                              Usar legenda do kit
+                            </button>
+                          )}
+                        </div>
+                        <textarea
+                          value={legenda}
+                          onChange={e => { setLegenda(e.target.value); setLegendaTocada(true); }}
+                          rows={4}
+                          placeholder="Vazio = o AutoZap monta o texto com carro, preço e km."
+                          className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-[11px] text-gray-700 placeholder-gray-300 leading-snug resize-y"
+                        />
                       </div>
                     </Secao>
 
@@ -992,6 +1146,12 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
                         <span className="font-bold text-gray-700">{semDataFim ? "Sem data de fim" : `${duracao} dias`}</span>
                       </div>
                       <div className="flex justify-between text-[11px]">
+                        <span className="text-gray-500">Arte</span>
+                        <span className="font-bold text-gray-700 capitalize">
+                          {formato === "foto" && midia?.capaKit && usarCapaKit ? "Capa do kit" : formato}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-[11px]">
                         <span className="text-gray-500">Alcance</span>
                         <span className="font-bold text-gray-700 text-right">
                           {modoAlcance === "estado"
@@ -1012,7 +1172,7 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
 
                     <button
                       onClick={handlePublicar}
-                      disabled={publicando || !fotoUrl || orcamentoInvalido || (modoAlcance === "estado" && regioes.length === 0)}
+                      disabled={publicando || !fotoUrl || orcamentoInvalido || formatoInvalido || (modoAlcance === "estado" && regioes.length === 0)}
                       className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 text-white font-black text-[12px] uppercase tracking-widest transition-all flex items-center justify-center gap-2"
                     >
                       {publicando
