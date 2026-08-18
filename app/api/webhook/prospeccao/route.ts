@@ -50,7 +50,7 @@ const MAX_MENSAGENS_TURNO = 6;
 // Ela ofereceu foto ("quer ver umas fotos dele?") E mandou as 4 na mesma
 // resposta, sem esperar o sim. Ou pergunta, ou manda: se a própria resposta
 // está oferecendo, a foto espera a confirmação.
-const OFERTA_DE_MIDIA = /(quer|gostaria|posso)[^?]{0,40}(ver|mandar?|enviar|mando)[^?]{0,30}(fotos?|v[íi]deo)[^?]{0,20}\?/i;
+const OFERTA_DE_MIDIA = /\b(quer|gostaria|posso)\b[^?]{0,40}\b(ver|mandar?|enviar|mando)\b[^?]{0,30}\b(fotos?|v[íi]deo)\b[^?]{0,20}\?/i;
 
 export const maxDuration = 300;
 

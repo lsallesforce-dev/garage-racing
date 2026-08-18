@@ -169,18 +169,18 @@ export async function carregarLojaDemo(): Promise<LojaDemo> {
 // o código injeta o lembrete no fim do system instruction, onde ele tem mais
 // peso, exatamente no turno em que importa.
 const MARCADORES_NEGOCIO_DELE: RegExp[] = [
-  /minha\s+(loja|revenda|garagem|empresa)/i,
-  /meu\s+(p[áa]tio|estoque|gerente|vendedor|funcion[áa]rio|neg[óo]cio)/i,
-  /meus\s+(carros|clientes|leads|vendedores|an[úu]ncios)/i,
-  /minhas\s+vendas/i,
-  /eu\s+(vendo|trabalho\s+com|revendo|comprei|tenho\s+no\s+p[áa]tio)/i,
-  /aqui\s+na\s+(loja|revenda|minha)/i,
-  /a\s+gente\s+(vende|trabalha\s+com|revende)/i,
+  /\bminha\s+(loja|revenda|garagem|empresa)\b/i,
+  /\bmeu\s+(p[áa]tio|estoque|gerente|vendedor|funcion[áa]rio|neg[óo]cio)\b/i,
+  /\bmeus\s+(carros|clientes|leads|vendedores|an[úu]ncios)\b/i,
+  /\bminhas\s+vendas\b/i,
+  /\beu\s+(vendo|trabalho\s+com|revendo|comprei|tenho\s+no\s+p[áa]tio)\b/i,
+  /\baqui\s+na\s+(loja|revenda|minha)\b/i,
+  /\ba\s+gente\s+(vende|trabalha\s+com|revende)\b/i,
   // "quanto custa" exige objeto de SISTEMA: sozinho, pega preço de carro na
   // demo ("quanto custa o Onix?") e trocaria o chapéu na hora errada.
-  /quanto\s+(custa|[ée]|fica|sai)[^?.!]{0,40}(sistema|servi[çc]o|autozap|isso|plano|mensalidade|pra\s+ter|por\s+m[êe]s)/i,
-  /(mensalidade|assinatura|contratar|assinar|implanta[çc][ãa]o|instala[çc][ãa]o)/i,
-  /(esse|este|o)\s+(sistema|servi[çc]o|programa)/i,
+  /\bquanto\s+(custa|[ée]|fica|sai)\b[^?.!]{0,40}\b(sistema|servi[çc]o|autozap|isso|plano|mensalidade|pra\s+ter|por\s+m[êe]s)\b/i,
+  /\b(mensalidade|assinatura|contratar|assinar|implanta[çc][ãa]o|instala[çc][ãa]o)\b/i,
+  /\b(esse|este|o)\s+(sistema|servi[çc]o|programa)\b/i,
   /autozap/i,
 ];
 
@@ -230,7 +230,28 @@ export function confirmouSerOResponsavel(texto: string): boolean {
 const SO_CUMPRIMENTO =
   /^(?:ol[áa]|oi+|opa|e\s*a[íi]|bom\s*dia|boa\s*tarde|boa\s*noite|tudo\s*(?:bem|bom|joia)|blz|beleza|salve)[\s!.,?]*$/i;
 
-// A abertura padrão PERGUNTA quem cuida da loja ("Quem cuida do marketing da
+// ─── Detector: aceitou o teste ────────────────────────────────────────────────
+// A abertura agora e assinada pelo LUCAS e termina perguntando se ele quer
+// testar a IA. Esse detector decide o que acontece com a primeira resposta:
+// aceitou -> a Mari entra e faz a demonstracao; qualquer outra coisa (duvida,
+// preco, objecao, "quem e voce?") -> o Lucas responde, porque quem abriu a
+// conversa foi ele e a IA nao se passa por ele.
+const ACEITE = [
+  /^\s*(sim|claro|bora|vamos|vamo|isso|ok|okay|blz|beleza|show|top|fechado|manda|manda[\s-]?a[íi]|pode)\b/i,
+  /\b(quero|queria|gostaria|pode\s+(mandar|passar|ser)|manda\s+(a[íi]|ela|pra)|vamos\s+(testar|ver)|bora\s+testar)\b/i,
+  /\b(testar|teste|demonstra|conhecer)\b/i,
+];
+const RECUSA_AO_TESTE = /\bn[ãa]o\b|\bagora\s+n[ãa]o\b|\bsem\s+interesse\b|\bdepois\b/i;
+
+/** true = a resposta e um SIM ao convite de testar a IA. */
+export function aceitouOTeste(texto: string): boolean {
+  const t = (texto || "").trim();
+  if (!t || t.length > 120) return false;
+  if (RECUSA_AO_TESTE.test(t)) return false;
+  return ACEITE.some((re) => re.test(t));
+}
+
+// A abertura padrao PERGUNTA quem cuida da loja ("Quem cuida do marketing da
 // loja?" ou "O Fabiano está?"). A de domingo não pergunta nada — lá o dono é
 // quem lê. Só faz sentido insistir pelo responsável se a pergunta foi feita.
 const ABERTURA_PEDIU_ROTEAMENTO = /\bquem\s+cuida\b|\bquem\s+[ée]\s+o\s+respons|\best[áa]\s*\?/i;
