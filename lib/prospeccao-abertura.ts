@@ -109,6 +109,8 @@ export function preencherTemplate(tpl: string, prospect: Prospect): string {
     // antigo salvo no banco não vazar "{pede_dono}" cru pro lojista.
     .replace(/\{dono\}/gi, "")
     .replace(/\{pede_dono\}/gi, PERGUNTA_DE_ROTEAMENTO)
+    // {saudacao_hora} = Bom dia / Boa tarde / Boa noite, pelo relógio de Brasília.
+    .replace(/\{saudacao_hora\}/gi, saudacaoDaHora())
     // {loja} = nome da revenda, limpo. Sem nome utilizável, a saudação fica
     // "Oi!" em vez de "Oi, !".
     .replace(/\{loja\}/gi, loja)
@@ -152,6 +154,24 @@ export function escolherTemplate(templates: string[], dow: number): string | nul
   if (pool.length === 0) return null;
 
   return pool[Math.floor(Math.random() * pool.length)].replace(TAG_DOMINGO, "");
+}
+
+// ─── Saudação pelo relógio ────────────────────────────────────────────────────
+// "Bom dia" às 15h denuncia automação na primeira palavra — é o tipo de detalhe
+// que um humano nunca erra e um disparo em massa erra sempre. A janela da
+// campanha hoje vai das 8h às 16h, mas a função cobre o dia inteiro pra não
+// quebrar se a janela mudar.
+export function saudacaoDaHora(): string {
+  const hora = Number(
+    new Intl.DateTimeFormat("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+      hour: "numeric",
+      hour12: false,
+    }).format(new Date()),
+  );
+  if (hora < 12) return "Bom dia";
+  if (hora < 18) return "Boa tarde";
+  return "Boa noite";
 }
 
 /** Dia da semana em ISO (1=segunda … 7=domingo), no fuso de Brasília. */

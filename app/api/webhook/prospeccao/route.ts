@@ -18,7 +18,7 @@ import { timingSafeEqual } from "crypto";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { bolhasParaLinhas } from "@/lib/prospeccao-historico";
 import { sendAvisaMessage, sendAvisaImage, sendAvisaVideo, extractWebhookToken } from "@/lib/avisa";
-import { gerarRespostaProspeccao, carregarPatioDemo, carregarLojaDemo } from "@/lib/process-prospeccao";
+import { gerarRespostaProspeccao, carregarPatioDemo, carregarLojaDemo, aceitouOTeste } from "@/lib/process-prospeccao";
 import { montarAbertura } from "@/lib/prospeccao-abertura";
 import { bumpStats } from "@/lib/prospeccao-stats";
 import { baixarAudioWhatsApp } from "@/lib/whatsapp-audio";
@@ -607,6 +607,34 @@ export async function POST(req: NextRequest) {
     );
     console.warn(`🔌 [prospeccao] Disjuntor: ${prospect.nome_empresa} — ${totalAgente} msgs do agente (${agenteNaJanela} em 15min). IA travada.`);
     return NextResponse.json({ status: "disjuntor_volume" });
+  }
+
+  // ── (d) A abertura é do LUCAS: quem responde a primeira depende do que veio ──
+  // A abertura se apresenta como ele e pergunta se o lojista quer testar a IA.
+  // Isso cria uma regra simples e inegociável: a IA NÃO se passa pelo Lucas.
+  //   aceitou o teste  → a Mari entra (anunciada) e faz a demonstração;
+  //   qualquer outra coisa (dúvida, preço, "quem é você?", objeção) → cala e
+  //   chama o Lucas, porque quem abriu a conversa foi ele.
+  const { count: falasDoProspect } = await supabaseAdmin
+    .from("prospect_mensagens")
+    .select("*", { count: "exact", head: true })
+    .eq("prospect_id", prospect.id)
+    .eq("remetente", "prospect");
+
+  const primeiraResposta = (falasDoProspect ?? 0) <= 1;
+  const aceitou = aceitouOTeste(text);
+
+  if (primeiraResposta && !aceitou) {
+    await supabaseAdmin
+      .from("prospects")
+      .update({ ...patchBase, em_atendimento_humano: true, status: "respondeu" })
+      .eq("id", prospect.id);
+    await alertarHandoff(
+      prospect,
+      `Respondeu a sua abertura: "${text.slice(0, 120)}" — responda você pelo Inbox (a IA não fala em seu nome).`,
+    );
+    console.log(`🙋 [prospeccao] ${prospect.nome_empresa} respondeu sem aceitar o teste — passando pro Lucas.`);
+    return NextResponse.json({ status: "primeira_resposta_para_o_humano" });
   }
 
   // ── Carrega o histórico e gera a resposta do agente ─────────────────────────
