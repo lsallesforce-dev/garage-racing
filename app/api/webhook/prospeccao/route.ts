@@ -336,6 +336,67 @@ async function alertarHandoff(prospect: Prospect, motivo: string | null) {
 }
 
 // ─── Handler principal ────────────────────────────────────────────────────────
+// ─── Mensagem que o humano digitou no CELULAR ────────────────────────────────
+// A Avisa ecoa como `fromMe` tudo que sai do chip, inclusive o que a Mari mandou
+// pela API — por isso o eco era descartado inteiro. Isso abria um buraco na
+// memória dela: a estratégia nova manda o Lucas responder PESSOALMENTE a primeira
+// resposta do lojista, então toda conversa boa passa por uma mensagem digitada no
+// celular. Descartada, a Mari retomava a demo sem saber o que tinha sido
+// prometido — e o Inbox mostrava a conversa com um salto no meio.
+//
+// Agora o eco vira linha "humano" (papel que o buildHistorico já mapeia pra
+// "model"), com dedupe por conteúdo: se o mesmo texto saiu pela API nos últimos
+// 15 min, o eco é da própria Mari e a linha já existe.
+async function registrarMensagemDoCelular(
+  waId: string,
+  text: string,
+  messageId: string | null,
+): Promise<NextResponse> {
+  const alvo = (text || "").trim();
+  if (!waId || !alvo) return NextResponse.json({ status: "ignored_from_me" });
+
+  const ultimos = waId.slice(-11);
+  const { data: candidatos } = await supabaseAdmin
+    .from("prospects")
+    .select("id, nome_empresa")
+    .or(`wa_id.eq.${waId},telefone.eq.${waId},wa_id.ilike.%${ultimos},telefone.ilike.%${ultimos}`)
+    .limit(1);
+
+  const prospect = candidatos?.[0] as { id: string; nome_empresa: string | null } | undefined;
+  // O chip conversa com gente que não é prospect (o próprio Lucas, testes).
+  if (!prospect) return NextResponse.json({ status: "ignored_from_me" });
+
+  // Dedupe do eco da própria API: compara com o que saiu nos últimos 15 min.
+  const desde = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+  const { data: recentes } = await supabaseAdmin
+    .from("prospect_mensagens")
+    .select("content")
+    .eq("prospect_id", prospect.id)
+    .in("remetente", ["agente", "humano"])
+    .gte("created_at", desde);
+
+  if ((recentes ?? []).some((m) => ((m.content as string) ?? "").trim() === alvo)) {
+    return NextResponse.json({ status: "eco_da_api" });
+  }
+
+  const agora = new Date().toISOString();
+  await supabaseAdmin.from("prospect_mensagens").insert({
+    prospect_id: prospect.id,
+    remetente: "humano",
+    content: alvo,
+    wa_message_id: messageId,
+  });
+  // Humano digitando no celular = humano assumiu. Sem isso, a Mari continuaria
+  // respondendo e os dois falariam por cima um do outro no mesmo chat.
+  await supabaseAdmin
+    .from("prospects")
+    .update({ em_atendimento_humano: true, ultima_msg_at: agora, updated_at: agora })
+    .eq("id", prospect.id);
+
+  console.log(`✍️ [prospeccao] Mensagem do celular gravada em "${prospect.nome_empresa}".`);
+  return NextResponse.json({ status: "mensagem_humana_gravada", prospect_id: prospect.id });
+}
+
 export async function POST(req: NextRequest) {
   // ── Parse do payload (JSON / form-urlencoded / jsonData=) ───────────────────
   let payload: any = {};
@@ -369,8 +430,9 @@ export async function POST(req: NextRequest) {
   const { phone, text: textoRecebido, fromMe, messageId, audioUrl, audioMediaKey } = extractFields(payload);
   let text = textoRecebido;
 
-  // Ignora ecos (fromMe).
-  if (fromMe) return NextResponse.json({ status: "ignored_from_me" });
+  // Eco (fromMe): pode ser a própria Mari pela API — ou um humano digitando no
+  // celular, que é o caso que NÃO pode se perder. Ver a função.
+  if (fromMe) return registrarMensagemDoCelular(normalizePhone(phone), textoRecebido, messageId);
   if (!phone) return NextResponse.json({ status: "empty_content" });
 
   // ── Áudio → texto ───────────────────────────────────────────────────────────
