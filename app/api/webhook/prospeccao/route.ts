@@ -677,14 +677,43 @@ export async function POST(req: NextRequest) {
   //   aceitou o teste  → a Mari entra (anunciada) e faz a demonstração;
   //   qualquer outra coisa (dúvida, preço, "quem é você?", objeção) → cala e
   //   chama o Lucas, porque quem abriu a conversa foi ele.
-  const { count: falasDoProspect } = await supabaseAdmin
+  // Contar TURNO, não bolha. Antes isto contava linhas de "prospect", e duas
+  // bolhas ("Boa tarde" + "Tudo certo") já davam count=2 → o gate não rodava e a
+  // Mari entrava sozinha, sem o Lucas ter falado. Como a coalescência agrupa o
+  // que chega em até COALESCE_MS, o gate virava sorteio pela velocidade de
+  // digitação do lojista: Tato (17s entre bolhas) caiu no gate e foi pro Lucas;
+  // Morales (4s) furou e pegou a Mari.
+  //
+  // Definição imune a isso: ainda é "primeira resposta" enquanto NÓS (Mari ou
+  // Lucas) não falamos nada depois da primeira fala dele.
+  const { data: primeiraFala } = await supabaseAdmin
     .from("prospect_mensagens")
-    .select("*", { count: "exact", head: true })
+    .select("created_at")
     .eq("prospect_id", prospect.id)
-    .eq("remetente", "prospect");
+    .eq("remetente", "prospect")
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
 
-  const primeiraResposta = (falasDoProspect ?? 0) <= 1;
-  const aceitou = aceitouOTeste(text);
+  const { data: desdeAPrimeiraFala } = primeiraFala
+    ? await supabaseAdmin
+        .from("prospect_mensagens")
+        .select("remetente, content")
+        .eq("prospect_id", prospect.id)
+        .gte("created_at", primeiraFala.created_at as string)
+        .order("created_at", { ascending: true })
+    : { data: null };
+
+  const turno = (desdeAPrimeiraFala ?? []) as { remetente: string; content: string | null }[];
+  const primeiraResposta = turno.length === 0 || !turno.some((m) => m.remetente !== "prospect");
+
+  // O aceite pode estar em QUALQUER bolha do turno: "Boa tarde" + "pode testar"
+  // chegam separadas, e testar só a última perderia o sim. Bolha a bolha (e não
+  // concatenado) porque aceitouOTeste ignora texto acima de 120 caracteres.
+  const bolhasDoTurno = primeiraResposta && turno.length > 0
+    ? turno.filter((m) => m.remetente === "prospect").map((m) => m.content ?? "")
+    : [text];
+  const aceitou = bolhasDoTurno.some((c) => aceitouOTeste(c));
 
   if (primeiraResposta && !aceitou) {
     await supabaseAdmin
