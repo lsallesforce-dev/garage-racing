@@ -64,6 +64,7 @@ interface GarageConfig {
   voz_id?: string | null;
   nome_usuario?: string;
   cargo_usuario?: string;
+  endereco_convite_ativo?: boolean;
   tom_venda?: string;
   instrucoes_adicionais?: string;
   horario_funcionamento?: string;
@@ -217,6 +218,7 @@ export default function ConfiguracoesPage() {
     voz_id: null,
     nome_usuario: "",
     cargo_usuario: "",
+    endereco_convite_ativo: false,
     tom_venda: "",
     instrucoes_adicionais: "",
     horario_funcionamento: "",
@@ -731,6 +733,7 @@ export default function ConfiguracoesPage() {
               voz_id: row.voz_id ?? null,
               nome_usuario: row.nome_usuario ?? "",
               cargo_usuario: row.cargo_usuario ?? "",
+              endereco_convite_ativo: row.endereco_convite_ativo ?? false,
               tom_venda: row.tom_venda ?? "",
               instrucoes_adicionais: row.instrucoes_adicionais ?? "",
               horario_funcionamento: row.horario_funcionamento ?? "",
@@ -1107,6 +1110,7 @@ export default function ConfiguracoesPage() {
             meta_access_token: config.meta_access_token || null,
             nome_usuario: config.nome_usuario || null,
             cargo_usuario: config.cargo_usuario || null,
+            endereco_convite_ativo: !!config.endereco_convite_ativo,
             tom_venda: config.tom_venda || null,
             instrucoes_adicionais: config.instrucoes_adicionais || null,
             horario_funcionamento: config.horario_funcionamento || null,
@@ -1487,6 +1491,58 @@ export default function ConfiguracoesPage() {
                 placeholder="Ex: Gerente de Pátio"
                 className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
               />
+            </div>
+
+            {/* Convite de visita: usa o endereço acima + Seu Nome/Cargo. Por isso
+                mora aqui, colado nos três campos que alimentam as frases. */}
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => setConfig(c => ({ ...c, endereco_convite_ativo: !c.endereco_convite_ativo }))}
+                className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl border transition ${
+                  config.endereco_convite_ativo
+                    ? "bg-red-50 border-red-200"
+                    : "bg-[#f5f5f3] border-gray-200"
+                }`}
+              >
+                <span className="text-sm font-semibold text-gray-900 text-left">
+                  Convidar para visita depois do endereço
+                </span>
+                <span className={`shrink-0 w-10 h-6 rounded-full p-0.5 transition ${config.endereco_convite_ativo ? "bg-red-500" : "bg-gray-300"}`}>
+                  <span className={`block w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${config.endereco_convite_ativo ? "translate-x-4" : ""}`} />
+                </span>
+              </button>
+
+              {config.endereco_convite_ativo ? (
+                <div className="bg-white border border-gray-200 rounded-2xl p-3 flex flex-col gap-2">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">
+                    Sai assim, logo depois do endereço
+                  </p>
+                  <p className="self-start bg-[#f5f5f3] rounded-2xl rounded-bl-sm px-3 py-2 text-sm text-gray-900">
+                    Quando posso te aguardar aqui na loja?
+                  </p>
+                  <p className="self-start bg-[#f5f5f3] rounded-2xl rounded-bl-sm px-3 py-2 text-sm text-gray-900">
+                    {(() => {
+                      const quem = [config.nome_usuario, config.cargo_usuario].map(t => (t || "").trim()).filter(Boolean).join(" ") || (config.nome_agente || "").trim();
+                      return quem ? `Chegando aqui procura por ${quem}.` : "Chegando aqui procura por …";
+                    })()}
+                  </p>
+                  {!config.endereco?.trim() && (
+                    <p className="text-[10px] text-amber-700">
+                      ⚠️ Preencha o endereço da loja acima — sem ele o convite não é enviado.
+                    </p>
+                  )}
+                  {!(config.nome_usuario || "").trim() && !(config.nome_agente || "").trim() && (
+                    <p className="text-[10px] text-amber-700">
+                      ⚠️ Preencha "Seu Nome" — é por quem o cliente vai procurar ao chegar.
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-[9px] text-gray-400">
+                  Quando o agente passa o endereço, ele emenda o convite e diz por quem procurar na chegada. Uma vez por cliente.
+                </p>
+              )}
             </div>
 
 
