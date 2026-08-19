@@ -40,8 +40,9 @@
 //                meta_access_token
 //   agente       tom_venda, instrucoes_adicionais, oferta_especial,
 //                modo_repasse, ia_so_responde_anuncio, agente_pausado,
-//                ia_modo_lead_only, envio_material_completo
+//                ia_modo_lead_only, envio_material_completo,
+//                endereco_convite_ativo, nome_usuario, cargo_usuario
 //   voz          voz_habilitada, voz_politica, voz_id, voz_max_chars
 //   plano        plano_ativo, trial_ends_at, plano_vence_em
 export const CONFIG_GARAGE_SELECT =
-  "user_id, nome_empresa, nome_fantasia, nome_agente, endereco, endereco_complemento, cidade, estado, telefone_loja, horario_funcionamento, whatsapp, whatsapp_agente, whatsapp_financeiro, whatsapp_posvenda, vitrine_slug, dominio_custom, webhook_token, avisa_base_url, avisa_token, meta_phone_id, meta_access_token, tom_venda, instrucoes_adicionais, oferta_especial, modo_repasse, ia_so_responde_anuncio, agente_pausado, ia_modo_lead_only, envio_material_completo, voz_habilitada, voz_politica, voz_id, voz_max_chars, plano_ativo, trial_ends_at, plano_vence_em, handoff_sla_horas, handoff_ia_retoma, alertas_whatsapp_ativo" as const;
+  "user_id, nome_empresa, nome_fantasia, nome_agente, endereco, endereco_complemento, cidade, estado, telefone_loja, horario_funcionamento, whatsapp, whatsapp_agente, whatsapp_financeiro, whatsapp_posvenda, vitrine_slug, dominio_custom, webhook_token, avisa_base_url, avisa_token, meta_phone_id, meta_access_token, tom_venda, instrucoes_adicionais, oferta_especial, modo_repasse, ia_so_responde_anuncio, agente_pausado, ia_modo_lead_only, envio_material_completo, endereco_convite_ativo, nome_usuario, cargo_usuario, voz_habilitada, voz_politica, voz_id, voz_max_chars, plano_ativo, trial_ends_at, plano_vence_em, handoff_sla_horas, handoff_ia_retoma, alertas_whatsapp_ativo" as const;

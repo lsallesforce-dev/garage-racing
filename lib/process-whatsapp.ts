@@ -131,6 +131,30 @@ const execFileAsync = promisify(execFile);
   }
 }
 
+// Detecta se um texto do agente contém o endereço da loja. Compara TOKENS do
+// logradouro (ignorando "rua/avenida/..."), não a string inteira: a IA reescreve
+// o endereço com abreviação, quebra de linha e complemento no meio, então
+// `texto.includes(endereco)` praticamente nunca casaria. Dois tokens batendo já
+// é endereço — um só ("Netto") aparece por acaso em nome de cliente. Por isso
+// o call site passa endereço + complemento: a Carmatti costuma mandar a
+// referência ("antes do Hospital da Mulher") no lugar do logradouro completo.
+const VIA_STOPWORDS = new Set([
+  "rua", "avenida", "av", "alameda", "travessa", "rodovia", "estrada",
+  "praca", "praça", "numero", "número", "bairro", "loja", "km",
+]);
+
+export function respostaContemEndereco(texto: string, endereco?: string | null): boolean {
+  if (!texto || !endereco) return false;
+  const norm = (t: string) =>
+    t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  const alvo = norm(texto);
+  const tokens = norm(endereco)
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length >= 3 && !VIA_STOPWORDS.has(w));
+  const distintos = new Set(tokens.filter((w) => alvo.includes(w)));
+  return distintos.size >= 2;
+}
+
 export interface GarageConfig {
   nome_empresa?: string;
   nome_fantasia?: string;
@@ -159,6 +183,10 @@ export interface GarageConfig {
   // Agente no celular pessoal do dono (migration 037)
   ia_modo_lead_only?: boolean;      // só responde conversa classificada como lead (ver lib/lead-gate.ts)
   envio_material_completo?: boolean; // ao pedir mídia, manda todas as fotos + vídeo + ficha de uma vez
+  // Convite de visita determinístico (migration 051)
+  endereco_convite_ativo?: boolean; // após a resposta com o endereço, emenda convite + por quem procurar
+  nome_usuario?: string;            // quem atende na loja (usado no "procura por ...")
+  cargo_usuario?: string;           // cargo dessa pessoa (ex.: "Vendedor")
   // Voz (migration 036) — OFF por padrão
   voz_habilitada?: boolean;
   voz_politica?: "espelho" | "espelho_e_saudacao";
@@ -245,6 +273,7 @@ interface BuildPromptParams {
   ofertaEspecial?: string | null;
   horarioFuncionamento?: string | null;
   modoRepasse?: boolean | null;
+  enderecoConviteAtivo?: boolean | null;
 }
 
 function buildSystemInstruction(p: BuildPromptParams): string {
@@ -530,7 +559,10 @@ ${p.vitrineUrl ? `▶ VITRINE — QUANDO NÃO ENCONTRAR O QUE O CLIENTE PEDIU:
   - Não inicie sugestão de outro carro enquanto o cliente estiver focado no VEÍCULO EM NEGOCIAÇÃO.
   - EXCEÇÃO: se o cliente perguntar o preço ou detalhes de um veículo em ALTERNATIVAS, responda imediatamente — preço é sempre compartilhável.
   - Só sugira alternativas espontaneamente se: (a) o cliente pedir explicitamente outro carro, ou (b) o veículo em negociação não aparece mais no contexto.
-${instrucoesBlock}${ofertaBlock}
+${p.enderecoConviteAtivo ? `▶ CONVITE DE VISITA — O SISTEMA EMENDA, VOCÊ NÃO:
+  - Depois de você passar o endereço da loja, o sistema envia sozinho duas mensagens: o convite ("Quando posso te aguardar aqui na loja?") e por quem o cliente deve procurar ao chegar.
+  - Por isso, ao informar o endereço, PARE no endereço. Não pergunte quando o cliente vem, não peça horário e não oriente a procurar por ninguém — sairia duplicado.
+` : ""}${instrucoesBlock}${ofertaBlock}
 [DADOS DE CONTEXTO]
 NOME DO CLIENTE: ${p.nomeCliente ?? "Não informado"}
 ${p.enderecoGaragem ? `ENDEREÇO DA LOJA: ${p.enderecoGaragem}${p.enderecoComplemento ? ` (${p.enderecoComplemento})` : ""}` : ""}
@@ -2922,6 +2954,7 @@ Responda apenas com o JSON, sem markdown.`;
       ofertaEspecial: garageConfig?.oferta_especial,
       horarioFuncionamento: garageConfig?.horario_funcionamento,
       modoRepasse: garageConfig?.modo_repasse,
+      enderecoConviteAtivo: garageConfig?.endereco_convite_ativo,
     });
 
     const partsToGenerate: any[] = [{ text: userMessage }];
@@ -3734,6 +3767,53 @@ Retorne JSON estrito:
     // A falha em si já foi logada e gravada em `erros_webhook` pelo próprio
     // sendText (registrarFalhaEnvio). Aqui só o encaminhamento pro resgate.
     console.warn(`↩️ [${phone}] Resposta fica delivered=false — o cron reprocessar-pendentes reenvia entre 10min e 2h.`);
+  }
+
+  // ── 15a-bis. Convite de visita (config_garage.endereco_convite_ativo) ───────
+  // Pedido do gerente da Carmatti (19/08): assim que o agente passa o endereço,
+  // emendar duas bolhas — o convite e por quem procurar na chegada. Era instrução
+  // de prompt e saía quando a IA lembrava; aqui é determinístico.
+  // Uma vez por lead: repetir a cada menção de endereço soaria robótico.
+  if (
+    entregouTexto &&
+    lead?.id &&
+    garageConfig?.endereco_convite_ativo &&
+    respostaContemEndereco(
+      aiResponse,
+      [garageConfig?.endereco, garageConfig?.endereco_complemento].filter(Boolean).join(" ")
+    )
+  ) {
+    const quemProcurar = [garageConfig?.nome_usuario, garageConfig?.cargo_usuario]
+      .map((t) => (t ?? "").trim())
+      .filter(Boolean)
+      .join(" ") || (garageConfig?.nome_agente ?? "").trim();
+
+    const bolhas = [
+      "Quando posso te aguardar aqui na loja?",
+      quemProcurar ? `Chegando aqui procura por ${quemProcurar}.` : "",
+    ].filter(Boolean);
+
+    const { data: jaConvidou } = await supabaseAdmin
+      .from("mensagens")
+      .select("id")
+      .eq("lead_id", lead.id)
+      .eq("content", bolhas[0])
+      .limit(1)
+      .maybeSingle();
+
+    if (!jaConvidou) {
+      for (const bolha of bolhas) {
+        const ok = await sendText(phone, bolha);
+        await supabaseAdmin.from("mensagens").insert({
+          lead_id: lead.id,
+          content: bolha,
+          remetente: "agente",
+          delivered: ok,
+        });
+        await new Promise((r) => setTimeout(r, 1200));
+      }
+      console.log(`📍 [Convite de visita] ${bolhas.length} bolhas emendadas ao endereço para ${phone}`);
+    }
   }
 
   if (mensagemAgenteId) {
