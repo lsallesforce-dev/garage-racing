@@ -16,15 +16,25 @@
 // Anti-spam: Redis marca o tenant como caído; realerta só a cada 6h (12h quando
 // é token inválido, que é problema de configuração, não queda). Quando a sessão
 // volta, manda um "voltou" e limpa a marca.
+//
+// Anti-falso-positivo: a Avisa às vezes responde HTTP 200 com "No session" para
+// uma sessão viva (Carmatti, 19/08 12:40 BRT — cliente conversando no mesmo
+// minuto do alerta). Por isso queda só vira alerta depois de DUAS leituras:
+// re-check imediato dentro do mesmo tick e confirmação no tick seguinte.
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getAvisaInstanceStatus } from "@/lib/avisa";
 import { alertaInterno } from "@/lib/alerta-interno";
-import { avisaSessaoRegistrarQueda, avisaSessaoRegistrarVolta } from "@/lib/redis";
+import {
+  avisaSessaoRegistrarQueda,
+  avisaSessaoRegistrarVolta,
+  avisaSessaoConfirmarSuspeita,
+  avisaSessaoLimparSuspeita,
+} from "@/lib/redis";
 import { assinaturaAtiva } from "@/lib/assinatura";
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 function isAuthorized(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET;
@@ -71,15 +81,26 @@ export async function GET(req: NextRequest) {
       continue;
     }
 
-    const status = await getAvisaInstanceStatus({
-      baseUrl: t.avisa_base_url as string,
-      token: t.avisa_token as string,
-    });
+    const creds = { baseUrl: t.avisa_base_url as string, token: t.avisa_token as string };
+    let status = await getAvisaInstanceStatus(creds);
+
+    // Re-check imediato: um "No session" isolado costuma ser hiccup da Avisa.
+    if (status.estado === "sem_sessao") {
+      await new Promise((r) => setTimeout(r, 4000));
+      const segunda = await getAvisaInstanceStatus(creds);
+      if (segunda.estado !== "sem_sessao") {
+        console.log(`↩️ [avisa-sessao] ${nome}: "${status.detalhe}" não se repetiu (${segunda.estado}) — hiccup`);
+        status = segunda;
+      }
+    }
 
     // "indisponivel" (rede/5xx da Avisa) NÃO alerta: é hiccup passageiro e o
     // próximo tick confirma. Só sessão caída e token morto viram alerta.
     if (status.estado === "conectado" || status.estado === "indisponivel") {
       let alertado = false;
+      if (status.estado === "conectado") {
+        await avisaSessaoLimparSuspeita(t.user_id);
+      }
       if (status.estado === "conectado" && (await avisaSessaoRegistrarVolta(t.user_id))) {
         alertado = await alertar(
           `✅ *WhatsApp reconectado*\n\n` +
@@ -89,6 +110,14 @@ export async function GET(req: NextRequest) {
         );
       }
       resultado.push({ tenant: nome, estado: status.estado, detalhe: status.detalhe, alertado });
+      continue;
+    }
+
+    // Token inválido é determinístico (a Avisa nega o token, não a sessão) e
+    // alerta de primeira. Queda de sessão espera o tick seguinte confirmar.
+    if (status.estado === "sem_sessao" && !(await avisaSessaoConfirmarSuspeita(t.user_id))) {
+      console.warn(`⏳ [avisa-sessao] ${nome}: possível queda (${status.detalhe}) — aguardando confirmação no próximo tick`);
+      resultado.push({ tenant: nome, estado: "suspeita", detalhe: status.detalhe, alertado: false });
       continue;
     }
 

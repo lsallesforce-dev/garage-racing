@@ -610,6 +610,39 @@ export async function avisaSessaoRegistrarQueda(
   }
 }
 
+// Confirmação em dois ticks. O /instance/status da Avisa devolve, de vez em
+// quando, HTTP 200 com {success:false, error:"No session"} para uma sessão que
+// está VIVA — foi o que gerou o alerta falso do Carmatti em 19/08 12:40 BRT,
+// com cliente conversando com o agente no mesmo minuto. Uma leitura isolada não
+// prova queda, então a 1ª detecção só marca suspeita e a 2ª (tick seguinte,
+// ~20min) é que alerta. TTL curto para uma suspeita solitária morrer sozinha.
+//
+// Fail-CLOSED aqui, ao contrário das outras: Redis fora do ar não confirma nada,
+// e alertar sem confirmação é justamente o bug que esta função existe pra evitar.
+export async function avisaSessaoConfirmarSuspeita(
+  userId: string,
+  ttlSeconds = 45 * 60
+): Promise<boolean> {
+  try {
+    const primeira = await getClient().set(`avisa:suspeita:${userId}`, Date.now(), {
+      nx: true,
+      ex: ttlSeconds,
+    });
+    return primeira === null; // null = já havia suspeita = esta é a confirmação
+  } catch (e) {
+    console.warn("⚠️ [Redis] avisaSessaoConfirmarSuspeita falhou — NÃO confirma:", e);
+    return false;
+  }
+}
+
+export async function avisaSessaoLimparSuspeita(userId: string): Promise<void> {
+  try {
+    await getClient().del(`avisa:suspeita:${userId}`);
+  } catch (e) {
+    console.warn("⚠️ [Redis] avisaSessaoLimparSuspeita falhou (non-fatal):", e);
+  }
+}
+
 export async function avisaSessaoRegistrarVolta(userId: string): Promise<boolean> {
   try {
     const removidas = await getClient().del(`avisa:down:${userId}`);
