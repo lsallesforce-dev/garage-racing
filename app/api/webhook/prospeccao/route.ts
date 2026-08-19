@@ -112,7 +112,12 @@ const AUTOREPLY_PATTERNS: RegExp[] = [
   /como podemos (?:te |lhe )?ajudar/i,
   /em breve[\s\S]{0,30}\b(?:retorn|respond|contato|atend)/i,
   /um de nossos (?:atendentes|consultores|vendedores|colaboradores)/i,
-  /seja bem[\s-]?vind/i,
+  // Aceita palavra no meio: "Seja MUITO bem vindo(a)" furava o padrão antigo
+  // ("seja bem"), e a Brasília Veículos virou handoff pro Lucas atender um robô.
+  /seja[\s\S]{0,15}bem[\s-]?vind/i,
+  // "me informe o seu nome e como posso te ajudar" — ninguém responde assim a
+  // uma abordagem fria; é o formulário de boas-vindas da loja falando.
+  /\b(?:me\s+)?informe\s+(?:o\s+)?seu\s+nome\b/i,
   /seu contato (?:é|e) (?:muito )?importante/i,
   /aguarde[\s\S]{0,20}(?:retorn|atend|momento)/i,
 ];
