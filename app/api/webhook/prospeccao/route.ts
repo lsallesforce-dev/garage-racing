@@ -559,12 +559,52 @@ export async function POST(req: NextRequest) {
 
   // ── Stand-by humano: não responde se um humano assumiu ──────────────────────
   if (prospect.em_atendimento_humano) {
-    // Marca como "respondeu" se ainda não evoluiu, mas mantém o humano no controle.
-    if (prospect.status === "enviado" || prospect.status === "novo" || prospect.status === "sem_resposta") {
-      patchBase.status = "respondeu";
+    // Exceção: o ACEITE que chega DEPOIS do handoff automático.
+    // O gate da 1ª resposta dispara na primeira bolha que chega, e o lojista
+    // costuma mandar o cumprimento primeiro e o sim logo atrás ("Olá bom dia"
+    // → 17s → "Como funciona? Posso testar"). O aceite caía aqui e MORRIA: o
+    // Tato pediu pra testar três vezes e ficou 21h sem nenhuma resposta.
+    //
+    // Só reabre enquanto NINGUÉM (Mari ou Lucas) tiver falado depois da primeira
+    // fala dele. Se a demo já começou, ou se o Lucas já está tocando a conversa,
+    // o stand-by continua mandando — quem entrega a demo aí é o botão do painel.
+    if (aceitouOTeste(text)) {
+      const { data: primeiraFalaDele } = await supabaseAdmin
+        .from("prospect_mensagens")
+        .select("created_at")
+        .eq("prospect_id", prospect.id)
+        .eq("remetente", "prospect")
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      const { count: falamosDepois } = primeiraFalaDele
+        ? await supabaseAdmin
+            .from("prospect_mensagens")
+            .select("*", { count: "exact", head: true })
+            .eq("prospect_id", prospect.id)
+            .in("remetente", ["agente", "humano"])
+            .gt("created_at", primeiraFalaDele.created_at as string)
+        : { count: 1 };
+
+      if ((falamosDepois ?? 0) === 0) {
+        prospect.em_atendimento_humano = false;
+        patchBase.em_atendimento_humano = false;
+        patchBase.status = "respondeu";
+        console.log(
+          `▶️ [prospeccao] ${prospect.nome_empresa} aceitou o teste depois do handoff — devolvendo pra Mari.`,
+        );
+      }
     }
-    await supabaseAdmin.from("prospects").update(patchBase).eq("id", prospect.id);
-    return NextResponse.json({ status: "standby_humano" });
+
+    if (prospect.em_atendimento_humano) {
+      // Marca como "respondeu" se ainda não evoluiu, mas mantém o humano no controle.
+      if (prospect.status === "enviado" || prospect.status === "novo" || prospect.status === "sem_resposta") {
+        patchBase.status = "respondeu";
+      }
+      await supabaseAdmin.from("prospects").update(patchBase).eq("id", prospect.id);
+      return NextResponse.json({ status: "standby_humano" });
+    }
   }
 
   // ── Autoreply do WhatsApp Business do prospect ──────────────────────────────
