@@ -227,8 +227,30 @@ export function confirmouSerOResponsavel(texto: string): boolean {
 // desculpe!"). A culpa é da regra "vendedor bom OFERECE, não devolve pergunta":
 // sem nada pra ir atrás, o modelo inventa uma oferta. Num "oi" seco não há o que
 // oferecer — o certo é cumprimentar e devolver o convite.
-const SO_CUMPRIMENTO =
-  /^(?:ol[áa]|oi+|opa|e\s*a[íi]|bom\s*dia|boa\s*tarde|boa\s*noite|tudo\s*(?:bem|bom|joia)|blz|beleza|salve)[\s!.,?]*$/i;
+// Antes isto era UM regex ancorado (^…$) numa lista fechada de tokens, então só
+// pegava cumprimento de uma palavra só. Na prática o lojista responde à abertura
+// ASSINADA PELO LUCAS ecoando o nome dele — "Oi Lucas bom dia", "Td joia lucas e
+// vc ?" — e o nome no meio furava a âncora. Resultado: cumprimento virava
+// "resposta com conteúdo" e queimava um handoff pro Lucas atender um "bom dia".
+//
+// Agora a checagem é por SUBTRAÇÃO: tira o ruído conhecido (cumprimento,
+// cortesia, e o nome de quem assinou a abertura, que é eco e não conteúdo) e
+// vê se sobrou alguma letra. Sobrou = tem pedido dentro; não sobrou = foi só oi.
+// ⚠️ Fronteira de palavra aqui é (?<!\p{L}) … (?!\p{L}) com flag `u`, NUNCA \b.
+// O \b do JS é ASCII: "Olá" termina em "á", que não é word char pra ele, então
+// /\bol[áa]\b/ não casa NUNCA. É a mesma armadilha do "robô" documentada acima.
+const RUIDO_DE_CUMPRIMENTO: RegExp[] = [
+  /(?<!\p{L})(?:ol[áa]|oi+|opa|opah|e\s*a[íi]|salve|fala)(?!\p{L})/giu,
+  /(?<!\p{L})(?:bom\s*dia|boa\s*tarde|boa\s*noite)(?!\p{L})/giu,
+  /(?<!\p{L})(?:tudo|td|tdo)\s*(?:bem|bom|jo[ií]a|certo|tranquilo|[óo]timo)(?!\p{L})/giu,
+  /(?<!\p{L})(?:blz|beleza|suave|firmeza|tranquilo|certo|jo[ií]a)(?!\p{L})/giu,
+  /(?<!\p{L})e\s*(?:vc|voc[êe]|tu|a[íi]|contigo|com\s+voc[êe])(?!\p{L})/giu,
+  /(?<!\p{L})(?:obrigad[oa]|abra[çc]o|abs)(?!\p{L})/giu,
+  // O nome da assinatura. NÃO é conteúdo: é o lojista devolvendo o cumprimento
+  // a quem se apresentou. "sim" fica FORA desta lista de propósito — sim é
+  // aceite, e aceite tem que vencer, não virar cumprimento.
+  /(?<!\p{L})(?:lucas|mari)(?!\p{L})/giu,
+];
 
 // ─── Detector: aceitou o teste ────────────────────────────────────────────────
 // A abertura agora e assinada pelo LUCAS e termina perguntando se ele quer
@@ -264,9 +286,13 @@ const RECUSA_NA_PORTA =
 /** true = a mensagem é só um cumprimento, sem nenhum pedido dentro. */
 export function ehSoCumprimento(texto: string): boolean {
   // Emoji sai antes do teste: "Oi 👋" e "Bom dia 😊" são o mesmo caso que "Oi".
-  const t = (texto || "").replace(/\p{Extended_Pictographic}/gu, "").trim();
-  if (!t || t.length > 30) return false;
-  return SO_CUMPRIMENTO.test(t);
+  let t = (texto || "").replace(/\p{Extended_Pictographic}/gu, "").trim();
+  // Teto generoso o bastante pra "Olá bom dia Td joia lucas e vc ?" (33), curto
+  // o bastante pra qualquer frase com pedido dentro nem chegar a ser testada.
+  if (!t || t.length > 60) return false;
+  for (const re of RUIDO_DE_CUMPRIMENTO) t = t.replace(re, " ");
+  // Se sobrou letra ou número, tinha conteúdo além do cumprimento.
+  return !/[\p{L}\p{N}]/u.test(t);
 }
 
 // Temperatura da conversa de prospecção (espelha o padrão FRIO/MORNO/QUENTE do B2C).

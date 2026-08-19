@@ -18,7 +18,7 @@ import { timingSafeEqual } from "crypto";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { bolhasParaLinhas } from "@/lib/prospeccao-historico";
 import { sendAvisaMessage, sendAvisaImage, sendAvisaVideo, extractWebhookToken } from "@/lib/avisa";
-import { gerarRespostaProspeccao, carregarPatioDemo, carregarLojaDemo, aceitouOTeste } from "@/lib/process-prospeccao";
+import { gerarRespostaProspeccao, carregarPatioDemo, carregarLojaDemo, aceitouOTeste, ehSoCumprimento } from "@/lib/process-prospeccao";
 import { montarAbertura } from "@/lib/prospeccao-abertura";
 import { bumpStats } from "@/lib/prospeccao-stats";
 import { baixarAudioWhatsApp } from "@/lib/whatsapp-audio";
@@ -720,8 +720,15 @@ export async function POST(req: NextRequest) {
   // A abertura se apresenta como ele e pergunta se o lojista quer testar a IA.
   // Isso cria uma regra simples e inegociável: a IA NÃO se passa pelo Lucas.
   //   aceitou o teste  → a Mari entra (anunciada) e faz a demonstração;
+  //   SÓ CUMPRIMENTOU  → a Mari também entra: não há nada pra o Lucas responder
+  //                      num "bom dia", e ela só devolve o cumprimento e repete
+  //                      o convite (o bloco ELE SÓ CUMPRIMENTOU no prompt);
   //   qualquer outra coisa (dúvida, preço, "quem é você?", objeção) → cala e
   //   chama o Lucas, porque quem abriu a conversa foi ele.
+  //
+  // O cumprimento precisou virar exceção porque a abertura é ASSINADA pelo
+  // Lucas: o lojista responde ecoando o nome dele ("Oi Lucas bom dia"), o que
+  // não é aceite nem objeção — e sem a exceção TODO cumprimento virava handoff.
   // Contar TURNO, não bolha. Antes isto contava linhas de "prospect", e duas
   // bolhas ("Boa tarde" + "Tudo certo") já davam count=2 → o gate não rodava e a
   // Mari entrava sozinha, sem o Lucas ter falado. Como a coalescência agrupa o
@@ -759,8 +766,12 @@ export async function POST(req: NextRequest) {
     ? turno.filter((m) => m.remetente === "prospect").map((m) => m.content ?? "")
     : [text];
   const aceitou = bolhasDoTurno.some((c) => aceitouOTeste(c));
+  // Turno inteiro tem que ser cumprimento: "Boa tarde" + "Tudo certo" é só oi,
+  // mas "Olá bom dia" + "quanto custa?" tem pergunta dentro e é do Lucas.
+  const soCumprimentou =
+    bolhasDoTurno.length > 0 && bolhasDoTurno.every((c) => ehSoCumprimento(c));
 
-  if (primeiraResposta && !aceitou) {
+  if (primeiraResposta && !aceitou && !soCumprimentou) {
     await supabaseAdmin
       .from("prospects")
       .update({ ...patchBase, em_atendimento_humano: true, status: "respondeu" })
