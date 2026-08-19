@@ -698,13 +698,28 @@ function formatVehicleCard(v: Vehicle): string {
   const hist = v as any;
   const historicoPartes = [
     hist.qtd_proprietarios != null && `Proprietários anteriores: ${hist.qtd_proprietarios}`,
+    // O aviso de procedência precisou ficar ESTREITO. Solto, ele engolia toda
+    // pergunta com cara de histórico: caso real (18/08, APROVE) — cliente
+    // perguntou "tem laudo cautelar?" e o agente escalou pro gerente três vezes
+    // seguidas, com "Sinistros: NADA CONSTA" escrito na linha de baixo. Ficou
+    // com cara de agente que não sabe nada do próprio pátio, e a conversa morreu.
     hist.procedencia
       ? `Procedência: ${hist.procedencia}`
-      : `⚠️ Procedência NÃO informada — se o cliente perguntar de onde veio o carro ou sobre histórico de proprietários anteriores, acione o gerente via precisa_instrucao`,
+      : `Procedência não informada — NÃO invente de onde veio o carro. Isso NÃO te impede de responder sobre sinistro, batida, restrição ou laudo: pra isso valem os campos Restrições e Sinistros abaixo, que são a resposta certa. Só acione precisa_instrucao se perguntarem especificamente a ORIGEM do carro (leilão, de quem era antes).`,
     hist.passou_leilao != null && `Passou por leilão: ${hist.passou_leilao ? "Sim" : "Não"}`,
-    `Restrições: ${hist.restricoes_veiculo || "nada consta"}`,
-    `Sinistros: ${hist.historico_sinistros || "nada consta"}`,
-    `Manutenção: ${hist.historico_manutencao || "nada consta"}`,
+    // Campo VAZIO não é ficha limpa. Antes os dois caíam em "nada consta", ou
+    // seja, o contexto afirmava que o carro não tem restrição nem batida quando
+    // ninguém tinha conferido — o agente diria isso a um comprador com todas as
+    // letras. Vazio agora diz que está vazio.
+    hist.restricoes_veiculo
+      ? `Restrições: ${hist.restricoes_veiculo}`
+      : `Restrições: NÃO CONFERIDO — nunca afirme que está limpo; diga que confirma com o vendedor.`,
+    hist.historico_sinistros
+      ? `Sinistros: ${hist.historico_sinistros}`
+      : `Sinistros: NÃO CONFERIDO — nunca afirme que não teve batida; diga que confirma com o vendedor.`,
+    hist.historico_manutencao
+      ? `Manutenção: ${hist.historico_manutencao}`
+      : `Manutenção: sem registro no sistema`,
     hist.observacoes_vistoria && `Vistoria: ${hist.observacoes_vistoria}`,
   ].filter(Boolean);
   const historico = historicoPartes.length > 0
