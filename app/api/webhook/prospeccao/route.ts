@@ -118,6 +118,13 @@ const AUTOREPLY_PATTERNS: RegExp[] = [
   // "me informe o seu nome e como posso te ajudar" — ninguém responde assim a
   // uma abordagem fria; é o formulário de boas-vindas da loja falando.
   /\b(?:me\s+)?informe\s+(?:o\s+)?seu\s+nome\b/i,
+  // "Me chamo Mara e sou responsável pelos atendimentos da loja X" — o prompt da
+  // Mari já lista isso como sinal de robô, mas o detector determinístico não
+  // pegava, então ela gastava a primeira impressão conversando com a atendente
+  // automática. Ninguém se apresenta assim respondendo a uma abordagem fria.
+  // O "n" é opcional porque a mensagem real vem com erro de digitação
+  // ("atedimentos") — texto de produção tem typo, o padrão tem que aguentar.
+  /respons[áa]vel\s+(?:pelos?|pelo)\s+aten?dimentos?/i,
   /seu contato (?:é|e) (?:muito )?importante/i,
   /aguarde[\s\S]{0,20}(?:retorn|atend|momento)/i,
 ];
