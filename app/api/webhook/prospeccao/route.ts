@@ -18,7 +18,7 @@ import { timingSafeEqual } from "crypto";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { bolhasParaLinhas } from "@/lib/prospeccao-historico";
 import { sendAvisaMessage, sendAvisaImage, sendAvisaVideo, extractWebhookToken } from "@/lib/avisa";
-import { gerarRespostaProspeccao, carregarPatioDemo, carregarLojaDemo, aceitouOTeste, ehSoCumprimento } from "@/lib/process-prospeccao";
+import { gerarRespostaProspeccao, carregarPatioDemo, carregarLojaDemo, aceitouOTeste } from "@/lib/process-prospeccao";
 import { montarAbertura } from "@/lib/prospeccao-abertura";
 import { bumpStats } from "@/lib/prospeccao-stats";
 import { baixarAudioWhatsApp } from "@/lib/whatsapp-audio";
@@ -136,6 +136,17 @@ const HANDOFF_POR_ROBO =
 function ehHandoffPorRobo(motivo: string | null | undefined, resposta: string): boolean {
   return HANDOFF_POR_ROBO.test(`${motivo ?? ""} ${resposta ?? ""}`);
 }
+
+// ─── O que a Mari NÃO pode resolver sozinha na primeira resposta ─────────────
+// Lista curta de propósito: é a única coisa que ainda chama o Lucas.
+//   (a) dinheiro — o prompt proíbe a Mari de dar preço, prazo ou faixa;
+//   (b) pedido explícito de humano — quem pede pessoa está pedindo pessoa.
+// Fronteira com (?<!\p{L}) … (?!\p{L}) e flag u, nunca \b: "preço" termina em
+// "o" mas "é" e afins quebram o \b ASCII (a mesma armadilha do "robô").
+const PRECISA_DO_LUCAS: RegExp[] = [
+  /(?<!\p{L})(?:quanto\s+(?:custa|fica|sai|é|e)|pre[çc]os?|valor(?:es)?|mensalidade|mensal|assinatura|investimento|or[çc]amento|quanto\s+vou\s+pagar|cobra\s+quanto)(?!\p{L})/iu,
+  /(?<!\p{L})(?:falar?\s+com\s+(?:voc[êe]|algu[ée]m|uma\s+pessoa|o\s+vendedor|o\s+respons[áa]vel)|me\s+liga|pode\s+(?:me\s+)?ligar|liga\s+(?:pra|para)\s+mim|manda\s+o\s+contato)(?!\p{L})/iu,
+];
 
 function pareceAutoreply(text: string): boolean {
   const t = (text || "").trim();
@@ -765,13 +776,27 @@ export async function POST(req: NextRequest) {
   const bolhasDoTurno = primeiraResposta && turno.length > 0
     ? turno.filter((m) => m.remetente === "prospect").map((m) => m.content ?? "")
     : [text];
-  const aceitou = bolhasDoTurno.some((c) => aceitouOTeste(c));
-  // Turno inteiro tem que ser cumprimento: "Boa tarde" + "Tudo certo" é só oi,
-  // mas "Olá bom dia" + "quanto custa?" tem pergunta dentro e é do Lucas.
-  const soCumprimentou =
-    bolhasDoTurno.length > 0 && bolhasDoTurno.every((c) => ehSoCumprimento(c));
+  // A regra ANTES era: só um "sim" explícito ficava com a Mari, e TODO o resto
+  // ia pro Lucas. Na prática quase nada é um sim explícito. Numa tarde só
+  // chegaram na caixa dele "Obrigado", "Vou passar pro chefe se eles se
+  // interessa tê falo" e "por enquanto não, mas vou salvar seu número" — três
+  // handoffs, nenhum com pergunta pra responder. Vira despejo, e ele para de
+  // olhar os alertas, que é o pior desfecho possível.
+  //
+  // Agora a regra é invertida: a Mari fica com a primeira resposta por padrão, e
+  // a lista do que é DELE é curta e explícita — dinheiro e pedido pra falar com
+  // gente. São exatamente as duas coisas que ela não pode resolver: o prompt a
+  // proíbe de falar preço e prazo, e quem pede humano está pedindo humano.
+  //
+  // O resto (cumprimento, agradecimento, "vou ver com o chefe", recusa,
+  // adiamento) fica com ela, que tem regra pra cada caso — e assim o
+  // encerramento certo volta a acontecer no destinoDoEncerramento lá embaixo,
+  // que hoje nem roda quando o gate corta a conversa antes do Gemini.
+  const precisaDoLucas = bolhasDoTurno.some((c) =>
+    PRECISA_DO_LUCAS.some((re) => re.test(c || "")),
+  );
 
-  if (primeiraResposta && !aceitou && !soCumprimentou) {
+  if (primeiraResposta && precisaDoLucas) {
     await supabaseAdmin
       .from("prospects")
       .update({ ...patchBase, em_atendimento_humano: true, status: "respondeu" })
