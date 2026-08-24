@@ -318,6 +318,26 @@ export async function POST(req: NextRequest) {
   // Sem telefone não há o que enviar — pula sem gastar a vez do cron.
   const novo = ((fila ?? []) as Prospect[]).find((c) => c.wa_id || c.telefone) ?? null;
 
+  // ...mas pular calado deixa o registro em 'novo' PARA SEMPRE: ele é relido a
+  // cada tick e conta como fila no painel, então "1 na fila" convivia com "não
+  // enviou nada hoje" e parecia bug de envio. Aposenta na primeira passada.
+  const semTelefone = ((fila ?? []) as Prospect[]).filter((c) => !c.wa_id && !c.telefone);
+  if (semTelefone.length > 0) {
+    await supabaseAdmin
+      .from("prospects")
+      .update({
+        status: "perdido",
+        notas: "Importado sem telefone — a coleta não trouxe número. Nada a enviar.",
+        updated_at: nowIso,
+      })
+      .in("id", semTelefone.map((c) => c.id));
+    console.warn(
+      `📵 [prospeccao-tick] ${semTelefone.length} prospect(s) sem telefone tirados da fila: ${semTelefone
+        .map((c) => c.nome_empresa)
+        .join(", ")}`,
+    );
+  }
+
   if (!novo) {
     return NextResponse.json({ skip: "fila_vazia", encerrados });
   }
