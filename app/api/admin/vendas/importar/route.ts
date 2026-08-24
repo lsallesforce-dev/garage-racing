@@ -42,6 +42,8 @@ export async function POST(req: NextRequest) {
     queries?: string[];
     maxPerSearch?: number;
     reaproveitar?: boolean; // true = importa o dataset da ÚLTIMA run paga, sem coleta nova
+    cidade?: string; // cidade em campo próprio (1 por run) em vez de dentro da query
+    filtrarPorDor?: boolean; // reviews só com reclamação — ver montarInput()
   };
 
   const queries =
@@ -63,7 +65,12 @@ export async function POST(req: NextRequest) {
     revendas =
       body.reaproveitar === true
         ? await buscarUltimaColeta()
-        : await coletarRevendas({ queries, maxPerSearch });
+        : await coletarRevendas({
+            queries,
+            maxPerSearch,
+            cidade: typeof body.cidade === "string" ? body.cidade : null,
+            filtrarPorDor: body.filtrarPorDor === true,
+          });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Falha ao coletar na Apify";
     console.error("❌ [vendas/importar] coleta Apify falhou:", msg);

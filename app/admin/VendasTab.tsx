@@ -845,6 +845,8 @@ function Campanha({ headers }: { headers: Record<string, string> }) {
   // Importação
   const [queries, setQueries] = useState("");
   const [maxPorBusca, setMaxPorBusca] = useState("");
+  const [cidade, setCidade] = useState("");
+  const [filtrarPorDor, setFiltrarPorDor] = useState(false);
   const [importando, setImportando] = useState(false);
   const [importResult, setImportResult] = useState<string | null>(null);
 
@@ -899,6 +901,8 @@ function Campanha({ headers }: { headers: Record<string, string> }) {
         queries: qs.length ? qs : undefined,
         maxPerSearch: Number.isFinite(maxNum) && maxNum > 0 ? maxNum : undefined,
         reaproveitar: reaproveitar || undefined,
+        cidade: cidade.trim() || undefined,
+        filtrarPorDor: filtrarPorDor || undefined,
       }),
     });
     setImportando(false);
@@ -1025,11 +1029,30 @@ function Campanha({ headers }: { headers: Record<string, string> }) {
           <Download size={14} /> Importar Revendas
         </h3>
         <p className="text-[11px] text-gray-400 -mt-3">
-          Uma query por linha (ex: <code>revenda de carros em São Paulo</code>). Vazio usa as buscas padrão.
+          Uma query por linha, <strong>sem a cidade</strong> — ela vai no campo abaixo. Vazio usa as buscas padrão.
         </p>
-        <textarea rows={5} value={queries} onChange={e => setQueries(e.target.value)}
-          placeholder={"revenda de carros em São Paulo SP\nloja de carros usados Campinas SP\nmultimarcas Belo Horizonte MG"}
+        <textarea rows={4} value={queries} onChange={e => setQueries(e.target.value)}
+          placeholder={"revenda de carros\nloja de carros usados\nveículos multimarcas"}
           className={`${inputCls} resize-none font-mono text-[12px]`} />
+        <div className="flex items-center gap-3">
+          <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 whitespace-nowrap">
+            Cidade
+          </label>
+          <input value={cidade} onChange={e => setCidade(e.target.value)} placeholder="Catanduva"
+            className={`${inputCls} w-44`} />
+          <span className="text-[10px] text-gray-400">
+            UMA por importação. No campo próprio o robô varre a cidade inteira; dentro da frase, quem escolhe o raio é o Google.
+          </span>
+        </div>
+        <label className="flex items-start gap-3 rounded-2xl border border-gray-200 px-4 py-3 cursor-pointer hover:bg-gray-50 transition">
+          <input type="checkbox" checked={filtrarPorDor} onChange={e => setFiltrarPorDor(e.target.checked)}
+            className="mt-0.5" />
+          <span className="text-[11px] text-gray-600 leading-relaxed">
+            <strong className="text-gray-900">Só trazer avaliação de reclamação</strong> — puxa apenas reviews que
+            falam em demora e falta de resposta. Não exclui loja nenhuma da coleta: serve pra marcar quem tem a dor
+            por escrito, que vale +25 no score e hoje só aparece em 2 de 154.
+          </span>
+        </label>
         <div className="flex items-center gap-3">
           <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 whitespace-nowrap">
             Máx. por busca

@@ -43,6 +43,18 @@ export interface RevendaColetada {
 export interface ColetarRevendasParams {
   queries: string[];
   maxPerSearch?: number;
+  /**
+   * Cidade em campo próprio ("Catanduva"), em vez de embutida na frase de busca.
+   * Com a cidade dentro da query o Google é quem decide o raio; no campo próprio
+   * o actor varre o polígono da cidade. UMA cidade por run — é limite do actor.
+   */
+  cidade?: string | null;
+  /**
+   * Liga o filtro de reviews por palavra de dor. Não exclui loja nenhuma da
+   * coleta: só faz o array `reviews` de cada lugar vir apenas com reclamação.
+   * Ver PALAVRAS_DEMORA e o comentário em montarInput().
+   */
+  filtrarPorDor?: boolean;
 }
 
 // Actor síncrono do Google Maps Scraper.
@@ -223,6 +235,69 @@ function normalizarItem(item: Record<string, unknown>): RevendaColetada {
 // Coleta principal
 // -----------------------------------------------------------------------------
 
+// Palavras que vão no filtro de reviews quando `filtrarPorDor` está ligado.
+// Curto de propósito: raízes que cobrem as variações ("demora" pega demorado,
+// demorou) sem virar uma frase longa. Ver a ressalva em montarInput.
+const FILTRO_DOR = ["demora", "não responde", "não retorna", "não atende"];
+
+/**
+ * Monta o input do actor. Separado da chamada porque é o que muda com mais
+ * frequência e o que a gente precisa conseguir testar sem gastar crédito.
+ */
+export function montarInput({
+  queries,
+  maxPerSearch,
+  cidade,
+  filtrarPorDor,
+}: {
+  queries: string[];
+  maxPerSearch: number;
+  cidade?: string | null;
+  filtrarPorDor?: boolean;
+}): Record<string, unknown> {
+  const input: Record<string, unknown> = {
+    searchStringsArray: queries,
+    language: "pt-BR",
+    maxCrawledPlacesPerSearch: maxPerSearch,
+    // Reviews são a ÚNICA fonte pública que diz quem toca a loja ("fui atendido
+    // pelo Fabiano, dono"). Sem isto o dataset traz só `reviewsCount` — foi por
+    // isso que `reclama_demora_atendimento` veio false pra todo mundo desde
+    // sempre: nunca houve texto pra analisar. 20 é o suficiente pra um nome se
+    // repetir e não multiplica o custo por lugar como 100 multiplicaria.
+    maxReviews: 20,
+    reviewsSort: "newest",
+    language_reviews: "pt-BR",
+    // Loja fechada gasta crédito e entra na fila como contato morto.
+    skipClosedPlaces: true,
+    // Trava geográfica: sem isso a busca por texto às vezes deriva pra fora do
+    // Brasil quando o nome da cidade existe em outro país.
+    countryCode: "br",
+  };
+
+  // Cidade em campo próprio > cidade dentro da frase. Com ela na frase, quem
+  // decide o raio é o Google; aqui o actor varre o polígono da cidade. O actor
+  // aceita UMA localização por run — por isso é uma cidade, não uma lista.
+  // Formato "City + Country" é o que a doc do actor recomenda; o país já vai
+  // no countryCode.
+  if (cidade && cidade.trim()) input.locationQuery = cidade.trim();
+
+  // ⚠️ NÃO ligar placeMinimumStars aqui. Parece refinamento e é tiro no pé: o
+  // ICP com dor visível é justamente quem tem review ruim, e o sinal
+  // reclama_demora_atendimento (+25, o maior peso do score) vem de reclamação.
+  // Filtrar por estrela remove exatamente a loja que a gente quer.
+
+  // Filtro de dor: NÃO exclui lugar nenhum da coleta — só faz o array `reviews`
+  // vir apenas com reclamação, o que torna reclama_demora_atendimento confiável
+  // (hoje dispara em 2 de 154).
+  // ⚠️ A doc do actor não diz se os termos são OR ou frase única. A primeira
+  // coleta com isso ligado tem que ser conferida: se `reviews_analisados` vier
+  // zerado pra todo mundo, o campo está sendo tratado como frase e a gente troca
+  // por um termo só.
+  if (filtrarPorDor) input.reviewsFilterString = FILTRO_DOR.join(" ");
+
+  return input;
+}
+
 /**
  * Coleta revendas no Google Maps via Apify (actor síncrono).
  * @throws Error("APIFY_TOKEN não configurado") se a env var estiver ausente.
@@ -231,6 +306,8 @@ function normalizarItem(item: Record<string, unknown>): RevendaColetada {
 export async function coletarRevendas({
   queries,
   maxPerSearch = 100,
+  cidade = null,
+  filtrarPorDor = false,
 }: ColetarRevendasParams): Promise<RevendaColetada[]> {
   const token = process.env.APIFY_TOKEN;
   if (!token) throw new Error("APIFY_TOKEN não configurado");
@@ -243,19 +320,7 @@ export async function coletarRevendas({
     `https://api.apify.com/v2/acts/${APIFY_ACTOR}/run-sync-get-dataset-items` +
     `?token=${encodeURIComponent(token)}`;
 
-  const input = {
-    searchStringsArray: queries,
-    language: "pt-BR",
-    maxCrawledPlacesPerSearch: maxPerSearch,
-    // Reviews são a ÚNICA fonte pública que diz quem toca a loja ("fui atendido
-    // pelo Fabiano, dono"). Sem isto o dataset traz só `reviewsCount` — foi por
-    // isso que `reclama_demora_atendimento` veio false pra todo mundo desde
-    // sempre: nunca houve texto pra analisar. 20 é o suficiente pra um nome se
-    // repetir e não multiplica o custo por lugar como 100 multiplicaria.
-    maxReviews: 20,
-    reviewsSort: "newest",
-    language_reviews: "pt-BR",
-  };
+  const input = montarInput({ queries, maxPerSearch, cidade, filtrarPorDor });
 
   const res = await fetch(endpoint, {
     method: "POST",
