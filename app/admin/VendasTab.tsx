@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   Loader2, RefreshCw, CheckCircle2, XCircle, Send, Bot, UserCheck,
   Download, Save, Inbox as InboxIcon, Users, ListChecks,
-  Megaphone, Activity, Ban, Search, Plus, X, Pencil, Undo2,
+  Megaphone, Activity, Ban, Search, Plus, X, Pencil, Undo2, Check,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -356,6 +356,37 @@ function Pipeline({ headers }: { headers: Record<string, string> }) {
   const [busca, setBusca] = useState("");
   const [modalAberto, setModalAberto] = useState(false);
   const [editando, setEditando] = useState<Prospect | null>(null);
+  // Feedback do envio manual, por linha. "enviado" fica na tela alguns segundos
+  // e some — a linha em si já muda de status pra ENVIADO no recarregamento, que
+  // é o registro permanente.
+  const [abordando, setAbordando] = useState<string | null>(null);
+  const [abordado, setAbordado] = useState<Record<string, "ok" | string>>({});
+
+  async function abordar(p: Prospect) {
+    if (abordando) return; // um por vez: cada envio segura o chip por ~10s
+    const nome = (p.nome_empresa ?? "esse contato").toUpperCase();
+    if (!confirm(`Enviar a abertura de prospecção para ${nome}?\n\n${p.telefone ?? ""}`)) return;
+
+    setAbordando(p.id);
+    setAbordado(a => { const n = { ...a }; delete n[p.id]; return n; });
+    try {
+      const res = await fetch("/api/admin/vendas/abordar", {
+        method: "POST", headers, body: JSON.stringify({ prospect_id: p.id }),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok) {
+        setAbordado(a => ({ ...a, [p.id]: "ok" }));
+        carregar();
+        setTimeout(() => setAbordado(a => { const n = { ...a }; delete n[p.id]; return n; }), 6000);
+      } else {
+        setAbordado(a => ({ ...a, [p.id]: data?.error ?? "Falha no envio." }));
+      }
+    } catch {
+      setAbordado(a => ({ ...a, [p.id]: "Erro de rede." }));
+    } finally {
+      setAbordando(null);
+    }
+  }
 
   const carregar = useCallback(async () => {
     setLoading(true);
@@ -454,11 +485,40 @@ function Pipeline({ headers }: { headers: Record<string, string> }) {
                 <td className="px-4 py-4"><span className="text-base font-black text-gray-900">{p.score}</span></td>
                 <td className="px-4 py-4"><StatusBadge status={p.status} /></td>
                 <td className="px-4 py-4"><span className="text-[11px] text-gray-400 font-bold">{fmtDateTime(p.ultima_msg_at)}</span></td>
-                <td className="px-4 py-4 text-right">
-                  <button onClick={() => setEditando(p)} title="Editar nome e telefone"
-                    className="p-2 rounded-xl text-gray-400 hover:text-gray-900 hover:bg-gray-100 transition">
-                    <Pencil size={14} />
-                  </button>
+                <td className="px-4 py-4">
+                  <div className="flex items-center justify-end gap-1">
+                    {abordado[p.id] === "ok" ? (
+                      <span className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-green-50 text-green-700 text-[10px] font-black uppercase tracking-widest">
+                        <Check size={12} /> Enviado
+                      </span>
+                    ) : abordado[p.id] ? (
+                      <span title={abordado[p.id]}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-red-50 text-red-600 text-[10px] font-black uppercase tracking-widest max-w-[190px]">
+                        <X size={12} className="shrink-0" />
+                        <span className="truncate normal-case tracking-normal font-bold">{abordado[p.id]}</span>
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => abordar(p)}
+                        disabled={!!abordando || !p.telefone || p.opt_out || !!p.ultima_msg_at}
+                        title={
+                          !p.telefone ? "Sem telefone — não dá pra abordar"
+                          : p.opt_out ? "Esse contato pediu para não ser abordado"
+                          : p.ultima_msg_at ? "Já abordado — veja a conversa no Inbox"
+                          : "Enviar a abertura de prospecção agora"
+                        }
+                        className="p-2 rounded-xl text-gray-400 hover:text-red-600 hover:bg-red-50 transition disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-gray-400"
+                      >
+                        {abordando === p.id
+                          ? <Loader2 size={14} className="animate-spin text-red-600" />
+                          : <Send size={14} />}
+                      </button>
+                    )}
+                    <button onClick={() => setEditando(p)} title="Editar nome e telefone"
+                      className="p-2 rounded-xl text-gray-400 hover:text-gray-900 hover:bg-gray-100 transition">
+                      <Pencil size={14} />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
