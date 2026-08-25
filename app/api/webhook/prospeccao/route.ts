@@ -144,17 +144,6 @@ function ehHandoffPorRobo(motivo: string | null | undefined, resposta: string): 
   return HANDOFF_POR_ROBO.test(`${motivo ?? ""} ${resposta ?? ""}`);
 }
 
-// ─── O que a Mari NÃO pode resolver sozinha na primeira resposta ─────────────
-// Lista curta de propósito: é a única coisa que ainda chama o Lucas.
-//   (a) dinheiro — o prompt proíbe a Mari de dar preço, prazo ou faixa;
-//   (b) pedido explícito de humano — quem pede pessoa está pedindo pessoa.
-// Fronteira com (?<!\p{L}) … (?!\p{L}) e flag u, nunca \b: "preço" termina em
-// "o" mas "é" e afins quebram o \b ASCII (a mesma armadilha do "robô").
-const PRECISA_DO_LUCAS: RegExp[] = [
-  /(?<!\p{L})(?:quanto\s+(?:custa|fica|sai|é|e)|pre[çc]os?|valor(?:es)?|mensalidade|mensal|assinatura|investimento|or[çc]amento|quanto\s+vou\s+pagar|cobra\s+quanto)(?!\p{L})/iu,
-  /(?<!\p{L})(?:falar?\s+com\s+(?:voc[êe]|algu[ée]m|uma\s+pessoa|o\s+vendedor|o\s+respons[áa]vel)|me\s+liga|pode\s+(?:me\s+)?ligar|liga\s+(?:pra|para)\s+mim|manda\s+o\s+contato)(?!\p{L})/iu,
-];
-
 function pareceAutoreply(text: string): boolean {
   const t = (text || "").trim();
   if (t.length < 6) return false;
@@ -734,87 +723,30 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ status: "disjuntor_volume" });
   }
 
-  // ── (d) A abertura é do LUCAS: quem responde a primeira depende do que veio ──
-  // A abertura se apresenta como ele e pergunta se o lojista quer testar a IA.
-  // Isso cria uma regra simples e inegociável: a IA NÃO se passa pelo Lucas.
-  //   aceitou o teste  → a Mari entra (anunciada) e faz a demonstração;
-  //   SÓ CUMPRIMENTOU  → a Mari também entra: não há nada pra o Lucas responder
-  //                      num "bom dia", e ela só devolve o cumprimento e repete
-  //                      o convite (o bloco ELE SÓ CUMPRIMENTOU no prompt);
-  //   qualquer outra coisa (dúvida, preço, "quem é você?", objeção) → cala e
-  //   chama o Lucas, porque quem abriu a conversa foi ele.
+  // ── (d) A Mari responde TODA mensagem que chega ─────────────────────────────
+  // Aqui existiu um gate de primeira resposta. Ele nasceu quando a abertura
+  // perguntava "quer testar?": só um SIM soltava a Mari, e o resto ia pro Lucas,
+  // porque a IA não podia se passar por ele. A regra foi afrouxando (cumprimento,
+  // depois tudo menos dinheiro) até sobrar só dinheiro e pedido de humano.
   //
-  // O cumprimento precisou virar exceção porque a abertura é ASSINADA pelo
-  // Lucas: o lojista responde ecoando o nome dele ("Oi Lucas bom dia"), o que
-  // não é aceite nem objeção — e sem a exceção TODO cumprimento virava handoff.
-  // Contar TURNO, não bolha. Antes isto contava linhas de "prospect", e duas
-  // bolhas ("Boa tarde" + "Tudo certo") já davam count=2 → o gate não rodava e a
-  // Mari entrava sozinha, sem o Lucas ter falado. Como a coalescência agrupa o
-  // que chega em até COALESCE_MS, o gate virava sorteio pela velocidade de
-  // digitação do lojista: Tato (17s entre bolhas) caiu no gate e foi pro Lucas;
-  // Morales (4s) furou e pegou a Mari.
+  // Agora ela cai de vez, por dois motivos:
   //
-  // Definição imune a isso: ainda é "primeira resposta" enquanto NÓS (Mari ou
-  // Lucas) não falamos nada depois da primeira fala dele.
-  const { data: primeiraFala } = await supabaseAdmin
-    .from("prospect_mensagens")
-    .select("created_at")
-    .eq("prospect_id", prospect.id)
-    .eq("remetente", "prospect")
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-
-  const { data: desdeAPrimeiraFala } = primeiraFala
-    ? await supabaseAdmin
-        .from("prospect_mensagens")
-        .select("remetente, content")
-        .eq("prospect_id", prospect.id)
-        .gte("created_at", primeiraFala.created_at as string)
-        .order("created_at", { ascending: true })
-    : { data: null };
-
-  const turno = (desdeAPrimeiraFala ?? []) as { remetente: string; content: string | null }[];
-  const primeiraResposta = turno.length === 0 || !turno.some((m) => m.remetente !== "prospect");
-
-  // O aceite pode estar em QUALQUER bolha do turno: "Boa tarde" + "pode testar"
-  // chegam separadas, e testar só a última perderia o sim. Bolha a bolha (e não
-  // concatenado) porque aceitouOTeste ignora texto acima de 120 caracteres.
-  const bolhasDoTurno = primeiraResposta && turno.length > 0
-    ? turno.filter((m) => m.remetente === "prospect").map((m) => m.content ?? "")
-    : [text];
-  // A regra ANTES era: só um "sim" explícito ficava com a Mari, e TODO o resto
-  // ia pro Lucas. Na prática quase nada é um sim explícito. Numa tarde só
-  // chegaram na caixa dele "Obrigado", "Vou passar pro chefe se eles se
-  // interessa tê falo" e "por enquanto não, mas vou salvar seu número" — três
-  // handoffs, nenhum com pergunta pra responder. Vira despejo, e ele para de
-  // olhar os alertas, que é o pior desfecho possível.
+  // 1. A abertura mudou. Não pergunta mais se ele quer testar — convida a mandar
+  //    mensagem direto ("fala com ela como se fosse um cliente seu"). Quem faz
+  //    isso responde "tem algum Renegade?", nunca "sim". Esperar afirmação era
+  //    esperar uma frase que o convite novo não pede.
   //
-  // Agora a regra é invertida: a Mari fica com a primeira resposta por padrão, e
-  // a lista do que é DELE é curta e explícita — dinheiro e pedido pra falar com
-  // gente. São exatamente as duas coisas que ela não pode resolver: o prompt a
-  // proíbe de falar preço e prazo, e quem pede humano está pedindo humano.
+  // 2. Silêncio é o pior desfecho. Todo gate aqui produzia lojista falando com
+  //    ninguém enquanto esperava o Lucas ver o alerta — o Tato pediu pra testar
+  //    três vezes e ficou 21h sem resposta.
   //
-  // O resto (cumprimento, agradecimento, "vou ver com o chefe", recusa,
-  // adiamento) fica com ela, que tem regra pra cada caso — e assim o
-  // encerramento certo volta a acontecer no destinoDoEncerramento lá embaixo,
-  // que hoje nem roda quando o gate corta a conversa antes do Gemini.
-  const precisaDoLucas = bolhasDoTurno.some((c) =>
-    PRECISA_DO_LUCAS.some((re) => re.test(c || "")),
-  );
-
-  if (primeiraResposta && precisaDoLucas) {
-    await supabaseAdmin
-      .from("prospects")
-      .update({ ...patchBase, em_atendimento_humano: true, status: "respondeu" })
-      .eq("id", prospect.id);
-    await alertarHandoff(
-      prospect,
-      `Respondeu a sua abertura: "${text.slice(0, 120)}" — responda você pelo Inbox (a IA não fala em seu nome).`,
-    );
-    console.log(`🙋 [prospeccao] ${prospect.nome_empresa} respondeu sem aceitar o teste — passando pro Lucas.`);
-    return NextResponse.json({ status: "primeira_resposta_para_o_humano" });
-  }
+  // O Lucas continua sendo avisado, mas pelo caminho certo: o handoff que o
+  // próprio Gemini marca (preço, proposta, quer assinar, irritou, caiu em bot),
+  // já com a conversa respondida. Aviso não custa mais o silêncio.
+  //
+  // O que AINDA cala a Mari, e continua valendo, está tudo acima deste ponto:
+  // stand-by humano, autoreply da loja, loop guard, disjuntor de volume e a
+  // pausa global da campanha.
 
   // ── Carrega o histórico e gera a resposta do agente ─────────────────────────
   // O pátio vai junto: a Mari precisa dele pra ofertar carro E pra saber de qual
