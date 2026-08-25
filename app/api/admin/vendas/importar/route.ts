@@ -9,6 +9,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireAdminSecret } from "@/lib/api-auth";
 import { coletarRevendas, buscarUltimaColeta, type RevendaColetada } from "@/lib/apify";
 import { calcularScore } from "@/lib/prospeccao-scoring";
+import { foraDoICP } from "@/lib/prospeccao-filtro-icp";
 
 // Buscas default caso o caller não envie `queries` (idealmente o caller manda).
 const QUERIES_DEFAULT = ["revenda de carros", "seminovos", "veículos multimarcas"];
@@ -119,11 +120,25 @@ export async function POST(req: NextRequest) {
   const rows: Record<string, unknown>[] = [];
   let novos = 0;
   let atualizados = 0;
+  // Contagem por motivo, pra devolver no resultado e o painel mostrar o que foi
+  // barrado em vez de só um total menor sem explicação.
+  const forasPorMotivo: Record<string, number> = {};
 
   for (const r of comPlaceId) {
     const placeId = r.google_place_id as string;
     if (vistos.has(placeId)) continue; // evita duplicata dentro do mesmo lote
     vistos.add(placeId);
+
+    // Fora do perfil de cliente (locadora, concessionária de marca, oficina,
+    // feirão) nem entra na base. O scoring mede TAMANHO, então rede nacional
+    // pontua melhor que multimarcas de bairro e ia pro topo da fila: em 25/08 a
+    // Movida entrou com score 75, o maior de todos, e foi o primeiro contato da
+    // leva de Bauru. Ver lib/prospeccao-filtro-icp.ts.
+    const motivoFora = foraDoICP(r.nome_empresa, r.categoria);
+    if (motivoFora) {
+      forasPorMotivo[motivoFora] = (forasPorMotivo[motivoFora] ?? 0) + 1;
+      continue;
+    }
 
     const { score, motivo, sinais: sinaisScore } = calcularScore(r);
     const atual = existentes.get(placeId);
@@ -195,10 +210,17 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  const foraTotal = Object.values(forasPorMotivo).reduce((a, b) => a + b, 0);
+  if (foraTotal > 0) {
+    console.log(`🚫 [vendas/importar] ${foraTotal} fora do perfil:`, forasPorMotivo);
+  }
+
   return NextResponse.json({
     ok: true,
     importados: rows.length,
     novos,
     atualizados,
+    fora_do_perfil: foraTotal,
+    fora_por_motivo: forasPorMotivo,
   });
 }

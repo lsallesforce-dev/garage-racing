@@ -968,7 +968,20 @@ function Campanha({ headers }: { headers: Record<string, string> }) {
     setImportando(false);
     if (res.ok) {
       const data = await res.json();
-      setImportResult(`${data.novos ?? 0} nova(s) · ${data.atualizados ?? 0} já existiam.`);
+      const fora = data.fora_do_perfil ?? 0;
+      const rotulos: Record<string, string> = {
+        locadora: "locadora",
+        concessionaria_de_marca: "concessionária de marca",
+        nao_e_revenda: "oficina/autopeças",
+        feirao: "feirão",
+      };
+      const detalhe = Object.entries(data.fora_por_motivo ?? {})
+        .map(([k, v]) => `${v} ${rotulos[k] ?? k}`)
+        .join(", ");
+      setImportResult(
+        `${data.novos ?? 0} nova(s) · ${data.atualizados ?? 0} já existiam.` +
+        (fora > 0 ? ` · ${fora} fora do perfil descartada(s)${detalhe ? ` (${detalhe})` : ""}.` : ""),
+      );
     } else {
       const data = await res.json().catch(() => null);
       setImportResult(`Erro ao importar${data?.error ? `: ${data.error}` : "."}`);
