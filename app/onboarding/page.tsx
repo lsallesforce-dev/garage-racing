@@ -101,11 +101,13 @@ function OnboardingInner() {
           user_id:           user.id,
           nome_empresa:      form.nome_empresa,
           nome_agente:       form.nome_agente || "Assistente",
-          whatsapp:          form.whatsapp,
+          // trim: telefone/token colado com espaço nas pontas grava sujo e quebra
+          // em silêncio quem compara o campo cru (ver whatsapp_agente).
+          whatsapp:          form.whatsapp.trim(),
           endereco:          form.endereco || null,
           vitrine_slug:      form.vitrine_slug || null,
-          meta_phone_id:     form.meta_phone_id || null,
-          meta_access_token: form.meta_access_token || null,
+          meta_phone_id:     form.meta_phone_id?.trim() || null,
+          meta_access_token: form.meta_access_token?.trim() || null,
         },
         { onConflict: "user_id" }
       );

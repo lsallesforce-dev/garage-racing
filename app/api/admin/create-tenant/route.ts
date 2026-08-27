@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
     nome_empresa,
     nome_agente: nome_agente || "Agente",
     endereco: endereco || "",
-    whatsapp: whatsapp || "",
+    whatsapp: String(whatsapp ?? "").trim(),
     webhook_token,
     logo_url: null,
   });

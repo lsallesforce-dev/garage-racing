@@ -135,6 +135,13 @@ function extractDominantColor(url: string): Promise<string | null> {
   });
 }
 
+// Telefone/token colado com espaço ou TAB nas pontas grava sujo e quebra em
+// silêncio qualquer comparação direta com o campo cru (já aconteceu:
+// whatsapp_agente gravado como "\t5517991888631"). Campo em branco vira null.
+function limpo(v?: string | null): string | null {
+  return (v ?? "").trim() || null;
+}
+
 export default function ConfiguracoesPage() {
   const [mode, setMode] = useState<Mode>("manual");
   const [originalFile, setOriginalFile] = useState<File | null>(null);
@@ -1021,16 +1028,18 @@ export default function ConfiguracoesPage() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Usuário não autenticado");
+      const avisaBaseUrl = limpo(config.avisa_base_url);
+      const avisaToken = limpo(config.avisa_token);
       const { error } = await supabase
         .from("config_garage")
         .upsert(
           {
             ...(config.id ? { id: config.id } : {}),
             user_id: user.id,
-            avisa_base_url: config.avisa_base_url || null,
-            avisa_token: config.avisa_token || null,
-            meta_phone_id: config.meta_phone_id || null,
-            meta_access_token: config.meta_access_token || null,
+            avisa_base_url: avisaBaseUrl,
+            avisa_token: avisaToken,
+            meta_phone_id: limpo(config.meta_phone_id),
+            meta_access_token: limpo(config.meta_access_token),
             voz_habilitada: !!config.voz_habilitada,
             voz_politica: config.voz_politica || "espelho",
             // Config do repasse em comunidade agora vive na página "Fluxo Grupo"
@@ -1042,13 +1051,13 @@ export default function ConfiguracoesPage() {
 
       // Conecta o webhook da Avisa automaticamente quando há credenciais.
       // Sem isso, a Avisa não repassa as mensagens recebidas ao AutoZap.
-      if (config.avisa_base_url && config.avisa_token) {
+      if (avisaBaseUrl && avisaToken) {
         const res = await fetch("/api/configuracoes/avisa", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            avisa_base_url: config.avisa_base_url,
-            avisa_token: config.avisa_token,
+            avisa_base_url: avisaBaseUrl,
+            avisa_token: avisaToken,
           }),
         });
         const data = await res.json().catch(() => ({}));
@@ -1127,13 +1136,13 @@ export default function ConfiguracoesPage() {
             nome_agente: config.nome_agente,
             endereco: config.endereco,
             endereco_complemento: config.endereco_complemento || null,
-            whatsapp: config.whatsapp,
-            whatsapp_financeiro: config.whatsapp_financeiro || null,
-            whatsapp_posvenda: config.whatsapp_posvenda || null,
-            whatsapp_agente: config.whatsapp_agente || null,
+            whatsapp: limpo(config.whatsapp),
+            whatsapp_financeiro: limpo(config.whatsapp_financeiro),
+            whatsapp_posvenda: limpo(config.whatsapp_posvenda),
+            whatsapp_agente: limpo(config.whatsapp_agente),
             vitrine_slug: config.vitrine_slug || null,
-            meta_phone_id: config.meta_phone_id || null,
-            meta_access_token: config.meta_access_token || null,
+            meta_phone_id: limpo(config.meta_phone_id),
+            meta_access_token: limpo(config.meta_access_token),
             nome_usuario: config.nome_usuario || null,
             cargo_usuario: config.cargo_usuario || null,
             endereco_convite_ativo: !!config.endereco_convite_ativo,
@@ -1141,7 +1150,7 @@ export default function ConfiguracoesPage() {
             instrucoes_adicionais: config.instrucoes_adicionais || null,
             horario_funcionamento: config.horario_funcionamento || null,
             oferta_especial:      config.oferta_especial      || null,
-            telefone_loja:        config.telefone_loja        || null,
+            telefone_loja:        limpo(config.telefone_loja),
             webmotors_usuario:    config.webmotors_usuario    || null,
             webmotors_senha:      config.webmotors_senha      || null,
             nf_cep:               config.nf_cep               || null,

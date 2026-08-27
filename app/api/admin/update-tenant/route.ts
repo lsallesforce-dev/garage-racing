@@ -210,8 +210,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "avisa_base_url ou avisa_token obrigatório" }, { status: 400 });
       }
       update = {};
-      if (valor.avisa_base_url) update.avisa_base_url = valor.avisa_base_url;
-      if (valor.avisa_token)    update.avisa_token    = valor.avisa_token;
+      if (valor.avisa_base_url) update.avisa_base_url = String(valor.avisa_base_url).trim();
+      if (valor.avisa_token)    update.avisa_token    = String(valor.avisa_token).trim();
       break;
 
     case "set_meta":
@@ -220,9 +220,11 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "meta_phone_id ou meta_access_token obrigatório" }, { status: 400 });
       }
       update = {};
-      if (valor.meta_phone_id)     update.meta_phone_id     = valor.meta_phone_id;
-      if (valor.meta_access_token) update.meta_access_token = valor.meta_access_token;
-      if (valor.whatsapp_agente)   update.whatsapp_agente   = valor.whatsapp_agente;
+      // trim obrigatório: telefone colado com TAB/espaço nas pontas grava sujo e
+      // quebra em silêncio quem compara o campo cru (ver whatsapp_agente).
+      if (valor.meta_phone_id)     update.meta_phone_id     = String(valor.meta_phone_id).trim();
+      if (valor.meta_access_token) update.meta_access_token = String(valor.meta_access_token).trim();
+      if (valor.whatsapp_agente)   update.whatsapp_agente   = String(valor.whatsapp_agente).trim();
       break;
 
     default:
