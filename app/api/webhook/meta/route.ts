@@ -247,6 +247,179 @@ async function processSmbEcho(value: any) {
   }
 }
 
+// ─── Coexistência: resolve o tenant pelo phone_number_id ─────────────────────
+// Mesma consulta que o processSmbEcho fazia inline. Extraída porque agora são
+// três handlers de coexistência usando a mesma regra.
+async function tenantPorPhoneNumberId(phoneNumberId: string): Promise<string | null> {
+  if (!phoneNumberId) return null;
+  const { data } = await supabaseAdmin
+    .from("config_garage")
+    .select("user_id")
+    .eq("meta_phone_id", phoneNumberId)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  return data?.[0]?.user_id ?? null;
+}
+
+const soDigitos = (v: unknown) => String(v ?? "").replace(/\D/g, "");
+
+// ─── Coexistência: histórico de conversas (webhook `history`) ─────────────────
+// Chega depois que o exchange dispara syncSmbAppData("history"), em VÁRIOS
+// webhooks: divididos em 3 fases (0 = dia 0-1, 1 = dia 1-90, 2 = dia 90-180) e,
+// dentro de cada fase, em chunks que NÃO chegam em ordem. Por isso nada aqui
+// depende de sequência — cada mensagem carrega o próprio timestamp e é gravada
+// com ele.
+//
+// O que este handler NÃO faz, de propósito:
+//   - não aciona a IA. É histórico velho; responder a uma conversa de 3 meses
+//     atrás seria constrangedor pro cliente e perigoso pro tenant.
+//   - não mexe em em_atendimento_humano. Takeover é sinal do PRESENTE, e quem
+//     cuida disso é o smb_message_echoes.
+async function processSmbHistory(value: any) {
+  const phoneNumberId: string = value?.metadata?.phone_number_id ?? "";
+  const tenantUserId = await tenantPorPhoneNumberId(phoneNumberId);
+  if (!tenantUserId) {
+    console.warn(`⚠️ [SMB history] Nenhum tenant para phone_number_id=${phoneNumberId}`);
+    return;
+  }
+
+  // Número da LOJA. É como se distingue quem falou: a Meta manda `from` com o
+  // número do negócio ou o do cliente, e só manda `to` quando é eco do lojista.
+  const numeroLoja = soDigitos(value?.metadata?.display_phone_number);
+
+  // Caso 1: webhook de conteúdo de mídia. Quando uma mensagem do histórico é
+  // mídia, ela vem primeiro como `media_placeholder` (sem conteúdo) e a Meta
+  // manda DEPOIS um webhook separado, com field "history" mas com a mensagem em
+  // `messages` — não em `history`. Só acontece com mídia dos últimos 14 dias.
+  if (Array.isArray(value?.messages) && !Array.isArray(value?.history)) {
+    console.log(`🖼️ [SMB history] webhook de conteúdo de mídia (${value.messages.length} msg)`);
+    return; // o placeholder já registrou a linha no CRM; a mídia em si não é baixada aqui
+  }
+
+  for (const bloco of value?.history ?? []) {
+    // Lojista desmarcou "compartilhar histórico" no celular. Não é erro nosso e
+    // não adianta re-tentar: chega como erro 2593109 e o histórico não virá.
+    if (Array.isArray(bloco?.errors) && bloco.errors.length) {
+      const err = bloco.errors[0];
+      console.warn(`ℹ️ [SMB history] tenant ${tenantUserId} NÃO compartilhou histórico (code ${err?.code}): ${err?.title}`);
+      continue;
+    }
+
+    const { phase, chunk_order, progress } = bloco?.metadata ?? {};
+    console.log(`📜 [SMB history] tenant ${tenantUserId} fase=${phase} chunk=${chunk_order} progresso=${progress}% threads=${bloco?.threads?.length ?? 0}`);
+
+    for (const thread of bloco?.threads ?? []) {
+      const clienteWaId = soDigitos(thread?.id);
+      if (!clienteWaId) continue;
+
+      // Find-or-create — nunca upsert: o lead pode já existir com status,
+      // vendedor e etiqueta que o histórico não pode sobrescrever.
+      let leadId: string | null = null;
+      const { data: leadExistente } = await supabaseAdmin
+        .from("leads")
+        .select("id")
+        .eq("user_id", tenantUserId)
+        .eq("wa_id", clienteWaId)
+        .maybeSingle();
+      if (leadExistente) {
+        leadId = leadExistente.id;
+      } else {
+        const { data: leadNovo } = await supabaseAdmin
+          .from("leads")
+          .insert({ wa_id: clienteWaId, user_id: tenantUserId, origem: "coexistencia", status: "MORNO" })
+          .select("id")
+          .single();
+        leadId = leadNovo?.id ?? null;
+      }
+      if (!leadId) continue;
+
+      const linhas: any[] = [];
+      for (const msg of thread?.messages ?? []) {
+        // Dedupe por wamid: as fases podem repetir mensagem, e a Meta reentrega
+        // webhook. `mensagens` não guarda wamid, então o Redis é o único lugar
+        // onde essa checagem cabe.
+        if (msg?.id && await isDuplicateMessage(tenantUserId, msg.id)) continue;
+
+        const doLojista = soDigitos(msg?.from) === numeroLoja;
+        const tipo: string = msg?.type ?? "text";
+
+        const content: string =
+          tipo === "media_placeholder"
+            ? "[mídia enviada pelo WhatsApp Business App]"
+            : (msg?.text?.body ?? msg?.[tipo]?.caption ?? `[${tipo}]`);
+
+        // created_at explícito: sem isso o histórico inteiro entra com a hora da
+        // importação e o CRM mostra 6 meses de conversa como se fosse hoje —
+        // além de embaralhar a ordem que a IA lê como contexto.
+        const ts = Number(msg?.timestamp);
+        linhas.push({
+          lead_id: leadId,
+          content,
+          remetente: doLojista ? "agente" : "usuario",
+          delivered: true,
+          created_at: Number.isFinite(ts) && ts > 0
+            ? new Date(ts * 1000).toISOString()
+            : new Date().toISOString(),
+        });
+      }
+
+      // Insert em lote: um histórico de 180 dias pode ter centenas de linhas por
+      // thread, e uma ida ao banco por mensagem estouraria o maxDuration.
+      if (linhas.length) {
+        const { error } = await supabaseAdmin.from("mensagens").insert(linhas);
+        if (error) console.error(`🚨 [SMB history] insert falhou (lead ${leadId}):`, error.message);
+        else console.log(`📥 [SMB history] ${linhas.length} msg importadas p/ lead ${leadId}`);
+      }
+    }
+  }
+}
+
+// ─── Coexistência: contatos da agenda (webhook `smb_app_state_sync`) ──────────
+// DECISÃO DE PRODUTO: contato da agenda NÃO vira lead.
+// A agenda do WhatsApp Business App do lojista tem fornecedor, despachante,
+// família e o vizinho — e o projeto já tem o guard-rail de que o tenant usa o
+// MESMO número pra tudo. Criar lead por contato encheria o funil de gente que
+// nunca demonstrou interesse e a IA passaria a tratá-los como comprador.
+//
+// O que aproveitamos é só o NOME, e só pra lead que JÁ existe: resolve o caso
+// real do lead aparecer no painel como número cru quando o lojista já tem aquele
+// contato salvo há anos.
+async function processSmbStateSync(value: any) {
+  const phoneNumberId: string = value?.metadata?.phone_number_id ?? "";
+  const tenantUserId = await tenantPorPhoneNumberId(phoneNumberId);
+  if (!tenantUserId) {
+    console.warn(`⚠️ [SMB state_sync] Nenhum tenant para phone_number_id=${phoneNumberId}`);
+    return;
+  }
+
+  let renomeados = 0;
+  for (const item of value?.state_sync ?? []) {
+    // "remove" = contato apagado da agenda. Não apagamos nada: o lead é dado do
+    // CRM, não espelho da agenda do celular.
+    if (item?.action === "remove") continue;
+
+    const contato = item?.contact;
+    const waId = soDigitos(contato?.phone_number);
+    const nome: string = (contato?.full_name ?? contato?.first_name ?? "").trim();
+    if (!waId || !nome) continue;
+
+    // Só preenche nome VAZIO. Nome que o agente ou o gerente já apurou na
+    // conversa vale mais que o rótulo da agenda ("Joao Fiat Argo Placa XYZ").
+    const { data: lead } = await supabaseAdmin
+      .from("leads")
+      .select("id, nome")
+      .eq("user_id", tenantUserId)
+      .eq("wa_id", waId)
+      .maybeSingle();
+    if (!lead || (lead.nome ?? "").trim()) continue;
+
+    await supabaseAdmin.from("leads").update({ nome }).eq("id", lead.id);
+    renomeados++;
+  }
+
+  if (renomeados) console.log(`🏷️ [SMB state_sync] ${renomeados} lead(s) do tenant ${tenantUserId} ganharam nome da agenda`);
+}
+
 // ─── Extração de Campos do Payload Meta ──────────────────────────────────────
 function extractFields(payload: any): {
   phone: string;
@@ -374,6 +547,34 @@ export async function POST(req: NextRequest) {
         }
       });
       return NextResponse.json({ status: "smb_echo_queued" });
+    }
+
+    // Coexistência: histórico de conversas e contatos vindos do WhatsApp
+    // Business App, disparados pelo syncSmbAppData no fim do Embedded Signup.
+    // Ficam ANTES do extractFields de propósito: extractFields só entende
+    // field "messages" e devolveria phone vazio, fazendo o payload cair no
+    // "ignored" sem que ninguém importasse nada.
+    const camposCoexistencia = new Set(["history", "smb_app_state_sync"]);
+    const temCoexistencia = payload?.entry?.some((e: any) =>
+      e?.changes?.some((c: any) => camposCoexistencia.has(c?.field))
+    );
+    if (temCoexistencia) {
+      after(async () => {
+        for (const entry of payload.entry ?? []) {
+          for (const change of entry?.changes ?? []) {
+            if (change?.field === "history") {
+              await processSmbHistory(change.value).catch((e) =>
+                console.error("❌ processSmbHistory:", e)
+              );
+            } else if (change?.field === "smb_app_state_sync") {
+              await processSmbStateSync(change.value).catch((e) =>
+                console.error("❌ processSmbStateSync:", e)
+              );
+            }
+          }
+        }
+      });
+      return NextResponse.json({ status: "coexistencia_sync_queued" });
     }
 
     const { phone, userMessage, fromMe, messageId, phoneNumberId, audioMediaId, adReferral, isClientImage } = extractFields(payload);

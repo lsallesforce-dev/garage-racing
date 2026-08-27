@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
+import { syncSmbAppData } from "@/lib/meta";
 
 export async function POST(req: NextRequest) {
   const { user, error: authError } = await requireAuth();
@@ -205,6 +206,32 @@ export async function POST(req: NextRequest) {
     // sem PIN conhecido — nesse caso loga e segue.
     if (coexistencia === true) {
       console.log(`ℹ️ [Meta exchange] coexistência — /register pulado de propósito (número ${phoneNumberId} já registrado)`);
+
+      // ── Sync do WhatsApp Business App: JANELA DE 24H ─────────────────────────
+      // Sem isso o onboarding vence e o lojista tem que refazer o fluxo inteiro.
+      // Roda AQUI, na sequência do onboarding, e não num cron: a Meta recomenda
+      // disparar assim que o fluxo termina, e cada sync só vale UMA vez.
+      //
+      // Best-effort de propósito: a conexão em si já deu certo neste ponto (token
+      // e WABA gravados logo abaixo). Se a sync falhar, o tenant fica conectado e
+      // funcional daqui pra frente — perde só o histórico velho. Derrubar tudo por
+      // causa disso seria pior.
+      //
+      // Sequencial, não Promise.all: são a mesma janela de rate limit do número e
+      // a ordem importa pro suporte da Meta (contatos antes do histórico).
+      if (phoneNumberId) {
+        const credsSync = { phoneNumberId, accessToken };
+        const contatos = await syncSmbAppData("smb_app_state_sync", credsSync);
+        const historico = await syncSmbAppData("history", credsSync);
+        if (!contatos.ok || !historico.ok) {
+          console.error(
+            `🚨 [Meta exchange] sync de coexistência incompleta (contatos=${contatos.ok ? "ok" : contatos.error}, ` +
+            `historico=${historico.ok ? "ok" : historico.error}). A janela é de 24h — depois disso só refazendo o Embedded Signup.`,
+          );
+        }
+      } else {
+        console.error("🚨 [Meta exchange] coexistência sem phone_number_id — sync impossível, histórico será perdido");
+      }
     } else if (phoneNumberId) {
       try {
         const regRes = await fetch(`https://graph.facebook.com/v23.0/${phoneNumberId}/register`, {

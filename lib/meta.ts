@@ -337,3 +337,61 @@ export async function sendMetaCtaButton(
     interactive,
   }, c.accessToken);
 }
+
+// ─── Coexistência: sincronização dos dados do WhatsApp Business App ───────────
+// Depois que o lojista conclui o Embedded Signup em modo coexistência, há uma
+// JANELA DE 24H pra puxar os contatos e o histórico dele. Passou disso, a Meta
+// exige offboard + refazer o fluxo inteiro. Por isso o exchange chama estas duas
+// syncs na sequência do onboarding, não num cron depois.
+//
+// Cada sync só pode ser disparada UMA VEZ por onboarding. Repetir devolve erro
+// da Meta — é esperado quando o tenant reconecta, e por isso o retorno aqui é um
+// objeto (não exceção): quem chama loga e segue, sem derrubar a conexão que já
+// deu certo.
+//
+// O resultado NÃO vem na resposta: ela devolve só um request_id. Os dados chegam
+// depois, de forma assíncrona, nos webhooks `smb_app_state_sync` (contatos) e
+// `history` (conversas) — tratados em app/api/webhook/meta/route.ts.
+//
+// ⚠️ v23.0 aqui de propósito, alinhado com o exchange. O GRAPH_URL deste arquivo
+// ainda é v19.0 (versão de todos os envios); subir aquilo mexe no caminho quente
+// do produto e é troca à parte.
+const GRAPH_URL_SYNC = "https://graph.facebook.com/v23.0";
+
+export type SmbSyncType =
+  | "smb_app_state_sync"  // contatos da agenda do WhatsApp Business App
+  | "history";            // histórico de conversas (só vem se o lojista autorizou)
+
+export async function syncSmbAppData(
+  syncType: SmbSyncType,
+  creds: Partial<MetaCreds>,
+): Promise<{ ok: boolean; requestId?: string; error?: string }> {
+  const c = resolveCreds(creds);
+  if (!c) return { ok: false, error: "credenciais Meta ausentes" };
+
+  try {
+    const res = await fetch(`${GRAPH_URL_SYNC}/${c.phoneNumberId}/smb_app_data`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${c.accessToken}`,
+      },
+      body: JSON.stringify({ messaging_product: "whatsapp", sync_type: syncType }),
+    });
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || data?.error) {
+      const msg = data?.error?.message ?? `HTTP ${res.status}`;
+      console.error(`🚨 [smb_app_data/${syncType}] falhou: ${JSON.stringify(data).slice(0, 300)}`);
+      return { ok: false, error: msg };
+    }
+
+    // request_id é o que o suporte da Meta pede quando a sync não entrega os
+    // webhooks — guardar no log é a única forma de rastrear depois.
+    console.log(`✅ [smb_app_data/${syncType}] disparada — request_id=${data?.request_id ?? "?"}`);
+    return { ok: true, requestId: data?.request_id };
+  } catch (e: any) {
+    console.error(`🚨 [smb_app_data/${syncType}] erro de rede:`, String(e).slice(0, 200));
+    return { ok: false, error: String(e?.message ?? e).slice(0, 200) };
+  }
+}
