@@ -456,6 +456,13 @@ export default function ConfiguracoesPage() {
 
   // Instante do FINISH do Embedded Signup — usado pra medir a idade do code.
   const sessionFinishAtRef = useRef<number | null>(null);
+  // Asset IDs que o FINISH entrega. São a ÚNICA fonte confiável do WABA do
+  // cliente: o token do Login for Business é escopado ao business DELE, então
+  // /me/businesses (que lista os businesses do usuário) volta vazio e o
+  // exchange gravava waba_id null. Guardados em ref, não em state, porque o
+  // callback do FB.login lê isto de dentro de uma closure — state chegaria
+  // desatualizado.
+  const sessionAssetsRef = useRef<{ wabaId?: string; phoneNumberId?: string; coexistencia?: boolean }>({});
 
   useEffect(() => {
     // Recebe phone_number_id do popup do Embedded Signup
@@ -474,16 +481,25 @@ export default function ConfiguracoesPage() {
         }
         // "FINISH" = onboarding normal (número novo Cloud API)
         // "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING" = COEXISTÊNCIA (número que já roda
-        // no WhatsApp Business App do celular; app + API juntos). Ambos trazem
-        // phone_number_id em data.data; a coexistência também traz waba_id.
+        // no WhatsApp Business App do celular; app + API juntos).
+        // ⚠️ Os dois payloads NÃO são iguais: o FINISH normal traz phone_number_id +
+        // waba_id, mas o da coexistência traz SÓ waba_id (documentado). Ler apenas
+        // phone_number_id, como era antes, jogava fora o único asset ID que a
+        // coexistência entrega — e o exchange ficava sem saber qual WABA onboardar.
+        const ehCoexistencia = data.event === "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING";
         if (
           data.type === "WA_EMBEDDED_SIGNUP" &&
-          (data.event === "FINISH" || data.event === "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING")
+          (data.event === "FINISH" || ehCoexistencia)
         ) {
           // Marca QUANDO o fluxo terminou. O code do Embedded Signup vive ~30s, mas o
           // callback do FB.login só dispara quando o popup fecha — se o usuário demora
           // pra fechar a tela final, o code chega morto e a troca dá 100/36008.
           sessionFinishAtRef.current = Date.now();
+          sessionAssetsRef.current = {
+            wabaId:        data.data?.waba_id ?? undefined,
+            phoneNumberId: data.data?.phone_number_id ?? undefined,
+            coexistencia:  ehCoexistencia,
+          };
           setConfig(c => ({
             ...c,
             meta_phone_id: data.data?.phone_number_id || c.meta_phone_id,
@@ -542,7 +558,9 @@ export default function ConfiguracoesPage() {
         // a Meta recusa a troca com 36008 mesmo estando tudo certo.
         const codeAgeMs = sessionFinishAtRef.current ? Date.now() - sessionFinishAtRef.current : null;
         const finishRecebido = sessionFinishAtRef.current !== null;
+        const assets = sessionAssetsRef.current;
         sessionFinishAtRef.current = null;
+        sessionAssetsRef.current = {};
         void (async () => {
           try {
             const res = await fetch("/api/auth/meta/exchange", {
@@ -550,7 +568,15 @@ export default function ConfiguracoesPage() {
               headers: { "Content-Type": "application/json" },
               // configId/appId/codeAgeMs vão só pra diagnóstico server-side: confirmam
               // o config_id, o app usado pelo browser e a idade do code.
-              body: JSON.stringify({ code, redirectUri, configId, codeAgeMs, finishRecebido, appId: process.env.NEXT_PUBLIC_META_APP_ID }),
+              // wabaId/phoneNumberId/coexistencia vêm do FINISH e são FUNCIONAIS: o
+              // servidor não tem outro jeito confiável de descobrir o WABA do cliente.
+              body: JSON.stringify({
+                code, redirectUri, configId, codeAgeMs, finishRecebido,
+                appId: process.env.NEXT_PUBLIC_META_APP_ID,
+                wabaId:        assets.wabaId,
+                phoneNumberId: assets.phoneNumberId,
+                coexistencia:  assets.coexistencia ?? false,
+              }),
             });
             const data = await res.json();
             if (res.ok) {

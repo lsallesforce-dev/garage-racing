@@ -9,7 +9,12 @@ export async function POST(req: NextRequest) {
   const userId = getEffectiveUserId(user!);
 
   try {
-    const { code, redirectUri, configId, codeAgeMs, finishRecebido, appId: clientAppId } = await req.json();
+    const {
+      code, redirectUri, configId, codeAgeMs, finishRecebido, appId: clientAppId,
+      // Assets que o FINISH do Embedded Signup entregou no browser. Não são
+      // diagnóstico: são a fonte primária do WABA (ver bloco de descoberta abaixo).
+      wabaId: clientWabaId, phoneNumberId: clientPhoneNumberId, coexistencia,
+    } = await req.json();
     if (!code) return NextResponse.json({ error: "code obrigatório" }, { status: 400 });
 
     const appId     = process.env.META_APP_ID!;
@@ -103,19 +108,72 @@ export async function POST(req: NextRequest) {
       console.warn("⚠️ [Meta exchange] falha no long-lived exchange:", String(e).slice(0, 200));
     }
 
-    // Busca WABA e phone
-    const wabaRes  = await fetch(
-      `https://graph.facebook.com/v23.0/me/businesses?access_token=${accessToken}&fields=id,name,whatsapp_business_accounts`,
-    );
-    const wabaData = await wabaRes.json();
-    const waba     = wabaData?.data?.[0]?.whatsapp_business_accounts?.data?.[0];
-    const wabaId   = waba?.id ?? null;
+    // ── Descoberta do WABA ───────────────────────────────────────────────────────
+    // ORDEM IMPORTA. /me/businesses era a única fonte e é a ERRADA: ele lista os
+    // businesses DO USUÁRIO, mas o token do Login for Business é escopado ao
+    // business do CLIENTE — o usuário não "possui" aquele business, então a lista
+    // volta vazia e o wabaId saía null. Sintoma: meta_waba_id NULL em 100% dos
+    // tenants do banco, inclusive nos que têm token gravado.
+    //
+    // 1º) o waba_id que o próprio Embedded Signup entregou no FINISH. Na
+    //     coexistência é o ÚNICO asset ID do payload — não há phone_number_id.
+    // 2º) debug_token → granular_scopes: a Meta diz exatamente a quais WABAs este
+    //     token dá acesso (target_ids de whatsapp_business_management).
+    // 3º) /me/businesses como último recurso, pro caso do onboarding em que o
+    //     tenant é dono do próprio business.
+    let wabaId: string | null = clientWabaId ?? null;
+    let origemWaba = wabaId ? "FINISH do Embedded Signup" : "";
 
-    let phoneNumberId: string | null = null;
-    if (wabaId) {
+    if (!wabaId) {
+      try {
+        const dbgRes = await fetch(
+          "https://graph.facebook.com/v23.0/debug_token?" +
+          new URLSearchParams({ input_token: accessToken, access_token: `${appId}|${appSecret}` }),
+        );
+        const dbgData = await dbgRes.json();
+        const scopes: any[] = dbgData?.data?.granular_scopes ?? [];
+        const mgmt = scopes.find((s) => s?.scope === "whatsapp_business_management")
+                  ?? scopes.find((s) => s?.scope === "whatsapp_business_messaging");
+        if (mgmt?.target_ids?.length) {
+          wabaId = String(mgmt.target_ids[0]);
+          origemWaba = "debug_token/granular_scopes";
+        } else {
+          console.warn("⚠️ [Meta exchange] debug_token sem target_ids de WhatsApp:", JSON.stringify(scopes).slice(0, 300));
+        }
+      } catch (e) {
+        console.warn("⚠️ [Meta exchange] debug_token falhou:", String(e).slice(0, 200));
+      }
+    }
+
+    if (!wabaId) {
+      const wabaRes  = await fetch(
+        `https://graph.facebook.com/v23.0/me/businesses?access_token=${accessToken}&fields=id,name,whatsapp_business_accounts`,
+      );
+      const wabaData = await wabaRes.json();
+      wabaId = wabaData?.data?.[0]?.whatsapp_business_accounts?.data?.[0]?.id ?? null;
+      if (wabaId) origemWaba = "/me/businesses";
+    }
+
+    if (!wabaId) {
+      // Antes isso seguia calado e gravava null nas três colunas — a conexão
+      // "dava certo" na tela e nascia morta no banco. Falhar alto.
+      throw new Error(
+        "A Meta autorizou o app mas não devolveu nenhuma WhatsApp Business Account. " +
+        "Isso costuma ser Embedded Signup concluído sem selecionar/criar a conta, ou o app sem Advanced Access " +
+        "em whatsapp_business_management (obrigatório pra onboardar negócio de terceiro).",
+      );
+    }
+    console.log(`🔍 [Meta exchange] waba_id=${wabaId} (origem: ${origemWaba}) coexistencia=${coexistencia === true}`);
+
+    // O phone_number_id do FINISH ganha do lookup: na coexistência o número já
+    // existe e é o do celular do lojista. O lookup pega o [0] da lista, que pode
+    // ser outro número do mesmo WABA.
+    let phoneNumberId: string | null = clientPhoneNumberId ?? null;
+    if (!phoneNumberId) {
       const phoneRes  = await fetch(`https://graph.facebook.com/v23.0/${wabaId}/phone_numbers?access_token=${accessToken}`);
       const phoneData = await phoneRes.json();
       phoneNumberId   = phoneData?.data?.[0]?.id ?? null;
+      if (!phoneNumberId) console.warn(`⚠️ [Meta exchange] WABA ${wabaId} sem phone_numbers:`, JSON.stringify(phoneData).slice(0, 300));
     }
 
     // ── subscribed_apps: assina o app no WABA do tenant ──────────────────────────
@@ -136,10 +194,18 @@ export async function POST(req: NextRequest) {
     }
 
     // ── register: ativa o número pra enviar via Cloud API ────────────────────────
-    // Best-effort: números já ativados pelo Embedded Signup retornam "already
-    // registered" (ok). PIN de 6 dígitos só é exigido se o número tiver 2FA sem PIN
-    // conhecido — nesse caso loga e segue (o envio pode falhar até registrar manual).
-    if (phoneNumberId) {
+    // NÃO roda na coexistência: o número já está registrado (ele vem do WhatsApp
+    // Business App do lojista) e a doc manda pular explicitamente este passo
+    // — "skip the phone number registration step, as the number is already
+    // registered". Mandar /register com PIN 000000 num número que já tem 2FA do
+    // dono é pedir pra falhar.
+    //
+    // Best-effort no caso normal: números já ativados pelo Embedded Signup retornam
+    // "already registered" (ok). PIN de 6 dígitos só é exigido se o número tiver 2FA
+    // sem PIN conhecido — nesse caso loga e segue.
+    if (coexistencia === true) {
+      console.log(`ℹ️ [Meta exchange] coexistência — /register pulado de propósito (número ${phoneNumberId} já registrado)`);
+    } else if (phoneNumberId) {
       try {
         const regRes = await fetch(`https://graph.facebook.com/v23.0/${phoneNumberId}/register`, {
           method: "POST",
