@@ -27,7 +27,7 @@
 // a frase tem que soar como qualquer fornecedor ligando pra loja.
 export const PEDIDO_DE_ROTEAMENTO =
   "Oi! Não sou cliente, é sobre o sistema de atendimento da loja.\n\n" +
-  "Consegue me passar o contato de quem cuida disso — o dono ou o gerente?";
+  "Consegue me passar o contato de quem cuida disso, o dono ou o gerente?";
 
 // Trecho usado pra achar o pedido no histórico e não repetir (o webhook faz
 // ilike '%…%'). Tem que ser um pedaço LITERAL de PEDIDO_DE_ROTEAMENTO e não
@@ -48,11 +48,15 @@ export const MARCA_DO_PEDIDO = "o dono ou o gerente";
 // vendedor focado em quem está pronto), nunca por número inventado. A base tem
 // 2 clientes pagantes; não existe estatística pra citar, e lojista fareja
 // promessa de porcentagem a quilômetros.
+// Sem travessão em nenhuma das frases. Lojista escreve com ponto e vírgula,
+// não com travessão: o travessão é a pontuação que mais denuncia texto pronto
+// numa conversa de WhatsApp.
 export const PITCH_BOLHAS: string[] = [
   "A gente instala uma IA que responde seus clientes no WhatsApp na hora, 24h por dia. " +
-    "Cliente que chama 22h ou no domingo não esfria esperando resposta — e aí é venda que hoje tá indo embora sem você ver.",
-  'Se quiser ver antes de me responder: fala com a Mari aqui mesmo neste número, como se fosse um cliente seu — ' +
-    '"Mari, tem algum Renegade?". Ela atende igual atenderia os seus, e chama o vendedor só quando o cliente já tá pronto pra fechar.',
+    "Cliente que chama 22h ou no domingo não esfria esperando resposta. É venda que hoje tá indo embora sem você ver.",
+  "Se quiser ver antes de me responder, fala com a Mari aqui mesmo neste número, " +
+    'como se fosse um cliente seu. Manda "Mari, tem algum Renegade?" e vê o que ela responde. ' +
+    "Ela atende igual atenderia os seus, e chama o vendedor só quando o cliente já tá pronto pra fechar.",
 ];
 
 // Mesma função da MARCA_DO_PEDIDO: achar no histórico pra não mandar duas vezes.

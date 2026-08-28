@@ -38,14 +38,21 @@ export interface CarroDemo {
 
 // Catálogo de reserva: usado enquanto o tenant demo não tiver carro suficiente.
 // Sem foto de propósito — melhor não mandar imagem do que mandar a errada.
+//
+// Preço ligado por "por", nunca por travessão. A regra de estilo já proibia o
+// travessão no prompt, mas TODO carro do contexto vinha com um antes do preço —
+// e o modelo copia o que vê, não o que leu na regra. A lista do pátio sai
+// literalmente pro lojista (um carro por mensagem), então o travessão chegava
+// na conversa apesar da instrução. Vale pro catálogo fixo e pro montado do
+// banco, logo abaixo.
 const PATIO_FIXO: CarroDemo[] = [
-  { id: "fx1", descricao: "VW Gol 1.0 2014, prata, 98 mil km, completo — R$ 38.900", ficha: "", fotos: [], video: null },
-  { id: "fx2", descricao: "Hyundai HB20 1.0 Comfort 2019, branco, 62 mil km — R$ 58.900", ficha: "", fotos: [], video: null },
-  { id: "fx3", descricao: "Chevrolet Onix LT 1.0 2020, prata, 54 mil km — R$ 64.900", ficha: "", fotos: [], video: null },
-  { id: "fx4", descricao: "Fiat Argo Drive 1.3 2021, vermelho, 41 mil km — R$ 69.900", ficha: "", fotos: [], video: null },
-  { id: "fx5", descricao: "VW Polo Track 1.0 2024, branco, 18 mil km — R$ 74.900", ficha: "", fotos: [], video: null },
-  { id: "fx6", descricao: "Jeep Renegade Sport 1.3T 2022, cinza, 47 mil km — R$ 98.900", ficha: "", fotos: [], video: null },
-  { id: "fx7", descricao: "Toyota Corolla XEi 2.0 2021, prata, 58 mil km — R$ 128.900", ficha: "", fotos: [], video: null },
+  { id: "fx1", descricao: "VW Gol 1.0 2014, prata, 98 mil km, completo por R$ 38.900", ficha: "", fotos: [], video: null },
+  { id: "fx2", descricao: "Hyundai HB20 1.0 Comfort 2019, branco, 62 mil km por R$ 58.900", ficha: "", fotos: [], video: null },
+  { id: "fx3", descricao: "Chevrolet Onix LT 1.0 2020, prata, 54 mil km por R$ 64.900", ficha: "", fotos: [], video: null },
+  { id: "fx4", descricao: "Fiat Argo Drive 1.3 2021, vermelho, 41 mil km por R$ 69.900", ficha: "", fotos: [], video: null },
+  { id: "fx5", descricao: "VW Polo Track 1.0 2024, branco, 18 mil km por R$ 74.900", ficha: "", fotos: [], video: null },
+  { id: "fx6", descricao: "Jeep Renegade Sport 1.3T 2022, cinza, 47 mil km por R$ 98.900", ficha: "", fotos: [], video: null },
+  { id: "fx7", descricao: "Toyota Corolla XEi 2.0 2021, prata, 58 mil km por R$ 128.900", ficha: "", fotos: [], video: null },
 ];
 
 function moeda(v: number | null): string {
@@ -109,7 +116,7 @@ export async function carregarPatioDemo(): Promise<CarroDemo[]> {
 
       return {
         id: v.id as string,
-        descricao: `${partes} — ${moeda(v.preco_sugerido)}`,
+        descricao: `${partes} por ${moeda(v.preco_sugerido)}`,
         ficha,
         fotos,
         video: (v.video_url as string | null) ?? null,
