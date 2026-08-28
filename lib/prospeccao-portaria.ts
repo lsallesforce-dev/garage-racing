@@ -34,6 +34,31 @@ export const PEDIDO_DE_ROTEAMENTO =
 // pode conter % nem _, que são curinga no LIKE do Postgres.
 export const MARCA_DO_PEDIDO = "o dono ou o gerente";
 
+// ─── O pitch, em duas bolhas ──────────────────────────────────────────────────
+// A abertura virou UMA pergunta só ("nesse Whats falo com o dono ou com o
+// gerente?") e para ali. O pitch só sai depois que uma PESSOA responde — antes
+// disso a gente não sabe se está falando com quem decide, e gastar o pitch no
+// balcão foi exatamente o que não funcionou em 156 abordagens.
+//
+// Fica em código, e não no prompt da Mari, de propósito: neste projeto toda
+// regra que dependeu só de instrução de prompt regrediu. Estas duas frases são
+// a peça de venda inteira — não podem sair reescritas pelo modelo.
+//
+// Sobre "vender mais": o ganho é dito pelo MECANISMO (lead que não esfria,
+// vendedor focado em quem está pronto), nunca por número inventado. A base tem
+// 2 clientes pagantes; não existe estatística pra citar, e lojista fareja
+// promessa de porcentagem a quilômetros.
+export const PITCH_BOLHAS: string[] = [
+  "A gente instala uma IA que responde seus clientes no WhatsApp na hora, 24h por dia. " +
+    "Cliente que chama 22h ou no domingo não esfria esperando resposta — e aí é venda que hoje tá indo embora sem você ver.",
+  'Se quiser ver antes de me responder: fala com a Mari aqui mesmo neste número, como se fosse um cliente seu — ' +
+    '"Mari, tem algum Renegade?". Ela atende igual atenderia os seus, e chama o vendedor só quando o cliente já tá pronto pra fechar.',
+];
+
+// Mesma função da MARCA_DO_PEDIDO: achar no histórico pra não mandar duas vezes.
+// Literal, sem % nem _.
+export const MARCA_DO_PITCH = "não esfria esperando resposta";
+
 // ─── Telefone brasileiro dentro de um texto solto ─────────────────────────────
 // Só aceita DDD + 8/9 dígitos. Exige o DDD justamente pra não morder preço
 // ("R$ 40.000"), ano, km ou placa. DDD válido no Brasil vai de 11 a 99 e nunca

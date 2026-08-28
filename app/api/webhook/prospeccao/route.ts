@@ -18,7 +18,13 @@ import { timingSafeEqual } from "crypto";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { bolhasParaLinhas } from "@/lib/prospeccao-historico";
 import { sendAvisaMessage, sendAvisaImage, sendAvisaVideo, extractWebhookToken } from "@/lib/avisa";
-import { extrairContatoDireto, PEDIDO_DE_ROTEAMENTO, MARCA_DO_PEDIDO } from "@/lib/prospeccao-portaria";
+import {
+  extrairContatoDireto,
+  PEDIDO_DE_ROTEAMENTO,
+  MARCA_DO_PEDIDO,
+  PITCH_BOLHAS,
+  MARCA_DO_PITCH,
+} from "@/lib/prospeccao-portaria";
 import { gerarRespostaProspeccao, carregarPatioDemo, carregarLojaDemo, aceitouOTeste } from "@/lib/process-prospeccao";
 import { montarAbertura } from "@/lib/prospeccao-abertura";
 import { bumpStats } from "@/lib/prospeccao-stats";
@@ -808,6 +814,46 @@ export async function POST(req: NextRequest) {
   // O que AINDA cala a Mari, e continua valendo, está tudo acima deste ponto:
   // stand-by humano, autoreply da loja, loop guard, disjuntor de volume e a
   // pausa global da campanha.
+
+  // ── Primeira resposta humana: manda o pitch antes de soltar a Mari ──────────
+  // A abertura agora é UMA pergunta ("nesse Whats falo com o dono ou com o
+  // gerente?") e para. O pitch é a resposta a quem se apresentar — e sai daqui,
+  // determinístico, porque é a peça de venda inteira e não pode ser reescrita
+  // pelo modelo a cada conversa.
+  //
+  // Dispara na PRIMEIRA fala humana, seja ela qual for: "sou eu", "quem é?",
+  // "o que você quer?" — todas merecem a mesma explicação. Recusa forte é a
+  // única exceção: quem já disse não não recebe pitch, recebe a saída limpa que
+  // o fluxo normal dá. Autoreply, contato direto e standby já saíram acima.
+  const jaMandeiOPitch = await supabaseAdmin
+    .from("prospect_mensagens")
+    .select("*", { count: "exact", head: true })
+    .eq("prospect_id", prospect.id)
+    .eq("remetente", "agente")
+    .ilike("content", `%${MARCA_DO_PITCH}%`)
+    .then((res) => (res.count ?? 0) > 0);
+
+  if (!jaMandeiOPitch && !ehRecusaForte(text)) {
+    const creds = autozapAvisaCreds();
+    if (creds) {
+      const enviadas: string[] = [];
+      for (let i = 0; i < PITCH_BOLHAS.length; i++) {
+        if (i > 0) await new Promise((r) => setTimeout(r, 5000));
+        const ok = await sendAvisaMessage(waId, PITCH_BOLHAS[i], creds, { typing: i === 0 });
+        if (!ok) break;
+        enviadas.push(PITCH_BOLHAS[i]);
+      }
+      if (enviadas.length > 0) {
+        await supabaseAdmin.from("prospect_mensagens").insert(bolhasParaLinhas(prospect.id, enviadas));
+        if (prospect.status === "enviado" || prospect.status === "novo" || prospect.status === "sem_resposta") {
+          patchBase.status = "respondeu";
+        }
+        await supabaseAdmin.from("prospects").update(patchBase).eq("id", prospect.id);
+        console.log(`🎯 [prospeccao] Pitch enviado para "${prospect.nome_empresa}" na 1ª resposta humana.`);
+        return NextResponse.json({ status: "pitch_enviado", bolhas: enviadas.length });
+      }
+    }
+  }
 
   // ── Carrega o histórico e gera a resposta do agente ─────────────────────────
   // O pátio vai junto: a Mari precisa dele pra ofertar carro E pra saber de qual
