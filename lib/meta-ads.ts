@@ -145,16 +145,41 @@ export async function listarAdAccounts(userAccessToken: string): Promise<MetaAdA
 // ─── Upload de Foto ───────────────────────────────────────────────────────────
 // Faz upload de uma imagem via URL para o Ad Account e retorna o image_hash
 
+// ⚠️ Manda BYTES, não `{ url }`. O `{ url }` é recusado com
+// "(#3) Application does not have the capability to make this API call" — e a
+// mensagem engana: NÃO é falta de permissão nem de tier. Medido em 28/08/2026,
+// com `ads_management` em Advanced e Marketing API Access Tier em Full, o mesmo
+// ad account devolve #3 para `{ url }` e 200 para multipart, na mesma sessão.
+// O #3 aqui é sobre o PARÂMETRO, não sobre o app.
+//
+// Foi esse #3 que fez o projeto adotar `picture` (URL pública no creative) como
+// workaround e culpar o Access Tier por meses. Com bytes, `image_hash` volta a
+// ser possível — e é melhor: a Meta serve o arquivo que subimos em vez de
+// baixar e reprocessar a URL a cada entrega.
 export async function uploadFotoParaMeta(
   adAccountId: string,
   fotoUrl: string,
   pageAccessToken: string
 ): Promise<string> {
-  const res = await fetch(`${GRAPH}/${adAccountId}/adimages?access_token=${pageAccessToken}`, {
+  const img = await fetch(fotoUrl);
+  if (!img.ok) throw new Error(`Upload imagem Meta: falha ao baixar origem (HTTP ${img.status})`);
+  const blob = await img.blob();
+
+  // A Meta valida a extensão do filename; sem ela o upload é recusado. Deriva
+  // do content-type (mais confiável que a URL, que pode vir com query string).
+  const mime = blob.type || "image/jpeg";
+  const ext  = mime.includes("png") ? "png" : mime.includes("webp") ? "webp" : "jpg";
+
+  const form = new FormData();
+  form.append("filename", blob, `anuncio.${ext}`);
+
+  // Sem Content-Type manual: o fetch precisa gerar o boundary do multipart.
+  const res = await fetch(`${GRAPH}/${adAccountId}/adimages`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ url: fotoUrl }),
+    headers: { Authorization: `Bearer ${pageAccessToken}` },
+    body: form,
   });
+
   const data = await res.json();
   if (data.error) throw new Error(`Upload imagem Meta: ${data.error.message}`);
   const hash = Object.values(data.images as Record<string, any>)?.[0]?.hash;
@@ -524,8 +549,26 @@ export async function criarCampanhaLeadAd(p: CriarCampanhaParams): Promise<Campa
         : {}),
     };
   } else if (ehCarrossel) {
-    // Carrossel: um card por imagem do kit. `picture` (URL) evita depender do
-    // /adimages, que é justamente o endpoint que dá #3 sem Acesso Avançado.
+    // Carrossel: um card por imagem do kit. Mesma regra da foto principal —
+    // `image_hash` primeiro (a Meta serve o arquivo que subimos, sem
+    // rebaixar), `picture` (URL) como fallback. Este bloco forçava `picture`
+    // incondicionalmente porque o /adimages dava #3 sem Acesso Avançado; com o
+    // Marketing API Access Tier em Full (28/08) o endpoint voltou a responder,
+    // então não há mais motivo pra abrir mão da qualidade.
+    //
+    // Em paralelo, e não em série: são até 10 cards, e enfileirar 10 uploads
+    // dentro do maxDuration da rota era o risco real. Cada card resolve
+    // sozinho — um upload que falhe vira null e cai no `picture` daquele card
+    // só, sem derrubar o anúncio inteiro.
+    const hashesCarrossel = await Promise.all(
+      carrossel.map((url) =>
+        uploadFotoParaMeta(adAccountId, url, adToken).catch((e: any) => {
+          console.warn(`⚠️ [carrossel] /adimages falhou p/ ${url.slice(0, 60)} (${e.message?.slice(0, 60)}) — card usa picture`);
+          return null;
+        }),
+      ),
+    );
+
     storySpec.link_data = {
       message: adMessage,
       link: (destino as any).link,
@@ -535,7 +578,7 @@ export async function criarCampanhaLeadAd(p: CriarCampanhaParams): Promise<Campa
       multi_share_optimized: true,
       child_attachments: carrossel.map((url, i) => ({
         link: (destino as any).link,
-        picture: url,
+        ...(hashesCarrossel[i] ? { image_hash: hashesCarrossel[i] } : { picture: url }),
         name: i === 0 ? veiculoNome : `${veiculoNome} — ${i + 1}`,
         description: `${precoFormatado} — ${garagem.nome}`,
         call_to_action: destino.call_to_action,
