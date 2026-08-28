@@ -1,10 +1,21 @@
 // app/api/cron/meta-warmup/route.ts
 //
-// Cron temporário — "esquenta" a Ads API para atingir 500 chamadas com <15% erro.
-// Requisito da Meta para aprovar Marketing API Standard Access Tier.
+// Cron PERMANENTE — "esquenta" a Ads API para atingir 500 chamadas com <15% erro.
+// Requisito da Meta para o Marketing API Access Tier sair de Limited (ex-"Standard")
+// para Full access (ex-"Advanced").
 //
 // Faz ~50 GETs variados por execução × 6x/dia = ~300/dia → 500 em ~1,5 dia.
-// REMOVER este cron depois de aprovado.
+//
+// ⚠️ NÃO REMOVER depois de aprovado. O comentário anterior mandava remover, e isso
+// custaria o tier de volta: a exigência de 500 chamadas nos últimos 15 dias é
+// CONTÍNUA, não só para conceder. A doc é explícita — "If you're approved for
+// advanced access, you need to do the following to MAINTAIN your status: have
+// successfully made at least 500 Marketing API calls in the last 15 days."
+// Parar o cron = janela de 15 dias esvazia = rebaixamento.
+//
+// Estado medido em 28/08/2026: calls=50 success=50 errors=0 errorRate=0.0% por
+// execução, confirmado em 24, 27 e 28/08. O 100% de erro de 16/08 era o token
+// antigo; o meta_ads_token foi reemitido em 16/08 e o warmup roda limpo desde então.
 //
 // Schedule: 0 2,6,10,14,18,22 * * *  (intervalos de 4h em UTC — parece uso natural)
 
