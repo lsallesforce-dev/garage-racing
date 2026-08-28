@@ -343,10 +343,23 @@ async function processSmbHistory(value: any) {
         const doLojista = soDigitos(msg?.from) === numeroLoja;
         const tipo: string = msg?.type ?? "text";
 
-        const content: string =
+        // Mensagem que o WhatsApp não entregou/decifrou vem como evento de erro,
+        // não como fala de ninguém. O fluxo ao vivo já descarta (extractFields
+        // exige texto), mas aqui o fallback `[${tipo}]` virava a linha "[errors]"
+        // no CRM — visto em produção 28/08, duas vezes, num contato importado.
+        // Ruim duas vezes: polui o painel e entra no histórico que a IA lê como
+        // contexto, como se o cliente tivesse dito algo.
+        if (tipo === "errors" || tipo === "unsupported" || Array.isArray(msg?.errors)) continue;
+
+        const bruto: unknown =
           tipo === "media_placeholder"
             ? "[mídia enviada pelo WhatsApp Business App]"
-            : (msg?.text?.body ?? msg?.[tipo]?.caption ?? `[${tipo}]`);
+            : (msg?.text?.body ?? msg?.[tipo]?.caption ?? null);
+
+        // Sem conteúdo aproveitável, não inventa rótulo: pula. Linha vazia no
+        // histórico é pior que ausência — a IA trata como turno de conversa.
+        const content = typeof bruto === "string" ? bruto.trim() : "";
+        if (!content) continue;
 
         // created_at explícito: sem isso o histórico inteiro entra com a hora da
         // importação e o CRM mostra 6 meses de conversa como se fosse hoje —
