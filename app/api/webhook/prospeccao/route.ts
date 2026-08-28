@@ -18,6 +18,7 @@ import { timingSafeEqual } from "crypto";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { bolhasParaLinhas } from "@/lib/prospeccao-historico";
 import { sendAvisaMessage, sendAvisaImage, sendAvisaVideo, extractWebhookToken } from "@/lib/avisa";
+import { extrairContatoDireto, PEDIDO_DE_ROTEAMENTO, MARCA_DO_PEDIDO } from "@/lib/prospeccao-portaria";
 import { gerarRespostaProspeccao, carregarPatioDemo, carregarLojaDemo, aceitouOTeste } from "@/lib/process-prospeccao";
 import { montarAbertura } from "@/lib/prospeccao-abertura";
 import { bumpStats } from "@/lib/prospeccao-stats";
@@ -556,6 +557,40 @@ export async function POST(req: NextRequest) {
   const patchBase: Record<string, any> = { ultima_msg_at: nowIso, updated_at: nowIso };
   if (!prospect.wa_id) patchBase.wa_id = waId;
 
+  // ── O atendente passou o contato do dono ────────────────────────────────────
+  // Vem ANTES de qualquer outra guarda (autoreply, standby, pausa): é o desfecho
+  // MAIS valioso que uma abordagem pode ter, e não pode ser engolido por uma
+  // regra de fluxo. O número que a gente coleta no Maps é o WhatsApp do balcão;
+  // quando a portaria entrega o direto, isso vale mais que a conversa em si.
+  //
+  // Caso que motivou: Master Veículos respondeu "fala com a Lívia, 17 981167554"
+  // e repetiu o número na mensagem seguinte. A Mari ignorou e seguiu falando de
+  // Nivus. Ver lib/prospeccao-portaria.ts.
+  const contatoDireto = extrairContatoDireto(text, prospect.wa_id ?? prospect.telefone);
+  if (contatoDireto) {
+    const nota = `Contato direto passado pelo atendente em ${nowIso.slice(0, 10)}: ${contatoDireto.bruto}${contatoDireto.nome ? ` (${contatoDireto.nome})` : ""}.`;
+    patchBase.notas = [prospect.notas, nota].filter(Boolean).join(" • ");
+    // Atendente falando é fonte melhor que review: ele sabe quem manda na loja.
+    if (contatoDireto.nome && (prospect.dono_confianca ?? 0) < 95) {
+      patchBase.dono_nome = contatoDireto.nome;
+      patchBase.dono_fonte = "atendente";
+      patchBase.dono_confianca = 95;
+    }
+    // Handoff: quem fala com o dono é o Lucas, não a Mari. Continuar o pitch com
+    // o atendente depois de ele apontar a porta é queimar as duas pontas.
+    patchBase.em_atendimento_humano = true;
+    patchBase.status = "handoff";
+    await supabaseAdmin.from("prospects").update(patchBase).eq("id", prospect.id);
+    await alertarHandoff(
+      { ...prospect, ...patchBase } as Prospect,
+      `📞 ATENDENTE PASSOU O DIRETO: ${contatoDireto.bruto}${contatoDireto.nome ? ` — ${contatoDireto.nome}` : ""}`,
+    );
+    console.log(
+      `📞 [prospeccao] ${prospect.nome_empresa} passou contato direto ${contatoDireto.telefone} — handoff pro Lucas.`,
+    );
+    return NextResponse.json({ status: "contato_direto_capturado" });
+  }
+
   // ── Pausa global da IA de prospecção ────────────────────────────────────────
   // Campanha pausada (ativo=false) = pausa TOTAL: nem proativo (cron), nem reativo.
   // A mensagem recebida fica salva (acima) pro humano ver no Inbox, mas a Mari NÃO
@@ -620,13 +655,39 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Autoreply do WhatsApp Business do prospect ──────────────────────────────
-  // É uma máquina, não uma pessoa. Não responde (não queima a 1ª impressão da Mari
-  // nem arrisca loop bot×bot) — espera resposta humana real; o follow-up do cron
-  // retoma depois se ninguém aparecer. Mantém o status (não marca como engajamento).
+  // É uma máquina, e a Mari não discute com máquina: nada de pitch aqui (loop
+  // bot×bot, e o pitch é pro dono). Mas ficar MUDA era desperdício — o autoreply
+  // é o único momento em que temos CERTEZA de ter batido no balcão, e 45% das
+  // respostas da base são isso. Então a gente usa o sinal pra pedir roteamento:
+  // uma bolha, sem pitch, perguntando por quem decide.
+  //
+  // UMA VEZ só por prospect. Repetir o pedido vira cobrança e queima o contato;
+  // a checagem é no histórico (o fato), não em flag de status.
   if (ehAutoreply) {
+    const { count: jaPediu } = await supabaseAdmin
+      .from("prospect_mensagens")
+      .select("*", { count: "exact", head: true })
+      .eq("prospect_id", prospect.id)
+      .eq("remetente", "agente")
+      .ilike("content", `%${MARCA_DO_PEDIDO}%`);
+
+    const creds = autozapAvisaCreds();
+    if ((jaPediu ?? 0) === 0 && creds) {
+      const ok = await sendAvisaMessage(waId, PEDIDO_DE_ROTEAMENTO, creds, { typing: true });
+      if (ok) {
+        await supabaseAdmin.from("prospect_mensagens").insert({
+          prospect_id: prospect.id,
+          remetente: "agente",
+          content: PEDIDO_DE_ROTEAMENTO,
+        });
+        console.log(`🚪 [prospeccao] Autoreply de "${prospect.nome_empresa}" — pedi roteamento pro responsável.`);
+      }
+    } else {
+      console.log(`🤖 [prospeccao] Autoreply de "${prospect.nome_empresa}" — roteamento já pedido, seguindo mudo.`);
+    }
+
     await supabaseAdmin.from("prospects").update(patchBase).eq("id", prospect.id);
-    console.log(`🤖 [prospeccao] Autoreply detectado de "${prospect.nome_empresa}" — aguardando humano real (sem resposta).`);
-    return NextResponse.json({ status: "autoreply_ignorado" });
+    return NextResponse.json({ status: "autoreply_roteamento" });
   }
 
   // ── Guarda anti-rajada / anti-loop IA×IA ────────────────────────────────────
