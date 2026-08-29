@@ -414,6 +414,10 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith("/aguardando") ||
     pathname.startsWith("/onboarding") ||
     pathname.startsWith("/api/auth/register") ||
+    // Recuperacao de senha: o pedido, o callback que troca o token por sessao
+    // e a tela de nova senha precisam abrir deslogado.
+    pathname.startsWith("/api/auth/recuperar-senha") ||
+    pathname.startsWith("/nova-senha") ||
     pathname.startsWith("/vitrine") ||
     pathname.startsWith("/carros") ||
     pathname.startsWith("/loja-nao-encontrada") ||

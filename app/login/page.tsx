@@ -151,17 +151,26 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
 
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/login`,
+    // Rota própria (Resend + link pro nosso callback). O resetPasswordForEmail
+    // do Supabase dependia da allow-list de Redirect URLs e mandava o cliente
+    // pra landing com o token preso na URL, sem tela pra trocar a senha.
+    const res = await fetch("/api/auth/recuperar-senha", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: email.trim() }),
     });
 
     setLoading(false);
-    if (error) {
-      setError("Não foi possível enviar o e-mail. Verifique o endereço.");
+    if (!res.ok) {
+      setError(res.status === 429
+        ? "Muitas tentativas. Tente de novo daqui a pouco."
+        : "Não foi possível enviar o e-mail agora. Tente de novo.");
       return;
     }
 
-    setSuccess("E-mail de recuperação enviado! Verifique sua caixa de entrada.");
+    // Condicional de propósito: responder igual pra e-mail cadastrado ou não
+    // evita que alguém descubra quem tem conta testando endereços.
+    setSuccess("Se este e-mail estiver cadastrado, o link de recuperação já está a caminho. Verifique a caixa de entrada e o spam.");
   }
 
   const titles: Record<Mode, { heading: string; sub: string }> = {
