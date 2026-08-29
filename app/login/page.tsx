@@ -114,24 +114,23 @@ export default function LoginPage() {
       return;
     }
 
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          nome_empresa: nomeEmpresa.trim(),
-          whatsapp: whatsapp.trim(),
-          aprovado: false,
-        },
-        emailRedirectTo: `${window.location.origin}/`,
-      },
+    // Rota própria: cria a conta com service role e manda a confirmação pelo
+    // Resend. O signUp deixava esse e-mail com o mailer do Supabase.
+    const res = await fetch("/api/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: email.trim(),
+        password,
+        nome_empresa: nomeEmpresa.trim(),
+        whatsapp: whatsapp.trim(),
+      }),
     });
+    const dados = await res.json().catch(() => ({}));
 
     setLoading(false);
-    if (error) {
-      setError(error.message === "User already registered"
-        ? "Este e-mail já está cadastrado."
-        : error.message);
+    if (!res.ok) {
+      setError(dados?.error ?? "Não foi possível concluir o cadastro. Tente de novo.");
       return;
     }
 
@@ -143,7 +142,9 @@ export default function LoginPage() {
       body: JSON.stringify({ email, nome_empresa: nomeEmpresa.trim(), whatsapp: whatsapp.trim() }),
     }).catch(() => {});
 
-    setSuccess("Cadastro enviado! Nossa equipe vai analisar e entrar em contato em breve.");
+    setSuccess(dados?.confirmacao_enviada === false
+      ? "Cadastro recebido! Nossa equipe vai analisar e entrar em contato em breve."
+      : "Cadastro recebido! Confirme seu e-mail no link que acabamos de enviar — depois nossa equipe analisa a liberação.");
   }
 
   async function handleForgot(e: React.FormEvent) {

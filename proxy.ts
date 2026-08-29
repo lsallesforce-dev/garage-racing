@@ -417,6 +417,7 @@ export async function proxy(request: NextRequest) {
     // Recuperacao de senha: o pedido, o callback que troca o token por sessao
     // e a tela de nova senha precisam abrir deslogado.
     pathname.startsWith("/api/auth/recuperar-senha") ||
+    pathname.startsWith("/api/auth/confirmar-email") ||
     pathname.startsWith("/nova-senha") ||
     pathname.startsWith("/vitrine") ||
     pathname.startsWith("/carros") ||

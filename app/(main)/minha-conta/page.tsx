@@ -121,8 +121,15 @@ export default function MinhaContaPage() {
     if (!novoEmail.trim()) return;
     setSavingEmail(true); setErroEmail(null);
     try {
-      const { error } = await supabase.auth.updateUser({ email: novoEmail.trim() });
-      if (error) throw error;
+      const res = await fetch("/api/auth/trocar-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ novo_email: novoEmail.trim() }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d?.error ?? "Erro ao atualizar e-mail.");
+      }
       setSavedEmail(true); setNovoEmail("");
       setTimeout(() => setSavedEmail(false), 4000);
     } catch (e: any) { setErroEmail(e.message || "Erro ao atualizar e-mail."); }
