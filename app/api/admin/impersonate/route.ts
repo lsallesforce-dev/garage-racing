@@ -17,10 +17,9 @@ export async function POST(req: NextRequest) {
   const { data, error } = await supabaseAdmin.auth.admin.generateLink({
     type: "magiclink",
     email: user.user.email,
-    options: { redirectTo: "https://www.autozap.digital/dashboard?admin_session=1" },
   });
 
-  if (error || !data.properties?.action_link) {
+  if (error || !data.properties?.hashed_token) {
     return NextResponse.json({ error: error?.message ?? "Erro ao gerar link" }, { status: 500 });
   }
 
@@ -32,5 +31,12 @@ export async function POST(req: NextRequest) {
   });
   if (logErr) console.error("[impersonate] Falha ao gravar admin_audit_log:", logErr.message);
 
-  return NextResponse.json({ link: data.properties.action_link });
+  // Não usa o action_link do Supabase: o redirect_to dele depende da allow-list
+  // de Redirect URLs do projeto e, quando não bate, cai no Site URL (a landing)
+  // com o token preso no fragmento — que nenhuma página nossa consome.
+  // O callback abaixo troca o token por cookie de sessão e leva ao /dashboard.
+  const link = new URL("/api/admin/impersonate/callback", req.nextUrl.origin);
+  link.searchParams.set("token_hash", data.properties.hashed_token);
+
+  return NextResponse.json({ link: link.toString() });
 }

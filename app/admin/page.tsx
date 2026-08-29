@@ -188,7 +188,7 @@ export default function AdminPage() {
   }
 
   async function impersonate(user_id: string, nome: string) {
-    if (!confirm(`Acessar painel de "${nome}"? Isso abrirá uma nova aba logada como esse cliente.`)) return;
+    if (!confirm(`Acessar painel de "${nome}"? Abre uma nova aba logada como esse cliente — e substitui a sua sessão neste navegador (o /admin continua acessível pelo secret). Pra manter as duas, use uma aba anônima.`)) return;
     setAcaoLoading(`${user_id}-imp`);
     const { ok, data } = await fetchAdmin("/api/admin/impersonate", {
       method: "POST",
