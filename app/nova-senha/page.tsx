@@ -34,7 +34,8 @@ export default function NovaSenhaPage() {
       setErro("Não foi possível salvar a senha. Peça um novo link.");
       return;
     }
-    window.location.href = "/dashboard";
+    const next = new URLSearchParams(window.location.search).get("next");
+    window.location.href = next && next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
   }
 
   const inputCls =

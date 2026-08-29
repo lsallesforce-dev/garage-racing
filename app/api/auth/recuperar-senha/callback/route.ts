@@ -35,7 +35,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(new URL("/login?erro=recuperacao", req.url));
   }
 
-  const res = NextResponse.redirect(new URL("/nova-senha", req.url));
+  // ?next= permite reusar o mesmo callback pro convite de vendedor, que termina
+  // no /estoque. So caminho relativo — evita virar redirect aberto.
+  const next = req.nextUrl.searchParams.get("next");
+  const destino = next && next.startsWith("/") && !next.startsWith("//") ? next : null;
+
+  const alvo = new URL("/nova-senha", req.url);
+  if (destino) alvo.searchParams.set("next", destino);
+
+  const res = NextResponse.redirect(alvo);
   pendentes.forEach(({ name, value, options }) => res.cookies.set(name, value, options));
   return res;
 }

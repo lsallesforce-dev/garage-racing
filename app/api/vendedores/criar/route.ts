@@ -105,13 +105,18 @@ export async function POST(req: NextRequest) {
     // Gera link de acesso único (expira em 24h) — sem senha no WhatsApp
     let acessoUrl = `${siteUrl}/login`;
     try {
+      // Nao usa o action_link: o redirect_to dele depende da allow-list de
+      // Redirect URLs do Supabase e, quando nao bate, larga o vendedor na
+      // landing com o token preso na URL. O callback troca o token por sessao.
       const { data: linkData } = await supabaseAdmin.auth.admin.generateLink({
         type: "recovery",
         email,
-        options: { redirectTo: `${siteUrl}/estoque` },
       });
-      if (linkData?.properties?.action_link) {
-        acessoUrl = linkData.properties.action_link;
+      if (linkData?.properties?.hashed_token) {
+        const link = new URL("/api/auth/recuperar-senha/callback", siteUrl);
+        link.searchParams.set("token_hash", linkData.properties.hashed_token);
+        link.searchParams.set("next", "/estoque");
+        acessoUrl = link.toString();
       }
     } catch (e) {
       console.warn("Avisa: falha ao gerar link de acesso, enviando link de login padrão:", e);
