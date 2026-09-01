@@ -142,6 +142,48 @@ export async function listarAdAccounts(userAccessToken: string): Promise<MetaAdA
   return (data.data as MetaAdAccount[]) ?? [];
 }
 
+// ─── Públicos salvos ──────────────────────────────────────────────────────────
+
+export interface PublicoSalvoCidade {
+  key: string;
+  nome: string;
+  radiusKm: number | null;
+}
+
+export interface PublicoSalvo {
+  id: string;
+  nome: string;
+  cidades: PublicoSalvoCidade[];
+  idadeMin: number | null;
+  idadeMax: number | null;
+}
+
+/**
+ * Públicos salvos criados direto no Gerenciador de Anúncios (fora do AutoZap).
+ * Só extrai `cities[]` do targeting — `custom_locations` (raio a partir de um
+ * pino de mapa) não tem `key` Meta reaproveitável aqui, então fica de fora.
+ */
+export async function listarPublicosSalvos(
+  adAccountId: string,
+  userAccessToken: string,
+): Promise<PublicoSalvo[]> {
+  const data = await graphGet(`${adAccountId}/saved_audiences`, userAccessToken, {
+    fields: "id,name,targeting",
+    limit: "100",
+  });
+  const lista = (data.data as Array<{ id: string; name: string; targeting?: any }>) ?? [];
+  return lista.map(p => {
+    const cities = (p.targeting?.geo_locations?.cities ?? []) as Array<{ key: string; name?: string; radius?: number }>;
+    return {
+      id: p.id,
+      nome: p.name,
+      cidades: cities.map(c => ({ key: c.key, nome: c.name ?? c.key, radiusKm: c.radius ?? null })),
+      idadeMin: p.targeting?.age_min ?? null,
+      idadeMax: p.targeting?.age_max ?? null,
+    };
+  }).filter(p => p.cidades.length > 0);
+}
+
 // ─── Upload de Foto ───────────────────────────────────────────────────────────
 // Faz upload de uma imagem via URL para o Ad Account e retorna o image_hash
 

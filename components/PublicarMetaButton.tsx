@@ -60,6 +60,14 @@ interface CidadeResult {
   source: "meta" | "ibge";
 }
 
+interface PublicoSalvo {
+  id: string;
+  nome: string;
+  cidades: { key: string; nome: string; radiusKm: number | null }[];
+  idadeMin: number | null;
+  idadeMax: number | null;
+}
+
 interface Props {
   veiculoId: string;
   marca?: string;
@@ -159,6 +167,8 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
   const [regioes, setRegioes]             = useState<Regiao[]>([]);
   const [regioesDisponiveis, setRegioesDisponiveis] = useState<Regiao[]>([]);
   const [modoAlcance, setModoAlcance]     = useState<"raio" | "estado">("raio");
+  const [publicosSalvos, setPublicosSalvos] = useState<PublicoSalvo[]>([]);
+  const [publicoSelecionado, setPublicoSelecionado] = useState<string | null>(null);
 
   const [buscaPrincipal, setBuscaPrincipal]               = useState("");
   const [resultadosPrincipal, setResultadosPrincipal]     = useState<CidadeResult[]>([]);
@@ -218,12 +228,14 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
       fetch("/api/meta/regioes").then(r => r.json()).catch(() => ({ regioes: [] })),
       fetch("/api/meta/interesses").then(r => r.json()).catch(() => ({ atalhos: [] })),
       fetch(`/api/veiculo/midia?veiculoId=${veiculoId}`).then(r => r.json()).catch(() => null),
-    ]).then(([paginasData, campanhasData, regioesData, interessesData, midiaData]) => {
+      fetch("/api/meta/publicos").then(r => r.json()).catch(() => ({ publicos: [] })),
+    ]).then(([paginasData, campanhasData, regioesData, interessesData, midiaData, publicosData]) => {
       if (paginasData.error) { setErro(paginasData.error); return; }
       setPaginas(paginasData.salvas ?? []);
       setCampanhas(campanhasData.campanhas ?? []);
       setRegioesDisponiveis(regioesData.regioes ?? []);
       setAtalhos(interessesData.atalhos ?? []);
+      setPublicosSalvos(publicosData.publicos ?? []);
 
       if (midiaData && !midiaData.error) {
         const m = midiaData as MidiaVeiculo;
@@ -298,6 +310,22 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
 
   const addInteresse = (i: Interesse) => {
     setInteresses(prev => prev.some(x => x.id === i.id) ? prev : [...prev, i]);
+  };
+
+  // Aplica um público salvo do Gerenciador de Anúncios: joga todas as cidades
+  // dele em "outras cidades" e usa o raio mais comum entre elas (a UI só tem
+  // UM raio compartilhado — não dá pra reproduzir raio diferente por cidade).
+  const aplicarPublicoSalvo = (p: PublicoSalvo) => {
+    setPublicoSelecionado(prev => prev === p.id ? null : p.id);
+    if (publicoSelecionado === p.id) { setCidadesExtras([]); return; }
+    setCidadesExtras(p.cidades.map(c => ({ key: c.key, nome: c.nome, estado: "", source: "meta" as const })));
+    const raios = p.cidades.map(c => c.radiusKm).filter((r): r is number => !!r);
+    if (raios.length) {
+      const mediana = raios.sort((a, b) => a - b)[Math.floor(raios.length / 2)];
+      setRaio(Math.min(Math.max(mediana, 5), RAIO_MAX));
+    }
+    if (p.idadeMin) setIdadeMin(p.idadeMin);
+    if (p.idadeMax) setIdadeMax(p.idadeMax);
   };
 
   const handlePublicar = async () => {
@@ -772,6 +800,25 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
 
                       {modoAlcance === "raio" ? (
                         <>
+                          {/* Públicos salvos (criados no Gerenciador de Anúncios) */}
+                          {publicosSalvos.length > 0 && (
+                            <div className="mb-3">
+                              <p className="text-[9px] text-gray-400 mb-1.5">Usar público salvo</p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {publicosSalvos.map(p => (
+                                  <button key={p.id} onClick={() => aplicarPublicoSalvo(p)}
+                                    className={`px-2.5 py-1.5 rounded-full text-[10px] font-bold border transition-all ${
+                                      publicoSelecionado === p.id
+                                        ? "bg-blue-500 text-white border-blue-500"
+                                        : "bg-white text-gray-500 border-gray-200 hover:border-blue-300 hover:text-blue-600"
+                                    }`}>
+                                    {p.nome} <span className="opacity-70">· {p.cidades.length} cidades</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
                           {/* Cidade principal */}
                           <div className="mb-3 relative">
                             <p className="text-[9px] text-gray-400 mb-1.5">Cidade principal</p>
