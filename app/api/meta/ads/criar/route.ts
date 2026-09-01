@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
   // latitude/longitude não existem nessa tabela — coordenadas vêm de cidadesExtras do frontend
   const { data: garageRows, error: garageErr } = await supabaseAdmin
     .from("config_garage")
-    .select("nome_fantasia, nome_empresa, whatsapp, meta_ads_token")
+    .select("nome_fantasia, nome_empresa, whatsapp, whatsapp_agente, meta_ads_token")
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(1);
@@ -163,7 +163,12 @@ export async function POST(req: NextRequest) {
         nome:      garage?.nome_fantasia || garage?.nome_empresa || "AutoZap",
         latitude,
         longitude,
-        whatsapp:  garage?.whatsapp ?? "",
+        // whatsapp_agente = número do bot que atende automático; whatsapp
+        // (sem sufixo) é do GERENTE, só pra alertas internos — usar aquele
+        // pro CTA fazia o clique do anúncio abrir chat direto com o gerente
+        // em vez de cair na IA (achado 01/09, mesmo padrão de
+        // app/vitrine/[tenant]/page.tsx).
+        whatsapp:  garage?.whatsapp_agente || garage?.whatsapp || "",
       },
       configuracao: {
         placement:       placement ?? "facebook,instagram",
