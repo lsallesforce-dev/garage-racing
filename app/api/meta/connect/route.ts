@@ -19,7 +19,11 @@ export async function GET(req: NextRequest) {
   const params = new URLSearchParams({
     client_id:     appId,
     redirect_uri:  redirectUri,
-    scope:         "ads_management,pages_manage_ads,business_management,pages_show_list,pages_read_engagement",
+    // instagram_basic é obrigatório pro Meta aceitar instagram_actor_id em
+    // /adcreatives — sem ele o erro "(#100) Param instagram_actor_id must be
+    // a valid Instagram account id" acontece mesmo com o IG corretamente
+    // conectado à Página e à ad account no Business Manager.
+    scope:         "ads_management,pages_manage_ads,business_management,pages_show_list,pages_read_engagement,instagram_basic",
     response_type: "code",
     state:         userId,
   });
