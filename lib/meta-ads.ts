@@ -684,8 +684,13 @@ export async function criarCampanhaLeadAd(p: CriarCampanhaParams): Promise<Campa
     };
   }
 
+  // instagram_actor_id foi descontinuado pela Meta em 09/09/2025 — passou a
+  // ser instagram_user_id, valendo pra TODAS as versões da API (não só as
+  // novas). Usar o nome velho faz a Meta recusar com "(#100) Param
+  // instagram_actor_id must be a valid Instagram account id" mesmo com um ID
+  // correto — a mensagem engana porque não menciona a troca do campo.
   if (instagramActorId && configuracao.placement.includes("instagram")) {
-    storySpec.instagram_actor_id = instagramActorId;
+    storySpec.instagram_user_id = instagramActorId;
   }
 
   const creativeBody: Record<string, any> = {
@@ -727,7 +732,7 @@ export async function criarCampanhaLeadAd(p: CriarCampanhaParams): Promise<Campa
       delete creativeBody.object_story_spec;
       creativeBody.object_story_spec = {
         page_id: pageId,
-        ...(storySpec.instagram_actor_id ? { instagram_actor_id: storySpec.instagram_actor_id } : {}),
+        ...(storySpec.instagram_user_id ? { instagram_user_id: storySpec.instagram_user_id } : {}),
         ...(pageWelcomeMessage ? { page_welcome_message: pageWelcomeMessage } : {}),
       };
     } catch (e: any) {
