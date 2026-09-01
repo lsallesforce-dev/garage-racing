@@ -586,21 +586,6 @@ export async function criarCampanhaLeadAd(p: CriarCampanhaParams): Promise<Campa
           // promoted_object/Página, não da URL.
           link: "https://api.whatsapp.com/send",
           call_to_action: { type: "WHATSAPP_MESSAGE", value: { app_destination: "WHATSAPP" } },
-          // Primeira bolha já sai preenchida com o carro: é isso que o agente lê
-          // pra saber qual veículo o cliente viu (mesmo papel do origem_mensagem).
-          page_welcome_message: JSON.stringify({
-            type: "VISUAL_EDITOR",
-            version: 2,
-            landing_screen_type: "welcome_message",
-            media_type: "text",
-            text_format: { customer_action_type: "autofill_message" },
-            user_edit: false,
-            surface: "visual_editor_new",
-            message: {
-              autofill_message: { content: `Olá! Tenho interesse no ${veiculoNome} (${precoFormatado}).` },
-              text: `Oi! Vi o ${veiculoNome} e quero mais informações.`,
-            },
-          }),
       }
     : {
         link: process.env.NEXT_PUBLIC_APP_URL ?? "https://www.autozap.digital",
@@ -608,7 +593,31 @@ export async function criarCampanhaLeadAd(p: CriarCampanhaParams): Promise<Campa
         call_to_action: { type: "LEARN_MORE", value: { lead_gen_form_id: leadformId } },
       };
 
-  const storySpec: Record<string, any> = { page_id: pageId };
+  // Primeira bolha já sai preenchida com o carro: é isso que o agente lê pra
+  // saber qual veículo o cliente viu (mesmo papel do origem_mensagem).
+  // PRECISA ficar no nível do object_story_spec (irmão de link_data/video_data)
+  // — dentro de link_data a Meta recusa com "(#1) Unknown error" sem apontar o
+  // campo, achado 01/09 isolando byte a byte contra a Graph API real.
+  const pageWelcomeMessage = ehWhatsApp
+    ? JSON.stringify({
+        type: "VISUAL_EDITOR",
+        version: 2,
+        landing_screen_type: "welcome_message",
+        media_type: "text",
+        text_format: { customer_action_type: "autofill_message" },
+        user_edit: false,
+        surface: "visual_editor_new",
+        message: {
+          autofill_message: { content: `Olá! Tenho interesse no ${veiculoNome} (${precoFormatado}).` },
+          text: `Oi! Vi o ${veiculoNome} e quero mais informações.`,
+        },
+      })
+    : null;
+
+  const storySpec: Record<string, any> = {
+    page_id: pageId,
+    ...(pageWelcomeMessage ? { page_welcome_message: pageWelcomeMessage } : {}),
+  };
 
   if (ehReel) {
     // video_data exige video_id — não existe "video_url". Se o /advideos
@@ -623,9 +632,6 @@ export async function criarCampanhaLeadAd(p: CriarCampanhaParams): Promise<Campa
       // Thumbnail: a capa do kit já vem com preço e marca da loja.
       image_url: veiculo.fotoUrl,
       call_to_action: destino.call_to_action,
-      ...(ehWhatsApp && (destino as any).page_welcome_message
-        ? { page_welcome_message: (destino as any).page_welcome_message }
-        : {}),
     };
   } else if (ehCarrossel) {
     // Carrossel: um card por imagem do kit. Mesma regra da foto principal —
@@ -666,9 +672,6 @@ export async function criarCampanhaLeadAd(p: CriarCampanhaParams): Promise<Campa
         description: `${precoFormatado} — ${garagem.nome}`,
         call_to_action: destino.call_to_action,
       })),
-      ...(ehWhatsApp && (destino as any).page_welcome_message
-        ? { page_welcome_message: (destino as any).page_welcome_message }
-        : {}),
     };
   } else {
     storySpec.link_data = {
@@ -722,7 +725,11 @@ export async function criarCampanhaLeadAd(p: CriarCampanhaParams): Promise<Campa
         ],
       };
       delete creativeBody.object_story_spec;
-      creativeBody.object_story_spec = { page_id: pageId, ...(storySpec.instagram_actor_id ? { instagram_actor_id: storySpec.instagram_actor_id } : {}) };
+      creativeBody.object_story_spec = {
+        page_id: pageId,
+        ...(storySpec.instagram_actor_id ? { instagram_actor_id: storySpec.instagram_actor_id } : {}),
+        ...(pageWelcomeMessage ? { page_welcome_message: pageWelcomeMessage } : {}),
+      };
     } catch (e: any) {
       // Story é melhoria, não requisito: se o /adimages recusar, publica o
       // criativo simples em vez de derrubar a campanha inteira.
