@@ -80,7 +80,14 @@ export interface ConfigCampanha {
   /** Estados inteiros (key de adgeolocation type=region). Ignora o teto de raio. */
   regioes?: Array<{ key: string; nome: string }>;
   // cidadesExtras: se tem `key` (Meta), usa cities[]; senão usa custom_locations lat/lng
-  cidadesExtras?: Array<{ key?: string | null; lat?: number; lng?: number; nome: string }>;
+  cidadesExtras?: Array<{ key?: string | null; lat?: number; lng?: number; nome: string; radiusKm?: number | null }>;
+  /**
+   * true quando cidadesExtras veio de um público salvo do Gerenciador de
+   * Anúncios: cada cidade já tem o raio exato que o lojista configurou lá, e
+   * o `raioKm` compartilhado NÃO deve sobrescrever isso nem entrar o pino da
+   * loja — senão a publicação sai diferente do público que ele desenhou.
+   */
+  usarRaioPorCidade?: boolean;
 }
 
 export interface CampanhaResult {
@@ -381,20 +388,25 @@ export function montarTargeting(
   }
 
   const raioKm = Math.min(Math.max(cfg.raioKm || 30, RAIO_MIN_KM), RAIO_MAX_KM);
+  const raioPorCidade = !!cfg.usarRaioPorCidade;
+  const raioDe = (c: { radiusKm?: number | null }) =>
+    raioPorCidade && c.radiusKm ? Math.min(Math.max(c.radiusKm, RAIO_MIN_KM), RAIO_MAX_KM) : raioKm;
 
   // Separa cidades extras: com key Meta → cities[]; com lat/lng → custom_locations
   const extrasComKey = (cfg.cidadesExtras ?? []).filter(c => c.key);
   const extrasSemKey = (cfg.cidadesExtras ?? []).filter(c => !c.key && c.lat && c.lng);
 
+  // Com público salvo (raioPorCidade), o pino da loja some — as cidades do
+  // público já cobrem a geografia inteira, sozinhas.
   const customLocations = [
-    { latitude: garagem.latitude, longitude: garagem.longitude, radius: raioKm, distance_unit: "kilometer" },
+    ...(raioPorCidade ? [] : [{ latitude: garagem.latitude, longitude: garagem.longitude, radius: raioKm, distance_unit: "kilometer" }]),
     ...extrasSemKey.map(c => ({
-      latitude: c.lat!, longitude: c.lng!, radius: raioKm, distance_unit: "kilometer",
+      latitude: c.lat!, longitude: c.lng!, radius: raioDe(c), distance_unit: "kilometer",
     })),
   ];
 
   const citiesTargeting = extrasComKey.map(c => ({
-    key: c.key, radius: raioKm, distance_unit: "kilometer",
+    key: c.key, radius: raioDe(c), distance_unit: "kilometer",
   }));
 
   const regions = (cfg.regioes ?? []).filter(r => r.key).map(r => ({ key: r.key }));
@@ -405,7 +417,7 @@ export function montarTargeting(
   const geo: Record<string, any> = regions.length
     ? { regions, ...(citiesTargeting.length ? { cities: citiesTargeting } : {}) }
     : {
-        custom_locations: customLocations,
+        ...(customLocations.length ? { custom_locations: customLocations } : {}),
         ...(citiesTargeting.length ? { cities: citiesTargeting } : {}),
       };
 

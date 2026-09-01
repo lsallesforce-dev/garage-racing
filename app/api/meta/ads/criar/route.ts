@@ -10,7 +10,7 @@ import { midiaDoVeiculo, COLUNAS_MIDIA, type FormatoAnuncio } from "@/lib/veicul
 export async function POST(req: NextRequest) {
   const body = await req.json();
   const { veiculoId, paginaId, placement, orcamentoDiario, duracaoDias, raioKm, idadeMin, idadeMax,
-          genero, interesses, comportamentos, cidadesExtras,
+          genero, interesses, comportamentos, cidadesExtras, usarRaioPorCidade,
           objetivo, tipoOrcamento, orcamentoTotal, semDataFim, iniciaEm, regioes,
           formato, legenda, usarCapaKit } = body;
 
@@ -184,6 +184,7 @@ export async function POST(req: NextRequest) {
         comportamentos:  comportamentos ?? [],
         regioes:         regioes ?? [],
         cidadesExtras:   cidadesExtras ?? [],
+        usarRaioPorCidade: !!usarRaioPorCidade,
       },
     });
 

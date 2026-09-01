@@ -60,6 +60,7 @@ interface CidadeResult {
   source: "meta" | "ibge";
   lat?: number;
   lng?: number;
+  radiusKm?: number | null;
 }
 
 interface PublicoSalvo {
@@ -277,7 +278,8 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
               raioKm: raio, idadeMin, idadeMax, genero,
               interesses: interesses.map(i => ({ id: i.id, nome: i.nome })),
               regioes: modoAlcance === "estado" ? regioes : [],
-              cidadesExtras: cidadesExtras.map(c => ({ key: c.key ?? null, nome: c.nome })),
+              cidadesExtras: cidadesExtras.map(c => ({ key: c.key ?? null, nome: c.nome, lat: c.lat, lng: c.lng, radiusKm: c.radiusKm })),
+              usarRaioPorCidade: !!publicoSelecionado,
             },
           }),
         });
@@ -288,7 +290,7 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
     }, 700);
     return () => { if (estimativaDebounce.current) clearTimeout(estimativaDebounce.current); };
   }, [open, paginaId, placement, objetivo, orcamento, duracao, raio, idadeMin, idadeMax,
-      genero, interesses, regioes, cidadesExtras, modoAlcance]);
+      genero, interesses, regioes, cidadesExtras, modoAlcance, publicoSelecionado]);
 
   const buscarInteresses = useCallback(async (q: string) => {
     setLoadingInteresse(true);
@@ -314,18 +316,17 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
     setInteresses(prev => prev.some(x => x.id === i.id) ? prev : [...prev, i]);
   };
 
-  // Aplica um público salvo do Gerenciador de Anúncios: joga todas as cidades
-  // dele em "outras cidades" e usa o raio mais comum entre elas (a UI só tem
-  // UM raio compartilhado — não dá pra reproduzir raio diferente por cidade).
+  // Aplica um público salvo do Gerenciador de Anúncios: joga as cidades dele
+  // em "outras cidades" com o RAIO PRÓPRIO de cada uma (preservado do que o
+  // lojista configurou lá) — não usa o slider único daqui, pra não sair
+  // diferente do público que ele desenhou. Cidade principal some porque as
+  // cidades do público já cobrem tudo sozinhas.
   const aplicarPublicoSalvo = (p: PublicoSalvo) => {
     setPublicoSelecionado(prev => prev === p.id ? null : p.id);
     if (publicoSelecionado === p.id) { setCidadesExtras([]); return; }
-    setCidadesExtras(p.cidades.map(c => ({ key: c.key, nome: c.nome, estado: "", source: "meta" as const, lat: c.lat, lng: c.lng })));
-    const raios = p.cidades.map(c => c.radiusKm).filter((r): r is number => !!r);
-    if (raios.length) {
-      const mediana = raios.sort((a, b) => a - b)[Math.floor(raios.length / 2)];
-      setRaio(Math.min(Math.max(mediana, 5), RAIO_MAX));
-    }
+    setCidadesExtras(p.cidades.map(c => ({ key: c.key, nome: c.nome, estado: "", source: "meta" as const, lat: c.lat, lng: c.lng, radiusKm: c.radiusKm })));
+    setCidade("");
+    setBuscaPrincipal("");
     if (p.idadeMin) setIdadeMin(p.idadeMin);
     if (p.idadeMax) setIdadeMax(p.idadeMax);
   };
@@ -358,7 +359,8 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
           interesses: interesses.map(i => ({ id: i.id, nome: i.nome })),
           comportamentos: [],
           regioes: modoAlcance === "estado" ? regioes : [],
-          cidadesExtras: cidadesExtras.map(c => ({ key: c.key ?? null, nome: c.nome })),
+          cidadesExtras: cidadesExtras.map(c => ({ key: c.key ?? null, nome: c.nome, lat: c.lat, lng: c.lng, radiusKm: c.radiusKm })),
+          usarRaioPorCidade: !!publicoSelecionado,
         }),
       });
       const data = await res.json();
@@ -821,7 +823,9 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
                             </div>
                           )}
 
-                          {/* Cidade principal */}
+                          {/* Cidade principal — não aparece com público salvo: as
+                              cidades dele já cobrem tudo, sozinhas */}
+                          {!publicoSelecionado && (
                           <div className="mb-3 relative">
                             <p className="text-[9px] text-gray-400 mb-1.5">Cidade principal</p>
                             <div className="relative">
@@ -855,6 +859,7 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
                               </div>
                             )}
                           </div>
+                          )}
 
                           {/* Outras cidades */}
                           <div className="mb-4">
@@ -864,6 +869,7 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
                                 {cidadesExtras.map((c, i) => (
                                   <span key={`extra-${c.nome}-${i}`} className="flex items-center gap-1 pl-2.5 pr-1.5 py-1 bg-blue-100 text-blue-700 rounded-full text-[10px] font-bold">
                                     {c.nome}{c.estado ? ` – ${c.estado}` : ""}
+                                    {publicoSelecionado && c.radiusKm ? ` · ${c.radiusKm}km` : ""}
                                     <button onClick={() => setCidadesExtras(prev => prev.filter((_, idx) => idx !== i))}
                                       className="w-4 h-4 flex items-center justify-center hover:bg-blue-200 rounded-full transition-colors">
                                       <X size={9} />
@@ -905,7 +911,16 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
                             </div>
                           </div>
 
-                          {/* Raio */}
+                          {/* Raio — some com público salvo: cada cidade já tem o
+                              raio próprio que veio de lá, exibido nos chips acima */}
+                          {publicoSelecionado ? (
+                            <div className="flex items-start gap-1.5 bg-blue-50 rounded-xl p-2.5 border border-blue-100">
+                              <Info size={11} className="text-blue-400 shrink-0 mt-0.5" />
+                              <p className="text-[9px] text-blue-600 leading-snug">
+                                Usando o raio individual de cada cidade, exatamente como configurado no público salvo.
+                              </p>
+                            </div>
+                          ) : (
                           <div>
                             <div className="flex items-center justify-between mb-2">
                               <p className="text-[9px] text-gray-400">Raio por cidade</p>
@@ -930,6 +945,7 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
                               </p>
                             </div>
                           </div>
+                          )}
                         </>
                       ) : (
                         <div>
