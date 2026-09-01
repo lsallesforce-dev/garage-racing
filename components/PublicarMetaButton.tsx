@@ -144,7 +144,7 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
 
   // Configuração
   const [paginaId, setPaginaId]   = useState("");
-  const [objetivo, setObjetivo]   = useState<"leads" | "whatsapp">("leads");
+  const [objetivo, setObjetivo]   = useState<"leads" | "whatsapp">("whatsapp");
   const [placement, setPlacement] = useState<"facebook" | "instagram" | "facebook,instagram">("facebook,instagram");
 
   // Criativo — artes do Kit de Postagem

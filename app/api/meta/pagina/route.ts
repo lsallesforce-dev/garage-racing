@@ -96,12 +96,26 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ ok: true });
 }
 
-// DELETE — desvincula o Meta Ads: limpa o token de Ads e remove as páginas salvas.
+// DELETE — sem ?id: desvincula o Meta Ads inteiro (limpa o token de Ads e
+// remove todas as páginas salvas — usado pelo botão "Desvincular"). Com ?id:
+// remove só uma página órfã (ex: sobra de reconexão que trocou de página sem
+// limpar a antiga), sem mexer no token nem nas outras.
 // NÃO mexe no meta_access_token (canal de WhatsApp é independente).
-export async function DELETE() {
+export async function DELETE(req: NextRequest) {
   const { user, error } = await requireAuth();
   if (error) return error;
   const userId = getEffectiveUserId(user!);
+
+  const id = req.nextUrl.searchParams.get("id");
+  if (id) {
+    const { error: dbErr } = await supabaseAdmin
+      .from("meta_paginas")
+      .delete()
+      .eq("user_id", userId)
+      .eq("id", id);
+    if (dbErr) return NextResponse.json({ error: dbErr.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  }
 
   const [cfg, pag] = await Promise.all([
     supabaseAdmin.from("config_garage").update({ meta_ads_token: null }).eq("user_id", userId),
