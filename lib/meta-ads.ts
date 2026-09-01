@@ -128,7 +128,12 @@ async function graphPost(path: string, token: string, body: Record<string, any>)
     const blame = e.error_data?.blame_field_specs
       ? ` [campo: ${JSON.stringify(e.error_data.blame_field_specs)}]`
       : "";
-    throw new Error(`Meta API [POST ${path}]: ${e.message} (code ${e.code}${sub})${userMsg}${blame}`);
+    // Erro genérico da Meta (ex: "(#1) Unknown error") não diz qual campo —
+    // loga o corpo enviado + o erro cru pra dar pra achar o campo problemático
+    // sem precisar reproduzir na mão.
+    console.error(`[meta-ads POST ${path}] erro cru:`, JSON.stringify(e));
+    console.error(`[meta-ads POST ${path}] corpo enviado:`, JSON.stringify(body).slice(0, 4000));
+    throw new Error(`Meta API [POST ${path}]: ${e.message} (code ${e.code}${sub})${userMsg}${blame} [fbtrace_id: ${e.fbtrace_id ?? "?"}]`);
   }
   return data;
 }
