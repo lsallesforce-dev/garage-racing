@@ -145,8 +145,10 @@ export async function listarAdAccounts(userAccessToken: string): Promise<MetaAdA
 // ─── Públicos salvos ──────────────────────────────────────────────────────────
 
 export interface PublicoSalvoCidade {
-  key: string;
+  key: string | null;
   nome: string;
+  lat?: number;
+  lng?: number;
   radiusKm: number | null;
 }
 
@@ -160,8 +162,10 @@ export interface PublicoSalvo {
 
 /**
  * Públicos salvos criados direto no Gerenciador de Anúncios (fora do AutoZap).
- * Só extrai `cities[]` do targeting — `custom_locations` (raio a partir de um
- * pino de mapa) não tem `key` Meta reaproveitável aqui, então fica de fora.
+ * A Meta guarda localização de duas formas: `cities[]` (cidade buscada por
+ * nome, tem `key`) e `custom_locations[]` (pino solto no mapa com raio
+ * ajustável, só tem lat/lng — é o que sai de "ajustei o raio conforme achei
+ * no mapa"). Precisa ler as duas, senão público criado por pino fica invisível.
  */
 export async function listarPublicosSalvos(
   adAccountId: string,
@@ -174,10 +178,25 @@ export async function listarPublicosSalvos(
   const lista = (data.data as Array<{ id: string; name: string; targeting?: any }>) ?? [];
   return lista.map(p => {
     const cities = (p.targeting?.geo_locations?.cities ?? []) as Array<{ key: string; name?: string; radius?: number }>;
+    const customLocations = (p.targeting?.geo_locations?.custom_locations ?? []) as Array<{
+      latitude?: number; longitude?: number; radius?: number; name?: string; address_string?: string;
+    }>;
+    const cidades: PublicoSalvoCidade[] = [
+      ...cities.map(c => ({ key: c.key, nome: c.name ?? c.key, radiusKm: c.radius ?? null })),
+      ...customLocations
+        .filter(c => c.latitude != null && c.longitude != null)
+        .map((c, i) => ({
+          key: null,
+          nome: c.name ?? c.address_string ?? `Raio no mapa ${i + 1}`,
+          lat: c.latitude,
+          lng: c.longitude,
+          radiusKm: c.radius ?? null,
+        })),
+    ];
     return {
       id: p.id,
       nome: p.name,
-      cidades: cities.map(c => ({ key: c.key, nome: c.name ?? c.key, radiusKm: c.radius ?? null })),
+      cidades,
       idadeMin: p.targeting?.age_min ?? null,
       idadeMax: p.targeting?.age_max ?? null,
     };

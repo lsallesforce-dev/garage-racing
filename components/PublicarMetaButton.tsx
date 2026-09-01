@@ -58,12 +58,14 @@ interface CidadeResult {
   nome: string;
   estado: string;
   source: "meta" | "ibge";
+  lat?: number;
+  lng?: number;
 }
 
 interface PublicoSalvo {
   id: string;
   nome: string;
-  cidades: { key: string; nome: string; radiusKm: number | null }[];
+  cidades: { key: string | null; nome: string; lat?: number; lng?: number; radiusKm: number | null }[];
   idadeMin: number | null;
   idadeMax: number | null;
 }
@@ -318,7 +320,7 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
   const aplicarPublicoSalvo = (p: PublicoSalvo) => {
     setPublicoSelecionado(prev => prev === p.id ? null : p.id);
     if (publicoSelecionado === p.id) { setCidadesExtras([]); return; }
-    setCidadesExtras(p.cidades.map(c => ({ key: c.key, nome: c.nome, estado: "", source: "meta" as const })));
+    setCidadesExtras(p.cidades.map(c => ({ key: c.key, nome: c.nome, estado: "", source: "meta" as const, lat: c.lat, lng: c.lng })));
     const raios = p.cidades.map(c => c.radiusKm).filter((r): r is number => !!r);
     if (raios.length) {
       const mediana = raios.sort((a, b) => a - b)[Math.floor(raios.length / 2)];
