@@ -655,6 +655,10 @@ export async function criarCampanhaLeadAd(p: CriarCampanhaParams): Promise<Campa
       // último card do kit já é o de contato.
       multi_share_end_card: false,
       multi_share_optimized: true,
+      // Carrossel clique-pro-WhatsApp exige o CTA também aqui, no nível do
+      // link_data — só no child_attachments (como sempre foi) a Meta recusa
+      // com "(#1) Unknown error" sem dizer o campo (achado 01/09).
+      call_to_action: destino.call_to_action,
       child_attachments: carrossel.map((url, i) => ({
         link: (destino as any).link,
         ...(hashesCarrossel[i] ? { image_hash: hashesCarrossel[i] } : { picture: url }),
