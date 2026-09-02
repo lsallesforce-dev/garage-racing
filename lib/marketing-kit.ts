@@ -120,7 +120,7 @@ function hashtagsFallback(v: any, cfg: MarketingCfg): string[] {
   if (v?.modelo) tags.add(`#${clean(String(v.modelo).split(" ")[0])}`);
   if (cfg.cidade) tags.add(`#${clean(cfg.cidade)}`);
   ["#seminovos", "#carros", "#instacar"].forEach((t) => tags.add(t));
-  return [...tags];
+  return [...tags].slice(0, 4);
 }
 
 // Gancho + hashtags via Gemini (JSON), com fallback determinístico.
@@ -135,7 +135,7 @@ async function gerarHookEHashtags(v: any, cfg: MarketingCfg): Promise<{ hook: st
     `Loja: ${cfg.nome}${cfg.cidade ? ` (${cfg.cidade}/${cfg.estado ?? ""})` : ""}\n\n` +
     `Responda SOMENTE um JSON: {"hook": string, "hashtags": string[]}\n` +
     `- hook: UMA frase curta de venda (máx 90 caracteres), específica DESTE carro, com no máximo 2 emojis. NÃO repita nome do carro, ano, km nem preço (o título entra logo abaixo do hook). Sem clichê genérico tipo "cada quilômetro vira aventura".\n` +
-    `- hashtags: 6 a 8, minúsculas, sem acento, começando com #. Incluir marca, modelo e cidade.`;
+    `- hashtags: EXATAMENTE 4, minúsculas, sem acento, começando com #. Incluir marca, modelo e cidade.`;
   try {
     const req = {
       contents: [{ role: "user" as const, parts: [{ text: prompt }] }],
@@ -152,7 +152,7 @@ async function gerarHookEHashtags(v: any, cfg: MarketingCfg): Promise<{ hook: st
     const json = parseGeminiJson(text);
     const hook = typeof json?.hook === "string" && json.hook.trim() ? json.hook.trim().slice(0, 120) : fallback.hook;
     const hashtags = Array.isArray(json?.hashtags) && json.hashtags.length
-      ? json.hashtags.filter((h: any) => typeof h === "string" && h.startsWith("#")).slice(0, 8)
+      ? json.hashtags.filter((h: any) => typeof h === "string" && h.startsWith("#")).slice(0, 4)
       : fallback.hashtags;
     return { hook, hashtags: hashtags.length ? hashtags : fallback.hashtags };
   } catch (e) {
@@ -185,7 +185,9 @@ export async function gerarLegenda(v: any, cfg: MarketingCfg): Promise<string> {
   if (rodape.length) linhas.push("", ...rodape);
 
   const fixas = (cfg.hashtagsFixas || "").split(/\s+/).filter((h) => h.startsWith("#"));
-  const todas = [...new Set([...hashtags, ...fixas])];
+  // 4 no total é o teto — combinar geradas + fixas da loja sem cortar deixava
+  // o post com 8+ hashtags, o que lê como spam.
+  const todas = [...new Set([...hashtags, ...fixas])].slice(0, 4);
   if (todas.length) linhas.push("", todas.join(" "));
 
   return linhas.join("\n");
