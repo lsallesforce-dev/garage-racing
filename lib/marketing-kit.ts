@@ -161,23 +161,43 @@ async function gerarHookEHashtags(v: any, cfg: MarketingCfg): Promise<{ hook: st
   }
 }
 
+// Km entra colado no título, não na linha de specs — "com APENAS X KM!" só
+// quando o km for baixo o bastante pra ser argumento de venda; carro rodado
+// só leva o número puro, sem soar estranho ("apenas 150.000 km" não convence).
+const KM_BAIXO = 30000;
+function tituloComKm(v: any): string {
+  const km = Number(v?.quilometragem_estimada) || 0;
+  if (!km) return tituloVeiculo(v);
+  const kmFmt = km.toLocaleString("pt-BR");
+  return km < KM_BAIXO
+    ? `${tituloVeiculo(v)} com APENAS ${kmFmt} KM!`
+    : `${tituloVeiculo(v)} — ${kmFmt} km rodados`;
+}
+
+// Layout pedido pelo Lucas 02/09 (a esposa dele achou melhor): título já com o
+// km embutido, preço com "Saindo por", specs sem km (já foi pro título), e os
+// opcionais como lista "Destaques do veículo" com marcadores — em vez do hook
+// solto + specs com km + opcionais em linha corrida que tinha antes.
 export async function gerarLegenda(v: any, cfg: MarketingCfg): Promise<string> {
-  const { hook, hashtags } = await gerarHookEHashtags(v, cfg);
+  const { hashtags } = await gerarHookEHashtags(v, cfg);
 
   const linhas: string[] = [];
-  linhas.push(hook, "");
-  linhas.push(`🚘 ${tituloVeiculo(v)}`);
-  const specs = linhaSpecs(v);
-  if (specs) linhas.push(`⚙️ ${specs}`);
+  linhas.push(`🚘 ${tituloComKm(v)}`, "");
   const preco = cfg.mostrarPreco ? precoFormatado(v) : null;
-  if (preco) linhas.push(`💰 ${preco}`);
-  if (v?.opcionais?.length) linhas.push(`💬 ${v.opcionais.slice(0, 6).join(", ")}`);
+  if (preco) linhas.push(`Saindo por 💰 ${preco}`, "");
+  const specs = [v?.cambio, v?.combustivel, v?.cor].filter(Boolean).join(" | ");
+  if (specs) linhas.push(`⚙️ ${specs}`);
+  if (v?.opcionais?.length) {
+    linhas.push("", "Destaques do veículo:", "");
+    linhas.push(...v.opcionais.slice(0, 7).map((o: string) => `* ${o}`));
+  }
   if (cfg.claim) linhas.push("", `✅ ${cfg.claim.toUpperCase()}`);
 
   const rodape: string[] = [];
   if (cfg.endereco) {
-    const cidadeUf = cfg.cidade ? ` — ${cfg.cidade}${cfg.estado ? `/${cfg.estado}` : ""}` : "";
-    rodape.push(`📍 ${cfg.endereco}${cfg.enderecoComplemento ? ` (${cfg.enderecoComplemento})` : ""}${cidadeUf}`);
+    const cidadeUf = cfg.cidade ? `, ${cfg.cidade}${cfg.estado ? `/${cfg.estado}` : ""}` : "";
+    const complemento = cfg.enderecoComplemento?.replace(/^\(|\)$/g, "").trim();
+    rodape.push(`📍 ${cfg.endereco}${cidadeUf}${complemento ? ` 📌 ${complemento}` : ""}`);
   }
   const fones = [formatFone(cfg.telefoneLoja), formatFone(cfg.whatsapp)].filter(Boolean);
   if (fones.length) rodape.push(`📲 ${[...new Set(fones)].join(" | ")}`);
