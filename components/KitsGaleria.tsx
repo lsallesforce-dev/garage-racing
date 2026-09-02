@@ -606,6 +606,7 @@ export default function KitsGaleria() {
                     onChange={(cap, fotosNovas) =>
                       patchCarro(c.id, { marketing_capturas: cap, ...(fotosNovas ? { fotos: fotosNovas } : {}) })
                     }
+                    onAplicado={() => { if (c.marketing_capa_url) gerar(c.id); }}
                   />
                 )}
 

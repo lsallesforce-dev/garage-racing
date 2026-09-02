@@ -16,11 +16,16 @@ interface Props {
   fotos: string[];
   capturas: MarketingCapturas;
   onChange: (capturas: MarketingCapturas, fotos?: string[]) => void;
+  /** Chamado depois de "Usar no anúncio" / "Reverter" — a capa/carrossel do
+   * kit é uma imagem já renderizada, não recalcula sozinha quando fotos[]
+   * muda. Sem isso o anúncio continua com o piso velho até alguém lembrar
+   * de clicar em "Regerar kit" à parte. */
+  onAplicado?: () => void;
 }
 
 const MAX_FOTOS = 12;
 
-export default function PisoRestauro({ veiculoId, fotos, capturas, onChange }: Props) {
+export default function PisoRestauro({ veiculoId, fotos, capturas, onChange, onAplicado }: Props) {
   const [busy, setBusy] = useState<Record<string, "restaurar" | "aplicar" | "reverter">>({});
   const [erro, setErro] = useState<Record<string, string>>({});
   const [aviso, setAviso] = useState<Record<string, string>>({});
@@ -78,6 +83,9 @@ export default function PisoRestauro({ veiculoId, fotos, capturas, onChange }: P
       } else {
         const reg = piso.find((p) => p.original === url);
         if (reg) setPiso({ ...reg, aplicada: !!d.aplicada }, d.fotos);
+        // Aplicar/reverter só trocam fotos[] — a capa/carrossel do kit são
+        // imagens estáticas, precisam regenerar pra refletir a troca.
+        if (d.fotos) onAplicado?.();
       }
     } catch (e: any) {
       setErro((p) => ({ ...p, [url]: e.message ?? "Erro" }));
