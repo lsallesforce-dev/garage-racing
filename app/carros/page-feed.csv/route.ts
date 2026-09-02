@@ -3,6 +3,7 @@
 // anúncios sozinho e mira só essas URLs. Sem VIN, sem store_code, sem GBP.
 // URL: https://www.autozap.digital/carros/page-feed.csv
 import { getPortalLandingPaths } from "@/lib/portal/query";
+import { cell } from "@/lib/portal/csv";
 
 export const revalidate = 600; // 10 min
 
@@ -11,7 +12,6 @@ const SITE = (process.env.NEXT_PUBLIC_APP_URL || "https://www.autozap.digital").
 const titleCaseSlug = (s: string) =>
   s.split("-").map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w)).join(" ");
 
-const cell = (s: string) => `"${s.replace(/"/g, '""')}"`;
 
 export async function GET() {
   const paths = await getPortalLandingPaths();

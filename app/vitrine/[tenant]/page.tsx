@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import VitrineClient from "./VitrineClient";
 import VitrineIndisponivel from "../VitrineIndisponivel";
 import { assinaturaAtiva } from "@/lib/assinatura";
+import { resolveGaragem } from "@/lib/vitrine-tenant";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -17,27 +18,8 @@ interface Props {
   params: Promise<{ tenant: string }>;
 }
 
-const GARAGE_COLS =
-  "user_id, nome_empresa, whatsapp, whatsapp_agente, logo_url, vitrine_tema, dominio_custom, cidade, estado, endereco, endereco_complemento, horario_funcionamento, telefone_loja, plano_ativo, plano_vence_em, trial_ends_at, bloqueado";
-
-// Resolve o tenant por vitrine_slug (curto) ou webhook_token (links antigos compartilhados).
-async function resolveGaragem(tenant: string) {
-  const bySlug = await supabaseAdmin
-    .from("config_garage")
-    .select(GARAGE_COLS)
-    .eq("vitrine_slug", tenant)
-    .order("created_at", { ascending: false })
-    .limit(1);
-  if (bySlug.data?.[0]) return bySlug.data[0] as any;
-
-  const byToken = await supabaseAdmin
-    .from("config_garage")
-    .select(GARAGE_COLS)
-    .eq("webhook_token", tenant)
-    .order("created_at", { ascending: false })
-    .limit(1);
-  return (byToken.data?.[0] as any) ?? null;
-}
+// resolveGaragem mora em lib/vitrine-tenant.ts desde que o feed de catálogo
+// (feed.csv) passou a precisar da mesma resolução — duas cópias divergiriam.
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { tenant } = await params;
