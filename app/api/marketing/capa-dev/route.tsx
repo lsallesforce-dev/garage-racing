@@ -4,7 +4,7 @@
 // Params opcionais: ?preco=0 esconde preço; ?claim=... ; ?cor=%23HEX ; ?foto=<url do nosso storage>.
 
 import { NextRequest, NextResponse } from "next/server";
-import { fotoParaCapa, loadCapaFont, renderCapa } from "@/lib/marketing-capa";
+import { fotoParaCapa, loadCapaFont, renderCapa, renderSlide } from "@/lib/marketing-capa";
 import { gerarLegenda, type MarketingCfg } from "@/lib/marketing-kit";
 
 export const dynamic = "force-dynamic";
@@ -66,6 +66,17 @@ export async function GET(req: NextRequest) {
   }
 
   const [foto, fontData] = await Promise.all([fotoParaCapa(p.get("foto")), loadCapaFont()]);
+
+  // ?slide=1 → renderiza um slide 2..N do carrossel (painel de opcionais) em vez
+  // da capa. ?opcionais=a|b|c troca a lista; vazio cai no recap de nome + preço.
+  if (p.get("slide") === "1") {
+    const brutos = p.get("opcionais");
+    const opcionais = brutos === null
+      ? ["Central multimídia", "Câmera de ré", "Rodas de liga leve"]
+      : brutos.split("|").map((o) => o.trim()).filter(Boolean);
+    return renderSlide({ foto, logoUri: null, cfg, opcionais, veiculo, fontData });
+  }
+
   const formato = p.get("formato") === "story" ? ("story" as const) : ("feed" as const);
   return renderCapa({ foto, logoUri: null, cfg, veiculo, fontData, formato });
 }

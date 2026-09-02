@@ -10,7 +10,7 @@ import { cfgFromRow, gerarLegenda } from "@/lib/marketing-kit";
 import { fotoParaCapa, loadCapaFont, renderCapa, toDataUri } from "@/lib/marketing-capa";
 import { completarCapturas } from "@/lib/marketing-classificar";
 import { fotoDoFormato, montarCarrossel, type MarketingCapturas } from "@/lib/marketing-shotlist";
-import { enquadrarCarrossel } from "@/lib/marketing-slide";
+import { montarSlidesCarrossel } from "@/lib/marketing-slide";
 import { garantirCallouts } from "@/lib/reel-callouts-ia";
 
 export const dynamic = "force-dynamic";
@@ -96,11 +96,15 @@ export async function POST(req: NextRequest) {
     // Carrossel de feed: capa + fotos etiquetadas em ordem narrativa + resto da
     // galeria. As fotos cruas são deitadas e o IG força todos os slides no 4:5 do
     // slide 1 — sem enquadrar, o crop dele come a frente/traseira do carro.
-    const carrossel = await enquadrarCarrossel(
-      montarCarrossel(capaUrl, capturas, veiculo.fotos),
+    const carrossel = await montarSlidesCarrossel({
+      slides: montarCarrossel(capaUrl, capturas, veiculo.fotos),
       veiculoId,
-      ts
-    );
+      veiculo,
+      cfg,
+      logoUri,
+      fontData,
+      ts,
+    });
 
     // Legenda do post + legendas de cada take do reel saem juntas: as duas leem a
     // mesma ficha e o vendedor espera o kit COMPLETO no clique. garantirCallouts é
