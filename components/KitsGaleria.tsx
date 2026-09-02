@@ -635,6 +635,12 @@ export default function KitsGaleria() {
                     )}
 
                     <textarea
+                      // key muda a cada "Regerar kit" (marketing_capa_url carrega
+                      // timestamp) — força o React a remontar o campo com o
+                      // defaultValue novo. Sem isso, defaultValue só pega na
+                      // primeira renderização e o campo fica preso na legenda
+                      // antiga (ou vazio, se abriu antes do kit existir).
+                      key={`${c.id}-${c.marketing_capa_url ?? ""}`}
                       ref={(el) => { legendaRefs.current[c.id] = el; }}
                       defaultValue={c.marketing_legenda ?? ""}
                       rows={6}
