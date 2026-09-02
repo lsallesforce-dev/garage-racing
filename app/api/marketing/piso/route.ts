@@ -61,7 +61,16 @@ export async function POST(req: NextRequest) {
       if (pos >= 0) fotos[pos] = para;
       else if (acao === "aplicar") fotos.unshift(para);
       piso[i] = { ...reg, aplicada: acao === "aplicar" };
-      await salvarCapturas(veiculoId, { ...capturas, piso }, fotos);
+      // A capa/carrossel do kit escolhem a foto pela lista ETIQUETADA
+      // (capturas.fotos, ex: tag "frente-3-4"), não pela galeria fotos[] —
+      // sem trocar aqui também, "Usar no anúncio" nunca refletia na capa
+      // mesmo com o Regerar Kit disparado depois (achado 02/09).
+      const capturasNovas: MarketingCapturas = {
+        ...capturas,
+        piso,
+        fotos: (capturas.fotos ?? []).map((f) => (f.url === de ? { ...f, url: para } : f)),
+      };
+      await salvarCapturas(veiculoId, capturasNovas, fotos);
       return NextResponse.json({ ok: true, aplicada: acao === "aplicar", fotos });
     }
 
@@ -86,17 +95,22 @@ export async function POST(req: NextRequest) {
 
     // Se a versão antiga já estava aplicada em fotos[], aponta pra nova na hora —
     // deixar a URL velha lá é como o "kit antigo" some sem ninguém perceber.
+    // Mesma troca precisa acontecer na lista etiquetada (ver comentário acima).
     let fotosNovas: string[] | undefined;
+    let capturasFotos = capturas.fotos;
     if (anterior?.aplicada) {
       const pos = fotos.indexOf(anterior.restaurada);
       if (pos >= 0) {
         fotos[pos] = restaurada;
         fotosNovas = fotos;
         novo.aplicada = true;
+        capturasFotos = (capturas.fotos ?? []).map((f) =>
+          f.url === anterior.restaurada ? { ...f, url: restaurada } : f
+        );
       }
     }
 
-    await salvarCapturas(veiculoId, { ...capturas, piso: pisoNovo }, fotosNovas);
+    await salvarCapturas(veiculoId, { ...capturas, piso: pisoNovo, fotos: capturasFotos }, fotosNovas);
     return NextResponse.json({ editado: true, original: fotoUrl, restaurada, tiles: r.tiles, aplicada: novo.aplicada });
   } catch (e: any) {
     console.error("❌ [api/marketing/piso]", e);
