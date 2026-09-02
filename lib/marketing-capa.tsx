@@ -123,18 +123,45 @@ export function renderCapa(opts: {
           }}
         >
           {foto ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={foto.uri}
-              alt=""
-              style={{
-                width: W,
-                height: FOTO_H,
-                objectFit: fotoFit,
-                objectPosition: fotoFit === "cover" ? "50% 62%" : "50% 50%",
-                backgroundColor: "#16161C",
-              }}
-            />
+            <>
+              {/* Fundo desfocado: some quando a foto cabe inteira (cover) — só
+                  aparece no "contain" (comum no story, foto deitada numa
+                  janela em pé), pra não sobrar tarja sólida em cima/embaixo
+                  do carro. Mesma foto, ampliada + borrada, atrás da nítida. */}
+              {fotoFit === "contain" && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={foto.uri}
+                  alt=""
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: W,
+                    height: FOTO_H,
+                    objectFit: "cover",
+                    objectPosition: "50% 50%",
+                    transform: "scale(1.2)",
+                    filter: "blur(60px) brightness(0.55)",
+                  }}
+                />
+              )}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={foto.uri}
+                alt=""
+                style={{
+                  position: fotoFit === "contain" ? "absolute" : "static",
+                  top: 0,
+                  left: 0,
+                  width: W,
+                  height: FOTO_H,
+                  objectFit: fotoFit,
+                  objectPosition: fotoFit === "cover" ? "50% 62%" : "50% 50%",
+                  backgroundColor: fotoFit === "contain" ? "transparent" : "#16161C",
+                }}
+              />
+            </>
           ) : (
             <div style={{ display: "flex", width: W, height: FOTO_H, backgroundColor: "#16161C" }} />
           )}
