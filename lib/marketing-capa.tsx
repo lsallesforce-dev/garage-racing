@@ -14,9 +14,14 @@ import { linhaSpecs, precoFormatado, tituloVeiculo, type MarketingCfg } from "@/
 // FOTO_H = área exclusiva da foto; o restante é o painel de infos.
 // No story, o painel ganha respiro extra embaixo (barra de resposta do IG).
 export type CapaFormato = "feed" | "story";
-const DIMS: Record<CapaFormato, { W: number; H: number; FOTO_H: number; PAD_BOTTOM: number }> = {
-  feed:  { W: 1080, H: 1350, FOTO_H: 860,  PAD_BOTTOM: 44 },
-  story: { W: 1080, H: 1920, FOTO_H: 1230, PAD_BOTTOM: 150 },
+// GRAD_TOPO/GRAD_BASE = altura das faixas pretas translúcidas sobre a foto
+// (sombra do topo + transição foto→painel). Eram fixas (180/120) nos dois
+// formatos; o story tem FOTO_H 43% maior, então a mesma faixa em px ficava
+// proporcionalmente pequena e sumia visualmente — por isso "o feed tem o
+// preto transparente e o story não" (achado 02/09). Escalar com FOTO_H.
+const DIMS: Record<CapaFormato, { W: number; H: number; FOTO_H: number; PAD_BOTTOM: number; GRAD_TOPO: number; GRAD_BASE: number }> = {
+  feed:  { W: 1080, H: 1350, FOTO_H: 860,  PAD_BOTTOM: 44,  GRAD_TOPO: 180, GRAD_BASE: 120 },
+  story: { W: 1080, H: 1920, FOTO_H: 1230, PAD_BOTTOM: 150, GRAD_TOPO: 258, GRAD_BASE: 172 },
 };
 
 // Anti-SSRF: só baixamos imagens do nosso próprio storage (regra do CLAUDE.md).
@@ -77,7 +82,7 @@ export function renderCapa(opts: {
   formato?: CapaFormato;
 }): ImageResponse {
   const { foto, cfg, veiculo, fontData } = opts;
-  const { W, H, FOTO_H, PAD_BOTTOM } = DIMS[opts.formato ?? "feed"];
+  const { W, H, FOTO_H, PAD_BOTTOM, GRAD_TOPO, GRAD_BASE } = DIMS[opts.formato ?? "feed"];
   const cor = cfg.corPrimaria;
   // Se as fotos já têm marca d'água da loja, não sobrepõe logo/nome (marca dupla).
   const logoUri = cfg.fotoComMarca ? null : opts.logoUri;
@@ -173,7 +178,7 @@ export function renderCapa(opts: {
               top: 0,
               left: 0,
               width: W,
-              height: 180,
+              height: GRAD_TOPO,
               backgroundImage: "linear-gradient(to bottom, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 100%)",
             }}
           />
@@ -237,7 +242,7 @@ export function renderCapa(opts: {
               bottom: 0,
               left: 0,
               width: W,
-              height: 120,
+              height: GRAD_BASE,
               backgroundImage: "linear-gradient(to top, rgba(11,11,15,1) 0%, rgba(11,11,15,0) 100%)",
             }}
           />
