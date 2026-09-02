@@ -15,6 +15,7 @@ export interface MarketingCfg {
   cidade: string | null;
   estado: string | null;
   telefoneLoja: string | null;
+  /** Número do bot/IA que atende o lead — é esse que precisa aparecer no anúncio, não o do gerente. */
   whatsapp: string | null;
   site: string | null;
   corPrimaria: string;
@@ -39,7 +40,10 @@ export function cfgFromRow(row: any): MarketingCfg {
     cidade: row?.cidade || null,
     estado: row?.estado || null,
     telefoneLoja: row?.telefone_loja || null,
-    whatsapp: row?.whatsapp || null,
+    // whatsapp_agente = bot que atende automático; whatsapp (sem sufixo) é
+    // do GERENTE, só pra alertas internos — igual o bug do CTA do anúncio
+    // (achado 02/09), a legenda do kit também mostrava o número errado.
+    whatsapp: row?.whatsapp_agente || row?.whatsapp || null,
     site,
     corPrimaria: row?.vitrine_tema?.cor_primaria || "#DC2626",
     fotoComMarca: row?.marketing_foto_com_marca === true,
