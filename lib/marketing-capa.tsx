@@ -83,12 +83,16 @@ function areaFoto(p: {
   cfg: MarketingCfg;
   cor: string;
   mostraBranding: boolean;
+  /** Brilho do fundo desfocado. A capa mantém 0.55 (valor original); o slide
+   *  usa 0.45 — com painel de opcionais, fundo mais fundo dá mais contraste. */
+  brilhoFundo?: number;
   W: number;
   FOTO_H: number;
   GRAD_TOPO: number;
   GRAD_BASE: number;
 }) {
   const { foto, logoUri, cfg, cor, mostraBranding, W, FOTO_H, GRAD_TOPO, GRAD_BASE } = p;
+  const brilhoFundo = p.brilhoFundo ?? 0.55;
   // cover × contain: corte VERTICAL (foto mais alta que a janela) é seguro — o viés
   // 62% come céu, não carro. Corte HORIZONTAL (foto deitada em janela alta, típico
   // no story) come a frente/traseira do carro: acima de 10%, mostra a foto inteira
@@ -119,7 +123,7 @@ function areaFoto(p: {
                 objectFit: "cover",
                 objectPosition: "50% 50%",
                 transform: "scale(1.2)",
-                filter: "blur(60px) brightness(0.45)",
+                filter: `blur(60px) brightness(${brilhoFundo})`,
               }}
             />
           )}
@@ -425,7 +429,7 @@ export function renderSlide(opts: {
           position: "relative",
         }}
       >
-        {areaFoto({ foto, logoUri, cfg, cor, mostraBranding, W, FOTO_H, GRAD_TOPO, GRAD_BASE })}
+        {areaFoto({ foto, logoUri, cfg, cor, mostraBranding, W, FOTO_H, GRAD_TOPO, GRAD_BASE, brilhoFundo: 0.45 })}
 
         <div
           style={{
