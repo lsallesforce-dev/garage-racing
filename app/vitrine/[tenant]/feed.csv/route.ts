@@ -74,6 +74,34 @@ function modeloLimpo(v: any, marca: string | null): string {
   return cleanModelo(semMarca) || semMarca || bruto;
 }
 
+const semAcento = (s: string) =>
+  s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+
+// `modelo` e `versao` se sobrepõem no cadastro: "CRUZE LT" + "LT 1.4 Turbo Aut."
+// vira "CRUZE LT LT 1.4 Turbo Aut." no card do anúncio (11 dos 31 carros da
+// APROVE). Aqui a versão perde os tokens do começo que o modelo já diz, e a
+// forma abreviada do modelo cede lugar à completa da versão ("VIRTUS Comfort."
+// + "Comfortline 200 TSI" → "VIRTUS Comfortline 200 TSI").
+const tokenChave = (t: string) =>
+  semAcento(t).replace(/\.$/, "");
+
+function tituloVeiculo(marca: string, modelo: string, versao: unknown): string {
+  const mod = modelo.split(/\s+/).filter(Boolean);
+  const ver = String(versao ?? "").trim().split(/\s+/).filter(Boolean);
+  while (ver.length) {
+    const v = tokenChave(ver[0]);
+    // Prefixo só a partir de 3 letras: "LS"/"LT" iguais por acaso não contam.
+    const i = mod.findIndex((m) => {
+      const k = tokenChave(m);
+      return k === v || (v.length >= 3 && k.length >= 3 && (v.startsWith(k) || k.startsWith(v)));
+    });
+    if (i < 0) break;
+    if (v.length > tokenChave(mod[i]).length) mod[i] = ver[0];
+    ver.shift();
+  }
+  return [marca, ...mod, ...ver].join(" ").trim();
+}
+
 // A escolha da imagem fica ISOLADA aqui. Vai a foto CRUA, e NÃO a capa do kit:
 // o anúncio de catálogo desenha nome e preço por cima da imagem sozinho, então
 // a arte do kit (que já traz preço, claim e logo) sairia com preço duplicado e
@@ -83,9 +111,6 @@ function modeloLimpo(v: any, marca: string | null): string {
 function imagemDoFeed(v: any): string | null {
   return midiaDoVeiculo(v).fotoCrua;
 }
-
-const semAcento = (s: string) =>
-  s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
 // A Meta valida transmission/fuel_type/body_style contra listas fechadas —
 // texto livre ("flex", "Hatch") reprova o item. Os valores abaixo são os enums
@@ -181,7 +206,7 @@ export async function GET(
     }
 
     const modelo = modeloLimpo(v, marca);
-    const titulo = [marca, modelo, v?.versao].filter(Boolean).join(" ").trim();
+    const titulo = tituloVeiculo(marca, modelo, v?.versao);
     const specs = [
       tituloCaso(v?.cambio), tituloCaso(v?.combustivel), tituloCaso(v?.cor),
       v?.quilometragem_estimada ? `${Number(v.quilometragem_estimada).toLocaleString("pt-BR")} km` : null,
