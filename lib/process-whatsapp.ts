@@ -1371,7 +1371,26 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
     // o Gemini não aplique a exceção de "anúncio genérico" quando o veículo já é conhecido.
     const veiculoResolvido = adVeiculoNome ? ` [Veículo identificado pelo anúncio: ${adVeiculoNome}]` : "";
     const contextoAd = `[Lead veio do anúncio: "${adReferral.headline}"${adReferral.body ? ` — ${adReferral.body}` : ""}]${veiculoResolvido}`;
-    userMessage = `${contextoAd}\n${userMessage}`;
+
+    // O webhook da Avisa ja injeta [Contexto do link: "..."] a partir da citacao
+    // da mensagem - e num lead de Meta Ads essa citacao E o proprio texto do
+    // anuncio. Sem tirar, o mesmo anuncio entra DUAS vezes na mensagem (medido:
+    // 60 de 60 mensagens de anuncio no banco, ~40% do texto sendo repeticao) e,
+    // como a mensagem fica salva, a duplicata volta no historico a cada turno.
+    // So remove quando o conteudo do bloco ja esta dentro do texto do anuncio:
+    // [Contexto do link] tambem carrega coisa diferente (nome de perfil, etc).
+    const soAlfaNum = (t: string) =>
+      t.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+    const textoDoAd = soAlfaNum(`${adReferral.headline} ${adReferral.body ?? ""}`);
+    const semDuplicata = userMessage.replace(
+      /^\[Contexto do link:\s*"([\s\S]*?)"\]\s*\n?/,
+      (bloco: string, dentro: string) => {
+        const amostra = soAlfaNum(dentro).slice(0, 60);
+        return amostra.length >= 20 && textoDoAd.includes(amostra) ? "" : bloco;
+      }
+    );
+
+    userMessage = `${contextoAd}\n${semDuplicata}`;
     if (!adVeiculoId) console.log(`📢 [Ad referral] headline injetado (ad_id sem campanha cadastrada): ${adReferral.headline}`);
   }
 
