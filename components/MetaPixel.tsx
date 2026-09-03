@@ -18,13 +18,15 @@
 
 import Script from "next/script";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 
 declare global {
   interface Window {
     fbq?: (...args: unknown[]) => void;
   }
 }
+
+let rotaJaContada: string | null = null;
 
 export type PixelViewContent = {
   /** veiculos.id — tem que ser igual ao vehicle_id do feed. */
@@ -41,15 +43,22 @@ export default function MetaPixel({
   viewContent?: PixelViewContent | null;
 }) {
   const pathname = usePathname();
-  // O código base já dispara um PageView no load; o efeito abaixo cobre só as
-  // navegações seguintes do App Router. Sem isso, a primeira página contaria 2.
-  const primeiraRota = useRef(true);
 
+  // O código base já dispara um PageView no load, então o efeito abaixo cobre
+  // só as navegações seguintes do App Router.
+  //
+  // A marca é de MÓDULO, não um useRef: cada página da vitrine renderiza o seu
+  // próprio <MetaPixel>, então o componente REMONTA a cada navegação e um ref
+  // voltaria a "primeira rota" toda vez — engolindo o PageView de todas as
+  // páginas seguintes (medido em produção: navegar da lista pro carro saía só
+  // com ViewContent). Uma variável de módulo sobrevive à remontagem.
   useEffect(() => {
-    if (primeiraRota.current) {
-      primeiraRota.current = false;
+    if (rotaJaContada === null) {
+      rotaJaContada = pathname; // esta é a que o código base já contou
       return;
     }
+    if (rotaJaContada === pathname) return;
+    rotaJaContada = pathname;
     window.fbq?.("track", "PageView");
   }, [pathname]);
 
