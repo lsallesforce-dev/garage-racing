@@ -195,12 +195,17 @@ export async function GET(
     const imagem = imagemDoFeed(v);
     const preco = Number(v?.preco_sugerido ?? 0);
     const ano = Number(v?.ano_modelo ?? v?.ano ?? 0);
+    // km NÃO pode cair pra 0: `state_of_vehicle` é sempre USED, então "0 km"
+    // anuncia um usado como se fosse zero-quilômetro. É pior que ficar de fora
+    // — atrai o lead errado e gasta verba com quem desiste na primeira pergunta.
+    const km = Number(v?.quilometragem_estimada ?? NaN);
 
     // Linha incompleta faz a Meta rejeitar o ITEM e sujar o relatório do
     // catálogo — melhor não emitir e avisar no log.
-    if (!marca || !imagem || preco <= 0 || !ano) {
+    if (!marca || !imagem || preco <= 0 || !ano || !Number.isFinite(km)) {
       pulados.push(`${v?.id} (${v?.marca ?? ""} ${v?.modelo ?? ""}: ${[
         !marca && "sem marca", !imagem && "sem foto", preco <= 0 && "sem preço", !ano && "sem ano",
+        !Number.isFinite(km) && "sem km",
       ].filter(Boolean).join(", ")})`);
       continue;
     }
@@ -220,7 +225,7 @@ export async function GET(
       marca,
       modelo,
       ano,
-      Math.max(0, Math.round(Number(v?.quilometragem_estimada ?? 0))),
+      Math.max(0, Math.round(km)),
       "KM",
       `${preco.toFixed(2)} BRL`,
       "USED",
