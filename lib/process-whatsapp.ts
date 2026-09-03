@@ -2681,8 +2681,30 @@ Responda apenas com o JSON, sem markdown.`;
         // para evitar que tokens do link preview identifiquem o carro errado em mensagens vagas
         const msgSemContexto = userMessage.replace(/^\[(?:Contexto do link|Lead veio do anúncio)[^\n]*\n?/m, "").trim();
         const veiculoMidia = msgSemContexto ? await findVehicleForMedia(msgSemContexto, tenantUserId) : null;
+
+        // 3. Confirmação vaga ("sim"/"manda"/"pode") sem nome de carro — a pista de
+        // qual carro está viva só no que o PRÓPRIO AGENTE ofereceu por último, não
+        // no texto do cliente (que não nomeia nada). Sem isso cai direto no
+        // veiculoPrincipal, que só migra pro carro novo DEPOIS que uma foto dele é
+        // enviada (linha ~2828 abaixo) — ou seja, fica sempre um passo atrasado.
+        // Caso real (APROVE, 03/09): agente ofereceu "fotos do Jeep Renegade",
+        // cliente respondeu "Sim", sistema mandou foto do KWID Zen (carro do
+        // anúncio original, ainda gravado como veiculoPrincipal).
+        // Busca no BANCO INTEIRO (não em `veiculosContexto`) por dois motivos:
+        // 1) `hybridVehicleSearch` some cedo pra mensagem puramente conversacional
+        //    ("sim" é CONVERSATIONAL_ONLY) e devolve só `[veiculoPrincipal]` como
+        //    topVeiculos — ou seja, o Renegade que o agente citou nem chega a
+        //    entrar em `veiculosContexto` pra essa mensagem.
+        // 2) `findVehicleForMedia` já tem fuzzy-correction de typo testada — não
+        //    reinventar isso aqui.
+        const veiculoOfertaAgente = (!veiculoMidia && msgConfirmacao && ultimaMsgAgenteSozinha)
+          ? await findVehicleForMedia(ultimaMsgAgenteSozinha, tenantUserId)
+          : null;
+
         if (veiculoMidia) {
           console.log(`📸 [Foto] Selecionado por findVehicleForMedia: ${veiculoMidia.marca} ${veiculoMidia.modelo} (id: ${veiculoMidia.id})`);
+        } else if (veiculoOfertaAgente) {
+          console.log(`📸 [Foto] Confirmação vaga — usando o carro que o agente ofereceu por último: ${veiculoOfertaAgente.marca} ${veiculoOfertaAgente.modelo} (id: ${veiculoOfertaAgente.id})`);
         } else if (veiculoPrincipal) {
           console.log(`📸 [Foto] Usando veiculoPrincipal: ${veiculoPrincipal.marca} ${veiculoPrincipal.modelo} (id: ${veiculoPrincipal.id})`);
         } else {
@@ -2690,9 +2712,11 @@ Responda apenas com o JSON, sem markdown.`;
         }
         veiculosParaFoto = veiculoMidia
           ? [veiculoMidia]
-          : veiculoPrincipal
-            ? [veiculoPrincipal]
-            : [];
+          : veiculoOfertaAgente
+            ? [veiculoOfertaAgente]
+            : veiculoPrincipal
+              ? [veiculoPrincipal]
+              : [];
       }
     }
 
