@@ -198,6 +198,7 @@ useEffect(() => {
 2. Comandos especiais (`!status`, `!reset`, agenda do gerente)
 3. Upsert do lead + salva mensagem do usuário (per-lead lock no Redis)
 4. Stand-by: se `em_atendimento_humano = true` ou troca em curso, IA ignora
+4c. **Consolidação de rajada** — cada mensagem do cliente chega em um job separado; este passo relê quais mensagens ainda não têm resposta do agente depois delas e junta todas num turno só (ver abaixo)
 5. Config da garagem (nome, endereço, vitrine, tom)
 6. Carrega `veiculoPrincipal` do banco via `lead.veiculo_id` + valida stale **só na 1ª mensagem** (ver abaixo)
 6b/c/d. Recovery via `[Contexto do link:]`, `origem_mensagem`, fallback relaxado por anúncio
@@ -210,9 +211,21 @@ useEffect(() => {
 12. **`fixHistoryLoops`** — injeta correção sintética antes do Gemini
 13. Gemini gera JSON: `{ resposta, veiculo_id_foco, temperatura, resumo, nome_cliente_extraido, precisa_instrucao }`
 13b. **Guarda anti-mentira de estoque** — intercepta negações falsas pós-Gemini (ver abaixo)
+13d. **Rajada — checagem tardia** — relê se chegou mensagem nova DURANTE o Gemini/digitação; se sim e nenhuma mídia já foi enviada neste turno, descarta a resposta (o job da mensagem nova consolida tudo no passo 4c dele)
 14. Aplica `veiculo_id_foco` com validação no banco
 15. Salva resposta + invalida cache + auto-agenda + transbordo QUENTE
 16. Envia resposta ao cliente
+
+### Consolidação de rajada de mensagens (`lib/process-whatsapp.ts`, passos 4c e 13d)
+
+Cliente que manda 2+ mensagens em sequência rápida ("Bom dia" / "Acho que não" / "Pretendo passar ai hj pra ver") dispara **um job por mensagem** — não existe debounce de texto (só existe pra imagem, `debounceClientImages`). Sem consolidação, cada job chamava o Gemini isoladamente com só a própria mensagem como "turno atual", mas o histórico que lia já continha mensagens de jobs seguintes — o modelo via um histórico "do futuro" e se confundia, gerando respostas fora de ordem (Carmatti, 03/09: 3 respostas conflitantes, uma pediu nome/cidade de novo em negociação avançada).
+
+Fix em duas pontas, sem fila nova nem sleep artificial — usa a própria tabela `mensagens` como fonte de verdade de "o que ainda não foi respondido":
+
+- **Passo 4c (cedo, antes de gastar Gemini):** relê mensagens do cliente após a última resposta do agente. Se a mensagem deste job não está mais nessa lista, outro job já vai cobri-la — desiste. Se está e há mais de uma pendente, junta todas num `userMessage` só (join por `\n`) — pega o job que ficou esperando na fila do lock.
+- **Passo 13d (tarde, logo antes de salvar/enviar):** relê de novo. Pega o caso que 4c não cobre — o job que SAIU NA FRENTE (ninguém segurando o lock ainda) e passou os ~9s do Gemini enquanto mensagens novas chegavam. Se surgiu mensagem fora do que este turno respondeu, descarta a resposta (não grava, não envia) — o próximo job, ao rodar seu próprio 4c, vê tudo pendente e consolida.
+- **Nunca descarta em 13d se o job já mandou foto/vídeo/ficha** (`fotoEnviada`/`videoEnviado`) — esse envio já é irreversível; descartar só o texto deixaria mídia órfã sem legenda.
+- O histórico (passo 9, fallback Supabase) exclui as mensagens já absorvidas na consolidação (`idsConsolidadosNaRajada`) para não duplicá-las no prompt.
 
 ### Verdade do estoque — proteções em camadas
 

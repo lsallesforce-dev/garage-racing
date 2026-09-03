@@ -1609,8 +1609,9 @@ Responda apenas com o JSON, sem markdown.`;
   // A IA responde todos os leads que não estejam explicitamente em atendimento humano.
   // O único gatilho para stand-by é o gerente assumir manualmente a conversa.
 
+  let mensagemUsuarioId: string | null = null;
   if (lead && userMessage) {
-    await supabaseAdmin.from("mensagens").insert({
+    const { data: msgUsuarioInserida } = await supabaseAdmin.from("mensagens").insert({
       lead_id: lead.id,
       content: userMessage,
       remetente: "usuario",
@@ -1619,7 +1620,8 @@ Responda apenas com o JSON, sem markdown.`;
         media_url: `data:image/jpeg;base64,${job.imageThumbnail}`,
         media_tipo: "foto",
       } : {}),
-    });
+    }).select("id").single();
+    mensagemUsuarioId = msgUsuarioInserida?.id ?? null;
   }
 
   // ── Lock por lead — impede processamento concorrente em múltiplas instâncias ──
@@ -1748,6 +1750,65 @@ Responda apenas com o JSON, sem markdown.`;
         console.warn(`🔁 [Loop guard] Lead ${phone} repetindo "${(userMessage || "").slice(0, 30)}" (${clienteIguais}x) — IA travada.`);
         return;
       }
+    }
+  }
+
+  // ── 4c. Consolidação de rajada de mensagens ──────────────────────────────────
+  // Cliente que manda 2+ msgs em sequência rápida ("Bom dia" / "Acho que não" /
+  // "Pretendo passar ai hj pra ver") dispara um JOB POR MENSAGEM. Sem isto, cada
+  // job chama o Gemini isoladamente usando SÓ a sua própria mensagem como "turno
+  // atual" — mas o histórico que ele lê (passo 9) já pode conter mensagens de
+  // jobs seguintes, que chegaram e foram salvas enquanto este esperava a vez no
+  // lock. O modelo recebe um histórico "do futuro" com uma mensagem antiga colada
+  // depois dele e se confunde: foi o que gerou 3 respostas fora de ordem pra
+  // Carmatti em 03/09 (uma repetiu "qual seu nome e de qual cidade" no meio de
+  // negociação avançada, ignorando a pergunta real do cliente).
+  //
+  // Fix: relê do banco quais mensagens do cliente ainda não têm resposta do
+  // agente depois delas.
+  //   - Se a mensagem QUE ESTE JOB salvou não está mais nessa lista, é porque
+  //     outro job (mais lento a sair da fila do lock) já vai cobri-la — este
+  //     desiste: não chama Gemini, não envia nada, evita a resposta duplicada/
+  //     fora de ordem.
+  //   - Se está, usa TODAS as pendentes juntas como turno atual — uma resposta
+  //     só, coerente, em vez de uma por mensagem.
+  //
+  // `idsConsolidadosNaRajada` é consultado no passo 9: se o histórico vier do
+  // fallback Supabase (cache Redis frio), essas mensagens já estão na tabela e
+  // apareceriam DE NOVO ali, duplicando o turno atual montado aqui.
+  let idsConsolidadosNaRajada: Set<string> | null = null;
+  if (lead?.id && mensagemUsuarioId) {
+    const { data: ultimoAgente } = await supabaseAdmin
+      .from("mensagens")
+      .select("created_at")
+      .eq("lead_id", lead.id)
+      .eq("remetente", "agente")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    let pendentesQuery = supabaseAdmin
+      .from("mensagens")
+      .select("id, content, created_at")
+      .eq("lead_id", lead.id)
+      .eq("remetente", "usuario")
+      .order("created_at", { ascending: true });
+    if (ultimoAgente?.created_at) {
+      pendentesQuery = pendentesQuery.gt("created_at", ultimoAgente.created_at);
+    }
+    const { data: pendentes } = await pendentesQuery;
+    const listaPendentes = pendentes ?? [];
+
+    const minhaMensagemAindaPendente = listaPendentes.some((m) => m.id === mensagemUsuarioId);
+    if (!minhaMensagemAindaPendente) {
+      console.log(`⏭️ [Rajada] Mensagem de ${phone} já coberta por outro job em andamento — não processo isoladamente.`);
+      await releaseLeadLock(tenantUserId, lead.id).catch(() => {});
+      return;
+    }
+    if (listaPendentes.length > 1) {
+      userMessage = listaPendentes.map((m) => m.content).filter(Boolean).join("\n");
+      idsConsolidadosNaRajada = new Set(listaPendentes.map((m) => m.id));
+      console.log(`🧵 [Rajada] ${listaPendentes.length} mensagens consolidadas num turno só para ${phone}`);
     }
   }
 
@@ -2165,10 +2226,14 @@ Responda apenas com o JSON, sem markdown.`;
         const seenIds = new Set<string>();
         const merged: { remetente: string; content: string; media_tipo?: string | null }[] = [];
 
+        // Exclui as mensagens já absorvidas no turno atual consolidado (passo 4c) —
+        // senão apareceriam aqui DE NOVO, duplicando o que vai em `partsToGenerate`.
         for (const m of (primeiras ?? [])) {
+          if (idsConsolidadosNaRajada?.has(m.id)) continue;
           if (!seenIds.has(m.id)) { seenIds.add(m.id); merged.push(m); }
         }
         for (const m of [...(recentes ?? [])].reverse()) {
+          if (idsConsolidadosNaRajada?.has(m.id)) continue;
           if (!seenIds.has(m.id)) { seenIds.add(m.id); merged.push(m); }
         }
 
@@ -3481,6 +3546,58 @@ Responda apenas com o JSON, sem markdown.`;
           aiResponse = aiResponse.replace(/\b(aqui\s+(?:est[aãáà]|v[aãáà])\s+o?\s*v[íi]deo|te\s+mande[ie]?\s+o?\s*v[íi]deo|segue\s+o?\s*v[íi]deo)/i, "Esse não tem vídeo cadastrado");
         }
       }
+    }
+  }
+
+  // ── 12d. Rajada — checagem tardia (a mensagem do cliente que mais importa) ───
+  // A checagem do passo 4c só pega jobs que ficaram PARADOS na fila do lock. O
+  // caso real do Carmatti (03/09) foi outro: o job da 1ª mensagem ("Bom dia")
+  // saiu na frente — ninguém segurando o lock ainda — e passou os ~9s inteiros
+  // do Gemini + digitação enquanto as DUAS mensagens seguintes chegavam. Na
+  // hora de checar (passo 4c) elas nem existiam; só existem agora.
+  //
+  // ⚠️ NUNCA descarta se este job já mandou foto/vídeo/ficha (passos 11/11b/11c)
+  // — esse envio já saiu pro cliente, é irreversível. Descartar aqui só o texto
+  // de acompanhamento deixaria mídia órfã, sem legenda nenhuma. Nesse caso o
+  // texto sai mesmo que um pouco desatualizado; a mensagem nova que chegou
+  // durante o envio é tratada normalmente pelo job dela (passo 4c dele).
+  //
+  // Por isso relê aqui, imediatamente ANTES de gravar/enviar: se alguma
+  // mensagem do cliente chegou durante o processamento (fora do conjunto que
+  // este turno respondeu), esta resposta já nasceu desatualizada — descarta
+  // (não grava, não envia) e libera o lock. O próximo job (o dessa mensagem
+  // nova, já esperando a vez) vai rodar do zero e, no seu próprio passo 4c,
+  // vai enxergar TUDO que ainda está pendente — inclusive o que este turno
+  // ia responder — e consolidar num turno só.
+  // Guard `idsRespondidasNesteTurno.size > 0`: sem saber que mensagem(ns) este
+  // turno está de fato respondendo, não dá pra dizer se "surgiu" algo novo —
+  // nesse caso (raríssimo: insert do passo 3 falhou) segue o padrão fail-open
+  // do resto do arquivo e envia, em vez de arriscar descartar uma resposta boa.
+  const idsRespondidasNesteTurno = idsConsolidadosNaRajada ?? new Set(mensagemUsuarioId ? [mensagemUsuarioId] : []);
+  if (lead?.id && idsRespondidasNesteTurno.size > 0 && !fotoEnviada && !videoEnviado) {
+    const { data: ultimoAgenteCheck } = await supabaseAdmin
+      .from("mensagens")
+      .select("created_at")
+      .eq("lead_id", lead.id)
+      .eq("remetente", "agente")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    let pendentesFinalQuery = supabaseAdmin
+      .from("mensagens")
+      .select("id")
+      .eq("lead_id", lead.id)
+      .eq("remetente", "usuario")
+      .order("created_at", { ascending: true });
+    if (ultimoAgenteCheck?.created_at) {
+      pendentesFinalQuery = pendentesFinalQuery.gt("created_at", ultimoAgenteCheck.created_at);
+    }
+    const { data: pendentesFinal } = await pendentesFinalQuery;
+    const surgiuMensagemNova = (pendentesFinal ?? []).some((m) => !idsRespondidasNesteTurno.has(m.id));
+    if (surgiuMensagemNova) {
+      console.log(`⏭️ [Rajada] Nova mensagem de ${phone} chegou durante o processamento — descarto esta resposta, o próximo job consolida tudo.`);
+      await releaseLeadLock(tenantUserId, lead.id).catch(() => {});
+      return;
     }
   }
 
