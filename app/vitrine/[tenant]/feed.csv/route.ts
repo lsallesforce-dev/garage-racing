@@ -74,11 +74,14 @@ function modeloLimpo(v: any, marca: string | null): string {
   return cleanModelo(semMarca) || semMarca || bruto;
 }
 
-// A escolha da imagem fica ISOLADA aqui: se o Commerce Manager reprovar itens
-// por texto sobreposto (a arte do kit já traz preço e logo, e o anúncio de
-// catálogo desenha preço/nome por cima), trocar para `.fotoCrua` é uma linha.
+// A escolha da imagem fica ISOLADA aqui. Vai a foto CRUA, e NÃO a capa do kit:
+// o anúncio de catálogo desenha nome e preço por cima da imagem sozinho, então
+// a arte do kit (que já traz preço, claim e logo) sairia com preço duplicado e
+// texto em cima de texto — além do risco de o Commerce Manager reprovar item
+// por imagem carregada de texto. A capa do kit segue sendo a imagem dos
+// anúncios de UM carro e do post orgânico, onde nada é desenhado por cima.
 function imagemDoFeed(v: any): string | null {
-  return midiaDoVeiculo(v).imagemPadrao;
+  return midiaDoVeiculo(v).fotoCrua;
 }
 
 const semAcento = (s: string) =>
