@@ -272,6 +272,7 @@ interface BuildPromptParams {
   instrucoesAdicionais?: string | null;
   ofertaEspecial?: string | null;
   horarioFuncionamento?: string | null;
+  diaSemanaAtual?: string;
   modoRepasse?: boolean | null;
   enderecoConviteAtivo?: boolean | null;
 }
@@ -568,7 +569,7 @@ NOME DO CLIENTE: ${p.nomeCliente ?? "Não informado"}
 ${p.enderecoGaragem ? `ENDEREÇO DA LOJA: ${p.enderecoGaragem}${p.enderecoComplemento ? ` (${p.enderecoComplemento})` : ""}` : ""}
 ${p.cidadeGaragem ? `CIDADE DA LOJA: ${p.cidadeGaragem}` : ""}
 ${p.telefoneLojaDisplay ? `TELEFONE DA LOJA: ${p.telefoneLojaDisplay} — quando o cliente pedir para ligar ou perguntar o telefone, informe este número.` : ""}
-${p.horarioFuncionamento ? `HORÁRIO DE FUNCIONAMENTO: ${p.horarioFuncionamento}\n⚠️ REGRA DE AGENDAMENTO: NUNCA confirme visita em dia ou horário fora do HORÁRIO DE FUNCIONAMENTO acima. Se o cliente propuser um horário fora do expediente (ex: domingo quando a loja não abre, ou 20h quando fecha às 18h), informe gentilmente e sugira o horário disponível mais próximo.` : ""}
+${p.horarioFuncionamento ? `HOJE É ${p.diaSemanaAtual?.toUpperCase()}.\nHORÁRIO DE FUNCIONAMENTO: ${p.horarioFuncionamento}\n⚠️ REGRA DE AGENDAMENTO: o horário acima pode ter partes diferentes por dia (ex: um horário de Seg a Sex, outro no Sábado). Use SEMPRE a parte que corresponde ao dia informado em "HOJE É" quando falar de "hoje" — nunca misture com o horário de outro dia. NUNCA confirme visita em dia ou horário fora do expediente. Se o cliente propuser um horário fora do expediente (ex: domingo quando a loja não abre, ou 20h quando fecha às 18h), informe gentilmente e sugira o horário disponível mais próximo.` : ""}
 ESTOQUE ESTRUTURADO:
 ${p.context}
 
@@ -2948,6 +2949,16 @@ Responda apenas com o JSON, sem markdown.`;
     horaBrasilia >= 12 && horaBrasilia < 18 ? "Boa tarde" :
     "Boa noite";
 
+  // HORÁRIO DE FUNCIONAMENTO é uma string composta ("Seg a Sex das 8h às 18h,
+  // Sab das 8h às 12h") e sem dizer qual dia é HOJE o modelo tem que adivinhar
+  // qual trecho vale — e adivinha errado: Carmatti, quinta-feira, respondeu
+  // "hoje abrimos até as 12h" (horário de sábado) com o campo configurado
+  // corretamente. `long` já sai em português com "America/Sao_Paulo".
+  const diaSemanaAtual = new Date().toLocaleDateString("pt-BR", {
+    weekday: "long",
+    timeZone: "America/Sao_Paulo",
+  });
+
   try {
     const systemInstruction = buildSystemInstruction({
       nomeAgente,
@@ -2968,6 +2979,7 @@ Responda apenas com o JSON, sem markdown.`;
       instrucoesAdicionais: garageConfig?.instrucoes_adicionais,
       ofertaEspecial: garageConfig?.oferta_especial,
       horarioFuncionamento: garageConfig?.horario_funcionamento,
+      diaSemanaAtual,
       modoRepasse: garageConfig?.modo_repasse,
       enderecoConviteAtivo: garageConfig?.endereco_convite_ativo,
     });
