@@ -5,6 +5,8 @@ import { toVideoUrl } from "@/lib/r2-url";
 import VitrineDetalheClient from "./VitrineDetalheClient";
 import VitrineIndisponivel from "../../VitrineIndisponivel";
 import { assinaturaAtiva } from "@/lib/assinatura";
+import { resolveGaragem } from "@/lib/vitrine-tenant";
+import MetaPixel from "@/components/MetaPixel";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -18,19 +20,10 @@ interface Props {
   params: Promise<{ tenant: string; id: string }>;
 }
 
-const GARAGE_COLS =
-  "user_id, nome_empresa, whatsapp, whatsapp_agente, logo_url, vitrine_tema, dominio_custom, cidade, estado, endereco, endereco_complemento, horario_funcionamento, telefone_loja, plano_ativo, plano_vence_em, trial_ends_at, bloqueado";
-
-async function resolveGaragem(tenant: string) {
-  const bySlug = await supabaseAdmin
-    .from("config_garage").select(GARAGE_COLS).eq("vitrine_slug", tenant)
-    .order("created_at", { ascending: false }).limit(1);
-  if (bySlug.data?.[0]) return bySlug.data[0] as any;
-  const byToken = await supabaseAdmin
-    .from("config_garage").select(GARAGE_COLS).eq("webhook_token", tenant)
-    .order("created_at", { ascending: false }).limit(1);
-  return (byToken.data?.[0] as any) ?? null;
-}
+// resolveGaragem/GARAGE_COLS moram em lib/vitrine-tenant.ts — esta era a
+// TERCEIRA cópia (lista, feed de catálogo e aqui). Coluna nova no SELECT
+// precisava ser lembrada em três lugares; a que faltasse virava undefined em
+// silêncio, não erro.
 
 const fmtBRL = (v: number | null | undefined) =>
   v == null ? "" : new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(v);
@@ -135,6 +128,14 @@ export default async function VitrineDetalhePage({ params }: Props) {
 
   return (
     <>
+      <MetaPixel
+        pixelId={garagem?.meta_pixel_id}
+        viewContent={{
+          id: veiculo.id,
+          nome: [veiculo.marca, veiculo.modelo].filter(Boolean).join(" "),
+          valor: veiculo.preco_sugerido ?? null,
+        }}
+      />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }} />
       <VitrineDetalheClient
         veiculo={veiculo}

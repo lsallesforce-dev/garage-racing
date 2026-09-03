@@ -5,6 +5,7 @@ import VitrineClient from "./VitrineClient";
 import VitrineIndisponivel from "../VitrineIndisponivel";
 import { assinaturaAtiva } from "@/lib/assinatura";
 import { resolveGaragem } from "@/lib/vitrine-tenant";
+import MetaPixel from "@/components/MetaPixel";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -132,6 +133,7 @@ export default async function VitrineTenantPage({ params }: Props) {
 
   return (
     <>
+      <MetaPixel pixelId={garagem.meta_pixel_id} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }} />
       <VitrineClient
         tenant={tenant}

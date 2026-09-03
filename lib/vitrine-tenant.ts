@@ -13,7 +13,7 @@ const supabaseAdmin = createClient(
 );
 
 export const GARAGE_COLS =
-  "user_id, nome_empresa, whatsapp, whatsapp_agente, logo_url, vitrine_tema, dominio_custom, cidade, estado, endereco, endereco_complemento, horario_funcionamento, telefone_loja, plano_ativo, plano_vence_em, trial_ends_at, bloqueado";
+  "user_id, nome_empresa, whatsapp, whatsapp_agente, logo_url, vitrine_tema, dominio_custom, cidade, estado, endereco, endereco_complemento, horario_funcionamento, telefone_loja, plano_ativo, plano_vence_em, trial_ends_at, bloqueado, meta_pixel_id";
 
 // Resolve o tenant por vitrine_slug (curto) ou webhook_token (links antigos compartilhados).
 // `config_garage` tem MAIS DE UMA linha por user_id — daí o order+limit(1) em vez
