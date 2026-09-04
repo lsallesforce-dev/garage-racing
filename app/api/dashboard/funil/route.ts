@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { normalizarOrigem, origemLabel } from "@/lib/origens";
+import { inicioDiaBRT, partesBRT, deBRT } from "@/lib/periodo";
 
 // O PostgREST devolve no máximo 1000 linhas por request. Tenant com mais leads
 // que isso na janela tinha o card de origem truncado sem avisar — por isso a
@@ -36,13 +37,19 @@ export async function GET(req: NextRequest) {
   if (authError) return authError;
   const userId = getEffectiveUserId(user!);
 
-  const agora       = new Date();
-  const inicioMes   = new Date(agora.getFullYear(), agora.getMonth(), 1);
+  // Vercel roda em UTC — `new Date().setHours(0,0,0,0)` e `new Date(ano,mes,1)`
+  // usam o relógio do servidor, não o do lojista. "Hoje" virava 21h do dia
+  // anterior no Brasil (00h BRT = 03h UTC): nas últimas 3h de cada dia BRT,
+  // "leads hoje" já contava o dia seguinte e "leads ontem" perdia essas horas.
+  // Mesmo bug já diagnosticado e corrigido em lib/periodo.ts — reusa daqui.
+  const agora        = new Date();
+  const pAgora       = partesBRT(agora);
+  const inicioMes    = deBRT(pAgora.ano, pAgora.mes, 1);
   const inicioSemana = new Date(agora.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const inicioDia   = new Date(agora); inicioDia.setHours(0, 0, 0, 0);
-  const ontemInicio = new Date(inicioDia); ontemInicio.setDate(ontemInicio.getDate() - 1);
-  const limite48h   = new Date(agora.getTime() - 48 * 60 * 60 * 1000);
-  const limite6m    = new Date(agora.getTime() - 180 * 24 * 60 * 60 * 1000);
+  const inicioDia    = inicioDiaBRT(agora);
+  const ontemInicio  = new Date(inicioDia.getTime() - 24 * 60 * 60 * 1000);
+  const limite48h    = new Date(agora.getTime() - 48 * 60 * 60 * 1000);
+  const limite6m     = new Date(agora.getTime() - 180 * 24 * 60 * 60 * 1000);
 
   const [
     { data: todosLeads },
@@ -125,9 +132,13 @@ export async function GET(req: NextRequest) {
     buscarOrigens(userId, limite6m.toISOString()),
 
     // Mensagens enviadas pela IA — hoje
+    // `enviado_por_humano=false` exclui o que o gerente digitou depois de assumir
+    // a conversa — sem isso, "Msgs da IA" contava trabalho humano como se fosse
+    // automação (a coluna nunca é null: 0 de 37 mil linhas, filtro seguro).
     supabaseAdmin.from("mensagens")
       .select("id, leads!inner(user_id)", { count: "exact", head: true })
       .eq("remetente", "agente")
+      .eq("enviado_por_humano", false)
       .eq("leads.user_id", userId)
       .gte("created_at", inicioDia.toISOString()),
 
@@ -135,6 +146,7 @@ export async function GET(req: NextRequest) {
     supabaseAdmin.from("mensagens")
       .select("id, leads!inner(user_id)", { count: "exact", head: true })
       .eq("remetente", "agente")
+      .eq("enviado_por_humano", false)
       .eq("leads.user_id", userId)
       .gte("created_at", inicioSemana.toISOString()),
 
@@ -142,6 +154,7 @@ export async function GET(req: NextRequest) {
     supabaseAdmin.from("mensagens")
       .select("id, leads!inner(user_id)", { count: "exact", head: true })
       .eq("remetente", "agente")
+      .eq("enviado_por_humano", false)
       .eq("leads.user_id", userId)
       .gte("created_at", inicioMes.toISOString()),
 
