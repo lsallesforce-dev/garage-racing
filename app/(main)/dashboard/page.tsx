@@ -14,6 +14,10 @@ import { origemCfg } from "@/lib/origens";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Etapa = "NOVO" | "INTERESSADO" | "AGENDADO" | "VENDIDO" | "PERDIDO";
+type PeriodoTop = "dia" | "semana" | "mes" | "6meses";
+const PERIODO_TOP_LABEL: Record<PeriodoTop, string> = {
+  dia: "Hoje", semana: "Últimos 7 dias", mes: "Este mês", "6meses": "Últimos 6 meses",
+};
 
 type EtapaInfo = {
   etapa: Etapa;
@@ -170,11 +174,12 @@ export default function Dashboard() {
   const [diasVencimento, setDiasVencimento] = useState<number | null>(null);
   const [planoId, setPlanoId] = useState("pro");
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [periodoTop, setPeriodoTop] = useState<PeriodoTop>("6meses");
 
-  const carregar = useCallback(async () => {
+  const carregar = useCallback(async (periodo: PeriodoTop) => {
     setLoading(true);
     try {
-      const res = await fetch("/api/dashboard/funil");
+      const res = await fetch(`/api/dashboard/funil?periodo=${periodo}`);
       if (res.ok) {
         setData(await res.json());
         setLastUpdate(new Date());
@@ -185,7 +190,11 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    carregar();
+    carregar(periodoTop);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [periodoTop]);
+
+  useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) return;
       supabase
@@ -249,7 +258,7 @@ export default function Dashboard() {
               </span>
             )}
             <button
-              onClick={carregar}
+              onClick={() => carregar(periodoTop)}
               disabled={loading}
               className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-all text-gray-400 hover:text-gray-700"
             >
@@ -496,7 +505,7 @@ export default function Dashboard() {
                           } else {
                             alert(`✅ ${queued} follow-up${queued !== 1 ? "s" : ""} agendado${queued !== 1 ? "s" : ""}.\nDisparo espaçado em ~${duracao_minutos} minutos para evitar bloqueio.`);
                           }
-                          carregar();
+                          carregar(periodoTop);
                         } catch {
                           alert("Erro ao devolver leads. Tente novamente.");
                         } finally {
@@ -514,6 +523,23 @@ export default function Dashboard() {
             </div>
 
 
+            {/* ── Filtro de período: Top Veículos + Origem dos Leads ── */}
+            <div className="flex items-center gap-1.5 mb-3">
+              {(["dia", "semana", "mes", "6meses"] as PeriodoTop[]).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setPeriodoTop(p)}
+                  className={`text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full transition-colors ${
+                    periodoTop === p
+                      ? "bg-gray-900 text-white"
+                      : "bg-white border border-gray-200 text-gray-400 hover:text-gray-700 hover:border-gray-300"
+                  }`}
+                >
+                  {p === "6meses" ? "6 meses" : p === "mes" ? "Mês" : p === "semana" ? "Semana" : "Dia"}
+                </button>
+              ))}
+            </div>
+
             {/* ── Grid: Top Veículos + Origem dos Leads ── */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
 
@@ -526,7 +552,7 @@ export default function Dashboard() {
                     <div className="flex items-center justify-between mb-5">
                       <div>
                         <h3 className="text-[11px] font-black uppercase tracking-widest text-gray-400">Carros Mais Consultados</h3>
-                        <p className="text-[9px] text-gray-300 font-bold uppercase tracking-widest mt-0.5">Últimos 6 meses</p>
+                        <p className="text-[9px] text-gray-300 font-bold uppercase tracking-widest mt-0.5">{PERIODO_TOP_LABEL[periodoTop]}</p>
                       </div>
                       <span className="text-[9px] font-black bg-gray-100 text-gray-400 px-2.5 py-1 rounded-full">
                         {data.topVeiculos.length} modelos
@@ -597,7 +623,7 @@ export default function Dashboard() {
                     </div>
                     {/* Resumo de ROI em uma linha */}
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-5">
-                      <span className="text-[9px] text-gray-300 font-bold uppercase tracking-widest">Últimos 6 meses</span>
+                      <span className="text-[9px] text-gray-300 font-bold uppercase tracking-widest">{PERIODO_TOP_LABEL[periodoTop]}</span>
                       <span className="text-[9px] font-black text-gray-400">{totalOrigens} leads</span>
                       {totalQuentes > 0 && <span className="text-[9px] font-black text-red-500">🔥 {totalQuentes} quentes</span>}
                       {totalVendas > 0 && <span className="text-[9px] font-black text-emerald-600">🛒 {totalVendas} vendas · {convGeral}% conv.</span>}
@@ -805,7 +831,7 @@ export default function Dashboard() {
           <div className="py-32 text-center flex flex-col items-center">
             <Zap size={32} className="text-gray-200 mb-4" />
             <p className="text-[10px] text-gray-300 uppercase font-black tracking-[0.2em]">Erro ao carregar os dados do funil</p>
-            <button onClick={carregar} className="mt-4 px-4 py-2 bg-red-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-red-500 transition-all">
+            <button onClick={() => carregar(periodoTop)} className="mt-4 px-4 py-2 bg-red-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-red-500 transition-all">
               Tentar novamente
             </button>
           </div>

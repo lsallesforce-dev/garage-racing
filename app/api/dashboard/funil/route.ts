@@ -32,10 +32,16 @@ async function buscarOrigens(userId: string, desde: string) {
   return { data: rows };
 }
 
+type PeriodoTop = "dia" | "semana" | "mes" | "6meses";
+const PERIODOS_TOP: PeriodoTop[] = ["dia", "semana", "mes", "6meses"];
+
 export async function GET(req: NextRequest) {
   const { user, error: authError } = await requireAuth();
   if (authError) return authError;
   const userId = getEffectiveUserId(user!);
+
+  const periodoParam = req.nextUrl.searchParams.get("periodo") as PeriodoTop | null;
+  const periodoTop: PeriodoTop = periodoParam && PERIODOS_TOP.includes(periodoParam) ? periodoParam : "6meses";
 
   // Vercel roda em UTC — `new Date().setHours(0,0,0,0)` e `new Date(ano,mes,1)`
   // usam o relógio do servidor, não o do lojista. "Hoje" virava 21h do dia
@@ -51,8 +57,16 @@ export async function GET(req: NextRequest) {
   const limite48h    = new Date(agora.getTime() - 48 * 60 * 60 * 1000);
   const limite6m     = new Date(agora.getTime() - 180 * 24 * 60 * 60 * 1000);
 
+  // Janela usada só pelos cards "Carros mais consultados" e "Origem dos leads"
+  // — os outros KPIs (leadsHoje, leadsSemana...) continuam fixos por definição.
+  const desdeTop = periodoTop === "dia" ? inicioDia
+    : periodoTop === "semana" ? inicioSemana
+    : periodoTop === "mes" ? inicioMes
+    : limite6m;
+
   const [
     { data: todosLeads },
+    { data: veiculosTopRaw },
     { data: leadsRecentes },
     { count: leadsHoje },
     { count: leadsOntem },
@@ -71,11 +85,21 @@ export async function GET(req: NextRequest) {
     { data: semAtendimentoRows },
     { data: agendaLeadIds },
   ] = await Promise.all([
-    // Todos os leads dos últimos 6 meses com dados do veículo
+    // Todos os leads dos últimos 6 meses com dados do veículo — alimenta o
+    // Funil de Vendas (etapas) e "em risco", que NÃO seguem o filtro de período
+    // dos cards de Top Veículos/Origem (esses usam a query separada abaixo).
     supabaseAdmin.from("leads")
       .select("id, etapa_funil, status, updated_at, veiculo_id, veiculos(preco_sugerido, marca, modelo, ano)")
       .eq("user_id", userId)
       .gte("created_at", limite6m.toISOString()),
+
+    // Leads na janela escolhida (dia/semana/mês/6 meses) — só pro card Top Veículos
+    supabaseAdmin.from("leads")
+      .select("veiculo_id, veiculos(marca, modelo, ano)")
+      .eq("user_id", userId)
+      .gte("created_at", desdeTop.toISOString())
+      .not("veiculo_id", "is", null)
+      .limit(TETO_ORIGENS),
 
     // Leads recentes para a lista filtrada
     supabaseAdmin.from("leads")
@@ -128,8 +152,8 @@ export async function GET(req: NextRequest) {
       .eq("user_id", userId)
       .eq("em_atendimento_humano", true),
 
-    // Origens dos leads (últimos 6 meses) — com etapa/status/valor para medir conversão por canal
-    buscarOrigens(userId, limite6m.toISOString()),
+    // Origens dos leads (janela escolhida) — com etapa/status/valor para medir conversão por canal
+    buscarOrigens(userId, desdeTop.toISOString()),
 
     // Mensagens enviadas pela IA — hoje
     // `enviado_por_humano=false` exclui o que o gerente digitou depois de assumir
@@ -182,7 +206,7 @@ export async function GET(req: NextRequest) {
       .select("lead_id")
       .eq("user_id", userId)
       .not("lead_id", "is", null)
-      .gte("created_at", limite6m.toISOString())
+      .gte("created_at", desdeTop.toISOString())
       .limit(TETO_ORIGENS),
   ]);
 
@@ -271,13 +295,13 @@ export async function GET(req: NextRequest) {
     canais:       origens.length,
   };
 
-  // ── Top Veículos por leads ───────────────────────────────────────────────────
+  // ── Top Veículos por leads (respeita o filtro de período do card) ─────────────
   const veiculoContagem: Record<string, { marca: string; modelo: string; ano: string | null; count: number }> = {};
-  for (const lead of leads) {
-    if (!lead.veiculo_id) continue;
-    const v = lead.veiculos as any;
+  for (const row of (veiculosTopRaw ?? []) as any[]) {
+    if (!row.veiculo_id) continue;
+    const v = row.veiculos;
     if (!v) continue;
-    const key = String(lead.veiculo_id);
+    const key = String(row.veiculo_id);
     if (!veiculoContagem[key]) {
       veiculoContagem[key] = { marca: v.marca ?? "", modelo: v.modelo ?? "", ano: v.ano ?? null, count: 0 };
     }
@@ -322,5 +346,6 @@ export async function GET(req: NextRequest) {
     topVeiculos,
     origens,
     origemResumo,
+    periodoTop,
   });
 }
