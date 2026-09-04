@@ -8,6 +8,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendMetaMessage } from "@/lib/meta";
 import { sendAvisaMessage } from "@/lib/avisa";
 import { cronGuard } from "@/lib/redis";
+import { inicioDiaBRT } from "@/lib/periodo";
 
 export const maxDuration = 300;
 
@@ -36,9 +37,11 @@ export async function GET(req: NextRequest) {
   }
 
   const agora = new Date();
-  const inicioSemana = new Date(agora);
-  inicioSemana.setDate(agora.getDate() - 7);
-  inicioSemana.setHours(0, 0, 0, 0);
+  // Vercel roda em UTC — `.setHours(0,0,0,0)` usa o relógio do servidor, não o
+  // do lojista, e a janela ficava com ~3h de sábado à noite (BRT) coladas no
+  // início do relatório. inicioDiaBRT() acerta o corte pra meia-noite BRT real
+  // (mesmo bug do dashboard, ver commit 3a49826).
+  const inicioSemana = new Date(inicioDiaBRT(agora).getTime() - 7 * 24 * 60 * 60 * 1000);
 
   // Busca todos os tenants com WhatsApp e pelo menos um canal configurado (Avisa ou Meta)
   const { data: tenants, error } = await supabaseAdmin
