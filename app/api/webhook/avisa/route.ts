@@ -73,6 +73,8 @@ function extractFields(payload: any): {
   audioUrl?: string;
   audioMediaKey?: string;
   imageThumbnail?: string;  // base64 JPEG thumbnail da foto enviada pelo cliente
+  imageUrl?: string;         // URL criptografada da foto original (p/ decriptar em lib/whatsapp-image.ts)
+  imageMediaKey?: string;    // chave de decriptação da foto original
   messageId?: string | null;
   adReferral?: { headline: string | null; body: string | null; source_type: string | null; ad_id: string | null; thumbnail?: string | null; image_url?: string | null } | null;
 } {
@@ -99,6 +101,8 @@ function extractFields(payload: any): {
   let audioUrl: string | undefined;
   let audioMediaKey: string | undefined;
   let imageThumbnail: string | undefined;
+  let imageUrl: string | undefined;
+  let imageMediaKey: string | undefined;
   let messageId: string | null = null;
   let adReferral: { headline: string | null; body: string | null; source_type: string | null; ad_id: string | null; thumbnail?: string | null; image_url?: string | null } | null = null;
 
@@ -188,9 +192,13 @@ function extractFields(payload: any): {
     messageId = info.ID;
     if (!userMessage && !audioUrl && msg?.imageMessage) {
       userMessage = "[Cliente enviou foto(s) do veículo]";
-      // Thumbnail base64 para exibir preview no chat (a imagem completa é criptografada)
+      // Thumbnail base64 pro fallback (se a decriptação da foto original falhar)
       const thumb = msg.imageMessage.JPEGThumbnail ?? msg.imageMessage.jpegThumbnail;
       if (thumb) imageThumbnail = thumb;
+      // Foto original (criptografada) — mesmo par URL+mediaKey do áudio, decriptado
+      // em lib/process-whatsapp.ts via lib/whatsapp-image.ts
+      imageUrl = msg.imageMessage.URL ?? msg.imageMessage.url;
+      imageMediaKey = msg.imageMessage.mediaKey ?? msg.imageMessage.MediaKey;
     }
 
     // Cliente RESPONDENDO (citando) o anúncio do grupo no privado. O texto citado
@@ -292,6 +300,8 @@ function extractFields(payload: any): {
       userMessage = "[Cliente enviou foto(s) do veículo]";
       const thumb = msg.imageMessage.JPEGThumbnail ?? msg.imageMessage.jpegThumbnail;
       if (thumb) imageThumbnail = thumb;
+      imageUrl = msg.imageMessage.URL ?? msg.imageMessage.url;
+      imageMediaKey = msg.imageMessage.mediaKey ?? msg.imageMessage.MediaKey;
     }
 
     // Citação do anúncio — mesma lógica do formato Baileys acima
@@ -330,7 +340,7 @@ function extractFields(payload: any): {
     lidPhone: stripDevice(lidPhone),
     chatPhone: stripDevice(chatPhone),
     userMessage: userMessage?.trim() || "",
-    fromMe, audioUrl, audioMediaKey, imageThumbnail, messageId, adReferral,
+    fromMe, audioUrl, audioMediaKey, imageThumbnail, imageUrl, imageMediaKey, messageId, adReferral,
   };
 }
 
@@ -477,7 +487,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Validação Básica ──────────────────────────────────────────────────────
-    let { phone, isLid, lidPhone, chatPhone, groupJid, userMessage: rawMessage, fromMe, audioUrl, audioMediaKey, imageThumbnail, messageId, adReferral } =
+    let { phone, isLid, lidPhone, chatPhone, groupJid, userMessage: rawMessage, fromMe, audioUrl, audioMediaKey, imageThumbnail, imageUrl, imageMediaKey, messageId, adReferral } =
       extractFields(payload);
 
     // ── Grupos/Comunidades: a IA NUNCA responde em grupo ──────────────────────
@@ -774,6 +784,8 @@ export async function POST(req: NextRequest) {
         audioUrl,
         audioMediaKey,
         imageThumbnail,
+        imageUrl,
+        imageMediaKey,
         messageId,
         tenantUserId: tenantUserId!,
         garageConfig,

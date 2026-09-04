@@ -3,6 +3,7 @@
 // Executado via after() no webhook — não bloqueia o 200 OK para a Meta
 
 
+import { randomUUID } from "crypto";
 import { geminiFlashSales, geminiFlashFallback, parseGeminiJson } from "@/lib/gemini";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendMetaMessage, sendMetaImage, sendMetaVideo, sendMetaAudio, sendMetaCtaButton, markMetaRead } from "@/lib/meta";
@@ -12,6 +13,7 @@ import { resolverVendedor } from "@/lib/lead-routing";
 import { classificarLead, liberaAutomatico, origemProvaLead, MAX_MSGS_PARA_CLASSIFICAR } from "@/lib/lead-gate";
 import { transcreverAudioCliente } from "@/lib/transcribe";
 import { decryptWhatsAppAudio } from "@/lib/whatsapp-audio";
+import { decryptWhatsAppImage } from "@/lib/whatsapp-image";
 import { sintetizarVoz, prepararTextoParaVoz } from "@/lib/tts";
 import { hybridVehicleSearch, findVehicleForMedia } from "@/lib/hybrid-search";
 import { urlVitrine } from "@/lib/repasse";
@@ -200,7 +202,9 @@ export interface WhatsAppJobPayload {
   audioUrl?: string;
   audioMediaKey?: string;
   audioMediaId?: string;  // Meta Cloud API: media ID para resolver via Graph API
-  imageThumbnail?: string; // base64 JPEG thumbnail de foto enviada pelo cliente (para exibir no chat)
+  imageThumbnail?: string; // base64 JPEG thumbnail de foto enviada pelo cliente (fallback se a decriptação da foto original falhar)
+  imageUrl?: string;       // URL criptografada da foto original enviada pelo cliente (Avisa/Baileys)
+  imageMediaKey?: string;  // chave de decriptação da foto original
   messageId?: string | null;
   tenantUserId: string;
   garageConfig: GarageConfig | null;
@@ -1630,12 +1634,40 @@ Responda apenas com o JSON, sem markdown.`;
 
   let mensagemUsuarioId: string | null = null;
   if (lead && userMessage) {
+    // Foto do cliente: tenta baixar + decriptar a foto ORIGINAL (protocolo do
+    // WhatsApp — mesmo AES-256-CBC/HKDF do áudio, ver lib/whatsapp-image.ts) e
+    // guardar no bucket privado "fotos-clientes". O JPEGThumbnail que vem solto
+    // no payload (fallback abaixo) é só um preview de ~100px que o WhatsApp usa
+    // como placeholder — dá pra confirmar "é uma foto de carro", não pra
+    // avaliar lataria, documento ou o que quer que o cliente tenha mandado.
+    let mediaUrlFoto: string | null = null;
+    if (job.imageUrl && job.imageMediaKey) {
+      try {
+        const fotoBuffer = await decryptWhatsAppImage(job.imageUrl, job.imageMediaKey);
+        if (fotoBuffer) {
+          const path = `${tenantUserId}/${lead.id}/${randomUUID()}.jpg`;
+          const { error: uploadErr } = await supabaseAdmin.storage
+            .from("fotos-clientes")
+            .upload(path, fotoBuffer, { contentType: "image/jpeg" });
+          if (!uploadErr) {
+            mediaUrlFoto = `/api/chat-media/${path}`;
+          } else {
+            console.warn("⚠️ [Foto cliente] Falha ao subir pro Storage — caindo pro thumbnail:", uploadErr.message);
+          }
+        }
+      } catch (e) {
+        console.warn("⚠️ [Foto cliente] Falha ao decriptar a foto original — caindo pro thumbnail:", e);
+      }
+    }
+
     const { data: msgUsuarioInserida } = await supabaseAdmin.from("mensagens").insert({
       lead_id: lead.id,
       content: userMessage,
       remetente: "usuario",
-      // Thumbnail de foto enviada pelo cliente — base64 JPEG usado como data URL no chat
-      ...(job.imageThumbnail ? {
+      ...(mediaUrlFoto ? {
+        media_url: mediaUrlFoto,
+        media_tipo: "foto",
+      } : job.imageThumbnail ? {
         media_url: `data:image/jpeg;base64,${job.imageThumbnail}`,
         media_tipo: "foto",
       } : {}),
