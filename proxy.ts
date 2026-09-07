@@ -420,6 +420,10 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith("/api/auth/confirmar-email") ||
     pathname.startsWith("/nova-senha") ||
     pathname.startsWith("/vitrine") ||
+    // Ficha de financiamento da vitrine: quem preenche é o visitante, sem login.
+    // Só ESTA rota de /api/vitrine — as irmãs (capa, logo, seed-slug) são do
+    // painel e continuam exigindo sessão.
+    /^\/api\/vitrine\/[^/]+\/financiamento$/.test(pathname) ||
     pathname.startsWith("/carros") ||
     pathname.startsWith("/loja-nao-encontrada") ||
     pathname.startsWith("/api/webhook") ||

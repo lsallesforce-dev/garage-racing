@@ -3,13 +3,14 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  Search, MessageCircle, Play, ChevronDown, X, SlidersHorizontal,
+  Search, MessageCircle, Play, ChevronDown, SlidersHorizontal,
   Car, MapPin, Gauge, Fuel, Cog, Clock, Phone, ShieldCheck, Sparkles, RotateCcw,
 } from "lucide-react";
 import {
   resolveTheme, themeStyle, fmtBRL, fmtKm, whatsappLink, isRecemChegado, selosDe,
   type VitrineTema,
 } from "../theme";
+import FichaFinanciamento from "@/components/vitrine/FichaFinanciamento";
 
 interface Loja {
   cidade: string | null;
@@ -382,7 +383,7 @@ export default function VitrineClient({
       </a>
 
       {modalCarro && (
-        <ModalFinanciamento carro={modalCarro} whatsapp={whatsapp} nomeEmpresa={nomeEmpresa} onClose={() => setModalCarro(null)} />
+        <FichaFinanciamento tenant={tenant} veiculo={modalCarro} whatsapp={whatsapp} nomeEmpresa={nomeEmpresa} onClose={() => setModalCarro(null)} />
       )}
     </div>
   );
@@ -468,7 +469,7 @@ function CarCard({
             onClick={() => onSimular(c)}
             className="text-[9px] font-black uppercase tracking-widest text-[var(--fg-faint)] hover:text-[var(--brand)] transition-colors w-full text-center"
           >
-            Simular financiamento
+            Quero financiar
           </button>
         </div>
       </div>
@@ -502,80 +503,6 @@ function InfoRow({ icon, children }: { icon: React.ReactNode; children: React.Re
     <div className="flex items-start gap-3 text-sm text-[var(--fg-muted)]">
       <span className="text-[var(--brand)] mt-0.5 shrink-0">{icon}</span>
       <span className="leading-snug">{children}</span>
-    </div>
-  );
-}
-
-// ─── Modal de financiamento ───────────────────────────────────────────────────
-function ModalFinanciamento({
-  carro, whatsapp, nomeEmpresa, onClose,
-}: { carro: any; whatsapp: string; nomeEmpresa: string; onClose: () => void }) {
-  const preco = carro.preco_sugerido ?? 0;
-  const [entrada, setEntrada] = useState("");
-  const [parcelas, setParcelas] = useState("48");
-  const [nome, setNome] = useState("");
-  const entradaNum = parseFloat(entrada.replace(/\./g, "").replace(",", ".")) || 0;
-  const saldo = Math.max(preco - entradaNum, 0);
-  const valorParcela = saldo / (parseInt(parcelas) || 1);
-
-  const msg =
-    `Olá! Vi o *${carro.marca} ${carro.modelo}${carro.ano_modelo ? " " + carro.ano_modelo : ""}* na vitrine da ${nomeEmpresa} e gostaria de uma simulação real.\n\n` +
-    `💰 Valor: ${fmtBRL(preco)}\n` +
-    (entradaNum > 0 ? `💵 Entrada: ${fmtBRL(entradaNum)}\n` : "") +
-    `📅 Prazo: ${parcelas}x` +
-    (saldo > 0 ? ` (~${fmtBRL(valorParcela)}/mês s/ juros)\n` : "\n") +
-    (nome ? `👤 ${nome}\n` : "") +
-    `\nPode me passar as melhores condições?`;
-
-  return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4" onClick={onClose}>
-      <div style={{ colorScheme: "light" }} className="bg-white text-gray-900 rounded-3xl w-full max-w-md p-7 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <div className="flex justify-between items-start mb-5">
-          <div>
-            <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Simulação de financiamento</p>
-            <h3 className="text-lg font-black uppercase italic tracking-tight">{carro.marca} {carro.modelo}</h3>
-            <p className="text-sm font-black tracking-tighter text-[var(--brand)] mt-1">{fmtBRL(preco)}</p>
-          </div>
-          <button onClick={onClose} className="w-8 h-8 bg-gray-100 rounded-full grid place-items-center hover:bg-gray-200 transition"><X size={14} /></button>
-        </div>
-
-        <div className="space-y-4 mb-5">
-          <div>
-            <label className="text-[9px] font-black uppercase tracking-widest text-gray-500 block mb-2">Seu nome</label>
-            <input type="text" placeholder="Ex: João Silva" value={nome} onChange={(e) => setNome(e.target.value)}
-              className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-[var(--brand)]" />
-          </div>
-          <div>
-            <label className="text-[9px] font-black uppercase tracking-widest text-gray-500 block mb-2">Valor de entrada (R$)</label>
-            <input type="number" placeholder="Ex: 15000" value={entrada} onChange={(e) => setEntrada(e.target.value)}
-              className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-[var(--brand)]" />
-          </div>
-          <div>
-            <label className="text-[9px] font-black uppercase tracking-widest text-gray-500 block mb-2">Prazo</label>
-            <div className="grid grid-cols-6 gap-1.5">
-              {[12, 24, 36, 48, 60, 72].map((n) => (
-                <button key={n} onClick={() => setParcelas(String(n))}
-                  className={`py-2 rounded-lg text-[11px] font-black transition ${parcelas === String(n) ? "bg-[var(--brand)] text-[var(--brand-fg)]" : "bg-gray-50 text-gray-500 hover:bg-gray-100"}`}>
-                  {n}x
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {saldo > 0 && (
-          <div className="bg-gray-50 rounded-2xl p-4 mb-5">
-            <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-0.5">Estimativa de parcela</p>
-            <p className="text-3xl font-black tracking-tighter text-[var(--brand)]">{fmtBRL(valorParcela)}<span className="text-sm font-bold text-gray-400"> /mês</span></p>
-            <p className="text-[9px] text-gray-400 mt-1">Simulação sem juros. Taxa final sujeita à análise de crédito.</p>
-          </div>
-        )}
-
-        <a href={whatsappLink(whatsapp, msg)} target="_blank" rel="noopener noreferrer"
-          className="flex items-center justify-center gap-2 w-full bg-emerald-500 hover:bg-emerald-600 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-[11px] transition active:scale-[0.98]">
-          <MessageCircle size={16} /> Solicitar simulação real
-        </a>
-      </div>
     </div>
   );
 }

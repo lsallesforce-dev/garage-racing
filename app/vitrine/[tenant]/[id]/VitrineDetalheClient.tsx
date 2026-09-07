@@ -4,12 +4,13 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ChevronLeft, MapPin, Gauge, Fuel, Cog, Palette, Play, Video, ShieldCheck,
-  MessageCircle, Check, X, Calculator, Settings2, Clock, Phone, Sparkles, Car,
+  MessageCircle, Check, Calculator, Settings2, Clock, Phone, Sparkles, Car,
 } from "lucide-react";
 import {
   resolveTheme, themeStyle, fmtBRL, fmtKm, whatsappLink, selosDe, isRecemChegado,
   type VitrineTema,
 } from "../../theme";
+import FichaFinanciamento from "@/components/vitrine/FichaFinanciamento";
 
 interface Loja {
   cidade: string | null;
@@ -208,7 +209,7 @@ export default function VitrineDetalheClient({
                   </a>
                   <button onClick={() => setShowFin(true)}
                     className="flex items-center justify-center gap-2 bg-[var(--surface)] border border-[var(--border-strong)] hover:border-[var(--brand)] text-[var(--fg)] py-3.5 rounded-2xl font-black uppercase text-[11px] tracking-widest transition">
-                    <Calculator size={15} /> Simular financiamento
+                    <Calculator size={15} /> Quero financiar
                   </button>
                   <p className="text-center text-[9px] font-bold uppercase tracking-widest text-[var(--fg-faint)]">
                     Resposta na hora pelo WhatsApp · Sem compromisso
@@ -359,7 +360,7 @@ export default function VitrineDetalheClient({
       )}
 
       {showFin && (
-        <ModalFinanciamento veiculo={veiculo} whatsapp={whatsapp} nomeEmpresa={nomeEmpresa} onClose={() => setShowFin(false)} />
+        <FichaFinanciamento tenant={tenant} veiculo={veiculo} whatsapp={whatsapp} nomeEmpresa={nomeEmpresa} onClose={() => setShowFin(false)} />
       )}
     </div>
   );
@@ -379,72 +380,6 @@ function InfoRow({ icon, children }: { icon: React.ReactNode; children: React.Re
     <div className="flex items-start gap-3 text-sm text-[var(--fg-muted)]">
       <span className="text-[var(--brand)] mt-0.5 shrink-0">{icon}</span>
       <span className="leading-snug">{children}</span>
-    </div>
-  );
-}
-
-function ModalFinanciamento({
-  veiculo, whatsapp, nomeEmpresa, onClose,
-}: { veiculo: any; whatsapp: string; nomeEmpresa: string; onClose: () => void }) {
-  const preco = veiculo.preco_sugerido ?? 0;
-  const [entrada, setEntrada] = useState("");
-  const [parcelas, setParcelas] = useState("48");
-  const entradaNum = parseFloat(entrada.replace(/\./g, "").replace(",", ".")) || 0;
-  const saldo = Math.max(preco - entradaNum, 0);
-  const valorParcela = saldo / (parseInt(parcelas) || 1);
-
-  const msg =
-    `Olá! Simulei o *${veiculo.marca} ${veiculo.modelo}${veiculo.ano_modelo ? " " + veiculo.ano_modelo : ""}* na vitrine da ${nomeEmpresa}: ` +
-    `entrada de ${fmtBRL(entradaNum)}, ${parcelas}x de ~${fmtBRL(valorParcela)}. Podemos conversar sobre as condições reais?`;
-
-  return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4" onClick={onClose}>
-      <div style={{ colorScheme: "light" }} className="bg-white text-gray-900 rounded-3xl w-full max-w-md p-7 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <div className="flex justify-between items-start mb-5">
-          <div>
-            <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Simulação de financiamento</p>
-            <h3 className="text-lg font-black uppercase italic tracking-tight">{[veiculo.marca, veiculo.modelo].filter(Boolean).join(" ")}</h3>
-          </div>
-          <button onClick={onClose} className="w-8 h-8 bg-gray-100 rounded-full grid place-items-center hover:bg-gray-200 transition"><X size={14} /></button>
-        </div>
-
-        <div className="bg-gray-50 rounded-2xl p-4 mb-5">
-          <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-0.5">Valor do veículo</p>
-          <p className="text-2xl font-black tracking-tighter">{fmtBRL(preco)}</p>
-        </div>
-
-        <div className="space-y-4 mb-5">
-          <div>
-            <label className="text-[9px] font-black uppercase tracking-widest text-gray-500 block mb-2">Entrada (R$)</label>
-            <input type="number" placeholder="Ex: 15000" value={entrada} onChange={(e) => setEntrada(e.target.value)}
-              className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-bold focus:outline-none focus:border-[var(--brand)]" />
-          </div>
-          <div>
-            <label className="text-[9px] font-black uppercase tracking-widest text-gray-500 block mb-2">Parcelas</label>
-            <div className="grid grid-cols-6 gap-1.5">
-              {[12, 24, 36, 48, 60, 72].map((n) => (
-                <button key={n} onClick={() => setParcelas(String(n))}
-                  className={`py-2 rounded-lg text-[11px] font-black transition ${parcelas === String(n) ? "bg-[var(--brand)] text-[var(--brand-fg)]" : "bg-gray-50 text-gray-500 hover:bg-gray-100"}`}>
-                  {n}x
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {saldo > 0 && (
-          <div className="bg-gray-50 rounded-2xl p-4 mb-5">
-            <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-0.5">Estimativa de parcela</p>
-            <p className="text-3xl font-black tracking-tighter text-[var(--brand)]">{fmtBRL(valorParcela)}<span className="text-sm font-bold text-gray-400"> /mês</span></p>
-            <p className="text-[9px] text-gray-400 mt-1">Simulação sem juros. Taxa final sujeita à análise de crédito.</p>
-          </div>
-        )}
-
-        <a href={whatsappLink(whatsapp, msg)} target="_blank" rel="noopener noreferrer"
-          className="flex items-center justify-center gap-2 w-full bg-emerald-500 hover:bg-emerald-600 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-[11px] transition active:scale-[0.98]">
-          <MessageCircle size={16} /> Enviar simulação no WhatsApp
-        </a>
-      </div>
     </div>
   );
 }
