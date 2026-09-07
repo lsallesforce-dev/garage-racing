@@ -7,8 +7,9 @@
 //
 // Para cada campanha "ativo":
 //   1. Busca insights (gasto, impressões) via Meta API com o meta_ads_token do tenant
-//   2. Atualiza meta_campanhas (gasto_total, impressoes) — leads_gerados fica
-//      por conta do webhook leadgen (não sobrescreve aqui pra não regredir)
+//   2. Atualiza meta_campanhas (gasto_total, impressoes e, quando a Meta
+//      devolve > 0, leads_gerados — click-to-WhatsApp não passa pelo webhook
+//      de leadgen, então sem isso o CPL do painel nunca fecha)
 //   3. Se encerra_em < now(), marca como "encerrado"
 //
 // Para cada tenant com meta_ads_token:
@@ -62,38 +63,45 @@ export async function GET(req: NextRequest) {
   // ── 1. Sincronizar campanhas ativas (gasto + impressões) ───────────────────
   // /{ad_id}/insights exige ads_read — usa o meta_ads_token do tenant, NÃO o
   // page token. leads_gerados é mantido em tempo real pelo webhook.
+  // Campanha PAUSADA também entra: ela já gastou, e sem sincronizar o gasto
+  // final o card "Custo do lead" do painel some com o dinheiro dela.
   const { data: campanhas } = await supabaseAdmin
     .from("meta_campanhas")
-    .select("id, ad_id, user_id, encerra_em")
-    .eq("status", "ativo");
+    .select("id, ad_id, user_id, status, encerra_em")
+    .in("status", ["ativo", "pausado"]);
 
   for (const camp of campanhas ?? []) {
     try {
-      // Verifica se a campanha passou da data de encerramento
+      const adToken = tokenByUser.get(camp.user_id);
+
+      // Sincroniza ANTES de encerrar — senão a campanha congela sem o gasto final.
+      if (camp.ad_id && adToken) {
+        const metricas = await buscarMetricasCampanha(camp.ad_id, adToken);
+
+        const campos: Record<string, any> = {
+          gasto_total: metricas.gasto,
+          impressoes:  metricas.impressoes,
+        };
+        // Click-to-WhatsApp não passa pelo webhook de leadgen: sem isso,
+        // leads_gerados fica 0 pra sempre e o CPL do painel não fecha.
+        if (metricas.leads > 0) campos.leads_gerados = metricas.leads;
+
+        await supabaseAdmin
+          .from("meta_campanhas")
+          .update(campos)
+          .eq("id", camp.id);
+
+        campanhasAtualizadas++;
+      }
+
+      // Passou da data de encerramento → congela o status (já com o gasto final).
       if (camp.encerra_em && new Date(camp.encerra_em) < agora) {
         await supabaseAdmin
           .from("meta_campanhas")
           .update({ status: "encerrado" })
           .eq("id", camp.id);
         campanhasEncerradas++;
-        continue;
       }
-
-      const adToken = tokenByUser.get(camp.user_id);
-      if (!camp.ad_id || !adToken) continue; // sem token de Ads não dá pra ler insights
-
-      // Busca métricas reais da Meta API
-      const metricas = await buscarMetricasCampanha(camp.ad_id, adToken);
-
-      await supabaseAdmin
-        .from("meta_campanhas")
-        .update({
-          gasto_total: metricas.gasto,
-          impressoes:  metricas.impressoes,
-        })
-        .eq("id", camp.id);
-
-      campanhasAtualizadas++;
     } catch (e: any) {
       console.warn(`⚠️ [meta-sync] Erro na campanha ${camp.id}:`, e.message?.slice(0, 200));
     }

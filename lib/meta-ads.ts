@@ -823,20 +823,37 @@ export async function buscarMetricasCampanha(adId: string, accessToken: string):
   impressoes: number;
 }> {
   try {
+    // `date_preset: "lifetime"` FOI REMOVIDO da Graph API (virou "maximum").
+    // Mandar "lifetime" derruba a chamada em erro de parametro -> cai no catch
+    // -> grava zero. Foi o que deixou o card "Custo do lead" mudo ate 07/09/26.
     const data = await graphGet(`${adId}/insights`, accessToken, {
       fields: "spend,actions,impressions",
-      date_preset: "lifetime",
+      date_preset: "maximum",
     });
     const insights = data.data?.[0];
     if (!insights) return { gasto: 0, leads: 0, impressoes: 0 };
 
-    const leads = (insights.actions as any[])?.find((a: any) => a.action_type === "lead")?.value ?? 0;
+    // Anuncio de click-to-WhatsApp NAO gera action_type "lead" (isso e de
+    // formulario). O evento dele e a conversa iniciada. Conta os dois.
+    const acoes = (insights.actions as any[]) ?? [];
+    const somaAcao = (tipos: string[]) =>
+      acoes
+        .filter((a: any) => tipos.includes(a.action_type))
+        .reduce((s: number, a: any) => s + (parseInt(a.value) || 0), 0);
+
+    const conversas = somaAcao([
+      "onsite_conversion.messaging_conversation_started_7d",
+      "onsite_conversion.total_messaging_connection",
+    ]);
+    const formularios = somaAcao(["lead"]);
+
     return {
       gasto:      parseFloat(insights.spend ?? "0"),
-      leads:      parseInt(leads),
+      leads:      conversas || formularios,
       impressoes: parseInt(insights.impressions ?? "0"),
     };
-  } catch {
+  } catch (e: any) {
+    console.warn(`⚠️ [meta-ads] insights do ad ${adId} falhou:`, e?.message?.slice(0, 200));
     return { gasto: 0, leads: 0, impressoes: 0 };
   }
 }
