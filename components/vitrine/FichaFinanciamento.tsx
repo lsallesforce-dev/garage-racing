@@ -26,7 +26,12 @@ const mascaraCPF = (s: string) =>
     .replace(/(\d{3})(\d{1,2})$/, "$1-$2");
 
 const mascaraTel = (s: string) => {
-  const d = soDigitos(s).slice(0, 11);
+  // Quem digita/cola com o DDI (+55 17 99114-1010) passava de 11 dígitos: o
+  // slice cortava o ÚLTIMO e o 55 virava DDD — o wa.me do alerta ia pra um
+  // número que não existe (aconteceu no primeiro teste em produção, 07/09).
+  let d = soDigitos(s);
+  if (d.length > 11 && d.startsWith("55")) d = d.slice(2);
+  d = d.slice(0, 11);
   if (d.length <= 10) return d.replace(/(\d{2})(\d)/, "($1) $2").replace(/(\d{4})(\d)/, "$1-$2");
   return d.replace(/(\d{2})(\d)/, "($1) $2").replace(/(\d{5})(\d)/, "$1-$2");
 };

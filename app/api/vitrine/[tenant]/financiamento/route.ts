@@ -68,6 +68,14 @@ const RESTRICAO: Record<string, string> = {
   nao_sei: "Não sabe se tem restrição",
 };
 
+/** 5517991141010 -> (17) 99114-1010. O gerente le no WhatsApp, nao em E.164. */
+const fmtTelefone = (e164: string) => {
+  const d = e164.replace(/^55/, "");
+  return d.length === 11
+    ? `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`
+    : `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+};
+
 const fmtBRL = (v: number | null) =>
   v == null ? "—" : v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 
@@ -169,7 +177,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ tenant: st
     proposta.nascimento ? `🎂 ${proposta.nascimento.split("-").reverse().join("/")}` : null,
     proposta.nome_mae ? `👩 Mãe: ${proposta.nome_mae}` : null,
     proposta.estado_civil ? `💍 ${ESTADO_CIVIL[proposta.estado_civil] ?? proposta.estado_civil}` : null,
-    `📱 ${telefone}`,
+    `📱 ${fmtTelefone(telefone)}`,
     proposta.email ? `✉️ ${proposta.email}` : null,
     proposta.cep ? `📍 CEP ${proposta.cep}` : null,
     "",
