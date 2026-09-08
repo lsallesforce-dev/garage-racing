@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { S3Client, DeleteObjectsCommand } from "@aws-sdk/client-s3";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireVehicleOwner } from "@/lib/api-auth";
+import { pausarCampanhasDoVeiculo } from "@/lib/meta-campanhas";
 
 const r2 = new S3Client({
   region: "auto",
@@ -55,6 +56,14 @@ export async function DELETE(req: NextRequest) {
   for (const url of [...(veiculo?.fotos ?? []), ...(veiculo?.video_takes ?? [])]) {
     const key = urlToKey(url);
     if (key) r2Keys.push(key);
+  }
+
+  // Pausa o anúncio pago ANTES do delete: a FK meta_campanhas_veiculo_id_fkey
+  // é ON DELETE SET NULL, então depois do delete o vínculo some e não dá mais
+  // pra saber qual campanha era deste carro — ela ficaria órfã e no ar.
+  const { pausadas, falhas } = await pausarCampanhasDoVeiculo(veiculoId, "veículo deletado");
+  if (pausadas || falhas) {
+    console.log(`⏸️ [deletar] Meta Ads do veículo ${veiculoId}: ${pausadas} pausada(s), ${falhas} falha(s)`);
   }
 
   // Desvíncula referências em outras tabelas, apaga o registro e limpa o R2

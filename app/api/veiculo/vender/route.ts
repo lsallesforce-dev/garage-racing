@@ -3,6 +3,7 @@ import { sendMetaMessage } from "@/lib/meta";
 import { sendAvisaMessage } from "@/lib/avisa";
 import { buscarLeadsOrfaos } from "@/lib/leads";
 import { requireVehicleOwner } from "@/lib/api-auth";
+import { pausarCampanhasDoVeiculo } from "@/lib/meta-campanhas";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
@@ -61,6 +62,13 @@ export async function POST(req: NextRequest) {
           .catch((e: any) => console.error("❌ OLX delete on venda falhou:", e?.message));
         console.log(`🗑️ [OLX] Removendo anúncio ${veiculo.olx_ad_id} — veículo vendido`);
       }
+    }
+
+    // 2c. Pausa o anúncio pago — carro vendido não pode seguir gastando.
+    // Espelha o que o bloco 2b já fazia com a OLX. Não bloqueia a venda se falhar.
+    const { pausadas, falhas } = await pausarCampanhasDoVeiculo(id, "veículo vendido");
+    if (pausadas || falhas) {
+      console.log(`⏸️ [vender] Meta Ads do veículo ${id}: ${pausadas} pausada(s), ${falhas} falha(s)`);
     }
 
     // 3. Registrar no histórico de vendas (vendas_concluidas) 

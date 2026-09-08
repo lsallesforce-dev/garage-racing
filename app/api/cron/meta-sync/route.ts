@@ -19,6 +19,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { buscarMetricasCampanha } from "@/lib/meta-ads";
+import { pausarCampanhasDoVeiculo } from "@/lib/meta-campanhas";
 
 export const maxDuration = 120;
 
@@ -41,6 +42,7 @@ export async function GET(req: NextRequest) {
   let campanhasAtualizadas = 0;
   let campanhasEncerradas = 0;
   let tokensExpirados = 0;
+  let campanhasPausadas = 0;
 
   // ── Mapa user_id → meta_ads_token (mais recente por tenant) ────────────────
   // config_garage pode ter múltiplas linhas por tenant — ordena desc e fica
@@ -67,7 +69,7 @@ export async function GET(req: NextRequest) {
   // final o card "Custo do lead" do painel some com o dinheiro dela.
   const { data: campanhas } = await supabaseAdmin
     .from("meta_campanhas")
-    .select("id, ad_id, user_id, status, encerra_em")
+    .select("id, ad_id, user_id, status, encerra_em, veiculo_id")
     .in("status", ["ativo", "pausado"]);
 
   for (const camp of campanhas ?? []) {
@@ -104,6 +106,29 @@ export async function GET(req: NextRequest) {
       }
     } catch (e: any) {
       console.warn(`⚠️ [meta-sync] Erro na campanha ${camp.id}:`, e.message?.slice(0, 200));
+    }
+  }
+
+  // ── 1b. Rede de segurança: campanha ativa de carro já VENDIDO ─────────────
+  // As rotas de vender/deletar já pausam na hora (lib/meta-campanhas.ts). Isto
+  // aqui cobre o caso em que aquela chamada falhou — token expirado, Meta fora
+  // do ar, carro marcado como vendido direto no banco.
+  // Campanha SEM veiculo_id fica em paz de propósito: carrossel de vários
+  // carros é legítimo e não aponta pra um veículo só.
+  const idsComVeiculo = (campanhas ?? [])
+    .filter((c: any) => c.veiculo_id)
+    .map((c: any) => c.veiculo_id);
+
+  if (idsComVeiculo.length) {
+    const { data: vendidos } = await supabaseAdmin
+      .from("veiculos")
+      .select("id")
+      .in("id", idsComVeiculo)
+      .eq("status_venda", "VENDIDO");
+
+    for (const v of vendidos ?? []) {
+      const r = await pausarCampanhasDoVeiculo(v.id, "veículo vendido (rede de segurança do cron)");
+      campanhasPausadas += r.pausadas;
     }
   }
 
@@ -152,12 +177,13 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  console.log(`✅ [meta-sync] campanhas_atualizadas=${campanhasAtualizadas} encerradas=${campanhasEncerradas} tokens_expirados=${tokensExpirados}`);
+  console.log(`✅ [meta-sync] campanhas_atualizadas=${campanhasAtualizadas} encerradas=${campanhasEncerradas} pausadas_por_venda=${campanhasPausadas} tokens_expirados=${tokensExpirados}`);
 
   return NextResponse.json({
     ok: true,
     campanhas_atualizadas: campanhasAtualizadas,
     campanhas_encerradas: campanhasEncerradas,
+    campanhas_pausadas_por_venda: campanhasPausadas,
     tokens_expirados: tokensExpirados,
   });
 }
