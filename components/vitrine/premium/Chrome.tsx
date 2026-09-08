@@ -84,14 +84,20 @@ export function PremiumTopo({
 
       {/* ── Faixa principal: logo + menu + CTA, tudo numa linha ── */}
       <div className="bg-[var(--brand-deep)] text-white">
-        <div className="max-w-7xl mx-auto px-5 h-[72px] flex items-center gap-5">
+        <div className="max-w-7xl mx-auto px-5 h-[88px] sm:h-[104px] flex items-center gap-5">
           <Link href={home} className="flex items-center shrink-0">
             {logoUrl ? (
-              // Pílula branca: a logo do tenant é quase sempre desenhada pra fundo
-              // claro (a da APROVE é azul-marinho) e sumia em cima da cor da marca.
-              <span className="bg-white rounded-xl px-3 py-1.5 flex items-center shadow-sm">
-                <img src={logoUrl} alt={nomeEmpresa} className="h-8 sm:h-9 w-auto max-w-[140px] object-contain" />
-              </span>
+              // Logo em BRANCO, sem fundo. `brightness(0) invert(1)` zera a cor de
+              // cada pixel opaco e inverte pra branco, PRESERVANDO o alfa — a logo
+              // da APROVE é 76% transparente, então carro e letras saem brancos e
+              // o fundo continua vazado. Vale pra qualquer logo do tenant: não
+              // depende de existir uma versão branca do arquivo.
+              <img
+                src={logoUrl}
+                alt={nomeEmpresa}
+                className="h-14 sm:h-[72px] w-auto max-w-[200px] sm:max-w-[280px] object-contain"
+                style={{ filter: "brightness(0) invert(1)" }}
+              />
             ) : (
               <span className="text-lg font-black uppercase italic tracking-tighter truncate max-w-[180px]">{nomeEmpresa}</span>
             )}
@@ -187,7 +193,7 @@ export function PremiumRodape({
   return (
     <>
       {temSecao && (
-        <section id="sobre" className="scroll-mt-32 border-t border-[var(--border)] bg-[var(--surface)]">
+        <section id="sobre" className="scroll-mt-40 border-t border-[var(--border)] bg-[var(--surface)]">
           <div className="max-w-7xl mx-auto px-5 py-14 grid gap-10 md:grid-cols-2">
             <div>
               <p className="text-[11px] font-black uppercase tracking-widest text-[var(--brand)] mb-3">Onde estamos</p>

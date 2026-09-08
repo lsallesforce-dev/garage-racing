@@ -356,7 +356,7 @@ export default function VitrinePremiumClient({
       )}
 
       {/* ══ Estoque ══ */}
-      <section id="estoque" className="scroll-mt-28 max-w-7xl mx-auto px-5 py-12">
+      <section id="estoque" className="scroll-mt-40 max-w-7xl mx-auto px-5 py-12">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
           <div className="flex items-center gap-3">
             <h2 className="text-[15px] font-black uppercase tracking-widest">Nosso estoque</h2>
