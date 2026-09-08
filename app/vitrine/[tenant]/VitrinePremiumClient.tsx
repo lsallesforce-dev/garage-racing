@@ -11,7 +11,7 @@
 // estoque completo. Os facets saem do estoque real: marca/modelo/ano/chip que
 // não tem carro não aparece na tela.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronDown, SlidersHorizontal, RotateCcw, Car, Search, X,
   Sparkles, ShieldCheck, MapPin,
@@ -135,6 +135,30 @@ export default function VitrinePremiumClient({
 
   const local = localDaLoja(loja);
 
+  // "Reduzir movimento" ligado no sistema → o banner congela no poster em vez de
+  // rodar a animação. Autoplay de vídeo não respeita prefers-reduced-motion
+  // sozinho; tem que pausar na mão.
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const aplicar = () => {
+      if (mq.matches) { v.pause(); return; }
+      // play() é rejeitado se o vídeo ainda não tem dado bufferizado (e o iOS em
+      // modo de economia rejeita direto). Sem o retry no `canplay` o banner
+      // ficava congelado no poster — foi o que aconteceu no 1º teste.
+      v.play().catch(() => {});
+    };
+    aplicar();
+    v.addEventListener("canplay", aplicar);
+    mq.addEventListener("change", aplicar);
+    return () => {
+      v.removeEventListener("canplay", aplicar);
+      mq.removeEventListener("change", aplicar);
+    };
+  }, [theme.capaVideoUrl]);
+
   const selectCls =
     "w-full appearance-none bg-transparent border-0 border-b border-[var(--border-strong)] pl-0 pr-6 py-1.5 text-[15px] font-semibold text-[var(--fg)] focus:outline-none focus:border-[var(--brand)] cursor-pointer";
 
@@ -152,7 +176,21 @@ export default function VitrinePremiumClient({
       {/* ══ Banner ══ */}
       {/* pb-16: a barra de filtro flutua encavalando a base do banner. */}
       <section className="relative overflow-hidden pb-16">
-        {theme.capaUrl ? (
+        {theme.capaVideoUrl ? (
+          <>
+            {/* muted + playsInline são OBRIGATÓRIOS: sem os dois o navegador
+                bloqueia o autoplay (iOS inclusive) e o banner fica no poster. */}
+            <video
+              ref={videoRef}
+              src={theme.capaVideoUrl}
+              poster={theme.capaUrl ?? undefined}
+              autoPlay muted loop playsInline preload="metadata"
+              aria-hidden
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+            <div className="absolute inset-0" style={{ background: "linear-gradient(90deg, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.55) 45%, rgba(0,0,0,0.25) 100%)" }} />
+          </>
+        ) : theme.capaUrl ? (
           <>
             <img src={theme.capaUrl} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover" />
             <div className="absolute inset-0" style={{ background: "linear-gradient(90deg, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.55) 45%, rgba(0,0,0,0.25) 100%)" }} />

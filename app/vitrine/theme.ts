@@ -27,6 +27,10 @@ export interface VitrineTema {
   headline?: string;
   subtitulo?: string;
   cta_label?: string;
+  // Animação de fundo do banner (mp4 curto, mudo, em loop). Quando existe,
+  // `capa_url` vira o POSTER — o quadro que aparece antes do vídeo carregar e o
+  // fallback pra quem tem "reduzir movimento" ligado no sistema.
+  capa_video_url?: string;
 }
 
 export interface ResolvedTheme {
@@ -42,6 +46,7 @@ export interface ResolvedTheme {
   headline: string | null;
   subtitulo: string | null;
   ctaLabel: string | null;
+  capaVideoUrl: string | null;
 }
 
 const DEFAULT_BRAND = "#dc2626"; // red-600
@@ -101,6 +106,7 @@ export function resolveTheme(tema?: VitrineTema | null): ResolvedTheme {
     headline: tema?.headline?.trim() || null,
     subtitulo: tema?.subtitulo?.trim() || null,
     ctaLabel: tema?.cta_label?.trim() || null,
+    capaVideoUrl: tema?.capa_video_url?.trim() || null,
   };
 }
 
