@@ -36,6 +36,7 @@ export interface VitrineTema {
 export interface ResolvedTheme {
   brand: string;
   brandDark: string;
+  brandDeep: string; // cromo do layout premium — ver comentário em themeStyle
   brandFg: string; // texto legível sobre a cor de marca
   accent: string; // 2ª cor do gradiente (cor_secundaria ou derivada)
   dark: boolean;
@@ -96,6 +97,12 @@ export function resolveTheme(tema?: VitrineTema | null): ResolvedTheme {
   return {
     brand,
     brandDark: darken(brand, 0.16),
+    // Barra de topo/menu do layout premium. Uma faixa de marca SATURADA em cima
+    // de um banner escuro lê como duas páginas empilhadas (foi o que aconteceu
+    // com o roxo da APROVE sobre o banner turquesa). Cromo quase preto derivado
+    // da marca resolve sem abrir mão da identidade — o `--brand` cheio continua
+    // nos selos, na contagem e no bloco de preço.
+    brandDeep: darken(brand, 0.58),
     brandFg: readableFg(brand),
     accent: secondary ?? darken(brand, 0.32),
     dark: tema?.tema === "escuro",
@@ -150,6 +157,7 @@ export function themeStyle(t: ResolvedTheme): CSSProperties {
   return {
     "--brand": t.brand,
     "--brand-dark": t.brandDark,
+    "--brand-deep": t.brandDeep,
     "--brand-fg": t.brandFg,
     "--accent": t.accent,
     ...neutral,

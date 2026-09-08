@@ -6,7 +6,8 @@
 // na hora que a página do carro tem outra cara que a listagem.
 //
 // Nenhuma cor de marca hardcoded: tudo sai das CSS vars de `app/vitrine/theme.ts`
-// (--brand, --brand-dark, --brand-fg, --accent, neutros). O verde do WhatsApp é
+// (--brand-deep no cromo, --brand nos selos, --accent, neutros). O verde do
+// WhatsApp é
 // cor semântica do canal, não da loja — esse fica fixo, como no layout padrão.
 
 import Link from "next/link";
@@ -65,7 +66,7 @@ export function PremiumTopo({
     <header className="sticky top-0 z-40">
       {/* ── Topbar: endereço + telefone ── */}
       {(enderecoCompleto || loja.telefone) && (
-        <div className="hidden sm:block bg-[var(--brand-dark)] text-[var(--brand-fg)]">
+        <div className="hidden sm:block bg-[var(--brand-deep)] text-white border-b border-white/10">
           <div className="max-w-7xl mx-auto px-5 h-9 flex items-center justify-center gap-6 text-[11px] font-semibold opacity-80">
             {enderecoCompleto && (
               <span className="flex items-center gap-1.5 truncate">
@@ -82,7 +83,7 @@ export function PremiumTopo({
       )}
 
       {/* ── Faixa principal: logo + menu + CTA, tudo numa linha ── */}
-      <div className="bg-[var(--brand)] text-[var(--brand-fg)]">
+      <div className="bg-[var(--brand-deep)] text-white">
         <div className="max-w-7xl mx-auto px-5 h-[72px] flex items-center gap-5">
           <Link href={home} className="flex items-center shrink-0">
             {logoUrl ? (
@@ -132,7 +133,7 @@ export function PremiumTopo({
           <button
             onClick={() => setMenuAberto((v) => !v)}
             aria-label="Abrir menu"
-            className="ml-auto sm:ml-0 lg:hidden p-2 -mr-2 text-[var(--brand-fg)]"
+            className="ml-auto sm:ml-0 lg:hidden p-2 -mr-2 text-white"
           >
             {menuAberto ? <X size={22} /> : <Menu size={22} />}
           </button>
@@ -141,7 +142,7 @@ export function PremiumTopo({
 
       {/* ── Menu mobile ── */}
       {menuAberto && (
-        <div className="lg:hidden bg-[var(--brand-dark)] text-[var(--brand-fg)] border-t border-white/10">
+        <div className="lg:hidden bg-[var(--brand-deep)] text-white border-t border-white/10">
           <div className="flex flex-col px-5 pb-4 pt-2">
             {nav.map((item) =>
               item.href ? (
@@ -215,7 +216,7 @@ export function PremiumRodape({
         </section>
       )}
 
-      <footer className="bg-[var(--brand-dark)] text-[var(--brand-fg)] py-8 text-center">
+      <footer className="bg-[var(--brand-deep)] text-white py-8 text-center">
         <p className="text-[10px] font-black uppercase tracking-widest opacity-70">
           © {new Date().getFullYear()} {nomeEmpresa} · Vitrine digital
         </p>
