@@ -16,6 +16,11 @@ export interface VitrineTema {
   tagline?: string;
   sobre?: string;
   tema?: "claro" | "escuro";
+  // Layout da vitrine. Ausente/"padrao" = layout genérico (VitrineClient), que é
+  // o de todos os tenants. "premium" = layout repaginado, ligado hoje só na
+  // APROVE Multimarcas (migration 054). A flag mora aqui — e não num
+  // `if (tenant === "...")` — pra ligar em outro tenant ser uma linha de SQL.
+  layout?: "padrao" | "premium";
 }
 
 export interface ResolvedTheme {
@@ -27,6 +32,7 @@ export interface ResolvedTheme {
   capaUrl: string | null;
   tagline: string | null;
   sobre: string | null;
+  premium: boolean;
 }
 
 const DEFAULT_BRAND = "#dc2626"; // red-600
@@ -82,6 +88,7 @@ export function resolveTheme(tema?: VitrineTema | null): ResolvedTheme {
     capaUrl: tema?.capa_url?.trim() || null,
     tagline: tema?.tagline?.trim() || null,
     sobre: tema?.sobre?.trim() || null,
+    premium: tema?.layout === "premium",
   };
 }
 
@@ -145,13 +152,60 @@ export interface Selo {
   key: string;
   label: string;
   className: string;
+  /** Rótulo por extenso — o layout premium tem espaço pro nome completo do selo. */
+  labelLongo?: string;
 }
 export function selosDe(v: any): Selo[] {
   const out: Selo[] = [];
   if (v.segundo_dono === false) out.push({ key: "unico", label: "Único Dono", className: "bg-blue-600 text-white" });
   if (v.vistoriado === true || v.vistoria_cautelar === true)
-    out.push({ key: "vist", label: "Vistoriado", className: "bg-emerald-600 text-white" });
+    out.push({ key: "vist", label: "Vistoriado", className: "bg-emerald-600 text-white", labelLongo: "Laudo Cautelar Aprovado" });
   if (v.abaixo_fipe === true) out.push({ key: "fipe", label: "Abaixo FIPE", className: "bg-orange-500 text-white" });
   if (v.de_repasse === true) out.push({ key: "rep", label: "Repasse", className: "bg-zinc-900 text-white" });
   return out;
+}
+
+// ─── Chips de filtro rápido (layout premium) ────────────────────────────────
+// Derivados do estoque REAL: chip que não tem carro correspondente não é
+// renderizado. Nada de atalho decorativo que devolve lista vazia.
+
+export interface ChipRapido {
+  key: string;
+  label: string;
+  match: (c: any) => boolean;
+}
+
+const CHIPS_CANDIDATOS: ChipRapido[] = [
+  { key: "suv", label: "SUVs", match: (c) => /suv|utilit/i.test(c.categoria ?? "") },
+  { key: "sedan", label: "Sedãs", match: (c) => /sed[aã]/i.test(c.categoria ?? "") },
+  { key: "hatch", label: "Hatchs", match: (c) => /hatch/i.test(c.categoria ?? "") },
+  { key: "picape", label: "Picapes", match: (c) => /picape|pick/i.test(c.categoria ?? "") },
+  { key: "auto", label: "Automáticos", match: (c) => /autom|cvt|dsg|tiptronic/i.test(c.cambio ?? "") },
+  { key: "ate60", label: "Até R$ 60 mil", match: (c) => typeof c.preco_sugerido === "number" && c.preco_sugerido > 0 && c.preco_sugerido <= 60000 },
+  { key: "ate100", label: "Até R$ 100 mil", match: (c) => typeof c.preco_sugerido === "number" && c.preco_sugerido > 0 && c.preco_sugerido <= 100000 },
+  { key: "vist", label: "Com laudo cautelar", match: (c) => c.vistoriado === true || c.vistoria_cautelar === true },
+];
+
+const CHIPS_PRECO = ["ate60", "ate100"];
+const MAX_CHIPS = 5;
+
+/** Chips que têm pelo menos `min` carros no estoque — e que não pegam o estoque
+ *  inteiro (chip que não filtra nada só ocupa espaço). No máximo UMA faixa de
+ *  preço (as duas juntas confundem: "até 60" é subconjunto de "até 100") e no
+ *  máximo 5 no total, senão o painel do hero vira duas linhas de botão. */
+export function chipsDe(estoque: any[], min = 2): ChipRapido[] {
+  if (estoque.length < min) return [];
+  const viaveis = CHIPS_CANDIDATOS.filter((chip) => {
+    const n = estoque.filter(chip.match).length;
+    return n >= min && n < estoque.length;
+  });
+  let jaTemPreco = false;
+  return viaveis
+    .filter((chip) => {
+      if (!CHIPS_PRECO.includes(chip.key)) return true;
+      if (jaTemPreco) return false;
+      jaTemPreco = true;
+      return true;
+    })
+    .slice(0, MAX_CHIPS);
 }

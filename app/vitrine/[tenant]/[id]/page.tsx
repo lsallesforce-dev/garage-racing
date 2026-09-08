@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { toVideoUrl } from "@/lib/r2-url";
 import VitrineDetalheClient from "./VitrineDetalheClient";
+import VitrineDetalhePremiumClient from "./VitrineDetalhePremiumClient";
 import VitrineIndisponivel from "../../VitrineIndisponivel";
 import { assinaturaAtiva } from "@/lib/assinatura";
 import { resolveGaragem } from "@/lib/vitrine-tenant";
@@ -126,6 +127,9 @@ export default async function VitrineDetalhePage({ params }: Props) {
       : {}),
   };
 
+  // Mesma flag da listagem — card premium tem que abrir página premium.
+  const Layout = garagem?.vitrine_tema?.layout === "premium" ? VitrineDetalhePremiumClient : VitrineDetalheClient;
+
   return (
     <>
       <MetaPixel
@@ -137,7 +141,7 @@ export default async function VitrineDetalhePage({ params }: Props) {
         }}
       />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }} />
-      <VitrineDetalheClient
+      <Layout
         veiculo={veiculo}
         videoUrl={videoUrl}
         relacionados={relacionados ?? []}

@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import VitrineClient from "./VitrineClient";
+import VitrinePremiumClient from "./VitrinePremiumClient";
 import VitrineIndisponivel from "../VitrineIndisponivel";
 import { assinaturaAtiva } from "@/lib/assinatura";
 import { resolveGaragem } from "@/lib/vitrine-tenant";
@@ -131,11 +132,15 @@ export default async function VitrineTenantPage({ params }: Props) {
     })),
   };
 
+  // Layout premium é opt-in por tenant (vitrine_tema.layout). Sem a flag, cai no
+  // VitrineClient de sempre — Carmatti e demos não passam nem perto do código novo.
+  const Layout = garagem.vitrine_tema?.layout === "premium" ? VitrinePremiumClient : VitrineClient;
+
   return (
     <>
       <MetaPixel pixelId={garagem.meta_pixel_id} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }} />
-      <VitrineClient
+      <Layout
         tenant={tenant}
         nomeEmpresa={garagem.nome_empresa ?? ""}
         whatsapp={whatsapp}

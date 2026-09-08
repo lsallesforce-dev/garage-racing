@@ -92,7 +92,9 @@ const VINCULOS = [
 
 export default function FichaFinanciamento({ tenant, veiculo, nomeEmpresa, whatsapp, onClose }: Props) {
   const preco = veiculo.preco_sugerido ?? 0;
-  const titulo = [veiculo.marca, veiculo.modelo].filter(Boolean).join(" ");
+  // Sem carro escolhido (o menu "Simular financiamento" do layout premium abre a
+  // ficha avulsa) o cabeçalho ficaria vazio.
+  const titulo = [veiculo.marca, veiculo.modelo].filter(Boolean).join(" ") || "Ficha de financiamento";
 
   const [passo, setPasso] = useState(1);
   const [enviando, setEnviando] = useState(false);
