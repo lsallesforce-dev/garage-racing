@@ -51,11 +51,10 @@ interface CardProps {
   tenant: string;
   nomeEmpresa: string;
   whatsapp: string;
-  onFinanciar: (c: any) => void;
   novo?: boolean;
 }
 
-export function CarCardPremium({ c, tenant, nomeEmpresa, whatsapp, onFinanciar, novo }: CardProps) {
+export function CarCardPremium({ c, tenant, nomeEmpresa, whatsapp, novo }: CardProps) {
   const titulo = [c.marca, c.modelo].filter(Boolean).join(" ") || "Veículo";
   const href = `/vitrine/${tenant}/${c.id}`;
   const selos = selosDe(c);
@@ -125,88 +124,16 @@ export function CarCardPremium({ c, tenant, nomeEmpresa, whatsapp, onFinanciar, 
           <a
             href={whatsappLink(whatsapp, msgInteresse(c, nomeEmpresa))}
             target="_blank" rel="noopener noreferrer"
-            className="flex items-center justify-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white py-2.5 rounded-xl font-black uppercase text-[9px] tracking-widest transition-colors"
+            className="flex items-center justify-center gap-1.5 bg-emerald-500 hover:bg-emerald-600 text-white py-2.5 rounded-xl font-black uppercase text-[9px] sm:text-[10px] tracking-widest transition-colors"
           >
-            <MessageCircle size={11} /> WhatsApp
+            <MessageCircle size={12} /> Chamar no WhatsApp
           </a>
-          <button
-            onClick={() => onFinanciar(c)}
-            className="text-[9px] font-black uppercase tracking-widest text-[var(--fg-faint)] hover:text-[var(--brand)] transition-colors w-full text-center"
+          <Link
+            href={href}
+            className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-[var(--fg-faint)] hover:text-[var(--brand)] transition-colors w-full text-center"
           >
-            Quero financiar
-          </button>
-        </div>
-      </div>
-    </article>
-  );
-}
-
-/** Card grande da faixa "Recém-chegados" — o carro-vitrine da semana.
- *  `largo` = é o único recém-chegado da semana e ocupa a linha inteira. */
-export function CardDestaque({ c, tenant, nomeEmpresa, whatsapp, onFinanciar, largo }: CardProps & { largo?: boolean }) {
-  const titulo = [c.marca, c.modelo].filter(Boolean).join(" ") || "Veículo";
-  const href = `/vitrine/${tenant}/${c.id}`;
-  const selos = selosDe(c);
-  const specs = specsDe(c);
-
-  return (
-    <article className={`group relative rounded-3xl overflow-hidden bg-[var(--surface-2)] border border-[var(--border)] shadow-lg h-full flex flex-col justify-end ${largo ? "min-h-[400px] sm:min-h-[440px]" : "min-h-[340px]"}`}>
-      <Link href={href} className="absolute inset-0 block">
-        <Foto c={c} titulo={titulo} className="group-hover:scale-[1.03]" />
-        {/* Na versão larga o texto fica à ESQUERDA sobre a foto — só o scrim de
-            baixo pra cima não segura contraste ali; entra também um lateral. */}
-        <div
-          className="absolute inset-0"
-          style={{
-            background: largo
-              ? "linear-gradient(180deg, rgba(0,0,0,0.05) 40%, rgba(0,0,0,0.75) 100%), linear-gradient(90deg, rgba(0,0,0,0.72) 0%, rgba(0,0,0,0.15) 55%, rgba(0,0,0,0) 100%)"
-              : "linear-gradient(180deg, rgba(0,0,0,0.05) 30%, rgba(0,0,0,0.82) 100%)",
-          }}
-        />
-      </Link>
-
-      <span className="absolute top-4 left-4 flex items-center gap-1.5 bg-white/95 text-[var(--brand)] px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg">
-        <Sparkles size={11} /> Chegou essa semana
-      </span>
-
-      <div className={`relative p-5 sm:p-6 text-white pointer-events-none ${largo ? "sm:max-w-xl" : ""}`}>
-        <div className="flex flex-wrap gap-1.5 mb-3">
-          {selos.map((s) => (
-            <span key={s.key} className={`${s.className} px-2.5 py-1 rounded-full text-[8px] font-black uppercase tracking-widest`}>
-              {s.labelLongo ?? s.label}
-            </span>
-          ))}
-        </div>
-
-        <Link href={href} className="pointer-events-auto block">
-          <h3 className="text-2xl sm:text-3xl font-black uppercase italic tracking-tight leading-none drop-shadow">{titulo}</h3>
-        </Link>
-        {c.versao && <p className="text-[11px] font-bold uppercase tracking-widest text-white/70 mt-1.5 truncate">{c.versao}</p>}
-
-        {specs.length > 0 && (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-3 text-[12px] font-semibold text-white/85">
-            {specs.map((s, i) => (
-              <span key={i} className="flex items-center gap-1">{s.icon} {s.txt}</span>
-            ))}
-          </div>
-        )}
-
-        <p className="text-3xl sm:text-4xl font-black tracking-tighter mt-4 drop-shadow">{fmtBRL(c.preco_sugerido)}</p>
-
-        <div className="mt-4 flex flex-wrap gap-2 pointer-events-auto">
-          <a
-            href={whatsappLink(whatsapp, msgInteresse(c, nomeEmpresa))}
-            target="_blank" rel="noopener noreferrer"
-            className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-5 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest transition-colors"
-          >
-            <MessageCircle size={13} /> Solicitar proposta
-          </a>
-          <button
-            onClick={() => onFinanciar(c)}
-            className="bg-white/15 hover:bg-white/25 backdrop-blur-sm ring-1 ring-white/30 text-white px-5 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest transition-colors"
-          >
-            Quero financiar
-          </button>
+            Ver detalhes
+          </Link>
         </div>
       </div>
     </article>

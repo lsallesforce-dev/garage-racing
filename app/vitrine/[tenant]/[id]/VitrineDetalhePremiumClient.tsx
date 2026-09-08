@@ -289,10 +289,7 @@ export default function VitrineDetalhePremiumClient({
             </h2>
             <div className="grid gap-4 sm:gap-5 grid-cols-2 lg:grid-cols-4">
               {relacionados.map((r) => (
-                <CarCardPremium
-                  key={r.id} c={r} tenant={tenant} nomeEmpresa={nomeEmpresa} whatsapp={whatsapp}
-                  onFinanciar={(carro) => setFicha({ carro })}
-                />
+                <CarCardPremium key={r.id} c={r} tenant={tenant} nomeEmpresa={nomeEmpresa} whatsapp={whatsapp} />
               ))}
             </div>
           </section>

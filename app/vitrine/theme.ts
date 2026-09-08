@@ -21,6 +21,12 @@ export interface VitrineTema {
   // APROVE Multimarcas (migration 054). A flag mora aqui — e não num
   // `if (tenant === "...")` — pra ligar em outro tenant ser uma linha de SQL.
   layout?: "padrao" | "premium";
+  // Copy do banner do hero (layout premium). É texto de CAMPANHA, não dado da
+  // loja — por isso mora no tema e não no código: trocar a campanha é um UPDATE.
+  // Em `headline`, o que estiver entre *asteriscos* sai na cor de destaque.
+  headline?: string;
+  subtitulo?: string;
+  cta_label?: string;
 }
 
 export interface ResolvedTheme {
@@ -33,6 +39,9 @@ export interface ResolvedTheme {
   tagline: string | null;
   sobre: string | null;
   premium: boolean;
+  headline: string | null;
+  subtitulo: string | null;
+  ctaLabel: string | null;
 }
 
 const DEFAULT_BRAND = "#dc2626"; // red-600
@@ -89,7 +98,23 @@ export function resolveTheme(tema?: VitrineTema | null): ResolvedTheme {
     tagline: tema?.tagline?.trim() || null,
     sobre: tema?.sobre?.trim() || null,
     premium: tema?.layout === "premium",
+    headline: tema?.headline?.trim() || null,
+    subtitulo: tema?.subtitulo?.trim() || null,
+    ctaLabel: tema?.cta_label?.trim() || null,
   };
+}
+
+/** Quebra a headline em pedaços, marcando o que veio entre *asteriscos* pra sair
+ *  na cor de destaque (ex.: "A experiência *premium* que você *merece*."). */
+export function partesHeadline(h: string): { txt: string; destaque: boolean }[] {
+  return h
+    .split(/(\*[^*]+\*)/g)
+    .filter(Boolean)
+    .map((p) =>
+      p.startsWith("*") && p.endsWith("*") && p.length > 2
+        ? { txt: p.slice(1, -1), destaque: true }
+        : { txt: p, destaque: false }
+    );
 }
 
 // Monta o objeto de style com as CSS custom properties do wrapper.

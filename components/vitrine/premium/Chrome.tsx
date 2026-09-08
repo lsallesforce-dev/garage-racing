@@ -11,7 +11,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Search, MessageCircle, MapPin, Phone, Menu, X, Clock } from "lucide-react";
+import { MessageCircle, MapPin, Phone, Menu, X, Clock } from "lucide-react";
 import { whatsappLink } from "@/app/vitrine/theme";
 
 export interface LojaPremium {
@@ -39,15 +39,12 @@ interface TopoProps {
   logoUrl?: string | null;
   whatsapp: string;
   loja: LojaPremium;
-  /** Busca no header — só a home tem estado de filtro; no detalhe some. */
-  busca?: string;
-  onBusca?: (v: string) => void;
-  /** Abre a ficha de financiamento (item "Simular financiamento" do menu). */
+  /** Abre a ficha de financiamento (item "Simulação" do menu). */
   onFinanciar?: () => void;
 }
 
 export function PremiumTopo({
-  tenant, nomeEmpresa, logoUrl, whatsapp, loja, busca, onBusca, onFinanciar,
+  tenant, nomeEmpresa, logoUrl, whatsapp, loja, onFinanciar,
 }: TopoProps) {
   const [menuAberto, setMenuAberto] = useState(false);
   const local = localDaLoja(loja);
@@ -59,9 +56,9 @@ export function PremiumTopo({
   const nav: { label: string; href?: string; acao?: () => void }[] = [
     { label: "Início", href: home },
     { label: "Nosso estoque", href: `${home}#estoque` },
-    ...(onFinanciar ? [{ label: "Simular financiamento", acao: onFinanciar }] : []),
-    { label: "Avaliar seu veículo", href: whatsappLink(whatsapp, msgAvaliacao(nomeEmpresa)) },
-    { label: "Onde estamos", href: `${home}#sobre` },
+    ...(onFinanciar ? [{ label: "Simulação", acao: onFinanciar }] : []),
+    { label: "Sobre nós", href: `${home}#sobre` },
+    { label: "Contato", href: whatsappLink(whatsapp, msgAvaliacao(nomeEmpresa)) },
   ];
 
   return (
@@ -84,9 +81,9 @@ export function PremiumTopo({
         </div>
       )}
 
-      {/* ── Faixa principal: logo + busca + CTA ── */}
+      {/* ── Faixa principal: logo + menu + CTA, tudo numa linha ── */}
       <div className="bg-[var(--brand)] text-[var(--brand-fg)]">
-        <div className="max-w-7xl mx-auto px-5 h-[68px] flex items-center gap-4">
+        <div className="max-w-7xl mx-auto px-5 h-[72px] flex items-center gap-5">
           <Link href={home} className="flex items-center shrink-0">
             {logoUrl ? (
               // Pílula branca: a logo do tenant é quase sempre desenhada pra fundo
@@ -99,45 +96,16 @@ export function PremiumTopo({
             )}
           </Link>
 
-          {onBusca && (
-            <div className="relative flex-1 hidden md:block max-w-2xl mx-auto">
-              <Search size={17} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--fg-faint)] pointer-events-none" />
-              <input
-                value={busca ?? ""}
-                onChange={(e) => onBusca(e.target.value)}
-                placeholder="Buscar veículo (marca, modelo, ano…)"
-                className="w-full bg-[var(--surface)] rounded-full pl-11 pr-4 py-3 text-sm font-semibold text-[var(--fg)] placeholder:text-[var(--fg-faint)] focus:outline-none focus:ring-2 focus:ring-white/40"
-              />
-            </div>
-          )}
-
-          <a
-            href={whatsappLink(whatsapp, `Olá! Vim pela vitrine da ${nomeEmpresa} e preciso de ajuda para escolher um veículo.`)}
-            target="_blank" rel="noopener noreferrer"
-            className="ml-auto md:ml-0 shrink-0 hidden sm:flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-5 py-3 rounded-full text-[11px] font-black uppercase tracking-widest transition-colors"
-          >
-            <MessageCircle size={15} /> Falar com consultor
-          </a>
-
-          <button
-            onClick={() => setMenuAberto((v) => !v)}
-            aria-label="Abrir menu"
-            className="ml-auto sm:ml-0 md:hidden p-2 -mr-2 text-[var(--brand-fg)]"
-          >
-            {menuAberto ? <X size={22} /> : <Menu size={22} />}
-          </button>
-        </div>
-
-        {/* ── Nav desktop ── */}
-        <nav className="hidden md:block border-t border-white/10">
-          <div className="max-w-7xl mx-auto px-5 flex items-center gap-7 h-12">
+          {/* Menu na mesma linha. Abaixo de lg não cabe logo + 5 itens + botão
+              verde sem espremer — aí vira hambúrguer. */}
+          <nav className="hidden lg:flex items-center gap-7 mx-auto">
             {nav.map((item) =>
               item.href ? (
                 <Link
                   key={item.label}
                   href={item.href}
                   {...(item.href.startsWith("http") ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-                  className="text-[13px] font-bold opacity-85 hover:opacity-100 transition-opacity whitespace-nowrap"
+                  className="text-[12px] font-black uppercase tracking-widest opacity-85 hover:opacity-100 transition-opacity whitespace-nowrap"
                 >
                   {item.label}
                 </Link>
@@ -145,31 +113,36 @@ export function PremiumTopo({
                 <button
                   key={item.label}
                   onClick={item.acao}
-                  className="text-[13px] font-bold opacity-85 hover:opacity-100 transition-opacity whitespace-nowrap"
+                  className="text-[12px] font-black uppercase tracking-widest opacity-85 hover:opacity-100 transition-opacity whitespace-nowrap"
                 >
                   {item.label}
                 </button>
               )
             )}
-          </div>
-        </nav>
+          </nav>
+
+          <a
+            href={whatsappLink(whatsapp, `Olá! Vim pela vitrine da ${nomeEmpresa} e preciso de ajuda para escolher um veículo.`)}
+            target="_blank" rel="noopener noreferrer"
+            className="ml-auto lg:ml-0 shrink-0 hidden sm:flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-5 py-3 rounded-full text-[11px] font-black uppercase tracking-widest transition-colors"
+          >
+            <MessageCircle size={15} /> Falar com consultor
+          </a>
+
+          <button
+            onClick={() => setMenuAberto((v) => !v)}
+            aria-label="Abrir menu"
+            className="ml-auto sm:ml-0 lg:hidden p-2 -mr-2 text-[var(--brand-fg)]"
+          >
+            {menuAberto ? <X size={22} /> : <Menu size={22} />}
+          </button>
+        </div>
       </div>
 
       {/* ── Menu mobile ── */}
       {menuAberto && (
-        <div className="md:hidden bg-[var(--brand-dark)] text-[var(--brand-fg)] border-t border-white/10">
-          {onBusca && (
-            <div className="relative p-4 pb-2">
-              <Search size={16} className="absolute left-7 top-1/2 -translate-y-1/2 text-[var(--fg-faint)] pointer-events-none" />
-              <input
-                value={busca ?? ""}
-                onChange={(e) => onBusca(e.target.value)}
-                placeholder="Buscar veículo…"
-                className="w-full bg-[var(--surface)] rounded-full pl-10 pr-4 py-2.5 text-sm font-semibold text-[var(--fg)] placeholder:text-[var(--fg-faint)] focus:outline-none"
-              />
-            </div>
-          )}
-          <div className="flex flex-col px-5 pb-4">
+        <div className="lg:hidden bg-[var(--brand-dark)] text-[var(--brand-fg)] border-t border-white/10">
+          <div className="flex flex-col px-5 pb-4 pt-2">
             {nav.map((item) =>
               item.href ? (
                 <Link
