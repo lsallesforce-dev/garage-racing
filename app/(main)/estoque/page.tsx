@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useUserRole } from "@/components/SidebarWrapper";
 import PublicarMetaButton from "@/components/PublicarMetaButton";
 import { midiaDoVeiculo, melhorFormato } from "@/lib/veiculo-midia";
-import { Edit3, Plus, Car, Zap, Search, ArrowRight, Trash2, Share2, Copy, Check, X, Loader2, RotateCcw, Save, Megaphone, Store } from "lucide-react";
+import { Car, Check, Download, Loader2, Megaphone, Plus, RotateCcw, Store, Trash2, X, Zap } from "lucide-react";
 
 /**
  * Ação "Anunciar" no card do estoque.
@@ -89,18 +89,8 @@ export default function ListaEstoque() {
   const [filtroValorMin, setFiltroValorMin] = useState("");
   const [filtroValorMax, setFiltroValorMax] = useState("");
 
-  // Repasse state
-  const [repasseCarroId, setRepasseCarroId] = useState<string | null>(null);
-  const [repasseTexto, setRepasseTexto] = useState<string>("");
-  const [repasseCapaUrl, setRepasseCapaUrl] = useState<string | null>(null);
-  const [repasseLoading, setRepasseLoading] = useState(false);
-  const [copiado, setCopiado] = useState(false);
-  const [enviando, setEnviando] = useState(false);
-  const [enviado, setEnviado] = useState(false);
-  const [erroEnvio, setErroEnvio] = useState<string | null>(null);
-  const [salvando, setSalvando] = useState(false);
-  const [salvo, setSalvo] = useState(false);
-  const [textoSalvo, setTextoSalvo] = useState(false); // veículo já tem texto congelado
+  // Download das fotos do carro (ZIP montado no navegador).
+  const [baixandoId, setBaixandoId] = useState<string | null>(null);
 
   const handleDelete = async (id: string) => {
     const res = await fetch("/api/veiculo/deletar", {
@@ -130,74 +120,74 @@ export default function ListaEstoque() {
     buscarEstoque();
   }, [effectiveUserId]);
 
-  const gerarRepasse = async (id: string, forcar = false) => {
-    setRepasseCarroId(id);
-    setRepasseTexto("");
-    setRepasseCapaUrl(null);
-    setEnviado(false);
-    setSalvo(false);
-    setRepasseLoading(true);
-    try {
-      const res = await fetch("/api/veiculo/gerar-repasse", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        // forcar=true ignora o texto salvo e regenera do zero (botão ↺)
-        body: JSON.stringify({ veiculoId: id, forcar }),
-      });
-      const data = await res.json();
-      setRepasseTexto(data.texto ?? "");
-      setRepasseCapaUrl(data.capaUrl ?? null);
-      setTextoSalvo(!!data.salvo); // veio do texto congelado?
-    } catch {
-      setRepasseTexto("Erro ao gerar. Tente novamente.");
-    } finally {
-      setRepasseLoading(false);
+  // Baixa as fotos do carro num ZIP.
+  //
+  // Uma a uma não funciona: as fotos vivem no Storage do Supabase (outro
+  // domínio), e o atributo `download` de <a> é IGNORADO em URL cross-origin — o
+  // navegador abre a imagem numa aba em vez de salvar. Fora que disparar N
+  // downloads seguidos é bloqueado depois dos primeiros.
+  //
+  // O ZIP é montado no NAVEGADOR de propósito: passando por uma rota nossa, um
+  // carro com 15 fotos daria uma resposta de ~12 MB e esbarraria no limite de
+  // resposta da função na Vercel.
+  const baixarFotos = async (carro: any) => {
+    const fotos: string[] = Array.isArray(carro.fotos) ? carro.fotos.filter(Boolean) : [];
+    if (!fotos.length) {
+      alert("Este veículo ainda não tem fotos cadastradas.");
+      return;
     }
-  };
 
-  // Congela o texto atual no veículo. A partir daí grupo e prospecção usam ELE
-  // verbatim, sem regenerar (pedido Marcos: FIPE errada corrigida na mão não
-  // pode voltar no envio automático).
-  const salvarRepasse = async () => {
-    if (!repasseCarroId || !repasseTexto.trim()) return;
-    setSalvando(true);
+    setBaixandoId(carro.id);
     try {
-      const res = await fetch("/api/veiculo/patch", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ veiculoId: repasseCarroId, fields: { repasse_texto: repasseTexto } }),
-      });
-      if (res.ok) {
-        setSalvo(true);
-        setTextoSalvo(true);
-        setTimeout(() => setSalvo(false), 3000);
-      }
-    } finally {
-      setSalvando(false);
-    }
-  };
+      // import dinâmico: o jszip só entra no bundle de quem clica.
+      const { default: JSZip } = await import("jszip");
+      const zip = new JSZip();
 
-  const exportarRepasse = async () => {
-    if (!repasseCarroId || !repasseTexto) return;
-    setEnviando(true);
-    setErroEnvio(null);
-    try {
-      const res = await fetch("/api/veiculo/enviar-repasse", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ veiculoId: repasseCarroId, texto: repasseTexto, capaUrl: repasseCapaUrl }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setErroEnvio(data.error || `Erro ${res.status}`);
+      const base =
+        [carro.marca, carro.modelo, carro.ano_modelo].filter(Boolean).join(" ")
+          .toLowerCase()
+          .normalize("NFD").replace(/[̀-ͯ]/g, "")
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "") || "veiculo";
+
+      // Uma foto que falhe não derruba as outras — melhor ZIP com 9 de 10 do que
+      // erro seco depois de o usuário esperar.
+      let baixadas = 0;
+      await Promise.all(
+        fotos.map(async (url, i) => {
+          try {
+            const res = await fetch(url);
+            if (!res.ok) return;
+            const blob = await res.blob();
+            const ext = (url.split("?")[0].split(".").pop() || "jpg").slice(0, 4);
+            zip.file(`${base}-${String(i + 1).padStart(2, "0")}.${ext}`, blob);
+            baixadas++;
+          } catch {
+            /* ignora a foto que falhou */
+          }
+        })
+      );
+
+      if (!baixadas) {
+        alert("Não consegui baixar as fotos. Verifique a conexão e tente de novo.");
         return;
       }
-      setEnviado(true);
-      setTimeout(() => setEnviado(false), 3000);
-    } catch (e: any) {
-      setErroEnvio("Falha na conexão. Tente novamente.");
+
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const href = URL.createObjectURL(zipBlob);
+      const a = document.createElement("a");
+      a.href = href;
+      a.download = `${base}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(href);
+
+      if (baixadas < fotos.length) {
+        alert(`Baixei ${baixadas} de ${fotos.length} fotos — as demais falharam.`);
+      }
     } finally {
-      setEnviando(false);
+      setBaixandoId(null);
     }
   };
 
@@ -218,13 +208,6 @@ export default function ListaEstoque() {
       }),
     });
     setCarros(prev => prev.map(c => c.id === id ? { ...c, status_venda: "DISPONIVEL", preco_venda_final: null, data_venda: null } : c));
-  };
-
-  const copiarTexto = async () => {
-    if (!repasseTexto) return;
-    await navigator.clipboard.writeText(repasseTexto);
-    setCopiado(true);
-    setTimeout(() => setCopiado(false), 2000);
   };
 
   // Listas únicas para os dropdowns
@@ -420,10 +403,15 @@ export default function ListaEstoque() {
                           </button>
                         ) : (
                           <button
-                            onClick={() => gerarRepasse(carro.id)}
-                            className="flex items-center gap-2 px-4 py-3 md:px-6 md:py-4 bg-green-600 text-white text-[10px] font-black uppercase italic rounded-2xl hover:bg-green-700 transition-all tracking-widest shadow-lg shadow-green-200"
+                            onClick={() => baixarFotos(carro)}
+                            disabled={baixandoId === carro.id}
+                            className="flex items-center gap-2 px-4 py-3 md:px-6 md:py-4 bg-green-600 text-white text-[10px] font-black uppercase italic rounded-2xl hover:bg-green-700 disabled:opacity-60 disabled:cursor-wait transition-all tracking-widest shadow-lg shadow-green-200"
                           >
-                            <Share2 size={14} /> Repasse
+                            {baixandoId === carro.id ? (
+                              <><Loader2 size={14} className="animate-spin" /> Baixando…</>
+                            ) : (
+                              <><Download size={14} /> Baixar Fotos</>
+                            )}
                           </button>
                         )}
                         {/* Anunciar direto do estoque — antes a página só listava
@@ -452,103 +440,6 @@ export default function ListaEstoque() {
         </div>
       </div>
 
-      {/* Modal Repasse */}
-      {repasseCarroId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg flex flex-col h-[85vh] max-h-[85vh]">
-            {/* Header */}
-            <div className="flex items-center justify-between px-8 pt-8 pb-4">
-              <div>
-                <h2 className="text-xl font-black uppercase italic tracking-tight text-gray-900">
-                  Anúncio de Repasse
-                </h2>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mt-0.5">Copie e cole no WhatsApp</p>
-              </div>
-              <button
-                onClick={() => { setRepasseCarroId(null); setRepasseTexto(""); setRepasseCapaUrl(null); }}
-                className="p-2 rounded-xl hover:bg-gray-100 transition-all text-gray-400 hover:text-gray-700"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            {repasseLoading ? (
-              <div className="flex-1 flex flex-col items-center justify-center gap-4 py-16">
-                <Loader2 size={32} className="animate-spin text-green-600" />
-                <p className="text-[11px] font-black uppercase tracking-widest text-gray-400">Buscando FIPE e média web...</p>
-              </div>
-            ) : (
-              <>
-                {/* Capa */}
-                {repasseCapaUrl && (
-                  <div className="px-8 pb-4">
-                    <img src={repasseCapaUrl} alt="Capa" className="w-full h-48 object-cover rounded-2xl" />
-                  </div>
-                )}
-
-                {/* Texto — preenche o espaço disponível do modal */}
-                <div className="flex-1 min-h-0 flex px-8 pb-4">
-                  <textarea
-                    value={repasseTexto}
-                    onChange={e => setRepasseTexto(e.target.value)}
-                    className="w-full flex-1 min-h-0 whitespace-pre-wrap font-sans text-sm text-gray-800 bg-gray-50 rounded-2xl p-5 leading-relaxed border border-gray-100 resize-none focus:outline-none focus:border-green-400 focus:ring-2 focus:ring-green-100 transition-all"
-                  />
-                </div>
-
-                {/* Actions — uma linha só: Exportar | Salvar (meio) | Copiar | ↺ */}
-                <div className="px-8 pb-8 pt-4 flex flex-col gap-3">
-                  {erroEnvio && (
-                    <p className="text-[11px] font-bold text-red-600 bg-red-50 rounded-xl px-4 py-2 text-center">{erroEnvio}</p>
-                  )}
-                  <div className="flex gap-3">
-                  <button
-                    onClick={exportarRepasse}
-                    disabled={enviando}
-                    className="flex-1 flex items-center justify-center gap-2 py-4 bg-green-600 text-white font-black uppercase italic text-[10px] tracking-widest rounded-2xl hover:bg-green-700 transition-all shadow-lg shadow-green-200 disabled:opacity-60"
-                  >
-                    {enviando ? (
-                      <><Loader2 size={14} className="animate-spin" /> Enviando...</>
-                    ) : enviado ? (
-                      <><Check size={14} /> Enviado!</>
-                    ) : (
-                      <><Share2 size={14} /> Exportar</>
-                    )}
-                  </button>
-                  <button
-                    onClick={salvarRepasse}
-                    disabled={salvando || !repasseTexto.trim()}
-                    className="flex-1 flex items-center justify-center gap-2 py-4 bg-gray-900 text-white font-black uppercase italic text-[10px] tracking-widest rounded-2xl hover:bg-black transition-all disabled:opacity-60"
-                    title="Fixa este texto — grupo e prospecção passam a usar ele verbatim"
-                  >
-                    {salvando ? (
-                      <><Loader2 size={14} className="animate-spin" /> Salvando...</>
-                    ) : salvo ? (
-                      <><Check size={14} /> Fixado!</>
-                    ) : (
-                      <><Save size={14} /> {textoSalvo ? "Salvar (fixado)" : "Salvar"}</>
-                    )}
-                  </button>
-                  <button
-                    onClick={copiarTexto}
-                    className="px-5 py-4 bg-gray-100 text-gray-600 font-black uppercase italic text-[10px] tracking-widest rounded-2xl hover:bg-gray-200 transition-all flex items-center gap-2"
-                  >
-                    {copiado ? <Check size={14} /> : <Copy size={14} />}
-                    {copiado ? "Copiado" : "Copiar"}
-                  </button>
-                  <button
-                    onClick={() => gerarRepasse(repasseCarroId, true)}
-                    className="px-4 py-4 bg-gray-100 text-gray-400 font-black uppercase italic text-[10px] tracking-widest rounded-2xl hover:bg-gray-200 transition-all"
-                    title="Regenerar do zero (descarta o texto salvo nesta prévia)"
-                  >
-                    ↺
-                  </button>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
