@@ -186,7 +186,12 @@ export default function VitrinePremiumClient({
               poster={theme.capaUrl ?? undefined}
               autoPlay muted loop playsInline preload="metadata"
               aria-hidden
-              className="absolute inset-0 w-full h-full object-cover"
+              // No celular o banner é RETRATO (375x447) e o object-cover mostra só
+              // ~38% da largura do quadro. Centralizado, esse recorte cai no meio
+              // do carro (portas/teto). Puxar pra 35% traz a frente e os faróis —
+              // que é o ponto de interesse do clipe. No desktop o banner é largo,
+              // o corte é vertical, e o centro continua certo.
+              className="absolute inset-0 w-full h-full object-cover object-[35%_center] sm:object-center"
             />
             <div className="absolute inset-0" style={{ background: "linear-gradient(90deg, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.55) 45%, rgba(0,0,0,0.25) 100%)" }} />
           </>
