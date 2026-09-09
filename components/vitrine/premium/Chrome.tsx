@@ -83,20 +83,20 @@ export function PremiumTopo({
       )}
 
       {/* ── Faixa principal: logo + menu + CTA, tudo numa linha ── */}
-      <div className="bg-[var(--brand-deep)] text-white">
+      {/* Faixa BRANCA (a topbar acima continua na cor da marca). Como o header é
+          sticky e desliza por cima do banner escuro, a sombra/borda marca o
+          limite — sem ela o branco encosta no vídeo sem separação. */}
+      <div className="bg-white text-[var(--brand-deep)] border-b border-black/10 shadow-sm">
         <div className="max-w-7xl mx-auto px-5 h-[88px] sm:h-[104px] flex items-center gap-5">
           <Link href={home} className="flex items-center shrink-0">
             {logoUrl ? (
-              // Logo em BRANCO, sem fundo. `brightness(0) invert(1)` zera a cor de
-              // cada pixel opaco e inverte pra branco, PRESERVANDO o alfa — a logo
-              // da APROVE é 76% transparente, então carro e letras saem brancos e
-              // o fundo continua vazado. Vale pra qualquer logo do tenant: não
-              // depende de existir uma versão branca do arquivo.
+              // Sem filtro: com a faixa branca a logo vai na cor original (a da
+              // APROVE é azul-marinho, desenhada justamente pra fundo claro). O
+              // PNG é 76% transparente, então não precisa de fundo próprio.
               <img
                 src={logoUrl}
                 alt={nomeEmpresa}
                 className="h-14 sm:h-[72px] w-auto max-w-[200px] sm:max-w-[280px] object-contain"
-                style={{ filter: "brightness(0) invert(1)" }}
               />
             ) : (
               <span className="text-lg font-black uppercase italic tracking-tighter truncate max-w-[180px]">{nomeEmpresa}</span>
@@ -112,7 +112,7 @@ export function PremiumTopo({
                   key={item.label}
                   href={item.href}
                   {...(item.href.startsWith("http") ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-                  className="text-[12px] font-black uppercase tracking-widest opacity-85 hover:opacity-100 transition-opacity whitespace-nowrap"
+                  className="text-[12px] font-black uppercase tracking-widest text-[var(--brand-deep)] hover:text-[var(--brand)] transition-colors whitespace-nowrap"
                 >
                   {item.label}
                 </Link>
@@ -120,7 +120,7 @@ export function PremiumTopo({
                 <button
                   key={item.label}
                   onClick={item.acao}
-                  className="text-[12px] font-black uppercase tracking-widest opacity-85 hover:opacity-100 transition-opacity whitespace-nowrap"
+                  className="text-[12px] font-black uppercase tracking-widest text-[var(--brand-deep)] hover:text-[var(--brand)] transition-colors whitespace-nowrap"
                 >
                   {item.label}
                 </button>
@@ -139,7 +139,7 @@ export function PremiumTopo({
           <button
             onClick={() => setMenuAberto((v) => !v)}
             aria-label="Abrir menu"
-            className="ml-auto sm:ml-0 lg:hidden p-2 -mr-2 text-white"
+            className="ml-auto sm:ml-0 lg:hidden p-2 -mr-2 text-[var(--brand-deep)]"
           >
             {menuAberto ? <X size={22} /> : <Menu size={22} />}
           </button>
@@ -148,7 +148,7 @@ export function PremiumTopo({
 
       {/* ── Menu mobile ── */}
       {menuAberto && (
-        <div className="lg:hidden bg-[var(--brand-deep)] text-white border-t border-white/10">
+        <div className="lg:hidden bg-white text-[var(--brand-deep)] border-t border-black/10 shadow-lg">
           <div className="flex flex-col px-5 pb-4 pt-2">
             {nav.map((item) =>
               item.href ? (
@@ -157,7 +157,7 @@ export function PremiumTopo({
                   href={item.href}
                   {...(item.href.startsWith("http") ? { target: "_blank", rel: "noopener noreferrer" } : {})}
                   onClick={() => setMenuAberto(false)}
-                  className="py-3 text-sm font-bold border-b border-white/10 last:border-0"
+                  className="py-3 text-sm font-bold border-b border-black/10 last:border-0"
                 >
                   {item.label}
                 </Link>
@@ -165,7 +165,7 @@ export function PremiumTopo({
                 <button
                   key={item.label}
                   onClick={() => { setMenuAberto(false); item.acao?.(); }}
-                  className="py-3 text-sm font-bold text-left border-b border-white/10 last:border-0"
+                  className="py-3 text-sm font-bold text-left border-b border-black/10 last:border-0"
                 >
                   {item.label}
                 </button>
