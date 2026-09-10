@@ -94,17 +94,28 @@ export default function CarrosselEstoqueModal({ veiculos, onClose }: Props) {
   // Grupos. "chegada" preserva a ordem que veio do estoque (created_at desc);
   // "preço" ordena crescente, o que dá grupos com faixa de preço coerente —
   // é o "uns 3 pra dividir" que eles pediram, sem precisar montar na mão.
+  //
+  // A distribuição é EQUILIBRADA, não fatia de N em N: com 31 carros e teto 10,
+  // fatiar direto daria 10/10/10/1, e um grupo de 1 não é carrossel (a Meta
+  // exige 2 cards) — aquele carro ficaria de fora sozinho. Equilibrando dá
+  // 8/8/8/7. O "carros por carrossel" vira teto, não tamanho fixo.
   const grupos = useMemo(() => {
     const lista = disponiveis.filter((v) => selecionados.has(v.id));
     const ordenada = dividirPor === "preco"
       ? [...lista].sort((a, b) => (a.preco_sugerido ?? Infinity) - (b.preco_sugerido ?? Infinity))
       : lista;
+    if (!ordenada.length) return [];
+
+    const nGrupos = Math.ceil(ordenada.length / tamanhoGrupo);
+    const base    = Math.floor(ordenada.length / nGrupos);
+    const resto   = ordenada.length % nGrupos; // os primeiros levam um a mais
+
     const out: VeiculoLite[][] = [];
-    for (let i = 0; i < ordenada.length; i += tamanhoGrupo) out.push(ordenada.slice(i, i + tamanhoGrupo));
-    // Grupo de 1 carro não é carrossel — a Meta exige 2 cards. Junta no anterior
-    // se couber no teto; senão fica de fora e o aviso aparece embaixo.
-    if (out.length > 1 && out[out.length - 1].length === 1 && out[out.length - 2].length < MAX_CARDS) {
-      out[out.length - 2].push(out.pop()![0]);
+    let i = 0;
+    for (let g = 0; g < nGrupos; g++) {
+      const tam = base + (g < resto ? 1 : 0);
+      out.push(ordenada.slice(i, i + tam));
+      i += tam;
     }
     return out;
   }, [disponiveis, selecionados, dividirPor, tamanhoGrupo]);
@@ -249,7 +260,7 @@ export default function CarrosselEstoqueModal({ veiculos, onClose }: Props) {
                 </button>
               ))}
               <div className="flex items-center gap-2 ml-auto">
-                <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">Carros por carrossel</span>
+                <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">Máx. por carrossel</span>
                 <select
                   value={tamanhoGrupo}
                   onChange={(e) => setTamanhoGrupo(Number(e.target.value))}
