@@ -834,18 +834,22 @@ export async function buscarMetricasCampanha(adId: string, accessToken: string):
     if (!insights) return { gasto: 0, leads: 0, impressoes: 0 };
 
     // Anuncio de click-to-WhatsApp NAO gera action_type "lead" (isso e de
-    // formulario). O evento dele e a conversa iniciada. Conta os dois.
+    // formulario). O evento dele e a conversa iniciada.
+    // ⚠️ NAO SOMAR os dois tipos de messaging: eles se sobrepoem — o mesmo
+    // contato aparece nos dois e o total sai dobrado (a APROVE mostrou 63
+    // conversas no Uno quando o Gerenciador contava ~30). Usa o primeiro que
+    // existir, em ordem de preferencia.
     const acoes = (insights.actions as any[]) ?? [];
-    const somaAcao = (tipos: string[]) =>
-      acoes
-        .filter((a: any) => tipos.includes(a.action_type))
-        .reduce((s: number, a: any) => s + (parseInt(a.value) || 0), 0);
+    const valorDe = (tipo: string): number | null => {
+      const a = acoes.find((x: any) => x.action_type === tipo);
+      return a ? (parseInt(a.value) || 0) : null;
+    };
 
-    const conversas = somaAcao([
-      "onsite_conversion.messaging_conversation_started_7d",
-      "onsite_conversion.total_messaging_connection",
-    ]);
-    const formularios = somaAcao(["lead"]);
+    const conversas =
+      valorDe("onsite_conversion.messaging_conversation_started_7d") ??
+      valorDe("onsite_conversion.total_messaging_connection") ??
+      0;
+    const formularios = valorDe("lead") ?? 0;
 
     return {
       gasto:      parseFloat(insights.spend ?? "0"),
