@@ -71,14 +71,21 @@ export async function POST(req: NextRequest) {
       console.log(`⏸️ [vender] Meta Ads do veículo ${id}: ${pausadas} pausada(s), ${falhas} falha(s)`);
     }
 
-    // 3. Registrar no histórico de vendas (vendas_concluidas) 
-    // Flash: Garantindo a memória financeira da Garage
-    if (veiculo.vendedor_responsavel_id) {
-      await supabaseAdmin.from("vendas_concluidas").insert({
-        veiculo_id: id,
-        vendedor_id: veiculo.vendedor_responsavel_id,
-        valor_venda: veiculo.preco_sugerido || 0,
-      });
+    // 3. Registrar no histórico de vendas (vendas_concluidas)
+    // ANTES isto rodava só `if (veiculo.vendedor_responsavel_id)` — e como
+    // nenhum tenant preenche vendedor responsável (0 de 33 veículos na APROVE),
+    // TODA venda era descartada em silêncio. O gerente marcava VENDIDO, o carro
+    // saía do estoque e o painel seguia mostrando "0 vendas · 0% conv.".
+    // `vendedor_id` é nullable: venda sem vendedor é registrada do mesmo jeito.
+    const { error: vendaErr } = await supabaseAdmin.from("vendas_concluidas").insert({
+      veiculo_id:  id,
+      vendedor_id: veiculo.vendedor_responsavel_id ?? null,
+      valor_venda: veiculo.preco_sugerido || 0,
+      data_venda:  new Date().toISOString(),
+    });
+    if (vendaErr) {
+      // Não bloqueia a baixa do carro — mas precisa aparecer no log.
+      console.error(`❌ [vender] Falhou ao registrar venda do veículo ${id}:`, vendaErr.message);
     }
 
     // 4. Buscar leads órfãos (interessados que não compraram)
