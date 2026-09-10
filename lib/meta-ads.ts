@@ -783,6 +783,245 @@ export async function criarCampanhaLeadAd(p: CriarCampanhaParams): Promise<Campa
   return { campaignId, adsetId, adId, leadformId };
 }
 
+// ─── Carrossel de estoque (vários carros, um card por carro) ──────────────────
+//
+// Separada de criarCampanhaLeadAd por três diferenças que não dá pra reconciliar
+// num quarto branch: são N veículos e não um (lá tudo — nome da campanha, do
+// adset, do criativo e o page_welcome_message — deriva de um veículo só), o
+// destino é o SITE e não o WhatsApp nem o formulário instantâneo, e por isso o
+// objetivo é OUTCOME_TRAFFIC. Sem lead form, sem page_welcome_message, sem a
+// variante 9:16 de story, sem inscrição em leadgen.
+//
+// Existe porque a APROVE pediu na reunião de 10/09 que clicar num carro do
+// carrossel abrisse a página DAQUELE carro na vitrine. O carrossel que já
+// existe não faz isso: lá os até 10 cards são artes do MESMO veículo e todos
+// carregam o mesmo link (api.whatsapp.com/send).
+//
+// O teto de 10 cards é da Meta. Estoque maior vira mais de uma campanha — quem
+// fatia é a rota; aqui entra um grupo já pronto.
+
+export interface CriarCarrosselEstoqueParams {
+  pageId: string;
+  pageAccessToken: string;
+  userAccessToken?: string;
+  adAccountId: string;
+  instagramActorId?: string;
+  /** Um card por veículo, na ordem. Até CARROSSEL_MAX. */
+  veiculos: Array<{
+    id: string;
+    marca: string;
+    modelo: string;
+    ano: string | number;
+    preco: number;
+    fotoUrl: string;
+  }>;
+  garagem: {
+    nome: string;
+    latitude: number;
+    longitude: number;
+    /** Base pública da vitrine, já resolvida por baseVitrine(). Sem barra no fim. */
+    vitrineBase: string;
+  };
+  /** Mesmo shape de targeting/orçamento do anúncio por carro — montarTargeting é o mesmo. */
+  configuracao: ConfigCampanha & {
+    /** config_garage.meta_pixel_id. Sem pixel não dá pra otimizar por landing page view. */
+    pixelId?: string | null;
+    /** Sufixo do nome da campanha no Gerenciador, ex.: "Grupo 2/4". */
+    nomeGrupo?: string;
+    /** PAUSED pra conferir os cards antes de gastar. Default ACTIVE. */
+    statusInicial?: "ACTIVE" | "PAUSED";
+  };
+}
+
+export interface CarrosselEstoqueResult {
+  campaignId: string;
+  adsetId: string;
+  adId: string;
+  veiculoIds: string[];
+  /** O que a Meta aceitou de fato — o pedido pode ter caído pro fallback. */
+  optimizationGoal: string;
+}
+
+/** Nome do card. A Meta trunca perto de 40 chars; melhor cortar aqui do que ela cortar no meio da palavra. */
+function nomeDoCard(v: { marca: string; modelo: string; ano: string | number }): string {
+  const n = `${v.marca} ${v.modelo} ${v.ano}`.replace(/\s+/g, " ").trim();
+  return n.length <= 40 ? n : `${n.slice(0, 39).trimEnd()}…`;
+}
+
+export async function criarCampanhaCarrosselEstoque(
+  p: CriarCarrosselEstoqueParams,
+): Promise<CarrosselEstoqueResult> {
+  const { pageId, pageAccessToken, userAccessToken, adAccountId, instagramActorId, garagem, configuracao } = p;
+  const adToken = userAccessToken || pageAccessToken;
+
+  const veiculos = p.veiculos.slice(0, CARROSSEL_MAX);
+  if (veiculos.length < 2) {
+    throw new Error("Carrossel de estoque precisa de pelo menos 2 veículos.");
+  }
+
+  const base = garagem.vitrineBase.replace(/\/+$/, "");
+  if (!/^https?:\/\//.test(base)) {
+    // Anúncio com link quebrado é pior que anúncio não criado: gasta e não converte.
+    throw new Error(`Vitrine sem URL pública válida (${base}) — configure o slug ou o domínio da loja antes de anunciar o estoque.`);
+  }
+
+  const sufixo = configuracao.nomeGrupo ? ` — ${configuracao.nomeGrupo}` : "";
+  const rotulo = `Estoque${sufixo}`;
+  const statusInicial = configuracao.statusInicial ?? "ACTIVE";
+
+  // 1. Campaign. is_adset_budget_sharing_enabled é obrigatório (erro 100/4834011
+  //    se omitido) — false = orçamento no ad set, que é o modelo do projeto.
+  const campaign = await graphPost(`${adAccountId}/campaigns`, adToken, {
+    name: `AutoZap — ${rotulo}`,
+    objective: "OUTCOME_TRAFFIC",
+    status: statusInicial,
+    special_ad_categories: [],
+    is_adset_budget_sharing_enabled: false,
+  });
+  const campaignId = campaign.id as string;
+
+  // 2. Ad Set
+  const agora = new Date();
+  const inicio = configuracao.iniciaEm ? new Date(configuracao.iniciaEm) : agora;
+  const encerraEm = new Date(inicio.getTime() + configuracao.duracaoDias * 24 * 60 * 60 * 1000);
+
+  const targeting = montarTargeting(configuracao, garagem);
+  const flexSpec = targeting.flexible_spec ?? [];
+
+  const usaTotal = configuracao.tipoOrcamento === "total" && !!configuracao.orcamentoTotal;
+  const semFim = !usaTotal && !!configuracao.semDataFim;
+
+  const adsetBase: Record<string, any> = {
+    campaign_id:      campaignId,
+    name:             `AdSet — ${rotulo}`,
+    billing_event:    "IMPRESSIONS",
+    bid_strategy:     "LOWEST_COST_WITHOUT_CAP",
+    destination_type: "WEBSITE",
+    ...(usaTotal
+      ? { lifetime_budget: Math.round(configuracao.orcamentoTotal! * 100) }
+      : { daily_budget:    Math.round(configuracao.orcamentoDiario * 100) }),
+    start_time: inicio.toISOString(),
+    ...(semFim ? {} : { end_time: encerraEm.toISOString() }),
+    targeting,
+    status: statusInicial,
+  };
+
+  // Rede de segurança dos interesses: IDs da Meta envelhecem e derrubam o adset.
+  // Mesma lógica de criarCampanhaLeadAd — geo + idade continuam válidos sem eles.
+  const postAdset = async (body: Record<string, any>) => {
+    try {
+      return await graphPost(`${adAccountId}/adsets`, adToken, body);
+    } catch (e: any) {
+      if (flexSpec.length && /interess|flexible_spec|invalid parameter/i.test(e.message ?? "")) {
+        console.warn(`⚠️ [carrossel-estoque] AdSet falhou (possível interesse inválido) — retry sem interesses: ${e.message?.slice(0, 120)}`);
+        const semInteresses = { ...targeting };
+        delete semInteresses.flexible_spec;
+        return await graphPost(`${adAccountId}/adsets`, adToken, { ...body, targeting: semInteresses });
+      }
+      throw e;
+    }
+  };
+
+  // LANDING_PAGE_VIEWS mede quem CHEGOU na página, não quem clicou — é a métrica
+  // que interessa num anúncio que manda pro site. Mas depende do pixel: sem ele
+  // a Meta não vê nada depois do clique. Sem pixel configurado, ou se a Meta
+  // recusar a combinação, cai pra LINK_CLICKS, que sempre funciona.
+  let adset: any = null;
+  let optimizationGoal = "LINK_CLICKS";
+  const pixelId = configuracao.pixelId?.trim();
+
+  if (pixelId) {
+    try {
+      adset = await postAdset({
+        ...adsetBase,
+        optimization_goal: "LANDING_PAGE_VIEWS",
+        promoted_object: { pixel_id: pixelId },
+      });
+      optimizationGoal = "LANDING_PAGE_VIEWS";
+    } catch (e: any) {
+      console.warn(`⚠️ [carrossel-estoque] LANDING_PAGE_VIEWS recusado (${e.message?.slice(0, 140)}) — caindo pra LINK_CLICKS`);
+    }
+  }
+  if (!adset) {
+    adset = await postAdset({ ...adsetBase, optimization_goal: "LINK_CLICKS" });
+  }
+  const adsetId = adset.id as string;
+
+  // 3. Criativo. Upload em PARALELO: são até 10 imagens e enfileirar em série
+  //    estoura o maxDuration da rota. Upload que falha vira null e aquele card
+  //    cai no `picture` (URL pública) sozinho, sem derrubar o anúncio inteiro.
+  const hashes = await Promise.all(
+    veiculos.map((v) =>
+      uploadFotoParaMeta(adAccountId, v.fotoUrl, adToken).catch((e: any) => {
+        console.warn(`⚠️ [carrossel-estoque] /adimages falhou p/ ${v.id} (${e.message?.slice(0, 60)}) — card usa picture`);
+        return null;
+      }),
+    ),
+  );
+
+  const adMessage = configuracao.legenda?.trim()
+    ? configuracao.legenda.trim()
+    : `Confira o estoque da ${garagem.nome} 🚗\n\nDeslize pro lado e toque no carro que te interessou pra ver fotos, ficha completa e condições.`;
+
+  const cta = { type: "LEARN_MORE" as const };
+
+  const storySpec: Record<string, any> = {
+    page_id: pageId,
+    link_data: {
+      message: adMessage,
+      // Link de fallback do anúncio; cada card sobrescreve com o carro dele.
+      link: base,
+      multi_share_end_card: false,
+      // true deixa a Meta reordenar os cards pelo que performa — num carrossel
+      // de estoque isso é desejável: o carro que puxa clique vai pra frente.
+      multi_share_optimized: true,
+      // O CTA precisa aparecer TAMBÉM aqui, no nível do link_data, e não só nos
+      // child_attachments — senão a Meta recusa com "(#1) Unknown error" sem
+      // dizer o campo (achado 01/09, mesma pegadinha do carrossel de um carro).
+      call_to_action: cta,
+      child_attachments: veiculos.map((v, i) => ({
+        link: `${base}/${v.id}`,
+        ...(hashes[i] ? { image_hash: hashes[i] } : { picture: v.fotoUrl }),
+        name: nomeDoCard(v),
+        description: v.preco.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }),
+        call_to_action: cta,
+      })),
+    },
+  };
+
+  // instagram_actor_id foi descontinuado em 09/09/2025 — hoje é instagram_user_id,
+  // valendo pra todas as versões da API. O nome velho faz a Meta recusar com
+  // "(#100) Param instagram_actor_id must be a valid Instagram account id" mesmo
+  // com um ID correto.
+  if (instagramActorId && configuracao.placement.includes("instagram")) {
+    storySpec.instagram_user_id = instagramActorId;
+  }
+
+  const creative = await graphPost(`${adAccountId}/adcreatives`, adToken, {
+    name: `Creative — ${rotulo}`,
+    object_story_spec: storySpec,
+  });
+  const creativeId = creative.id as string;
+
+  // 4. Ad
+  const ad = await graphPost(`${adAccountId}/ads`, adToken, {
+    name:     `Ad — ${rotulo}`,
+    adset_id: adsetId,
+    creative: { creative_id: creativeId },
+    status:   statusInicial,
+  });
+
+  // Sem subscribed_apps/leadgen de propósito: não há formulário. O lead nasce na
+  // vitrine, quando a pessoa toca no botão de WhatsApp de lá.
+  return {
+    campaignId,
+    adsetId,
+    adId: ad.id as string,
+    veiculoIds: veiculos.map((v) => v.id),
+    optimizationGoal,
+  };
+}
+
 // ─── Buscar dados do Lead ─────────────────────────────────────────────────────
 // Chamado quando o webhook leadgen dispara com o leadgen_id
 

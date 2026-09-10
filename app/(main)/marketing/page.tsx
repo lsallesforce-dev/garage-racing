@@ -5,10 +5,11 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useUserRole } from "@/components/SidebarWrapper";
-import { Megaphone, LayoutList } from "lucide-react";
+import { Megaphone, LayoutList, Layers } from "lucide-react";
 import PublicarMetaButton from "@/components/PublicarMetaButton";
 import PublicarPortaisModal from "@/components/PublicarPortaisModal";
 import KitsGaleria from "@/components/KitsGaleria";
+import CarrosselEstoqueModal from "@/components/CarrosselEstoqueModal";
 
 // ─── Ícones de plataforma ─────────────────────────────────────────────────────
 
@@ -270,6 +271,7 @@ function MarketingPageInner() {
     searchParams.get("tab") === "kits" ? "kits" : "portais"
   );
   const [wmConfigurado, setWmConfigurado] = useState(false);
+  const [carrosselOpen, setCarrosselOpen] = useState(false);
   const [olxConectado, setOlxConectado]   = useState(false);
   const [mlConectado, setMlConectado]     = useState(false);
 
@@ -342,6 +344,13 @@ function MarketingPageInner() {
             </p>
           </div>
 
+          <button
+            onClick={() => setCarrosselOpen(true)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-wider hover:bg-indigo-700 transition-all self-start sm:self-auto"
+          >
+            <Layers size={14} /> Carrossel do Estoque
+          </button>
+
           <Link
             href="/marketing/anuncios"
             className="flex items-center gap-2 px-4 py-2.5 bg-gray-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-wider hover:bg-indigo-600 transition-all self-start sm:self-auto"
@@ -400,6 +409,10 @@ function MarketingPageInner() {
             ))}
           </div>
         ))}
+
+        {carrosselOpen && (
+          <CarrosselEstoqueModal veiculos={carros} onClose={() => setCarrosselOpen(false)} />
+        )}
 
         {/* Plataformas em breve */}
         {aba === "portais" && (
