@@ -1792,6 +1792,7 @@ Responda apenas com o JSON, sem markdown.`;
         await supabaseAdmin.from("leads").update({
           em_atendimento_humano: true,
           instrucao_pendente: `Possível robô/lead-fantasma repetindo "${userMessage.slice(0, 20)}" — IA travada p/ não entrar em loop.`,
+          instrucao_pendente_desde: new Date().toISOString(),
         }).eq("id", lead.id);
         const gerenteLoopWa = (garageConfig?.whatsapp || "").replace(/\D/g, "");
         if (gerenteLoopWa) {
@@ -2359,7 +2360,7 @@ Responda apenas com o JSON, sem markdown.`;
     gerentePhone
   ) {
     const instrucao = "Cliente não conseguiu identificar o veículo de interesse após 2 trocas de mensagem. Por favor, assuma o atendimento.";
-    await supabaseAdmin.from("leads").update({ instrucao_pendente: instrucao }).eq("id", lead.id);
+    await supabaseAdmin.from("leads").update({ instrucao_pendente: instrucao, instrucao_pendente_desde: new Date().toISOString() }).eq("id", lead.id);
     const nomeLead = lead.nome || phone;
     await sendAlertComLink(
       gerentePhone,
@@ -2474,6 +2475,7 @@ Responda apenas com o JSON, sem markdown.`;
     await supabaseAdmin.from("leads").update({
       em_atendimento_humano: true,
       instrucao_pendente: "Cliente enviou fotos do veículo para pré-avaliação de troca.",
+      instrucao_pendente_desde: new Date().toISOString(),
     }).eq("id", lead.id);
     await setTrocaStandby(tenantUserId, lead.id);
 
@@ -3297,7 +3299,7 @@ Responda apenas com o JSON, sem markdown.`;
           console.log(`❓ Agente precisa de instrução: ${precisaInstrucao}`);
           await supabaseAdmin
             .from("leads")
-            .update({ instrucao_pendente: precisaInstrucao })
+            .update({ instrucao_pendente: precisaInstrucao, instrucao_pendente_desde: new Date().toISOString() })
             .eq("id", lead.id);
 
           if (gerentePhone) {
@@ -3324,7 +3326,7 @@ Responda apenas com o JSON, sem markdown.`;
         if ((lead as any)?.instrucao_pendente && !precisaInstrucao) {
           await supabaseAdmin
             .from("leads")
-            .update({ instrucao_pendente: null })
+            .update({ instrucao_pendente: null, instrucao_pendente_desde: null })
             .eq("id", lead.id);
         }
       } catch {
@@ -3423,6 +3425,7 @@ Responda apenas com o JSON, sem markdown.`;
               .from("leads")
               .update({
                 instrucao_pendente: `🚨 GUARDA: Agente quase negou disponibilidade do ${carroLabel} (que ESTÁ no estoque). Resposta substituída por neutra. Confirmar status do carro para o cliente.`,
+                instrucao_pendente_desde: new Date().toISOString(),
               })
               .eq("id", lead.id);
 
@@ -3584,6 +3587,7 @@ Responda apenas com o JSON, sem markdown.`;
           if (lead) {
             await supabaseAdmin.from("leads").update({
               instrucao_pendente: `Cliente pediu fotos do ${veiculoSeguranca.marca} ${veiculoSeguranca.modelo} mas o veículo não tem fotos cadastradas.`,
+              instrucao_pendente_desde: new Date().toISOString(),
             }).eq("id", lead.id).then(() => {}, () => {});
           }
         }

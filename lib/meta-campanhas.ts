@@ -37,7 +37,12 @@ export async function pausarCampanhasDoVeiculo(
       .from("meta_campanhas")
       .select("id, campaign_id, user_id")
       .eq("veiculo_id", veiculoId)
-      .eq("status", "ativo");
+      // NÃO filtra por status "ativo": o banco pode estar desatualizado em
+      // relação à Meta (alguém pausa/religa direto no Gerenciador e nada volta
+      // pra cá). Confirmar PAUSED numa campanha que já está pausada é
+      // inofensivo e idempotente; confiar num "pausado" mentiroso do banco
+      // deixaria o anúncio de um carro vendido no ar.
+      .neq("status", "encerrado");
 
     if (!camps?.length) return { pausadas: 0, falhas: 0 };
 
