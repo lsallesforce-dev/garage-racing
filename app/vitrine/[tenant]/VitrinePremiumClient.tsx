@@ -94,13 +94,22 @@ export default function VitrinePremiumClient({
   // cadastrado nos últimos 7 dias e por isso pode não existir em nenhum.
   const ultimosChegados = useMemo(() => estoque.slice(0, 3), [estoque]);
 
+  const temFiltro = !!(busca || marca || modelo || ano || faixa || chipsSel.length || selosSel.length);
+
+  // A seção "Últimos que chegaram" só aparece sem filtro. Quando ela aparece, o grid
+  // começa no 4º carro — senão os 3 primeiros cards de "Nosso estoque" são exatamente
+  // os mesmos logo abaixo da seção que acabou de mostrá-los.
+  // Loja com 3 carros ou menos não ganha a seção: o grid ficaria vazio embaixo dela.
+  const mostraUltimos = !temFiltro && estoque.length > 3;
+  const baseGrade = useMemo(() => (mostraUltimos ? estoque.slice(3) : estoque), [estoque, mostraUltimos]);
+
   // ── Filtro + ordenação ─────────────────────────────────────────────────────
   const filtrados = useMemo(() => {
     const q = busca.trim().toLowerCase();
     const faixaDef = faixa ? FAIXAS.find((f) => f.id === faixa) : null;
     const chipsAtivos: ChipRapido[] = chips.filter((c) => chipsSel.includes(c.key));
 
-    let r = estoque.filter((c) => {
+    let r = baseGrade.filter((c) => {
       if (marca && c.marca !== marca) return false;
       if (modelo && modeloCurto(c.modelo) !== modelo) return false;
       if (ano && String(c.ano_modelo) !== ano) return false;
@@ -122,9 +131,8 @@ export default function VitrinePremiumClient({
     if (ordenar === "preco_asc") r = [...r].sort((a, b) => (a.preco_sugerido ?? Infinity) - (b.preco_sugerido ?? Infinity));
     if (ordenar === "preco_desc") r = [...r].sort((a, b) => (b.preco_sugerido ?? -1) - (a.preco_sugerido ?? -1));
     return r;
-  }, [estoque, busca, marca, modelo, ano, faixa, chips, chipsSel, selosSel, ordenar]);
+  }, [baseGrade, busca, marca, modelo, ano, faixa, chips, chipsSel, selosSel, ordenar]);
 
-  const temFiltro = !!(busca || marca || modelo || ano || faixa || chipsSel.length || selosSel.length);
   const limpar = () => {
     setBusca(""); setMarca(""); setModelo(""); setAno(""); setFaixa(""); setChipsSel([]); setSelosSel([]);
   };
@@ -343,7 +351,7 @@ export default function VitrinePremiumClient({
       </div>
 
       {/* ══ Últimos que chegaram ══ */}
-      {ultimosChegados.length > 0 && !temFiltro && (
+      {mostraUltimos && (
         <section className="max-w-7xl mx-auto px-5 pt-12">
           <div className="flex items-center gap-2 mb-5">
             <Sparkles size={17} className="text-[var(--brand)]" />
