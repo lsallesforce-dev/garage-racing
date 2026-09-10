@@ -187,6 +187,7 @@ export interface GarageConfig {
   envio_material_completo?: boolean; // ao pedir mídia, manda todas as fotos + vídeo + ficha de uma vez
   // Convite de visita determinístico (migration 051)
   endereco_convite_ativo?: boolean; // após a resposta com o endereço, emenda convite + por quem procurar
+  agente_autonomo?: boolean;        // loja sem equipe de apoio: IA não promete terceiros e esgota o contexto antes de pedir instrução
   nome_usuario?: string;            // quem atende na loja (usado no "procura por ...")
   cargo_usuario?: string;           // cargo dessa pessoa (ex.: "Vendedor")
   // Voz (migration 036) — OFF por padrão
@@ -279,6 +280,7 @@ interface BuildPromptParams {
   diaSemanaAtual?: string;
   modoRepasse?: boolean | null;
   enderecoConviteAtivo?: boolean | null;
+  agenteAutonomo?: boolean | null;
 }
 
 function buildSystemInstruction(p: BuildPromptParams): string {
@@ -564,7 +566,37 @@ ${p.vitrineUrl ? `▶ VITRINE — QUANDO NÃO ENCONTRAR O QUE O CLIENTE PEDIU:
   - Não inicie sugestão de outro carro enquanto o cliente estiver focado no VEÍCULO EM NEGOCIAÇÃO.
   - EXCEÇÃO: se o cliente perguntar o preço ou detalhes de um veículo em ALTERNATIVAS, responda imediatamente — preço é sempre compartilhável.
   - Só sugira alternativas espontaneamente se: (a) o cliente pedir explicitamente outro carro, ou (b) o veículo em negociação não aparece mais no contexto.
-${p.enderecoConviteAtivo ? `▶ CONVITE DE VISITA — O SISTEMA EMENDA, VOCÊ NÃO:
+${p.agenteAutonomo ? `▶ VOCÊ ESTÁ SOZINHO — NÃO EXISTE EQUIPE PRA QUEM PASSAR:
+  Nesta loja NÃO há setor financeiro, avaliador de plantão nem colega que assume a conversa.
+  Quem responder é você. Prometer terceiros aqui significa que o cliente vai esperar por alguém
+  que nunca vem — e é assim que o lead morre.
+
+  ⛔ PROIBIDO dizer (nem com outras palavras): "vou acionar o setor financeiro", "o pessoal do
+     financeiro entra em contato", "vou checar com a equipe", "já encaminhei pro responsável",
+     "o gerente te retorna", "vou confirmar e te falo" solto, sem prazo nem próximo passo.
+
+  ✅ EM VEZ DISSO, uma das duas:
+     a) RESPONDA com o que você tem. O ÍNDICE COMPLETO DO ESTOQUE e a ficha do veículo estão no
+        seu contexto: km, cor, ano, preço, câmbio, opcionais, disponibilidade — tudo isso é seu,
+        não precisa perguntar a ninguém.
+     b) Se realmente não tem como saber (documentação, garantia de fábrica, valor de avaliação
+        do carro de troca), seja honesto E dê o próximo passo concreto no MESMO turno — de
+        preferência a visita, onde a dúvida se resolve na hora:
+        ✅ "Esse detalhe eu confirmo pessoalmente com você — consegue passar aqui${p.enderecoGaragem ? ` na ${p.enderecoGaragem}` : ""} ainda hoje?"
+        ✅ "A avaliação do seu carro é presencial e sai na hora. Que horas fica bom pra você?"
+     ⛔ Nunca encerre um turno com o cliente esperando retorno de outra pessoa.
+
+▶ ANTES DE ABRIR "precisa_instrucao", ESGOTE O QUE VOCÊ JÁ TEM:
+  precisa_instrucao é para o que está FORA do seu contexto — não é atalho pra não procurar.
+  Antes de preencher, confira nesta ordem:
+    1. O carro está no ÍNDICE COMPLETO DO ESTOQUE? Então ele EXISTE — responda que temos e diga
+       o preço. Nunca mande "vou confirmar se ainda está disponível" sobre carro que está no índice.
+    2. O dado está na ficha do veículo (km, cor, ano, câmbio, combustível, motor, opcionais,
+       preço, pneus)? Então responda o número/valor direto.
+    3. É pergunta sobre outro carro? Procure no índice antes de dizer que não tem.
+  Só depois disso, se continuar fora do seu alcance, use precisa_instrucao — E, mesmo assim,
+  entregue ao cliente um próximo passo concreto junto (regra acima), nunca só "vou verificar".
+` : ""}${p.enderecoConviteAtivo ? `▶ CONVITE DE VISITA — O SISTEMA EMENDA, VOCÊ NÃO:
   - Depois de você passar o endereço da loja, o sistema envia sozinho duas mensagens: o convite ("Quando posso te aguardar aqui na loja?") e por quem o cliente deve procurar ao chegar.
   - Por isso, ao informar o endereço, PARE no endereço. Não pergunte quando o cliente vem, não peça horário e não oriente a procurar por ninguém — sairia duplicado.
 ` : ""}${instrucoesBlock}${ofertaBlock}
@@ -3124,6 +3156,7 @@ Responda apenas com o JSON, sem markdown.`;
       diaSemanaAtual,
       modoRepasse: garageConfig?.modo_repasse,
       enderecoConviteAtivo: garageConfig?.endereco_convite_ativo,
+      agenteAutonomo: garageConfig?.agente_autonomo,
     });
 
     const partsToGenerate: any[] = [{ text: userMessage }];
