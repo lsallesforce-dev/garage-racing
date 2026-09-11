@@ -28,6 +28,15 @@ declare global {
 
 let rotaJaContada: string | null = null;
 
+const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+
+/** Id do carro do card em volta do botão, pelo link /vitrine/{slug}/{id} do próprio card. */
+function idDoCarroEmVolta(el: Element | null | undefined): string | null {
+  const card = el?.closest("article");
+  const link = card?.querySelector<HTMLAnchorElement>('a[href*="/vitrine/"]');
+  return link?.getAttribute("href")?.match(UUID_RE)?.[0] ?? null;
+}
+
 export type PixelViewContent = {
   /** veiculos.id — tem que ser igual ao vehicle_id do feed. */
   id: string;
@@ -77,6 +86,21 @@ export default function MetaPixel({
   // no documento em vez de um onClick espalhado por cinco componentes: os
   // links todos saem do mesmo whatsappLink(), e um onClick esquecido num
   // deles vira buraco silencioso na medição.
+  //
+  // + AddToCart COM o id do carro, quando dá pra saber qual carro é. Motivo:
+  // a campanha de catálogo roda no objetivo Vendas, e Vendas NÃO aceita Lead
+  // como evento de otimização (Meta #2446814, visto em 11/09). O teste de 20
+  // dias otimizou "Ver conteúdo" e trouxe 673 visitas a R$ 0,10 e nenhuma
+  // conversa — gente que abre a página, não gente que chama. AddToCart é
+  // evento de funil de compra, então Vendas aceita, e passa a significar aqui
+  // "abriu o carro E clicou pra conversar". O content_ids precisa ser o
+  // veiculos.id (= vehicle_id do feed) pra Meta casar o clique com o item.
+  //
+  // Qual carro: primeiro o card em volta do botão (<article> com o link
+  // /vitrine/{slug}/{id} — vale nos dois layouts, na lista e no "Mais carros"
+  // da página do carro); senão o carro da própria página. Botão genérico da
+  // lista (cabeçalho, flutuante) não tem carro: vai só o Lead, porque
+  // AddToCart sem produto não serve pro catálogo e só suja o sinal.
   useEffect(() => {
     if (!pixelId) return;
     function aoClicar(e: MouseEvent) {
@@ -84,10 +108,22 @@ export default function MetaPixel({
       const href = alvo?.getAttribute("href") ?? "";
       if (!/(^https?:\/\/)?(api\.whatsapp\.com|wa\.me)\//i.test(href)) return;
       window.fbq?.("track", "Lead", { content_type: "vehicle" });
+
+      const idDoCard = idDoCarroEmVolta(alvo);
+      const id = idDoCard ?? viewContent?.id ?? null;
+      if (!id) return;
+      // Valor só quando o clique é no carro da página — card de outro carro
+      // (o "Mais carros") não traz preço aqui.
+      const valor = !idDoCard || idDoCard === viewContent?.id ? viewContent?.valor : null;
+      window.fbq?.("track", "AddToCart", {
+        content_type: "vehicle",
+        content_ids: [id],
+        ...(valor ? { value: valor, currency: "BRL" } : {}),
+      });
     }
     document.addEventListener("click", aoClicar, true);
     return () => document.removeEventListener("click", aoClicar, true);
-  }, [pixelId]);
+  }, [pixelId, viewContent?.id, viewContent?.valor]);
 
   if (!pixelId) return null;
 
