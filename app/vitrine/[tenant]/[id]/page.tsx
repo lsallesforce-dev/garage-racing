@@ -37,7 +37,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     .eq("id", id)
     .maybeSingle();
 
-  if (!data) return { title: "Veículo não encontrado" };
+  if (!data) return { title: { absolute: "Veículo não encontrado" } };
 
   const titulo = `${data.marca ?? ""} ${data.modelo ?? ""} ${data.versao ?? ""} ${data.ano_modelo ?? ""}`.replace(/\s+/g, " ").trim();
   const preco = fmtBRL(data.preco_sugerido);
@@ -46,12 +46,16 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const garagem = await resolveGaragem(tenant);
   const dominio = (garagem?.dominio_custom as string | undefined)?.trim();
   const canonical = dominio ? `https://${dominio}/${id}` : undefined;
+  const loja = ((garagem?.nome_empresa as string | undefined) ?? "").trim();
 
   return {
-    title: titulo,
+    // `absolute` fura o template "%s | AutoZap" do layout raiz — mesma razão da
+    // home da vitrine: a marca na aba é a da loja, não a nossa.
+    title: { absolute: loja ? `${titulo} | ${loja}` : titulo },
     description: `${titulo}${preco ? ` por ${preco}` : ""}. Confira fotos, vídeo e ficha completa. Atendimento na hora pelo WhatsApp.`,
     ...(canonical ? { alternates: { canonical } } : {}),
     openGraph: {
+      ...(loja ? { siteName: loja } : {}),
       title: `${titulo}${preco ? ` • ${preco}` : ""}`,
       description: "Fale com a loja agora pelo WhatsApp — sem formulário.",
       ...(canonical ? { url: canonical } : {}),

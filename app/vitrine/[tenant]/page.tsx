@@ -27,7 +27,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { tenant } = await params;
   const garagem = await resolveGaragem(tenant);
 
-  const nome = garagem?.nome_empresa ?? "Vitrine";
+  // trim: nome_empresa vem com espaço sobrando no cadastro (APROVE tem "APROVE MULTIMARCAS ").
+  const nome = (garagem?.nome_empresa ?? "").trim() || "Vitrine";
   const local = [garagem?.cidade, garagem?.estado].filter(Boolean).join(" - ");
   const desc =
     `Estoque disponível da ${nome}${local ? ` em ${local}` : ""}. Veículos com fotos, vídeo e atendimento na hora pelo WhatsApp.`;
@@ -49,11 +50,15 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const dominio = (garagem?.dominio_custom as string | undefined)?.trim();
   const canonical = dominio ? `https://${dominio}` : undefined;
 
+  // `absolute` fura o template "%s | AutoZap" do app/layout.tsx. A vitrine é a
+  // loja do lojista — no domínio próprio dele a aba dizendo "AutoZap" soa como
+  // site de terceiro.
   return {
-    title: `${nome} — Estoque`,
+    title: { absolute: `${nome} — Estoque` },
     description: desc,
     ...(canonical ? { alternates: { canonical } } : {}),
     openGraph: {
+      siteName: nome,
       title: `${nome} — Estoque`,
       description: desc,
       ...(canonical ? { url: canonical } : {}),
