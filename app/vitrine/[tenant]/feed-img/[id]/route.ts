@@ -24,7 +24,15 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const LADO = 1080;
+// 1080x1350 (4:5) com o carro cabendo dentro do quadrado central de 1080x1080.
+// Por quê: o Instagram mostra o card em 4:5 e o Facebook em 1:1, e a Meta ainda
+// recorta sozinha pra 4:5/9:16 ("adaptar ao posicionamento"). Num 4:5 o carro
+// aparece inteiro; num recorte 1:1 o que sai é só a faixa desfocada de cima e de
+// baixo — o carro nunca é cortado em nenhum dos dois.
+const LARGURA = 1080;
+const ALTURA = 1350;
+/** Quadrado central onde o carro cabe — é o que sobra depois do recorte 1:1. */
+const AREA_SEGURA = 1080;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function urlPermitida(u: string): boolean {
@@ -64,12 +72,12 @@ export async function GET(
 
   const [fundo, frente] = await Promise.all([
     original.clone()
-      .resize(LADO, LADO, { fit: "cover" })
+      .resize(LARGURA, ALTURA, { fit: "cover" })
       .blur(40)
       .modulate({ brightness: 0.75 })
       .toBuffer(),
     original.clone()
-      .resize(LADO, LADO, { fit: "inside" })
+      .resize(AREA_SEGURA, AREA_SEGURA, { fit: "inside" })
       .toBuffer(),
   ]);
 
