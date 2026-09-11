@@ -272,6 +272,32 @@ async function revalidateSlug(slug: string): Promise<boolean> {
   }
 }
 
+// ─── O que a vitrine busca e NUNCA pode ser reescrito pra dentro dela ──────────
+//
+// Os dois ramos de tenant (subdomínio e domínio próprio) reescrevem TODO caminho
+// pra /vitrine/{slug}/<caminho>. Pra página isso é o certo; pra o que a página
+// busca depois, não: /vitrine/aprove-banner.mp4 virava /vitrine/{slug}/vitrine/
+// aprove-banner.mp4 — tratado como id de carro, devolvia HTML no lugar do vídeo.
+// Achado 11/09, um dia depois de www.aprovemultimarcas.com.br entrar no ar: o
+// banner ficou parado na capa, a ficha de financiamento dava 404 e o vídeo dos
+// carros vinha como página.
+//
+// Imagem não sofria porque o matcher lá embaixo já pula png/jpg/webp — vídeo e
+// áudio não estão lá, e é por isso que só a capa do banner aparecia.
+//
+// Tudo aqui é público por natureza (arquivo estático, bucket R2 público, ficha
+// que o visitante anônimo preenche), então passar direto não abre nada.
+const FICHA_FINANCIAMENTO_RE = /^\/api\/vitrine\/[^/]+\/financiamento$/;
+const MIDIA_ESTATICA_RE = /\.(?:mp4|webm|mov|m4v|mp3|wav|ogg)$/i;
+
+function passaDiretoNaVitrine(pathname: string): boolean {
+  return (
+    MIDIA_ESTATICA_RE.test(pathname) ||
+    pathname.startsWith("/api/r2/") ||
+    FICHA_FINANCIAMENTO_RE.test(pathname)
+  );
+}
+
 // ─── Proxy Principal ──────────────────────────────────────────────────────────
 
 export async function proxy(request: NextRequest) {
@@ -308,6 +334,8 @@ export async function proxy(request: NextRequest) {
     }
 
     if (subdomain) {
+      if (passaDiretoNaVitrine(pathname)) return NextResponse.next();
+
       // Valida slug no Redis antes do rewrite
       let valid = await isSlugValid(subdomain);
 
@@ -340,6 +368,8 @@ export async function proxy(request: NextRequest) {
   // Roda ANTES do gate de auth (igual o subdomínio) — anônimo em domínio
   // custom nunca pode cair em redirect pro /login.
   if (!isMainDomain && !isAutozapSubdomain) {
+    if (passaDiretoNaVitrine(pathname)) return NextResponse.next();
+
     const host = hostname.toLowerCase().split(":")[0];
     const slug = await resolveDominioCustom(host);
 
@@ -423,7 +453,13 @@ export async function proxy(request: NextRequest) {
     // Ficha de financiamento da vitrine: quem preenche é o visitante, sem login.
     // Só ESTA rota de /api/vitrine — as irmãs (capa, logo, seed-slug) são do
     // painel e continuam exigindo sessão.
-    /^\/api\/vitrine\/[^/]+\/financiamento$/.test(pathname) ||
+    FICHA_FINANCIAMENTO_RE.test(pathname) ||
+    // Vídeo dos carros na vitrine (toVideoUrl → /api/r2/<key>). Ficou fora
+    // desta lista desde o redesign de 13/07: o visitante anônimo levava 307 pro
+    // /login e o vídeo simplesmente não tocava — só quem estava logado no
+    // painel via. A rota não guarda nada privado: repassa do bucket R2 que já
+    // é público (pub-*.r2.dev) e valida o formato da chave.
+    pathname.startsWith("/api/r2/") ||
     pathname.startsWith("/carros") ||
     pathname.startsWith("/loja-nao-encontrada") ||
     pathname.startsWith("/api/webhook") ||
