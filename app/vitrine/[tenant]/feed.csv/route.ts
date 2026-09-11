@@ -239,7 +239,10 @@ export async function GET(
       enumMeta(CARROCERIA_META, v?.categoria),
       "excellent",
       "available",
-      imagem,
+      // Não a foto direta: a versão quadrada de feed-img/[id], que não deixa o
+      // carrossel cortar o carro. ?v= muda quando a foto muda — a Meta guarda
+      // imagem por URL e não buscaria a nova.
+      `${base}/feed-img/${v.id}?v=${encodeURIComponent(imagem.split("/").pop() ?? "")}`,
       endereco,
     ]));
   }
