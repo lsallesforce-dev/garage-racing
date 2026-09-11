@@ -199,13 +199,17 @@ export async function GET(
     // anuncia um usado como se fosse zero-quilômetro. É pior que ficar de fora
     // — atrai o lead errado e gasta verba com quem desiste na primeira pergunta.
     const km = Number(v?.quilometragem_estimada ?? NaN);
+    // 0 conta como "sem km": o cadastro grava 0 quando ninguém preencheu, e
+    // Number.isFinite(0) é true — o Palio ELX 2008 da APROVE saiu no feed como
+    // usado com 0 km (achado 11/09), exatamente o caso que este bloco evita.
+    const kmValido = Number.isFinite(km) && km > 0;
 
     // Linha incompleta faz a Meta rejeitar o ITEM e sujar o relatório do
     // catálogo — melhor não emitir e avisar no log.
-    if (!marca || !imagem || preco <= 0 || !ano || !Number.isFinite(km)) {
+    if (!marca || !imagem || preco <= 0 || !ano || !kmValido) {
       pulados.push(`${v?.id} (${v?.marca ?? ""} ${v?.modelo ?? ""}: ${[
         !marca && "sem marca", !imagem && "sem foto", preco <= 0 && "sem preço", !ano && "sem ano",
-        !Number.isFinite(km) && "sem km",
+        !kmValido && "sem km",
       ].filter(Boolean).join(", ")})`);
       continue;
     }
