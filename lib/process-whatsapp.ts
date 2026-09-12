@@ -184,7 +184,7 @@ export interface GarageConfig {
   modo_repasse?: boolean;           // tenant de repasse: cliente é lojista, fala de vários carros
   // Agente no celular pessoal do dono (migration 037)
   ia_modo_lead_only?: boolean;      // só responde conversa classificada como lead (ver lib/lead-gate.ts)
-  envio_material_completo?: boolean; // ao pedir mídia, manda todas as fotos + vídeo + ficha de uma vez
+  envio_material_completo?: boolean; // fotos+vídeo completos já são padrão global; isso só liga o envio extra da FICHA do carro em texto
   // Convite de visita determinístico (migration 051)
   endereco_convite_ativo?: boolean; // após a resposta com o endereço, emenda convite + por quem procurar
   agente_autonomo?: boolean;        // loja sem equipe de apoio: IA não promete terceiros e esgota o contexto antes de pedir instrução
@@ -2669,9 +2669,10 @@ Responda apenas com o JSON, sem markdown.`;
     !exclusoesFoto.some((e) => mensagemLower.includes(e));
 
   let fotoEnviada = false;
-  // Envio de material COMPLETO (pedido Marcos Repasse): quando o cliente pede
-  // mídia, vai tudo de uma vez — todas as fotos + vídeo + ficha — em vez do
-  // conta-gotas padrão. O gatilho continua sendo o pedido do cliente.
+  // Fotos + vídeo completos (item abaixo) já são o padrão pra todo tenant desde
+  // que o pedido do Marcos Repasse foi generalizado. `envio_material_completo`
+  // agora só controla o extra específico dele: mandar a FICHA do carro em
+  // texto depois da mídia (ver bloco "11c" mais abaixo).
   const materialCompleto = garageConfig?.envio_material_completo === true;
   let veiculoDaFoto: Vehicle | null = null;
 
@@ -2806,23 +2807,17 @@ Responda apenas com o JSON, sem markdown.`;
       }
     }
 
-    // Detecta se cliente está pedindo MAIS fotos (continuação) ou de PARTE específica do carro.
-    const pedindoMaisFotos = /\b(mais\s+fotos?|outras?\s+fotos?|tem\s+mais|fotos?\s+(?:por\s+)?dentro|intern[ao]s?|interior|por\s+dentro|de\s+dentro|painel|bancos?|bagageiro|porta-malas|porta\s+malas|motor|de\s+lado|por\s+tr[aá]s|tras[ei]ra|de\s+frente|farol|far[oó]is|rod[ao]s?)\b/i.test(mensagemLower);
-
-    // Detecta se cliente pediu TODAS — quer ver tudo de uma vez sem limite
+    // Detecta se cliente pediu TODAS — usado só pra ajustar a legenda da última foto
+    // (ver captionUltima abaixo), não mais pro limite — ver comentário do MAX abaixo.
     const pedindoTodasFotos = /\b(todas?\s+(?:as\s+)?fotos?|manda\s+todas?|pode\s+mandar\s+todas?|quero\s+(?:ver\s+)?todas?|quero\s+ver\s+tudo|ver\s+tudo|me\s+manda\s+todas?)\b/i.test(mensagemLower);
 
-    // Limite de fotos por turno:
-    // - "todas" → até 12 (basicamente tudo)
-    // - "mais" / "interior" → 6
-    // - padrão → 4
-    // Com envio_material_completo (pedido Marcos Repasse): pediu foto = leva
-    // TUDO de uma vez, sem conta-gotas — o cliente dele é lojista, quer o
-    // material inteiro pra decidir na hora.
-    // Material completo = TODAS mesmo (teto de 30 só como sanidade). Com 15 fixo
-    // e um carro de 17 fotos, o agente mandava 15 e ainda dizia "tenho mais 2" —
-    // e na mensagem seguinte "foi tudo que temos". O Marcos cobrou a contradição.
-    const MAX_FOTOS_POR_VEICULO = materialCompleto ? 30 : (pedindoTodasFotos ? 12 : (pedindoMaisFotos ? 6 : 4));
+    // Pediu foto = leva TUDO de uma vez, sem conta-gotas — generalizado pra
+    // todos os tenants o pedido original do Marcos Repasse (envio_material_completo).
+    // Teto de 30 só como sanidade. Com um limite fixo menor e um carro de 17
+    // fotos, o agente mandava 15 e ainda dizia "tenho mais 2" — e na mensagem
+    // seguinte "foi tudo que temos". O Marcos cobrou a contradição; o mesmo
+    // valeria pra qualquer tenant.
+    const MAX_FOTOS_POR_VEICULO = 30;
 
     for (const v of veiculosParaFoto) {
       // Se pedindoFotosMultiplos (vários carros), envia só a capa de cada um.
@@ -2850,19 +2845,16 @@ Responda apenas com o JSON, sem markdown.`;
         fotosJaEnviadas = new Set((msgsComMidia ?? []).map((m: any) => m.media_url).filter(Boolean));
       }
 
-      // Prioriza fotos NUNCA enviadas. Se já mandou todas, recomeça do início.
-      // No modo material completo "manda tudo" é tudo mesmo, na ordem original —
-      // MAS se o lead já recebeu o pacote inteiro desse carro, não repete: era
-      // isso que fazia cada pergunta seguinte virar outro despejo de 15 fotos.
-      // Sem fotos novas, o Gemini responde em texto (que é o que ele queria).
+      // "Manda tudo" é tudo mesmo, na ordem original — MAS se o lead já recebeu
+      // o pacote inteiro desse carro, não repete: era isso que fazia cada
+      // pergunta seguinte virar outro despejo de fotos. Sem fotos novas, o
+      // Gemini responde em texto (que é o que ele queria).
       const fotosNaoEnviadas = todasFotosRaw.filter(f => !fotosJaEnviadas.has(f));
-      if (materialCompleto && fotosNaoEnviadas.length === 0 && fotosJaEnviadas.size > 0) {
+      if (fotosNaoEnviadas.length === 0 && fotosJaEnviadas.size > 0) {
         console.log(`📷 [foto] ${v.marca} ${v.modelo}: pacote completo já enviado a esse lead — não repete.`);
         continue;
       }
-      const poolFotos = materialCompleto
-        ? todasFotosRaw
-        : (fotosNaoEnviadas.length > 0 ? fotosNaoEnviadas : todasFotosRaw);
+      const poolFotos = todasFotosRaw;
       const reenviando = fotosNaoEnviadas.length === 0 && fotosJaEnviadas.size > 0;
 
       const fotosParaEnviar = poolFotos.slice(0, MAX_FOTOS_POR_VEICULO);
@@ -2945,8 +2937,10 @@ Responda apenas com o JSON, sem markdown.`;
     gatilhosVideo.some((g) => mensagemLower.includes(g)) ||
     // Mesmo guard de foto: não disparar por "Ok/Sim" se há instrucao_pendente ativa.
     (msgConfirmacao && (clientePediuVideoAntes || agenteMencionouVideo) && !clientePediuFoto && !lead?.instrucao_pendente) ||
-    // Material completo: quem pediu foto leva o vídeo junto, no mesmo turno.
-    (materialCompleto && fotoEnviada && !pedindoFotosMultiplos);
+    // Quem pediu foto leva o vídeo junto no mesmo turno, se o carro tiver —
+    // generalizado do pedido original do Marcos Repasse pra todos os tenants
+    // (ver MAX_FOTOS_POR_VEICULO acima).
+    (fotoEnviada && !pedindoFotosMultiplos);
 
   let videoEnviado = false;
 
@@ -2954,10 +2948,9 @@ Responda apenas com o JSON, sem markdown.`;
     // Vídeo: veiculoPrincipal tem prioridade absoluta para mensagens vagas.
     // Se o cliente pediu um carro diferente, usa findVehicleForMedia (nunca hitsTextuais).
     const msgSemContextoVideo = userMessage.replace(/^\[(?:Contexto do link|Lead veio do anúncio)[^\n]*\n?/m, "").trim();
-    // No material completo o vídeo tem que ser do MESMO carro cujas fotos
-    // acabaram de sair — senão "manda foto do Onix" mandaria o vídeo do carro
-    // em foco, que pode ser outro.
-    const veiculoParaVideo = (materialCompleto ? veiculoDaFoto : null) ?? (clientePediuCarroDiferente
+    // O vídeo tem que ser do MESMO carro cujas fotos acabaram de sair — senão
+    // "manda foto do Onix" mandaria o vídeo do carro em foco, que pode ser outro.
+    const veiculoParaVideo = veiculoDaFoto ?? (clientePediuCarroDiferente
       ? (msgSemContextoVideo ? (await findVehicleForMedia(msgSemContextoVideo, tenantUserId)) ?? veiculoPrincipal : veiculoPrincipal)
       : veiculoPrincipal);
 

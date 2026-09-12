@@ -206,8 +206,8 @@ useEffect(() => {
 8. `buildStockContext` (FOCO + ALTERNATIVAS) **+** `buildInventoryIndex` (lista completa de carros DISPONÍVEIS) — concatenados no contexto
 9. Carrega histórico **inteligente**: 2 primeiras msgs (saudação + nome) + 13 mais recentes, sem duplicatas (Redis → Supabase fallback)
 10. Interceptores: pós-venda → stand-by automático
-11. Envio de foto (se pedido) — scoring ponderado por ano/modelo/marca, early return sem chamar Gemini
-11b. Envio de vídeo (se pedido) — mesma lógica
+11. Envio de foto (se pedido) — scoring ponderado por ano/modelo/marca, early return sem chamar Gemini. **Envia TODAS as fotos do veículo de uma vez** (teto de 30 só como sanidade), não repete pacote já enviado ao mesmo lead.
+11b. Envio de vídeo (se pedido) — mesma lógica de seleção de veículo. **Quem pediu foto leva o vídeo junto no mesmo turno automaticamente, se o carro tiver** (do MESMO veículo cujas fotos acabaram de sair) — sem pedido extra do cliente.
 12. **`fixHistoryLoops`** — injeta correção sintética antes do Gemini
 13. Gemini gera JSON: `{ resposta, veiculo_id_foco, temperatura, resumo, nome_cliente_extraido, precisa_instrucao }`
 13b. **Guarda anti-mentira de estoque** — intercepta negações falsas pós-Gemini (ver abaixo)
@@ -297,6 +297,12 @@ Resolve **"desse 2023"** no contexto `[Polo Track 2023/2024, Polo Track 2025/202
 - Polo Track 2023/2024: ano=2023 +100 + boost +5 = **105** ✅ (foco + ano bate)
 - Polo Track 2025/2026: 0
 - Corolla Cross 2023: ano_modelo=2023 +100 = 100
+
+### Envio de mídia — pacote completo é o padrão (não mais conta-gotas)
+
+Pediu foto (ou confirmou oferta do agente) → manda **todas** as fotos do veículo de uma vez (teto de 30, só sanidade) e, se o carro tiver vídeo, o vídeo **do mesmo veículo** vai junto no mesmo turno, sem o cliente pedir. Se o pacote inteiro já foi enviado a esse lead antes, não repete (Gemini responde em texto). Pedido de vários carros distintos ("tem o Onix e o HB20?") continua mandando só a capa de cada um — o "tudo" vale por veículo, não pra galeria toda junto.
+
+Era assim só pro Marcos Repasse (flag `envio_material_completo`, commit `4708b57`, 06/08 — lojista queria decidir na hora, sem ficar pedindo "manda mais"); generalizado pra todos os tenants em 12/09 porque o mesmo padrão funciona bem pra cliente final também: ninguém reclama de ver fotos demais, mas "tenho mais 6, quer ver?" a cada resposta cansa. `envio_material_completo` continua existindo só pra ligar o extra específico do Marcos: mandar a FICHA do carro em texto (marca/modelo/ano/km/cor/câmbio/combustível/preço) logo depois da mídia — isso NÃO virou padrão global (ficha automática destoa do tom de venda pro consumidor final).
 
 ### Rastreamento do carro em foco — duas camadas
 
