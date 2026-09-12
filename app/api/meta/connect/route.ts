@@ -23,7 +23,10 @@ export async function GET(req: NextRequest) {
     // /adcreatives — sem ele o erro "(#100) Param instagram_actor_id must be
     // a valid Instagram account id" acontece mesmo com o IG corretamente
     // conectado à Página e à ad account no Business Manager.
-    scope:         "ads_management,pages_manage_ads,business_management,pages_show_list,pages_read_engagement,instagram_basic",
+    // pages_manage_posts + instagram_content_publish = postar orgânico pelo
+    // Kit (lib/meta-organico.ts). Escopo novo NÃO entra em token já emitido:
+    // quem conectou antes precisa reconectar em Configurações.
+    scope:         "ads_management,pages_manage_ads,business_management,pages_show_list,pages_read_engagement,instagram_basic,pages_manage_posts,instagram_content_publish",
     response_type: "code",
     state:         userId,
   });

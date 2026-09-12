@@ -27,6 +27,7 @@ import {
   Megaphone,
   RefreshCw,
   Save,
+  Send,
   Sparkles,
   Video,
   Wand2,
@@ -119,6 +120,9 @@ export default function KitsGaleria() {
   const [roteiroAberto, setRoteiroAberto] = useState<Record<string, boolean>>({});
   const [pisoAberto, setPisoAberto] = useState<Record<string, boolean>>({});
   const legendaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
+  // Post ORGÂNICO (grátis) — diferente do PublicarMetaButton, que é anúncio pago.
+  const [postando, setPostando] = useState<Record<string, boolean>>({});
+  const [postado, setPostado] = useState<Record<string, string>>({});
 
   // Config da loja (nível tenant)
   const [cfgAberta, setCfgAberta] = useState(false);
@@ -301,6 +305,32 @@ export default function KitsGaleria() {
     } catch (e: any) {
       setSalvando((p) => { const n = { ...p }; delete n[id]; return n; });
       setErro((p) => ({ ...p, [id]: e.message ?? "Erro ao salvar legenda" }));
+    }
+  }
+
+  /** Publica o kit como post normal na Página e/ou no Instagram da loja. */
+  async function postarAgora(id: string, destinos: ("facebook" | "instagram")[], formato: "feed" | "story") {
+    setPostando((p) => ({ ...p, [id]: true }));
+    setErro((p) => ({ ...p, [id]: "" }));
+    try {
+      // Manda a legenda que está na tela, não a do banco: o lojista costuma
+      // ajustar o texto e postar sem clicar em "Salvar legenda" antes.
+      const legenda = legendaRefs.current[id]?.value ?? "";
+      const res = await fetch("/api/marketing/postar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ veiculoId: id, destinos, formato, legenda }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error ?? "Erro ao publicar");
+      const onde = Object.keys(d.publicado ?? {}).map((k) => (k === "facebook" ? "Facebook" : "Instagram"));
+      setPostado((p) => ({ ...p, [id]: onde.join(" e ") }));
+      if (d.avisos?.length) setErro((p) => ({ ...p, [id]: d.avisos.join(" | ") }));
+      setTimeout(() => setPostado((p) => ({ ...p, [id]: "" })), 6000);
+    } catch (e: any) {
+      setErro((p) => ({ ...p, [id]: e.message ?? "Erro ao publicar" }));
+    } finally {
+      setPostando((p) => ({ ...p, [id]: false }));
     }
   }
 
@@ -676,6 +706,28 @@ export default function KitsGaleria() {
                       </button>
                       <button onClick={() => baixar(c, "story")} disabled={!c.marketing_story_url || !!baixando[c.id]} className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gray-100 py-2.5 text-[9px] font-black uppercase tracking-widest text-gray-600 hover:bg-gray-200 disabled:opacity-40">
                         {baixando[c.id] === "story" ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} Story
+                      </button>
+                    </div>
+
+                    {/* Postar orgânico — a mesma arte que o lojista baixava pra
+                        postar do celular, publicada daqui. Não é anúncio: nada
+                        de verba, nada de campanha. */}
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => postarAgora(c.id, ["facebook", "instagram"], "feed")}
+                        disabled={!!postando[c.id]}
+                        className="flex flex-[2] items-center justify-center gap-1.5 rounded-xl bg-gray-900 py-2.5 text-[9px] font-black uppercase tracking-widest text-white hover:bg-red-600 disabled:opacity-50"
+                      >
+                        {postando[c.id] ? <Loader2 size={12} className="animate-spin" /> : postado[c.id] ? <Check size={12} className="text-green-400" /> : <Send size={12} />}
+                        {postando[c.id] ? "Postando..." : postado[c.id] ? `No ar no ${postado[c.id]}` : "Postar no Face + Insta"}
+                      </button>
+                      <button
+                        onClick={() => postarAgora(c.id, ["instagram"], "story")}
+                        disabled={!c.marketing_story_url || !!postando[c.id]}
+                        title={c.marketing_story_url ? "Publica a arte 9:16 como story no Instagram" : "Gere o kit pra ter a arte de story"}
+                        className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gray-100 py-2.5 text-[9px] font-black uppercase tracking-widest text-gray-600 hover:bg-gray-200 disabled:opacity-40"
+                      >
+                        <Send size={12} /> Story no Insta
                       </button>
                     </div>
                   </>
