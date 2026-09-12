@@ -13,7 +13,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft, RefreshCw, Flame, CalendarCheck, ShoppingCart, Users,
-  DollarSign, Clock, Car, Radar, X, ExternalLink, TrendingUp, TrendingDown,
+  DollarSign, Clock, Car, Radar, X, ExternalLink, TrendingUp, TrendingDown, Globe,
 } from "lucide-react";
 import { origemCfg } from "@/lib/origens";
 import { PERIODOS, DIAS_SEMANA_LABEL, formatarDataBRT, type PeriodoKey, type Bucket } from "@/lib/periodo";
@@ -48,7 +48,11 @@ type Analise = {
   resumo: {
     leads: number; quentes: number; visitas: number; vendas: number; valor: number;
     canais: number; conversao: number;
-    delta: { leads: number | null; quentes: number | null; visitas: number | null; vendas: number | null; valor: number | null };
+    /** Acessos à vitrine no período (agregado por dia, migration 059). */
+    acessos: number;
+    /** Quantos desses chegaram pelo link do catálogo pago (?o=cat). */
+    acessosCatalogo: number;
+    delta: { leads: number | null; quentes: number | null; visitas: number | null; vendas: number | null; valor: number | null; acessos: number | null };
   };
   canais: Canal[];
   serie: { bucket: string; total: number; porCanal: Record<string, number> }[];
@@ -230,7 +234,16 @@ function OrigemLeadsInner() {
     return m;
   }, [heatCells]);
 
-  const semDados = !!data && data.resumo.leads === 0;
+  const semDados = !!data && data.resumo.leads === 0 && (data.resumo.acessos ?? 0) === 0;
+
+  // Lead que nasceu NA vitrine (orgânico + catálogo pago) — é o numerador da
+  // taxa de conversão do site. Lead de Meta Ads não passa por aqui.
+  const leadsDoSite = useMemo(
+    () => (data?.canais ?? [])
+      .filter(c => c.key === "site" || c.key === "catalogo")
+      .reduce((s, c) => s + c.leads, 0),
+    [data]
+  );
 
   return (
     <div className="min-h-screen bg-[#f4f4f2]">
@@ -317,7 +330,16 @@ function OrigemLeadsInner() {
         {data && !semDados && (
           <>
             {/* ── KPIs ─────────────────────────────────────────────────────── */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+              {/* Acessos vem PRIMEIRO: é o topo do funil. Sem ele, "o site não
+                  traz nada" não dá pra separar de "ninguém entra no site". */}
+              <CardKpi icone={<Globe size={16} />} cor="text-teal-500"
+                label={
+                  data.resumo.acessos > 0
+                    ? `Acessos ao site · ${Math.round((leadsDoSite / data.resumo.acessos) * 100)}% viram lead`
+                    : "Acessos ao site"
+                }
+                valor={data.resumo.acessos.toLocaleString("pt-BR")} delta={data.resumo.delta.acessos} />
               <CardKpi icone={<Users size={16} />} label="Leads" cor="text-gray-400"
                 valor={String(data.resumo.leads)} delta={data.resumo.delta.leads} />
               <CardKpi icone={<Flame size={16} />} label="Quentes agora" cor="text-red-500"

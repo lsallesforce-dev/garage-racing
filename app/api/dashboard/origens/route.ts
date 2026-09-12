@@ -15,10 +15,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { normalizarOrigem, origemLabel } from "@/lib/origens";
+import { visitasNoPeriodo } from "@/lib/vitrine-visitas";
 import {
   resolverPeriodo, chaveBucket, bucketsDoPeriodo, delta, partesBRT,
   type PeriodoKey,
 } from "@/lib/periodo";
+
+// vitrine_visitas é agregada por DIA BRT — o recorte de leads é por timestamp,
+// então a data tem que ser derivada no MESMO fuso, senão "hoje" começa às 21h.
+const diaBRT = (d: Date) =>
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(d);
 
 const PAGINA = 1000;   // teto de linhas por request do PostgREST
 const TETO_LEADS = 20000;
@@ -230,8 +238,18 @@ export async function GET(req: NextRequest) {
   const somar = (m: Map<string, Agg>, campo: "leads" | "quentes" | "visitas" | "vendas" | "valor") =>
     [...m.values()].reduce((s, a) => s + a[campo], 0);
 
+  // Acessos da vitrine (migration 059). Fora do Map de canais de propósito:
+  // acesso não é lead, é o degrau ANTES dele — é o que responde se o problema
+  // está no anúncio (pouca gente entra) ou na página (entra e não fala).
+  const [acessos, acessosAnterior] = await Promise.all([
+    visitasNoPeriodo(userId, diaBRT(periodo.inicio), diaBRT(periodo.fim)),
+    visitasNoPeriodo(userId, diaBRT(periodo.inicioAnterior), diaBRT(new Date(periodo.inicio.getTime() - 1))),
+  ]);
+
   const resumo = {
     leads:   totalLeads,
+    acessos:          acessos.total,
+    acessosCatalogo:  acessos.catalogo,
     quentes: somar(atual, "quentes"),
     visitas: somar(atual, "visitas"),
     vendas:  somar(atual, "vendas"),
@@ -244,6 +262,7 @@ export async function GET(req: NextRequest) {
       visitas: delta(somar(atual, "visitas"), somar(anterior, "visitas")),
       vendas:  delta(somar(atual, "vendas"),  somar(anterior, "vendas")),
       valor:   delta(somar(atual, "valor"),   somar(anterior, "valor")),
+      acessos: delta(acessos.total,             acessosAnterior.total),
     },
   };
 
