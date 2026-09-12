@@ -178,6 +178,23 @@ export function whatsappLink(numero: string, texto: string) {
   return `https://wa.me/${(numero || "").replace(/\D/g, "")}?text=${encodeURIComponent(texto)}`;
 }
 
+// Mensagem pronta do botão de WhatsApp da página do carro — fonte única dos
+// dois layouts (padrão e premium).
+//
+// `viaAnuncio` troca "na vitrine da X" por "no anúncio da X". Não é firula: é
+// o ÚNICO jeito de separar, no painel, quem veio do catálogo pago de quem achou
+// a vitrine sozinho. O lead nasce sem id de campanha (a atribuição por
+// ?c={campaign_id} ficou adiada), então a frase é o carimbo. Quem liga os dois
+// lados: o link de cada carro no feed leva `?o=cat`
+// (app/vitrine/[tenant]/feed.csv/route.ts), a página do carro passa
+// `viaAnuncio`, e lib/process-whatsapp.ts lê "no anúncio da" e grava
+// `leads.origem = "catalogo"`. Mudar esta frase quebra a origem — mexer nos
+// três lugares juntos.
+export function msgInteresseCarro(titulo: string, nomeEmpresa: string, viaAnuncio = false): string {
+  const onde = viaAnuncio ? `no anúncio da ${nomeEmpresa}` : `na vitrine da ${nomeEmpresa}`;
+  return `Olá! Vi o *${titulo}* ${onde} e tenho interesse. Ainda está disponível?`;
+}
+
 // Carro cadastrado nos últimos 7 dias.
 export function isRecemChegado(createdAt?: string | null): boolean {
   if (!createdAt) return false;

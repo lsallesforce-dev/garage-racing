@@ -15,6 +15,8 @@
 //   mercadolivre  → app/api/webhook/mercadolivre
 //   ligacao       → app/api/webhook/chamada/[token]
 //   portal/site/link_whatsapp/icarros/napista → heurística em process-whatsapp
+//   catalogo      → heurística em process-whatsapp ("no anúncio da X", frase que
+//                   a página do carro usa quando o link vem com ?o=cat)
 //   whatsapp      → default da coluna (lead que chegou sem rastreio)
 //
 // NÃO confundir com ORIGENS_CONFIAVEIS em lib/lead-gate.ts: aquilo é uma
@@ -77,6 +79,10 @@ export const ORIGENS: Record<string, OrigemCfg> = {
   site: {
     label: "Site / Vitrine", emoji: "🌐", bar: "bg-teal-500", bg: "bg-teal-50",
     text: "text-teal-600", badge: "bg-teal-50 text-teal-600 border-teal-200", hex: "#14b8a6",
+  },
+  catalogo: {
+    label: "Catálogo Meta", emoji: "🛒", bar: "bg-cyan-500", bg: "bg-cyan-50",
+    text: "text-cyan-600", badge: "bg-cyan-50 text-cyan-600 border-cyan-200", hex: "#06b6d4",
   },
   link_whatsapp: {
     label: "Link WhatsApp", emoji: "🔗", bar: "bg-emerald-500", bg: "bg-emerald-50",

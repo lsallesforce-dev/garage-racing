@@ -19,6 +19,10 @@ export const dynamic = "force-dynamic";
 
 interface Props {
   params: Promise<{ tenant: string; id: string }>;
+  // ?o=cat — carimbo que o link do feed de catálogo carrega. Fica no server
+  // (e não com useSearchParams no client) pra não precisar de Suspense nem
+  // arriscar hidratação: a página já é force-dynamic.
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }
 
 // resolveGaragem/GARAGE_COLS moram em lib/vitrine-tenant.ts — esta era a
@@ -67,8 +71,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-export default async function VitrineDetalhePage({ params }: Props) {
+export default async function VitrineDetalhePage({ params, searchParams }: Props) {
   const { tenant, id } = await params;
+  const viaAnuncio = String((await searchParams)?.o ?? "") === "cat";
 
   const { data: veiculo, error } = await supabaseAdmin
     .from("veiculos")
@@ -147,6 +152,7 @@ export default async function VitrineDetalhePage({ params }: Props) {
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }} />
       <Layout
         veiculo={veiculo}
+        viaAnuncio={viaAnuncio}
         videoUrl={videoUrl}
         relacionados={relacionados ?? []}
         nomeEmpresa={garagem?.nome_empresa ?? ""}

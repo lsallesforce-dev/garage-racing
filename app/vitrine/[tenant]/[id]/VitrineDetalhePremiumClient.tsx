@@ -17,7 +17,7 @@ import {
   MessageCircle, Check, Calculator, Settings2, Sparkles, ShieldCheck, MapPin,
 } from "lucide-react";
 import {
-  resolveTheme, themeStyle, fmtBRL, fmtKm, whatsappLink, selosDe, isRecemChegado,
+  resolveTheme, themeStyle, fmtBRL, fmtKm, whatsappLink, selosDe, isRecemChegado, msgInteresseCarro,
   type VitrineTema,
 } from "../../theme";
 import FichaFinanciamento from "@/components/vitrine/FichaFinanciamento";
@@ -34,10 +34,12 @@ interface Props {
   tenant: string;
   vitrineTema?: VitrineTema | null;
   loja: LojaPremium;
+  /** Veio do catálogo pago (?o=cat) — muda a frase da mensagem pronta. */
+  viaAnuncio?: boolean;
 }
 
 export default function VitrineDetalhePremiumClient({
-  veiculo, videoUrl, relacionados, nomeEmpresa, whatsapp, logoUrl, tenant, vitrineTema, loja,
+  veiculo, videoUrl, relacionados, nomeEmpresa, whatsapp, logoUrl, tenant, vitrineTema, loja, viaAnuncio,
 }: Props) {
   const theme = useMemo(() => resolveTheme(vitrineTema), [vitrineTema]);
   // `null` = ficha aberta pelo menu (sem carro); objeto = ficha deste carro.
@@ -67,7 +69,11 @@ export default function VitrineDetalhePremiumClient({
 
   const waHref = whatsappLink(
     whatsapp,
-    `Olá! Vi o *${titulo}${veiculo.versao ? " " + veiculo.versao : ""}${veiculo.ano_modelo ? " " + veiculo.ano_modelo : ""}* na vitrine da ${nomeEmpresa} e tenho interesse. Ainda está disponível?`
+    msgInteresseCarro(
+      `${titulo}${veiculo.versao ? " " + veiculo.versao : ""}${veiculo.ano_modelo ? " " + veiculo.ano_modelo : ""}`,
+      nomeEmpresa,
+      viaAnuncio
+    )
   );
 
   const ficha_: [string, string | null][] = [

@@ -225,7 +225,10 @@ export async function GET(
       v.id,
       titulo.slice(0, 150),
       `${titulo}${specs ? ` — ${specs}` : ""}. Disponível na ${loja}.`.slice(0, 5000),
-      `${base}/${v.id}`,
+      // ?o=cat carimba o lead como vindo do catálogo pago — a página do carro
+      // troca a frase da mensagem pronta e o agente grava origem "catalogo".
+      // Ver msgInteresseCarro em app/vitrine/theme.ts.
+      `${base}/${v.id}?o=cat`,
       marca,
       modelo,
       ano,

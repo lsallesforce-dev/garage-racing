@@ -1639,6 +1639,7 @@ Responda apenas com o JSON, sem markdown.`;
         /webmotors/.test(msgLower)                                 ? "webmotors"     :
         /icarros|i-carros/.test(msgLower)                          ? "icarros"       :
         /napista|na pista/.test(msgLower)                          ? "napista"       :
+        /vi o .+ no an[úu]ncio da/i.test(userMessage)              ? "catalogo"      :
         /vi o .+ na vitrine da/i.test(userMessage)                 ? "site"          :
         /vitrine da /i.test(userMessage)                           ? "site"          :
         /^\[Contexto do link:.*R\$/.test(userMessage)              ? "link_whatsapp" :
