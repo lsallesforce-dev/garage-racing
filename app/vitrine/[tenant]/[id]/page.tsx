@@ -96,7 +96,7 @@ export default async function VitrineDetalhePage({ params, searchParams }: Props
   }
 
   // Depois dos notFound: página que não abriu não é acesso.
-  registrarVisitaVitrine(garagem.user_id, viaAnuncio ? "catalogo" : "direto");
+  await registrarVisitaVitrine(garagem.user_id, viaAnuncio ? "catalogo" : "direto");
 
   const { data: relacionados } = await supabaseAdmin
     .from("veiculos")

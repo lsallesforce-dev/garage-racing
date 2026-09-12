@@ -89,7 +89,7 @@ export default async function VitrineTenantPage({ params }: Props) {
     return <VitrineIndisponivel nomeEmpresa={garagem.nome_empresa} />;
   }
 
-  registrarVisitaVitrine(garagem.user_id, "direto");
+  await registrarVisitaVitrine(garagem.user_id, "direto");
 
   const { data: estoque } = await supabaseAdmin
     .from("veiculos")

@@ -31,17 +31,29 @@ export type OrigemVisita = "catalogo" | "direto";
  * depois que a resposta já foi enviada — contador quebrado não pode derrubar a
  * vitrine de um cliente.
  */
-export function registrarVisitaVitrine(userId: string | null | undefined, origem: OrigemVisita) {
+export async function registrarVisitaVitrine(
+  userId: string | null | undefined,
+  origem: OrigemVisita
+): Promise<void> {
   if (!userId) return;
+  // O user agent é lido AGORA, dentro do request. Ler dentro do after() falha
+  // (o request já acabou) e o erro morria no catch — contador zerado em
+  // silêncio, foi o que aconteceu no primeiro deploy de 12/09.
+  let ua = "";
+  try {
+    ua = (await headers()).get("user-agent") ?? "";
+  } catch {
+    return;
+  }
+  if (!ua || ROBO_RE.test(ua)) return;
+
   after(async () => {
     try {
-      const ua = (await headers()).get("user-agent") ?? "";
-      if (!ua || ROBO_RE.test(ua)) return;
       const { error } = await supabaseAdmin.rpc("registrar_visita_vitrine", {
         p_user_id: userId,
         p_origem: origem,
       });
-      if (error) console.warn("⚠️ [vitrine-visitas]", error.message);
+      if (error) console.warn("⚠️ [vitrine-visitas] rpc:", error.message);
     } catch (e) {
       console.warn("⚠️ [vitrine-visitas]", e);
     }
