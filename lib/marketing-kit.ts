@@ -161,32 +161,28 @@ async function gerarHookEHashtags(v: any, cfg: MarketingCfg): Promise<{ hook: st
   }
 }
 
-// Km entra colado no título, não na linha de specs — "com APENAS X KM!" só
-// quando o km for baixo o bastante pra ser argumento de venda; carro rodado
-// só leva o número puro, sem soar estranho ("apenas 150.000 km" não convence).
-const KM_BAIXO = 30000;
-function tituloComKm(v: any): string {
-  const km = Number(v?.quilometragem_estimada) || 0;
-  if (!km) return tituloVeiculo(v);
-  const kmFmt = km.toLocaleString("pt-BR");
-  return km < KM_BAIXO
-    ? `${tituloVeiculo(v)} com APENAS ${kmFmt} KM!`
-    : `${tituloVeiculo(v)} — ${kmFmt} km rodados`;
-}
-
-// Layout pedido pelo Lucas 02/09 (a esposa dele achou melhor): título já com o
-// km embutido, preço com "Saindo por", specs sem km (já foi pro título), e os
-// opcionais como lista "Destaques do veículo" com marcadores — em vez do hook
-// solto + specs com km + opcionais em linha corrida que tinha antes.
+// Layout pedido pelo Lucas 12/09: título limpo (marca modelo versão - ano/ano
+// modelo) e UMA linha só com ficha e preço juntos —
+//
+//   🚘 FIAT PALIO ELX 1.4 FIRE/30 ANOS F. FLEX 8V 4P - 2007/2008
+//
+//   ⚙️ Manual | Flex | Prata | 💰 R$ 35.990
+//
+// Substitui o layout de 02/09, que tinha km colado no título ("com APENAS X
+// KM!" / "— X km rodados") e o preço numa linha própria com "Saindo por". O km
+// saiu da legenda — quem quer saber pergunta, e a ficha completa está na
+// vitrine. Os opcionais e o rodapé continuam iguais.
 export async function gerarLegenda(v: any, cfg: MarketingCfg): Promise<string> {
   const { hashtags } = await gerarHookEHashtags(v, cfg);
 
   const linhas: string[] = [];
-  linhas.push(`🚘 ${tituloComKm(v)}`, "");
+  linhas.push(`🚘 ${tituloVeiculo(v)}`, "");
   const preco = cfg.mostrarPreco ? precoFormatado(v) : null;
-  if (preco) linhas.push(`Saindo por 💰 ${preco}`, "");
   const specs = [v?.cambio, v?.combustivel, v?.cor].filter(Boolean).join(" | ");
-  if (specs) linhas.push(`⚙️ ${specs}`);
+  // Ficha e preço na MESMA linha. Sem ficha cadastrada, o preço vai sozinho —
+  // "⚙️ 💰 R$ 35.990" ficaria com cara de erro.
+  const fichaComPreco = [specs, preco ? `💰 ${preco}` : null].filter(Boolean).join(" | ");
+  if (fichaComPreco) linhas.push(specs ? `⚙️ ${fichaComPreco}` : fichaComPreco);
   if (v?.opcionais?.length) {
     linhas.push("", "Destaques do veículo:", "");
     linhas.push(...v.opcionais.slice(0, 7).map((o: string) => `* ${o}`));
