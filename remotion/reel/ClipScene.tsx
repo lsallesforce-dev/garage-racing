@@ -42,7 +42,10 @@ export const ClipScene: React.FC<{
   }
   // "corte": op=1, slideX=0, sceneScale=1, blurPx=0 — a sobreposição já é 0, então é corte seco.
 
-  const zoom = interpolate(frame, [0, total], [1.04, 1.12]);
+  // Zoom lento a VELOCIDADE FIXA (1,5%/s, teto 8%). Antes era 1,04→1,12 esticado
+  // no clipe inteiro: num corte de 1,3s os mesmos 8% aconteciam 3x mais rápido, e
+  // somado à câmera na mão o reel parecia tremido e acelerado (Strada, 14/09).
+  const zoom = Math.min(1.02 + 0.015 * (frame / fps), 1.1);
   const lowerY = interpolate(frame, [4, 16], [40, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
 
   return (
