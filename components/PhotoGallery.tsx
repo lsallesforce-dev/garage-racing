@@ -12,9 +12,6 @@ interface PhotoGalleryProps {
   onPhotosUpdated: (newPhotos: string[]) => void;
 }
 
-const OUTPUT_W = 1280;
-const OUTPUT_H = 720;
-
 async function loadImageElement(src: string): Promise<HTMLImageElement> {
   let objectUrl = src;
   try {
@@ -32,24 +29,37 @@ async function loadImageElement(src: string): Promise<HTMLImageElement> {
   });
 }
 
-async function applyWatermark(file: File, logoUrl: string | null | undefined): Promise<Blob> {
+// Moldura da vitrine: card, "recém-chegados" e página do carro são todos 4:3
+// (aspect-[4/3]). Foto wide (16:9 do celular deitado) entrava com object-contain
+// e sobrava faixa desfocada em cima e embaixo — e o logo, carimbado na foto
+// inteira, caía dentro da faixa. Agora corta pro 4:3 PRIMEIRO e só então aplica
+// o logo, que fica no canto da foto que o cliente vê.
+const VITRINE_RATIO = 4 / 3;
+const MAX_W = 1440;
+
+/** Corta pelo centro só o que é MAIS LARGO que 4:3. Foto em pé ou já 4:3 fica
+ *  inteira: cortar em pé pro 4:3 comeria metade do carro. */
+function recorteVitrine(w: number, h: number) {
+  if (w / h <= VITRINE_RATIO + 0.01) return { sx: 0, sy: 0, sw: w, sh: h };
+  const sw = Math.round(h * VITRINE_RATIO);
+  return { sx: Math.round((w - sw) / 2), sy: 0, sw, sh: h };
+}
+
+async function prepararFoto(file: File, logoUrl: string | null | undefined, comLogo: boolean): Promise<Blob> {
   const img = await loadImageElement(URL.createObjectURL(file));
 
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Canvas não suportado");
-  const MAX_DIM = 1280;
-  let scale = 1;
-  if (img.width > MAX_DIM || img.height > MAX_DIM) {
-    scale = Math.min(MAX_DIM / img.width, MAX_DIM / img.height);
-  }
 
-  canvas.width = img.width * scale;
-  canvas.height = img.height * scale;
+  const { sx, sy, sw, sh } = recorteVitrine(img.width, img.height);
+  const scale = Math.min(1, MAX_W / Math.max(sw, sh));
+  canvas.width = Math.round(sw * scale);
+  canvas.height = Math.round(sh * scale);
 
-  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
 
-  if (logoUrl) {
+  if (comLogo && logoUrl) {
     try {
       const logo = await loadImageElement(logoUrl);
       const logoW = Math.round(canvas.width * 0.2);
@@ -101,7 +111,8 @@ export const PhotoGallery = ({
     // dava um "Falha no canvas export" que não dizia nada.
     const jpeg = await paraJpeg(file);
     const fileName = `foto-${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`;
-    const uploadBlob: Blob = watermarkEnabled ? await applyWatermark(jpeg, logoUrl) : jpeg;
+    // Recorte pro 4:3 vale com ou sem marca — a faixa desfocada aparece nos dois.
+    const uploadBlob: Blob = await prepararFoto(jpeg, logoUrl, watermarkEnabled);
 
     const { data, error } = await supabase.storage
       .from("fotos-veiculos")
