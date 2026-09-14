@@ -24,7 +24,7 @@ import {
   type ShotItem,
 } from "@/lib/marketing-shotlist";
 import { Camera, Check, ChevronDown, Images, Loader2, PlayCircle } from "lucide-react";
-import SlotTake from "./captura/SlotTake";
+import SlotTake, { ehVideo } from "./captura/SlotTake";
 import VideoModeloModal from "./captura/VideoModeloModal";
 import VideoUnicoCard from "./captura/VideoUnicoCard";
 
@@ -65,6 +65,8 @@ export default function CapturaGuiada({ veiculoId, capturas, onChange, videoUrl 
   const [modeloAberto, setModeloAberto] = useState(false);
   const [takesAberto, setTakesAberto] = useState(false);
   const [refAtivo, setRefAtivo] = useState<string | null>(null);
+  const [fila, setFila] = useState<string[]>([]);
+  const [arrastandoTakes, setArrastandoTakes] = useState(false);
   const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   function urlDe(shot: ShotItem): string | null {
@@ -161,6 +163,49 @@ export default function CapturaGuiada({ veiculoId, capturas, onChange, videoUrl 
     }
   }
 
+  // Vários takes soltos de uma vez. Arquivo com a tag no nome (ex. "pan-lateral.mp4")
+  // vai pro slot dela; o resto preenche os slots VAZIOS na ordem do reel, arquivos
+  // em ordem de nome (IMG_0001, IMG_0002… = ordem em que foram gravados).
+  // Sobe UM POR VEZ: /api/marketing/capturas lê-modifica-grava o jsonb, e dois
+  // registros simultâneos fazem um apagar o take do outro.
+  async function soltarTakes(files: File[]) {
+    const videos = files.filter(ehVideo).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    if (!videos.length) {
+      setMsg({ tipo: "erro", texto: "Nenhum vídeo nos arquivos soltos." });
+      return;
+    }
+    setTakesAberto(true);
+
+    const tagsPorTamanho = [...SHOT_TAKES].sort((a, b) => b.tag.length - a.tag.length);
+    const plano: { shot: ShotItem; file: File }[] = [];
+    const usados = new Set<string>();
+    const semTag: File[] = [];
+    for (const f of videos) {
+      const nome = f.name.toLowerCase();
+      const shot = tagsPorTamanho.find((s) => !usados.has(s.tag) && nome.includes(s.tag));
+      if (shot) { usados.add(shot.tag); plano.push({ shot, file: f }); } else semTag.push(f);
+    }
+    const vazios = SHOT_TAKES.filter((s) => !usados.has(s.tag) && !urlDe(s));
+    semTag.forEach((f, i) => { if (vazios[i]) plano.push({ shot: vazios[i], file: f }); });
+    const sobraram = Math.max(0, semTag.length - vazios.length);
+
+    if (!plano.length) {
+      setMsg({ tipo: "erro", texto: "Todos os slots já têm take. Remova um ou solte o vídeo em cima do slot que quer trocar." });
+      return;
+    }
+
+    setFila(plano.map((p) => p.shot.tag));
+    for (let i = 0; i < plano.length; i++) {
+      setMsg({ tipo: "ok", texto: `Enviando take ${i + 1} de ${plano.length}...` });
+      await handleFile(plano[i].shot, plano[i].file);
+      setFila((f) => f.filter((t) => t !== plano[i].shot.tag));
+    }
+    setMsg({
+      tipo: sobraram ? "erro" : "ok",
+      texto: `${plano.length} take(s) enviado(s)` + (sobraram ? ` — ${sobraram} ficou(aram) de fora: não há mais slot vazio.` : " ✅"),
+    });
+  }
+
   async function removerTake(shot: ShotItem) {
     setSubindo(shot.tag);
     try {
@@ -221,6 +266,13 @@ export default function CapturaGuiada({ veiculoId, capturas, onChange, videoUrl 
       <button
         type="button"
         onClick={() => inputRefs.current[shot.tag]?.click()}
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => {
+          const f = Array.from(e.dataTransfer.files).find((x) => x.type.startsWith("image/") || /\.(heic|heif)$/i.test(x.name));
+          e.preventDefault();
+          e.stopPropagation();
+          if (f && !busy) handleFile(shot, f);
+        }}
         disabled={busy}
         className={`relative flex min-h-[100px] flex-col items-center justify-center gap-1 rounded-2xl border-2 p-3 text-center transition-all ${
           url ? "border-green-500/60 bg-green-50"
@@ -263,7 +315,8 @@ export default function CapturaGuiada({ veiculoId, capturas, onChange, videoUrl 
   }
 
   return (
-    <div>
+    // Soltar arquivo no vão entre slots não pode fazer o navegador abrir o vídeo.
+    <div onDragOver={(e) => e.preventDefault()} onDrop={(e) => e.preventDefault()}>
       <div className="mb-2 flex items-center justify-between">
         <button
           type="button"
@@ -287,6 +340,18 @@ export default function CapturaGuiada({ veiculoId, capturas, onChange, videoUrl 
       {/* Takes recolhidos por padrão: são 15 slots em 4 blocos e, abertos, sozinhos
           esticam o card mais que todo o resto da aba junto. A barra de progresso
           fica FORA do recolhido — é ela que diz se vale a pena abrir. */}
+      <div
+        onDragOver={(e) => { e.preventDefault(); setArrastandoTakes(true); }}
+        onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setArrastandoTakes(false); }}
+        onDrop={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setArrastandoTakes(false);
+          if (fila.length || subindo) return;
+          soltarTakes(Array.from(e.dataTransfer.files));
+        }}
+        className={`-mx-2 rounded-2xl px-2 transition-colors ${arrastandoTakes ? "bg-red-50/60 outline-dashed outline-2 outline-red-300" : ""}`}
+      >
       <button
         type="button"
         onClick={() => setTakesAberto((v) => !v)}
@@ -295,7 +360,7 @@ export default function CapturaGuiada({ veiculoId, capturas, onChange, videoUrl 
         <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">
           Takes de vídeo{" "}
           <span className="font-bold normal-case text-gray-300">
-            {takesAberto ? "(5-10s cada, celular em pé)" : `${takesOk}/${SHOT_TAKES.length}`}
+            {takesAberto ? "(5-10s cada, celular em pé · arraste vários de uma vez)" : `${takesOk}/${SHOT_TAKES.length} · arraste os vídeos aqui`}
           </span>
         </p>
         <ChevronDown
@@ -353,7 +418,7 @@ export default function CapturaGuiada({ veiculoId, capturas, onChange, videoUrl 
                       key={s.tag}
                       shot={s}
                       url={urlDe(s)}
-                      busy={subindo === s.tag}
+                      busy={subindo === s.tag || fila.includes(s.tag)}
                       erro={erroSlot[s.tag]}
                       refAtivo={refAtivo === s.tag}
                       onRefVisivel={(v) => marcarRefVisivel(s.tag, v)}
@@ -367,6 +432,7 @@ export default function CapturaGuiada({ veiculoId, capturas, onChange, videoUrl 
           })}
         </>
       )}
+      </div>
 
       {msg ? (
         <p className={`mt-2 text-[10px] font-bold ${msg.tipo === "ok" ? "text-green-600" : "text-red-500"}`}>{msg.texto}</p>

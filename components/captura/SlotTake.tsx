@@ -7,7 +7,7 @@
 // Cheio  → preview do próprio take (#t=0.5 pega um frame com imagem, não o preto
 //          do primeiro frame) + regravar/remover.
 
-import React, { useRef } from "react";
+import React, { useRef, useState } from "react";
 import { Loader2, RotateCcw, Trash2, Video } from "lucide-react";
 import { toVideoUrl } from "@/lib/r2-url";
 import { refClipUrl, refPosterUrl, type ShotItem } from "@/lib/marketing-shotlist";
@@ -24,15 +24,33 @@ interface Props {
   onRemover: () => void;
 }
 
+export function ehVideo(f: File): boolean {
+  // .mov/.mts arrastado do Windows às vezes chega com type vazio.
+  return f.type.startsWith("video/") || /\.(mp4|mov|m4v|webm|3gp|mts)$/i.test(f.name);
+}
+
 export default function SlotTake({
   shot, url, busy, erro, refAtivo, onRefVisivel, onArquivo, onRemover,
 }: Props) {
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const [arrastando, setArrastando] = useState(false);
 
   return (
     <div
+      onDragOver={(e) => { e.preventDefault(); if (!busy) setArrastando(true); }}
+      onDragLeave={() => setArrastando(false)}
+      onDrop={(e) => {
+        setArrastando(false);
+        const videos = Array.from(e.dataTransfer.files).filter(ehVideo);
+        // Vários arquivos sobem pro container, que distribui nos slots vazios.
+        if (videos.length !== 1 || busy) return;
+        e.preventDefault();
+        e.stopPropagation();
+        onArquivo(videos[0]);
+      }}
       className={`relative flex min-h-[132px] flex-col overflow-hidden rounded-2xl border-2 transition-all ${
-        url ? "border-green-500/60 bg-black"
+        arrastando ? "border-red-400 bg-red-50 ring-2 ring-red-300"
+          : url ? "border-green-500/60 bg-black"
           : erro ? "border-red-400 bg-red-50"
             : "border-dashed border-gray-300 bg-gray-50 hover:border-gray-400"
       }`}

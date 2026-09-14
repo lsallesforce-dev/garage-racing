@@ -10,6 +10,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Loader2, Scissors, Upload } from "lucide-react";
 import type { MarketingCapturas } from "@/lib/marketing-shotlist";
+import { ehVideo } from "./SlotTake";
 
 interface Props {
   veiculoId: string;
@@ -22,6 +23,7 @@ type Estado = "ocioso" | "subindo" | "processando" | "pronto" | "erro";
 export default function VideoUnicoCard({ veiculoId, temVideoDoAnuncio, onPronto }: Props) {
   const [estado, setEstado] = useState<Estado>("ocioso");
   const [msg, setMsg] = useState<string>("");
+  const [arrastando, setArrastando] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -103,7 +105,19 @@ export default function VideoUnicoCard({ veiculoId, temVideoDoAnuncio, onPronto 
   const ocupado = estado === "subindo" || estado === "processando";
 
   return (
-    <div className="mb-3 rounded-2xl border border-gray-200 bg-white p-3">
+    <div
+      onDragOver={(e) => { e.preventDefault(); if (!ocupado) setArrastando(true); }}
+      onDragLeave={() => setArrastando(false)}
+      onDrop={(e) => {
+        setArrastando(false);
+        const videos = Array.from(e.dataTransfer.files).filter(ehVideo);
+        if (videos.length !== 1 || ocupado) return;
+        e.preventDefault();
+        e.stopPropagation();
+        subirEDecupar(videos[0]);
+      }}
+      className={`mb-3 rounded-2xl border p-3 transition-all ${arrastando ? "border-red-400 bg-red-50" : "border-gray-200 bg-white"}`}
+    >
       <input
         ref={inputRef}
         type="file"
