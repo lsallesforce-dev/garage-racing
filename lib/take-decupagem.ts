@@ -96,7 +96,7 @@ async function ffmpeg(): Promise<string> {
 }
 
 /** Roda ffmpeg e devolve o stderr (é lá que saem showinfo/blackdetect). */
-async function ff(args: string[]): Promise<string> {
+export async function ff(args: string[]): Promise<string> {
   const bin = await ffmpeg();
   try {
     const { stderr } = await exec(bin, args, { maxBuffer: 32 * 1024 * 1024 });

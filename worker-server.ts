@@ -55,7 +55,7 @@ app.post("/reel", async (req, res) => {
     .then((url) => console.log(`✅ [reel ${veiculoId}] pronto: ${url}`))
     .catch(async (e: any) => {
       const msg = e?.message ?? String(e);
-      console.error(`❌ [reel ${veiculoId}] erro:`, msg);
+      console.error(`❌ [reel ${veiculoId}] erro:`, msg, e?.stack ?? "");
       await supabaseAdmin.from("veiculos").update({ marketing_reel_status: "erro" }).eq("id", veiculoId);
     });
 });

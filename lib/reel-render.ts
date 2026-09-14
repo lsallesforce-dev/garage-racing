@@ -7,7 +7,9 @@
 import path from "path";
 import os from "os";
 import { promises as fs } from "fs";
+import { createHash } from "crypto";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { ff } from "@/lib/take-decupagem";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { anoLabelDe, cfgFromRow, cleanMarca, cleanModelo, formatFone, linhaSpecs, precoFormatado } from "@/lib/marketing-kit";
 import { fotoParaCapa } from "@/lib/marketing-capa";
@@ -124,6 +126,45 @@ export async function buildReelProps(veiculo: any, cfgRow: any): Promise<ReelPro
   };
 }
 
+// Versão leve do take pro render. Take gravado direto da câmera do celular vem
+// em 2320x1080 a ~20 Mbps e com fps variável (28,4-29,7); nove desses derrubavam
+// o render no worker (Strada da APROVE, 14/09), enquanto vídeo de WhatsApp
+// (848x480) sempre passou. O mesmo reel renderiza em máquina com folga — é
+// recurso do container, não código. O proxy normaliza: lado curto ≤ 1080,
+// 30 fps constante (OffthreadVideo sofre com fps variável), GOP curto, sem áudio
+// (o clipe é muted). Cacheado no R2 por hash da URL: gerar de novo o mesmo reel
+// não transcodifica outra vez. startFrom continua valendo — a timeline não muda.
+const PROXY_VERSAO = "v1";
+export async function proxyDoTake(src: string, dir: string): Promise<string> {
+  const hash = createHash("sha1").update(`${PROXY_VERSAO}:${src}`).digest("hex");
+  const key = `takes-proxy/${hash}.mp4`;
+  const url = `${R2_PUBLIC_URL}/${key}`;
+
+  const head = await fetch(url, { method: "HEAD" }).catch(() => null);
+  if (head?.ok) return url;
+
+  const resp = await fetch(src);
+  if (!resp.ok) throw new Error(`Não consegui baixar o take (HTTP ${resp.status}): ${src}`);
+  const orig = path.join(dir, `${hash}_orig`);
+  const out = path.join(dir, `${hash}.mp4`);
+  await fs.writeFile(orig, Buffer.from(await resp.arrayBuffer()));
+
+  const stderr = await ff([
+    "-hide_banner", "-y", "-i", orig,
+    "-vf", "scale='if(gt(iw,ih),-2,min(1080,iw))':'if(gt(iw,ih),min(1080,ih),-2)',fps=30",
+    "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-g", "30",
+    "-pix_fmt", "yuv420p", "-an", "-movflags", "+faststart",
+    out,
+  ]);
+  const buf = await fs.readFile(out).catch(() => null);
+  if (!buf?.length) throw new Error(`ffmpeg não gerou o proxy: ${stderr.slice(-300)}`);
+
+  await r2.send(new PutObjectCommand({ Bucket: R2_BUCKET, Key: key, Body: buf, ContentType: "video/mp4" }));
+  await fs.unlink(orig).catch(() => {});
+  await fs.unlink(out).catch(() => {});
+  return url;
+}
+
 // Bundle do Remotion cacheado entre renders (o bundle é caro; o worker é longevo).
 let bundlePromise: Promise<string> | null = null;
 async function getBundle(): Promise<string> {
@@ -155,6 +196,23 @@ export async function renderReel(veiculoId: string): Promise<string> {
 
   const inputProps = await buildReelProps(veiculo, cfgRows?.[0] ?? null);
 
+  // Um por vez: são poucos segundos cada, e em paralelo o ffmpeg disputaria a
+  // mesma memória que o render vai precisar logo depois. Take que não der pra
+  // converter segue com o original — melhor tentar do que falhar antes.
+  const tmpProxy = await fs.mkdtemp(path.join(os.tmpdir(), `proxy_${veiculoId}_`));
+  try {
+    for (const clip of inputProps.clips) {
+      if (!clip.src) continue;
+      try {
+        clip.src = await proxyDoTake(clip.src, tmpProxy);
+      } catch (e: any) {
+        console.warn(`⚠️ [reel ${veiculoId}] proxy falhou, usando original:`, e?.message ?? e);
+      }
+    }
+  } finally {
+    await fs.rm(tmpProxy, { recursive: true, force: true }).catch(() => {});
+  }
+
   const { selectComposition, renderMedia, ensureBrowser } = await import("@remotion/renderer");
 
   // Em ambiente Nix (Railway), o Chrome baixado pelo Remotion pode não linkar —
@@ -174,7 +232,8 @@ export async function renderReel(veiculoId: string): Promise<string> {
     outputLocation: outPath,
     inputProps: props,
     browserExecutable,
-    concurrency: 2,
+    // 1: cada aba do Chrome decodifica vídeo em tamanho real; 2 abas dobravam o pico de memória.
+    concurrency: 1,
   });
 
   const buf = await fs.readFile(outPath);
