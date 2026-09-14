@@ -225,7 +225,8 @@ export const PhotoGallery = ({
     if (isUploading) return;
 
     const files = Array.from(e.dataTransfer.files).filter((f) =>
-      f.type.startsWith("image/")
+      // .heic arrastado no Windows chega com type vazio — sem o nome, sumia calado.
+      (f.type.startsWith("image/") || /\.(heic|heif)$/i.test(f.name))
     );
     if (files.length === 0) return;
 
@@ -308,7 +309,7 @@ export const PhotoGallery = ({
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*"
+              accept="image/*,.heic,.heif"
               multiple
               onChange={handleFileUpload}
               className="hidden"

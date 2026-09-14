@@ -35,6 +35,8 @@ const securityHeaders = [
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
+      // heic-to (conversão de foto HEIC no upload) decodifica num Worker criado de blob:.
+      "worker-src 'self' blob:",
       "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.gemini.google.com https://generativelanguage.googleapis.com https://www.avisaapi.com.br https://graph.facebook.com https://connect.facebook.net https://www.facebook.com https://*.facebook.com https://*.r2.dev https://*.r2.cloudflarestorage.com https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com https://*.g.doubleclick.net https://www.googleadservices.com https://vercel.live",
       "media-src 'self' https: blob:",
       "frame-src 'self' https://www.facebook.com https://vercel.live",

@@ -23,12 +23,15 @@ export async function paraJpeg(file: File, maxLado = MAX_LADO_FOTO): Promise<Fil
   try {
     bmp = await createImageBitmap(file);
   } catch {
-    if (/hei[cf]/i.test(file.type) || /\.hei[cf]$/i.test(file.name)) {
-      throw new Error(
-        "Este navegador não abre HEIC. No iPhone: Ajustes → Câmera → Formatos → 'Mais Compatível'. No PC, converta pra JPG antes de subir."
-      );
+    // Só o Safari decodifica HEIC nativo. Chrome/Edge no Windows e no Android
+    // falham aqui — e é justamente de onde vem a foto do celular Samsung
+    // (20260914_102718.heic, APROVE 14/09). Decodifica com libheif (heic-to).
+    if (!(await pareceHeic(file))) throw new Error("Não consegui ler essa imagem. Use JPG ou PNG.");
+    try {
+      bmp = await createImageBitmap(await heicParaBlob(file));
+    } catch {
+      throw new Error("Não consegui abrir essa foto HEIC. Converta pra JPG e tente de novo.");
     }
-    throw new Error("Não consegui ler essa imagem. Use JPG ou PNG.");
   }
 
   const escala = Math.min(1, maxLado / Math.max(bmp.width, bmp.height));
@@ -46,4 +49,18 @@ export async function paraJpeg(file: File, maxLado = MAX_LADO_FOTO): Promise<Fil
   const blob = await new Promise<Blob | null>((r) => cv.toBlob(r, "image/jpeg", 0.9));
   if (!blob) throw new Error("Não consegui converter a foto");
   return new File([blob], `${file.name.replace(/\.[^.]+$/, "")}.jpg`, { type: "image/jpeg" });
+}
+
+/** Pelo nome/tipo OU pelo cabeçalho: no Windows o .heic costuma chegar com type vazio. */
+async function pareceHeic(file: File): Promise<boolean> {
+  if (/hei[cf]/i.test(file.type) || /\.hei[cf]$/i.test(file.name)) return true;
+  const cab = new TextDecoder("latin1").decode(await file.slice(4, 32).arrayBuffer());
+  return cab.startsWith("ftyp") && /heic|heix|hevc|heim|heis|mif1|msf1/.test(cab);
+}
+
+async function heicParaBlob(file: File): Promise<Blob> {
+  // Build "csp": sem WASM e sem eval — a CSP de produção não libera unsafe-eval.
+  // Import dinâmico: ~3 MB que só baixa quando aparece um HEIC.
+  const { heicTo } = await import("heic-to/csp");
+  return heicTo({ blob: file, type: "image/jpeg", quality: 0.92 });
 }

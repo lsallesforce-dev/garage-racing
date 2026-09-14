@@ -284,7 +284,7 @@ export default function CapturaGuiada({ veiculoId, capturas, onChange, videoUrl 
         <input
           ref={(el) => { inputRefs.current[shot.tag] = el; }}
           type="file"
-          accept="image/*"
+          accept="image/*,.heic,.heif"
           capture="environment"
           className="hidden"
           onChange={(e) => {
