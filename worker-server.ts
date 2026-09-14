@@ -143,4 +143,17 @@ app.post("/worker", async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`🚀 AutoZap Worker rodando na porta ${PORT}`);
+
+  // Render roda em background dentro DESTE processo. Se ele subiu agora, todo
+  // reel que estava "processando" morreu com o processo anterior (deploy ou
+  // restart) e nunca vai gravar "erro" sozinho — libera o botão de tentar de novo.
+  supabaseAdmin
+    .from("veiculos")
+    .update({ marketing_reel_status: "erro" })
+    .eq("marketing_reel_status", "processando")
+    .select("id")
+    .then(({ data, error }) => {
+      if (error) console.error("⚠️ [reel] falha ao liberar renders órfãos:", error.message);
+      else if (data?.length) console.log(`♻️ [reel] ${data.length} render(s) órfão(s) marcado(s) como erro:`, data.map((v) => v.id));
+    });
 });

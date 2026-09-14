@@ -12,6 +12,14 @@ export const dynamic = "force-dynamic";
 const qstash = new Client({ token: process.env.QSTASH_TOKEN! });
 const WORKER_URL = process.env.RAILWAY_WORKER_URL ?? "https://garage-racing-production.up.railway.app";
 
+// Render normal leva poucos minutos (proxies + ~640 frames). Passou disso, o
+// worker morreu no meio (restart/deploy) sem gravar "erro" — a trava vence.
+const TRAVA_MIN = 25;
+function travaVencida(iniciadoEm: string | null | undefined): boolean {
+  if (!iniciadoEm) return true;
+  return Date.now() - new Date(iniciadoEm).getTime() > TRAVA_MIN * 60_000;
+}
+
 export async function GET(req: NextRequest) {
   const veiculoId = req.nextUrl.searchParams.get("veiculoId");
   if (!veiculoId) return NextResponse.json({ error: "veiculoId obrigatório" }, { status: 400 });
@@ -21,12 +29,22 @@ export async function GET(req: NextRequest) {
 
   const { data } = await supabaseAdmin
     .from("veiculos")
-    .select("marketing_reel_status, marketing_reel_url")
+    .select("marketing_reel_status, marketing_reel_url, marketing_reel_iniciado_em")
     .eq("id", veiculoId)
     .single();
 
+  let status = data?.marketing_reel_status ?? null;
+  if (status === "processando" && travaVencida(data?.marketing_reel_iniciado_em)) {
+    status = "erro";
+    await supabaseAdmin
+      .from("veiculos")
+      .update({ marketing_reel_status: "erro" })
+      .eq("id", veiculoId)
+      .eq("marketing_reel_status", "processando");
+  }
+
   return NextResponse.json({
-    status: data?.marketing_reel_status ?? null,
+    status,
     url: data?.marketing_reel_url ?? null,
   });
 }
@@ -40,11 +58,11 @@ export async function POST(req: NextRequest) {
 
   const { data: veiculo } = await supabaseAdmin
     .from("veiculos")
-    .select("marketing_reel_status, video_takes, marketing_capturas")
+    .select("marketing_reel_status, marketing_reel_iniciado_em, video_takes, marketing_capturas")
     .eq("id", veiculoId)
     .single();
 
-  if (veiculo?.marketing_reel_status === "processando") {
+  if (veiculo?.marketing_reel_status === "processando" && !travaVencida(veiculo.marketing_reel_iniciado_em)) {
     return NextResponse.json({ status: "already_processing" }, { status: 202 });
   }
   const temTakes = (veiculo?.video_takes?.length ?? 0) > 0 || (veiculo?.marketing_capturas?.takes?.length ?? 0) > 0;
@@ -56,7 +74,10 @@ export async function POST(req: NextRequest) {
   }
 
   // Marca processando ANTES de publicar — bloqueia double-click
-  await supabaseAdmin.from("veiculos").update({ marketing_reel_status: "processando" }).eq("id", veiculoId);
+  await supabaseAdmin
+    .from("veiculos")
+    .update({ marketing_reel_status: "processando", marketing_reel_iniciado_em: new Date().toISOString() })
+    .eq("id", veiculoId);
 
   await qstash.publishJSON({
     url: `${WORKER_URL}/reel`,
