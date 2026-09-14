@@ -234,7 +234,14 @@ export async function renderReel(veiculoId: string): Promise<string> {
     browserExecutable,
     // 1: cada aba do Chrome decodifica vídeo em tamanho real; 2 abas dobravam o pico de memória.
     concurrency: 1,
+    // Sem teto, o cache de frames do OffthreadVideo cresce com o vídeo e fica
+    // no processo longevo do worker: o 1º reel após o boot passou e o 2º no
+    // mesmo processo morreu (Strada, 14/09). 512 MB segura com folga um reel.
+    offthreadVideoCacheSizeInBytes: 512 * 1024 * 1024,
   });
+  const mb = (n: number) => Math.round(n / 1024 / 1024);
+  const mem = process.memoryUsage();
+  console.log(`📊 [reel ${veiculoId}] memória após render: rss=${mb(mem.rss)}MB heap=${mb(mem.heapUsed)}MB`);
 
   const buf = await fs.readFile(outPath);
   const key = `reels/${veiculoId}/reel_${Date.now()}.mp4`;
