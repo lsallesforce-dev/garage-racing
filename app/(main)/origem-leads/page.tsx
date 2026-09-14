@@ -52,6 +52,8 @@ type Analise = {
     acessos: number;
     /** Quantos desses chegaram pelo link do catálogo pago (?o=cat). */
     acessosCatalogo: number;
+    /** Acessos por origem: instagram, facebook, google, navegacao, catalogo, direto. */
+    acessosPorOrigem?: Record<string, number>;
     delta: { leads: number | null; quentes: number | null; visitas: number | null; vendas: number | null; valor: number | null; acessos: number | null };
   };
   canais: Canal[];
@@ -351,6 +353,37 @@ function OrigemLeadsInner() {
               <CardKpi icone={<DollarSign size={16} />} label="Faturamento" cor="text-emerald-600"
                 valor={formatBRL(data.resumo.valor)} delta={data.resumo.delta.valor} />
             </div>
+
+            {/* ── De onde vêm os acessos ───────────────────────────────────── */}
+            {data.resumo.acessos > 0 && data.resumo.acessosPorOrigem && (
+              <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-6">
+                <h3 className="text-[11px] font-black uppercase tracking-widest text-gray-400 mb-1">De onde vêm os acessos ao site</h3>
+                <p className="text-[9px] text-gray-300 font-bold uppercase tracking-widest mb-4">
+                  "Navegação" é a mesma pessoa clicando de carro em carro — não é gente nova
+                </p>
+                <div className="flex flex-col gap-2">
+                  {Object.entries(data.resumo.acessosPorOrigem)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([k, n]) => {
+                      const rotulo: Record<string, string> = {
+                        instagram: "Instagram", facebook: "Facebook", google: "Google",
+                        whatsapp: "WhatsApp", navegacao: "Navegação dentro do site",
+                        catalogo: "Catálogo pago", direto: "Direto / sem origem",
+                      };
+                      const pct = Math.round((n / data.resumo.acessos) * 100);
+                      return (
+                        <div key={k} className="flex items-center gap-3">
+                          <span className="w-44 text-[10px] font-black uppercase tracking-wide text-gray-600">{rotulo[k] ?? k}</span>
+                          <div className="flex-1 h-2 rounded-full bg-gray-100 overflow-hidden">
+                            <div className="h-full bg-teal-500 rounded-full" style={{ width: `${pct}%` }} />
+                          </div>
+                          <span className="w-24 text-right text-[10px] font-black text-gray-500">{n.toLocaleString("pt-BR")} · {pct}%</span>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
 
             {/* ── Ranking de canais ───────────────────────────────────────── */}
             <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-6">

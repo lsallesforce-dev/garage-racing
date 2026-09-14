@@ -250,6 +250,7 @@ export async function GET(req: NextRequest) {
     leads:   totalLeads,
     acessos:          acessos.total,
     acessosCatalogo:  acessos.catalogo,
+    acessosPorOrigem: acessos.porOrigem,
     quentes: somar(atual, "quentes"),
     visitas: somar(atual, "visitas"),
     vendas:  somar(atual, "vendas"),
