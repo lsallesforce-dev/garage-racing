@@ -388,7 +388,7 @@ function VitrinePublicaInner() {
                   className="bg-white rounded-3xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group flex flex-col"
                 >
                   {/* Imagem */}
-                  <Link href={`/vitrine/${carro.id}`} className="block relative aspect-video overflow-hidden bg-gray-200 flex-shrink-0">
+                  <Link href={`/vitrine/${carro.id}`} prefetch={false} className="block relative aspect-video overflow-hidden bg-gray-200 flex-shrink-0">
                     {img ? (
                       <>
                         {/* Fundo borrado preenche áreas vazias — foto fica INTEIRA */}
@@ -427,7 +427,7 @@ function VitrinePublicaInner() {
 
                   {/* Info */}
                   <div className="p-6 flex flex-col flex-1">
-                    <Link href={`/vitrine/${carro.id}`}>
+                    <Link href={`/vitrine/${carro.id}`} prefetch={false}>
                       <h2 className="text-xl font-black uppercase italic tracking-tight leading-none text-gray-900 group-hover:text-red-600 transition-colors">
                         {carro.marca} {carro.modelo}
                       </h2>

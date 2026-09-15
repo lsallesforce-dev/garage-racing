@@ -404,7 +404,7 @@ function CarCard({
 
   return (
     <article className={cardCls}>
-      <Link href={href} className="relative block aspect-[4/3] bg-[var(--surface-2)] overflow-hidden group">
+      <Link href={href} prefetch={false} className="relative block aspect-[4/3] bg-[var(--surface-2)] overflow-hidden group">
         {img ? (
           <>
             <img src={img} alt="" aria-hidden className="absolute inset-0 w-full h-full object-cover scale-110 blur-2xl opacity-70" />
@@ -439,7 +439,7 @@ function CarCard({
       </Link>
 
       <div className="p-3 sm:p-4 flex flex-col flex-1">
-        <Link href={href} className="min-w-0 block">
+        <Link href={href} prefetch={false} className="min-w-0 block">
           <h3 className="text-[13px] sm:text-[15px] font-black uppercase italic tracking-tight leading-tight truncate hover:text-[var(--brand)] transition-colors">{titulo}</h3>
           <p className="text-[9px] sm:text-[10px] text-[var(--fg-faint)] font-bold uppercase tracking-widest mt-1 truncate">
             {[c.versao, c.ano_modelo].filter(Boolean).join(" • ") || "—"}

@@ -64,7 +64,7 @@ export function CarCardPremium({ c, tenant, nomeEmpresa, whatsapp, novo }: CardP
 
   return (
     <article className="group bg-[var(--surface)] border border-[var(--border)] rounded-2xl overflow-hidden shadow-sm hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 flex flex-col">
-      <Link href={href} className="relative block aspect-[4/3] bg-[var(--surface-2)] overflow-hidden">
+      <Link href={href} prefetch={false} className="relative block aspect-[4/3] bg-[var(--surface-2)] overflow-hidden">
         <Foto c={c} titulo={titulo} className="group-hover:scale-[1.04]" />
 
         <div className="absolute top-2.5 left-2.5 flex flex-col items-start gap-1.5">
@@ -98,7 +98,7 @@ export function CarCardPremium({ c, tenant, nomeEmpresa, whatsapp, novo }: CardP
       </Link>
 
       <div className="p-3.5 sm:p-4 flex flex-col flex-1">
-        <Link href={href} className="block min-w-0">
+        <Link href={href} prefetch={false} className="block min-w-0">
           <h3 className="text-[13px] sm:text-[15px] font-black uppercase italic tracking-tight leading-tight truncate group-hover:text-[var(--brand)] transition-colors">
             {titulo}
           </h3>
@@ -129,6 +129,7 @@ export function CarCardPremium({ c, tenant, nomeEmpresa, whatsapp, novo }: CardP
             <MessageCircle size={12} /> Chamar no WhatsApp
           </a>
           <Link
+            prefetch={false}
             href={href}
             className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-[var(--fg-faint)] hover:text-[var(--brand)] transition-colors w-full text-center"
           >

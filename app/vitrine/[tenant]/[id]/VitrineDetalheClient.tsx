@@ -297,7 +297,7 @@ export default function VitrineDetalheClient({
               {relacionados.map((r) => {
                 const img = r.capa_marketing_url ?? r.fotos?.[0];
                 return (
-                  <Link key={r.id} href={`/vitrine/${tenant}/${r.id}`} className="bg-[var(--surface)] rounded-2xl overflow-hidden border border-[var(--border)] shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all group">
+                  <Link key={r.id} href={`/vitrine/${tenant}/${r.id}`} prefetch={false} className="bg-[var(--surface)] rounded-2xl overflow-hidden border border-[var(--border)] shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all group">
                     <div className="relative aspect-[4/3] bg-[var(--surface-2)] overflow-hidden">
                       {img ? (
                         <>
