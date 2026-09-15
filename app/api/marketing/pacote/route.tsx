@@ -2,6 +2,10 @@
 //   1. Capa templatada 1080x1350 (lib/marketing-capa) → upload no bucket fotos-veiculos.
 //   2. Legenda pronta (corpo determinístico + gancho/hashtags via Gemini) — lib/marketing-kit.
 // Salva marketing_capa_url + marketing_legenda no veículo e retorna ambos.
+//
+// { veiculoId, somenteCapa?: true } — só capa (feed + story) e legenda. Pula os
+// slides 2..N do carrossel (um render + upload por foto da galeria) e as legendas
+// dos takes do reel. Carrossel já existente mantém os slides e só troca o slide 1.
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
@@ -20,7 +24,8 @@ export const maxDuration = 120;
 
 export async function POST(req: NextRequest) {
   try {
-    const { veiculoId } = await req.json();
+    const { veiculoId, somenteCapa: somenteCapaBruto } = await req.json();
+    const somenteCapa = somenteCapaBruto === true;
     if (!veiculoId) return NextResponse.json({ error: "veiculoId obrigatório" }, { status: 400 });
 
     const { error: authError } = await requireVehicleOwner(veiculoId);
@@ -96,15 +101,18 @@ export async function POST(req: NextRequest) {
     // Carrossel de feed: capa + fotos etiquetadas em ordem narrativa + resto da
     // galeria. As fotos cruas são deitadas e o IG força todos os slides no 4:5 do
     // slide 1 — sem enquadrar, o crop dele come a frente/traseira do carro.
-    const carrossel = await montarSlidesCarrossel({
-      slides: montarCarrossel(capaUrl, capturas, veiculo.fotos),
-      veiculoId,
-      veiculo,
-      cfg,
-      logoUri,
-      fontData,
-      ts,
-    });
+    const carrosselAtual: string[] = Array.isArray(veiculo.marketing_carrossel) ? veiculo.marketing_carrossel : [];
+    const carrossel = somenteCapa
+      ? [capaUrl, ...carrosselAtual.slice(1)]
+      : await montarSlidesCarrossel({
+          slides: montarCarrossel(capaUrl, capturas, veiculo.fotos),
+          veiculoId,
+          veiculo,
+          cfg,
+          logoUri,
+          fontData,
+          ts,
+        });
 
     // Legenda do post + legendas de cada take do reel saem juntas: as duas leem a
     // mesma ficha e o vendedor espera o kit COMPLETO no clique. garantirCallouts é
@@ -113,10 +121,12 @@ export async function POST(req: NextRequest) {
     // rodízio antigo de opcionais.
     const [legenda] = await Promise.all([
       gerarLegenda(veiculo, cfg),
-      garantirCallouts(veiculoId, veiculo).catch((e) => {
-        console.warn("⚠️ [pacote] legendas de take falharam:", String(e).slice(0, 160));
-        return null;
-      }),
+      somenteCapa
+        ? Promise.resolve(null)
+        : garantirCallouts(veiculoId, veiculo).catch((e) => {
+            console.warn("⚠️ [pacote] legendas de take falharam:", String(e).slice(0, 160));
+            return null;
+          }),
     ]);
 
     const { error: dbErr } = await supabaseAdmin

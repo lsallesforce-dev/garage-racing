@@ -23,6 +23,7 @@ import {
   Download,
   ExternalLink,
   Film,
+  Image as ImageIcon,
   Loader2,
   Megaphone,
   RefreshCw,
@@ -255,14 +256,16 @@ export default function KitsGaleria() {
     }
   }
 
-  async function gerar(id: string): Promise<boolean> {
+  // somenteCapa: capa + story + legenda, sem os slides do carrossel e sem as
+  // legendas dos takes do reel (ver app/api/marketing/pacote).
+  async function gerar(id: string, somenteCapa = false): Promise<boolean> {
     setGerando((p) => ({ ...p, [id]: true }));
     setErro((p) => ({ ...p, [id]: "" }));
     try {
       const res = await fetch("/api/marketing/pacote", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ veiculoId: id }),
+        body: JSON.stringify({ veiculoId: id, somenteCapa }),
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error ?? `HTTP ${res.status}`);
@@ -640,15 +643,25 @@ export default function KitsGaleria() {
                   />
                 )}
 
-                {/* Gerar / Regerar kit */}
-                <button
-                  onClick={() => gerar(c.id)}
-                  disabled={gerando[c.id]}
-                  className="flex items-center justify-center gap-1.5 rounded-xl bg-gray-900 py-2 font-black uppercase italic text-white transition-all hover:bg-red-600 disabled:opacity-50 text-xs"
-                >
-                  {gerando[c.id] ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                  {gerando[c.id] ? "Gerando..." : temKit ? "Regerar kit" : "Gerar kit"}
-                </button>
+                {/* Gerar / Regerar kit — completo ou só a capa */}
+                <div className="grid grid-cols-[1fr_auto] gap-1.5">
+                  <button
+                    onClick={() => gerar(c.id)}
+                    disabled={gerando[c.id]}
+                    className="flex items-center justify-center gap-1.5 rounded-xl bg-gray-900 py-2 font-black uppercase italic text-white transition-all hover:bg-red-600 disabled:opacity-50 text-xs"
+                  >
+                    {gerando[c.id] ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                    {gerando[c.id] ? "Gerando..." : temKit ? "Regerar kit" : "Gerar kit"}
+                  </button>
+                  <button
+                    onClick={() => gerar(c.id, true)}
+                    disabled={gerando[c.id]}
+                    title="Gera só a capa (feed + story) e a legenda, sem os slides do carrossel"
+                    className="flex items-center justify-center gap-1.5 rounded-xl bg-gray-100 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-gray-700 transition-all hover:bg-gray-200 disabled:opacity-50"
+                  >
+                    <ImageIcon size={13} /> Só capa
+                  </button>
+                </div>
 
                 {/* Preview do kit */}
                 {temKit && (
