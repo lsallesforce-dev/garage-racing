@@ -327,7 +327,9 @@ export default function KitsGaleria() {
       const d = await res.json();
       if (!res.ok) throw new Error(d.error ?? "Erro ao publicar");
       const onde = Object.keys(d.publicado ?? {}).map((k) => (k === "facebook" ? "Facebook" : "Instagram"));
-      setPostado((p) => ({ ...p, [id]: onde.join(" e ") }));
+      // Mostra a Página que recebeu o post: com mais de uma Página na conta,
+      // é assim que se percebe que o post foi pra Página errada (15/09).
+      setPostado((p) => ({ ...p, [id]: `${onde.join(" e ")}${d.pagina ? ` · ${d.pagina}` : ""}` }));
       if (d.avisos?.length) setErro((p) => ({ ...p, [id]: d.avisos.join(" | ") }));
       setTimeout(() => setPostado((p) => ({ ...p, [id]: "" })), 6000);
     } catch (e: any) {
