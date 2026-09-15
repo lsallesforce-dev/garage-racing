@@ -1309,10 +1309,20 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
             if (adName) {
               console.log(`📢 [Ad referral] nome do criativo via Meta API: "${adName}"`);
               const adVehicle = await findVehicleForMedia(adName, tenantUserId);
-              if (adVehicle) {
+              // Mesma trava do 1c: o MODELO do carro achado tem que aparecer no nome do
+              // anúncio. Sem isso, "FIT EX 1.5 - 2018/2019 - R$ 82.990,00" resolvia pro
+              // Virtus (15/09, APROVE) — a busca casa por ano/preço, não por modelo.
+              const normAd = (t: string) => t.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+              const palavrasAd = new Set(normAd(adName).split(/[^a-z0-9]+/));
+              const modeloBateAd = !!adVehicle && normAd(adVehicle.modelo ?? "")
+                .split(/[^a-z0-9]+/).filter(w => w.length >= 3 && !/^\d/.test(w))
+                .some(w => palavrasAd.has(w));
+              if (adVehicle && modeloBateAd) {
                 adVeiculoId = adVehicle.id;
                 adVeiculoNome = `${adVehicle.marca} ${adVehicle.modelo}`;
                 console.log(`📢 [Ad referral] veiculo_id resolvido via Meta API: ${adVeiculoId} (${adVeiculoNome})`);
+              } else if (adVehicle) {
+                console.warn(`⚠️ [Ad referral] Meta API: nome "${adName}" casou com "${adVehicle.marca} ${adVehicle.modelo}" mas o modelo não bate — ignorado`);
               } else {
                 console.log(`📢 [Ad referral] Meta API retornou nome "${adName}" mas nenhum veículo encontrado no estoque`);
               }
