@@ -5,7 +5,8 @@
 //
 // { veiculoId, somenteCapa?: true } — só capa (feed + story) e legenda. Pula os
 // slides 2..N do carrossel (um render + upload por foto da galeria) e as legendas
-// dos takes do reel. Carrossel já existente mantém os slides e só troca o slide 1.
+// dos takes do reel. O carrossel fica só com a capa (a loja edita as fotos antes
+// e, nesses posts, publica só a capa).
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
@@ -101,9 +102,8 @@ export async function POST(req: NextRequest) {
     // Carrossel de feed: capa + fotos etiquetadas em ordem narrativa + resto da
     // galeria. As fotos cruas são deitadas e o IG força todos os slides no 4:5 do
     // slide 1 — sem enquadrar, o crop dele come a frente/traseira do carro.
-    const carrosselAtual: string[] = Array.isArray(veiculo.marketing_carrossel) ? veiculo.marketing_carrossel : [];
     const carrossel = somenteCapa
-      ? [capaUrl, ...carrosselAtual.slice(1)]
+      ? [capaUrl]
       : await montarSlidesCarrossel({
           slides: montarCarrossel(capaUrl, capturas, veiculo.fotos),
           veiculoId,
