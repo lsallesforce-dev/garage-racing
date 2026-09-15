@@ -13,7 +13,9 @@ import { linhaSpecs, precoFormatado, tituloVeiculo, type MarketingCfg } from "@/
 // Formatos de saída: feed 4:5 (post/carrossel) e story 9:16 (Stories/status).
 // FOTO_H = área exclusiva da foto; o restante é o painel de infos.
 // No story, o painel ganha respiro extra embaixo (barra de resposta do IG).
-export type CapaFormato = "feed" | "story";
+// quadrado 1:1 = card de CARROSSEL DE ANÚNCIO (a Meta força 1:1 nele). A capa
+// 4:5 encolhida num quadrado ficava pequena, com tarja dos dois lados (15/09).
+export type CapaFormato = "feed" | "story" | "quadrado";
 // GRAD_TOPO/GRAD_BASE = altura das faixas pretas translúcidas sobre a foto
 // (sombra do topo + transição foto→painel). Eram fixas (180/120) nos dois
 // formatos; o story tem FOTO_H 43% maior, então a mesma faixa em px ficava
@@ -22,6 +24,7 @@ export type CapaFormato = "feed" | "story";
 const DIMS: Record<CapaFormato, { W: number; H: number; FOTO_H: number; PAD_BOTTOM: number; GRAD_TOPO: number; GRAD_BASE: number }> = {
   feed:  { W: 1080, H: 1350, FOTO_H: 860,  PAD_BOTTOM: 44,  GRAD_TOPO: 180, GRAD_BASE: 120 },
   story: { W: 1080, H: 1920, FOTO_H: 1230, PAD_BOTTOM: 150, GRAD_TOPO: 258, GRAD_BASE: 172 },
+  quadrado: { W: 1080, H: 1080, FOTO_H: 630, PAD_BOTTOM: 34, GRAD_TOPO: 140, GRAD_BASE: 96 },
 };
 
 // Anti-SSRF: só baixamos imagens do nosso próprio storage (regra do CLAUDE.md).
@@ -86,6 +89,9 @@ function areaFoto(p: {
   /** Brilho do fundo desfocado. A capa mantém 0.55 (valor original); o slide
    *  usa 0.45 — com painel de opcionais, fundo mais fundo dá mais contraste. */
   brilhoFundo?: number;
+  /** Altura do enquadramento no "cover" (0% = topo). 62% come céu no 4:5; na
+   *  janela baixa do quadrado cortava o teto do carro, lá usa menos. */
+  fotoY?: string;
   W: number;
   FOTO_H: number;
   GRAD_TOPO: number;
@@ -138,7 +144,7 @@ function areaFoto(p: {
               width: W,
               height: FOTO_H,
               objectFit: fotoFit,
-              objectPosition: fotoFit === "cover" ? "50% 62%" : "50% 50%",
+              objectPosition: fotoFit === "cover" ? `50% ${p.fotoY ?? "62%"}` : "50% 50%",
               backgroundColor: fotoFit === "contain" ? "transparent" : "#16161C",
             }}
           />
@@ -262,7 +268,7 @@ export function renderCapa(opts: {
           position: "relative",
         }}
       >
-        {areaFoto({ foto, logoUri, cfg, cor, mostraBranding, W, FOTO_H, GRAD_TOPO, GRAD_BASE })}
+        {areaFoto({ foto, logoUri, cfg, cor, mostraBranding, W, FOTO_H, GRAD_TOPO, GRAD_BASE, fotoY: opts.formato === "quadrado" ? "30%" : undefined })}
 
         {/* ── Painel de informações (base sólida — nunca cobre o carro) ── */}
         <div

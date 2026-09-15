@@ -1051,6 +1051,28 @@ function fixHistoryLoops(historico: any[], context: string): any[] {
   return [...sanitized, correcao];
 }
 
+/** O modelo do carro (palavra de 3+ letras, não número) aparece no texto?
+ *  Trava contra a busca por ano/preço casar um carro de outro modelo. */
+function modeloApareceNoTexto(modelo: string | null | undefined, texto: string): boolean {
+  const norm = (t: string) => t.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+  const palavras = new Set(norm(texto).split(/[^a-z0-9]+/));
+  return norm(modelo ?? "").split(/[^a-z0-9]+/)
+    .filter(w => w.length >= 3 && !/^\d/.test(w))
+    .some(w => palavras.has(w));
+}
+
+/** Tira do começo da mensagem os blocos que o sistema injeta (anúncio, link),
+ *  mesmo quando têm várias linhas. O texto do anúncio NÃO é fala do cliente. */
+function semBlocosDeContexto(msg: string): string {
+  let t = msg;
+  for (let i = 0; i < 4; i++) {
+    const antes = t;
+    t = t.replace(/^\s*\[(?:Contexto do link|Lead veio do anúncio|Veículo identificado pelo anúncio)[\s\S]*?\]\s*/, "");
+    if (t === antes) break;
+  }
+  return t;
+}
+
 // ─── Processamento Principal ──────────────────────────────────────────────────
 
 export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<void> {
@@ -1283,6 +1305,19 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
       console.log(`📢 [Ad referral] veiculo_id resolvido via meta_campanhas: ${adVeiculoId} (${adVeiculoNome ?? "nome não resolvido"})`);
     }
 
+    // Prioridade 1a2: headline do referral. No carrossel é o nome do CARD que o
+    // cliente tocou ("Fiat Uno Attractive 2021 · R$ 47.990") — mais confiável que
+    // ler a miniatura com o Gemini, que em 15/09 leu "Argo" num card do Uno.
+    // Headline genérico ("Converse conosco") não passa na trava do modelo e segue.
+    if (!adVeiculoId && adReferral.headline) {
+      const vHeadline = await findVehicleForMedia(adReferral.headline, tenantUserId);
+      if (vHeadline && modeloApareceNoTexto(vHeadline.modelo, adReferral.headline)) {
+        adVeiculoId = vHeadline.id;
+        adVeiculoNome = `${vHeadline.marca} ${vHeadline.modelo}`;
+        console.log(`📢 [Ad referral] veiculo_id resolvido pelo headline: ${adVeiculoId} (${adVeiculoNome})`);
+      }
+    }
+
     // Prioridade 1b: anúncio criado fora do AutoZap — consulta criativo via Meta Graph API
     // Usa o meta_ads_token do tenant para buscar o nome do anúncio e resolver o veículo.
     if (!adVeiculoId) {
@@ -1312,11 +1347,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
               // Mesma trava do 1c: o MODELO do carro achado tem que aparecer no nome do
               // anúncio. Sem isso, "FIT EX 1.5 - 2018/2019 - R$ 82.990,00" resolvia pro
               // Virtus (15/09, APROVE) — a busca casa por ano/preço, não por modelo.
-              const normAd = (t: string) => t.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
-              const palavrasAd = new Set(normAd(adName).split(/[^a-z0-9]+/));
-              const modeloBateAd = !!adVehicle && normAd(adVehicle.modelo ?? "")
-                .split(/[^a-z0-9]+/).filter(w => w.length >= 3 && !/^\d/.test(w))
-                .some(w => palavrasAd.has(w));
+              const modeloBateAd = !!adVehicle && modeloApareceNoTexto(adVehicle.modelo, adName);
               if (adVehicle && modeloBateAd) {
                 adVeiculoId = adVehicle.id;
                 adVeiculoNome = `${adVehicle.marca} ${adVehicle.modelo}`;
@@ -1611,7 +1642,7 @@ Responda apenas com o JSON, sem markdown.`;
       // 2. cliente diz "Ok" → conta zera de novo → recebe outro FU
       // Caso real (553484435698): cliente recebeu 6 follow-ups em 15 dias por isso.
       const userMsgTrim = (userMessage ?? "").trim();
-      const userMsgClean = userMsgTrim.replace(/^\[(?:Contexto do link|Lead veio do anúncio)[^\n]*\n?/m, "").trim();
+      const userMsgClean = semBlocosDeContexto(userMsgTrim).trim();
       // Aceita variações com letras repetidas: Simm, Okk, Issoo
       const ehRespostaMinima = userMsgClean.length <= 25 &&
         /^(s[ií]m+|n[ãa]o+|ok+|okay+|cert[oa]+|clar[oa]+|t[áa]+|tudo\s+bem|aham+|uhum+|bom\s+dia|boa\s+tarde|boa\s+noite|valeu+|obrigad[oa]+|tchau+|at[ée]\s+mais|entendi+|combinado+|beleza+|positivo+|isso+|isso\s+mesmo|exato+)[.!?\s]*$/i.test(userMsgClean);
@@ -2353,8 +2384,10 @@ Responda apenas com o JSON, sem markdown.`;
   // acione envio de mídia acidentalmente na primeira mensagem de um lead CTWA.
   // Também strip "[Cliente enviou foto(s) do veículo]" — é contexto interno para a IA,
   // não um pedido de foto do estoque. Sem isso, cada foto do cliente dispara envio de fotos do estoque.
-  const mensagemClientePura = userMessage
-    .replace(/^\[(?:Contexto do link|Lead veio do anúncio)[^\n]*\n?/m, "")
+  // O bloco do anúncio tem VÁRIAS linhas (a legenda inteira). A regex antiga
+  // tirava só a 1ª, e o "💳 Financiamento com entrada" da legenda disparava o
+  // stand-by de financiamento (15.c) em todo lead dos carrosséis (15/09).
+  const mensagemClientePura = semBlocosDeContexto(userMessage)
     .replace(/\[Cliente enviou foto\(s\) do veículo\]/g, "")
     .trim();
   const mensagemLower = mensagemClientePura.toLowerCase();
@@ -2424,7 +2457,7 @@ Responda apenas com o JSON, sem markdown.`;
   // Usa só o texto digitado pelo cliente — strip do contexto injetado
   // ([Contexto do link:...], [Lead veio do anúncio:...]) para evitar falsos
   // positivos com specs do veículo (ex: "Câmbio Automático" na ficha).
-  const textoClientePosvenda = userMessage.replace(/^\[(?:Contexto do link|Lead veio do anúncio)[^\n]*(?:\n(?!\[)[^\n]*)*\n?/m, "").trim().toLowerCase();
+  const textoClientePosvenda = semBlocosDeContexto(userMessage).trim().toLowerCase();
 
   // Gatilhos FORTES — defeito inequívoco. Disparam pós-venda sozinhos.
   const gatilhosDefeito = [
@@ -2608,7 +2641,7 @@ Responda apenas com o JSON, sem markdown.`;
   // Strip prefixo de anúncio também da mensagem anterior (evita falso clientePediuFotoAntes
   // quando a msg CTWA anterior tinha "fotos" no texto do link, ex: "Confira as fotos do HR-V")
   const ultimaMsgClienteRaw = historico.filter((h: any) => h.role === "user").slice(-2, -1)[0]?.parts?.[0]?.text ?? "";
-  const ultimaMsgCliente = ultimaMsgClienteRaw.replace(/^\[(?:Contexto do link|Lead veio do anúncio)[^\n]*\n?/m, "").trim().toLowerCase();
+  const ultimaMsgCliente = semBlocosDeContexto(ultimaMsgClienteRaw).trim().toLowerCase();
   const clientePediuFotoAntes = gatilhosFoto.some((g) => ultimaMsgCliente.includes(g));
   const clientePediuVideoAntes = gatilhosVideo.some((g) => ultimaMsgCliente.includes(g));
 
@@ -2776,7 +2809,7 @@ Responda apenas com o JSON, sem markdown.`;
         // 2. Busca direta no DB — só quando a mensagem nomeia um carro específico
         // Usa apenas o texto digitado pelo cliente (sem contexto de anúncio injetado)
         // para evitar que tokens do link preview identifiquem o carro errado em mensagens vagas
-        const msgSemContexto = userMessage.replace(/^\[(?:Contexto do link|Lead veio do anúncio)[^\n]*\n?/m, "").trim();
+        const msgSemContexto = semBlocosDeContexto(userMessage).trim();
         const veiculoMidia = msgSemContexto ? await findVehicleForMedia(msgSemContexto, tenantUserId) : null;
 
         // 3. Confirmação vaga ("sim"/"manda"/"pode") sem nome de carro — a pista de
@@ -2957,7 +2990,7 @@ Responda apenas com o JSON, sem markdown.`;
   if (clientePediuVideo) {
     // Vídeo: veiculoPrincipal tem prioridade absoluta para mensagens vagas.
     // Se o cliente pediu um carro diferente, usa findVehicleForMedia (nunca hitsTextuais).
-    const msgSemContextoVideo = userMessage.replace(/^\[(?:Contexto do link|Lead veio do anúncio)[^\n]*\n?/m, "").trim();
+    const msgSemContextoVideo = semBlocosDeContexto(userMessage).trim();
     // O vídeo tem que ser do MESMO carro cujas fotos acabaram de sair — senão
     // "manda foto do Onix" mandaria o vídeo do carro em foco, que pode ser outro.
     const veiculoParaVideo = veiculoDaFoto ?? (clientePediuCarroDiferente
