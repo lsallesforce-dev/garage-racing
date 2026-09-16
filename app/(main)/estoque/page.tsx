@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import { useUserRole } from "@/components/SidebarWrapper";
 import PublicarMetaButton from "@/components/PublicarMetaButton";
-import { midiaDoVeiculo, melhorFormato } from "@/lib/veiculo-midia";
+import { COLUNAS_MIDIA, midiaDoVeiculo, melhorFormato } from "@/lib/veiculo-midia";
 import { Car, Check, Download, Loader2, Megaphone, Plus, RotateCcw, Store, Trash2, X, Zap } from "lucide-react";
 
 /**
@@ -76,6 +76,15 @@ function AnunciarEstoque({ carro }: { carro: any }) {
   );
 }
 
+// Colunas da LISTA. Nunca voltar pro select("*"): ele trazia junto a coluna
+// `embedding` (vetor de 1536 dims) de cada carro — 699 kB dos 1.051 kB da
+// resposta, num campo que esta tela nem usa. Com o banco sob carga (16/09, pico
+// de 796 chamadas em /auth/v1/user em 35 min) a query passou de 1s para 25-45s
+// e o estoque ficava so rodando o spinner. Com as colunas explicitas: 132 kB.
+const COLUNAS_LISTA =
+  "id, marca, modelo, versao, ano, ano_fabricacao, ano_modelo, preco_sugerido, " +
+  "preco_venda_final, data_venda, status_venda, created_at, " + COLUNAS_MIDIA;
+
 export default function ListaEstoque() {
   const { effectiveUserId, isVendedor } = useUserRole();
   const [carros, setCarros] = useState<any[]>([]);
@@ -110,7 +119,7 @@ export default function ListaEstoque() {
       setLoading(true);
       const { data } = await supabase
         .from('veiculos')
-        .select('*')
+        .select(COLUNAS_LISTA)
         .eq('user_id', effectiveUserId)
         .order('status_venda', { ascending: true })
         .order('created_at', { ascending: false });
