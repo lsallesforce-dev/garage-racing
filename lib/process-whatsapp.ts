@@ -2812,7 +2812,7 @@ Responda apenas com o JSON, sem markdown.`;
         const msgSemContexto = semBlocosDeContexto(userMessage).trim();
         const veiculoMidia = msgSemContexto ? await findVehicleForMedia(msgSemContexto, tenantUserId) : null;
 
-        // 3. Confirmação vaga ("sim"/"manda"/"pode") sem nome de carro — a pista de
+        // 3. Pedido de foto que não nomeia carro ("sim", "tem fotos?") — a pista de
         // qual carro está viva só no que o PRÓPRIO AGENTE ofereceu por último, não
         // no texto do cliente (que não nomeia nada). Sem isso cai direto no
         // veiculoPrincipal, que só migra pro carro novo DEPOIS que uma foto dele é
@@ -2827,14 +2827,28 @@ Responda apenas com o JSON, sem markdown.`;
         //    entrar em `veiculosContexto` pra essa mensagem.
         // 2) `findVehicleForMedia` já tem fuzzy-correction de typo testada — não
         //    reinventar isso aqui.
-        const veiculoOfertaAgente = (!veiculoMidia && msgConfirmacao && ultimaMsgAgenteSozinha)
+        // 16/09: a MESMA armadilha aparece sem confirmação vaga nenhuma. O cliente
+        // recusou o carro do anúncio ("Gostaria de mais novo"), o agente ofereceu o
+        // HB20 Comfort 2024 e ele perguntou "Tem fotos?" — que não é msgConfirmacao
+        // (tem "?") e não nomeia carro — e saíram as 11 fotos do HB20X 2015, o carro
+        // que ele tinha acabado de recusar. Todo pedido de foto que não nomeia carro
+        // tem a pista viva só na oferta do agente, seja ele "sim" ou "tem fotos?".
+        const ofertaBruta = (!veiculoMidia && ultimaMsgAgenteSozinha)
           ? await findVehicleForMedia(ultimaMsgAgenteSozinha, tenantUserId)
           : null;
+        // ...com uma trava: findVehicleForMedia casa por token solto (ano, cor,
+        // "automático"), e numa frase inteira do agente isso devolve carro errado —
+        // "HB20X Premium 1.6 automático 2015, branco" devolvia o Renegade Longitude
+        // 2015 (medido). Só aceita se uma palavra do MODELO achado está na frase.
+        const veiculoOfertaAgente =
+          ofertaBruta && modeloApareceNoTexto(ofertaBruta.modelo, ultimaMsgAgenteSozinha)
+            ? ofertaBruta
+            : null;
 
         if (veiculoMidia) {
           console.log(`📸 [Foto] Selecionado por findVehicleForMedia: ${veiculoMidia.marca} ${veiculoMidia.modelo} (id: ${veiculoMidia.id})`);
         } else if (veiculoOfertaAgente) {
-          console.log(`📸 [Foto] Confirmação vaga — usando o carro que o agente ofereceu por último: ${veiculoOfertaAgente.marca} ${veiculoOfertaAgente.modelo} (id: ${veiculoOfertaAgente.id})`);
+          console.log(`📸 [Foto] Pedido sem carro nomeado — usando o carro que o agente ofereceu por último: ${veiculoOfertaAgente.marca} ${veiculoOfertaAgente.modelo} (id: ${veiculoOfertaAgente.id})`);
         } else if (veiculoPrincipal) {
           console.log(`📸 [Foto] Usando veiculoPrincipal: ${veiculoPrincipal.marca} ${veiculoPrincipal.modelo} (id: ${veiculoPrincipal.id})`);
         } else {
