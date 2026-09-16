@@ -2797,7 +2797,14 @@ Responda apenas com o JSON, sem markdown.`;
 
       const scoredContexto = veiculosContexto
         .map(v => ({ v, score: scoreVeiculo(v) }))
-        .filter(({ score }) => score > 0)
+        // PISO 50 = pelo menos UMA palavra do nome (ou o ano) apareceu na mensagem.
+        // Com `> 0` o boost de +5 do veiculoPrincipal (que e so criterio de desempate)
+        // bastava pra ele "ganhar" sozinho — entao TODA mensagem sem nome de carro
+        // parava aqui no carro velho e os passos 2 e 3 abaixo nunca rodavam. Era isso
+        // que fazia a IA mandar foto de outro carro desde sempre. Caso real (APROVE,
+        // 16/09, Thalita): agente ofereceu a Strada Ranch, cliente disse "Tem foto?",
+        // log "Selecionado por match de nome (score=5)" -> Strada Freedom do anuncio.
+        .filter(({ score }) => score >= 50)
         .sort((a, b) => b.score - a.score);
 
       const veiculoNomeado = scoredContexto[0]?.v;
