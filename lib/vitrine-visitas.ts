@@ -89,15 +89,28 @@ export async function registrarVisitaVitrine(
   let ua = "";
   let referer = "";
   let hostAtual = "";
+  let metodo = "GET";
+  let idioma = "";
   try {
     const h = await headers();
     ua = h.get("user-agent") ?? "";
     referer = h.get("referer") ?? "";
     hostAtual = (h.get("x-forwarded-host") ?? h.get("host") ?? "").split(":")[0];
+    // `x-metodo` vem do proxy.ts — Server Component não enxerga o método sozinho.
+    metodo = (h.get("x-metodo") ?? "GET").toUpperCase();
+    idioma = h.get("accept-language") ?? "";
   } catch {
     return;
   }
   if (!ua || ROBO_RE.test(ua)) return;
+  // Duas peneiras a mais, pro que sobra de robô com user agent de navegador
+  // (17/09: ~115 acessos/dia "diretos", com a IA mandando o link só 3-5x por dia):
+  //   - HEAD/OPTIONS não é visita: é link-checker perguntando se a página existe.
+  //     No log apareciam de 10 em 10 minutos, sempre no mesmo carro.
+  //   - sem Accept-Language: navegador manda sempre, robô quase nunca se lembra.
+  // Nenhuma das duas guarda nada — continuam só decidindo se conta ou não.
+  if (metodo !== "GET") return;
+  if (!idioma) return;
   const origemFinal = deduzirOrigem(origem, referer, ua, hostAtual);
 
   after(async () => {

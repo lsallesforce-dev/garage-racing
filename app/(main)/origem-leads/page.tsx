@@ -50,6 +50,9 @@ type Analise = {
     canais: number; conversao: number;
     /** Acessos à vitrine no período (agregado por dia, migration 059). */
     acessos: number;
+    /** Acessos de hoje e de ontem — o período sozinho parece contador ao vivo. */
+    acessosHoje?: number;
+    acessosOntem?: number;
     /** Quantos desses chegaram pelo link do catálogo pago (?o=cat). */
     acessosCatalogo: number;
     /** Acessos por origem: instagram, facebook, google, navegacao, catalogo, direto. */
@@ -357,9 +360,16 @@ function OrigemLeadsInner() {
             {/* ── De onde vêm os acessos ───────────────────────────────────── */}
             {data.resumo.acessos > 0 && data.resumo.acessosPorOrigem && (
               <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-6">
-                <h3 className="text-[11px] font-black uppercase tracking-widest text-gray-400 mb-1">De onde vêm os acessos ao site</h3>
-                <p className="text-[9px] text-gray-300 font-bold uppercase tracking-widest mb-4">
-                  "Navegação" é a mesma pessoa clicando de carro em carro — não é gente nova
+                <h3 className="text-[11px] font-black uppercase tracking-widest text-gray-400 mb-1">
+                  De onde vêm os acessos ao site · {data.periodo.label}
+                </h3>
+                {/* Soma do período, não fluxo de agora: o catálogo pago entregou 748
+                    acessos em 12-13/09, parou, e o número continuou na tela por dias. */}
+                <p className="text-[9px] text-gray-300 font-bold uppercase tracking-widest mb-1">
+                  Soma do período — não é o que está entrando agora
+                </p>
+                <p className="text-[9px] text-gray-400 font-black uppercase tracking-widest mb-4">
+                  Hoje {(data.resumo.acessosHoje ?? 0).toLocaleString("pt-BR")} · ontem {(data.resumo.acessosOntem ?? 0).toLocaleString("pt-BR")}
                 </p>
                 <div className="flex flex-col gap-2">
                   {Object.entries(data.resumo.acessosPorOrigem)

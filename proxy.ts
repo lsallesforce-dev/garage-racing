@@ -298,6 +298,19 @@ function passaDiretoNaVitrine(pathname: string): boolean {
   );
 }
 
+/**
+ * Repassa o MÉTODO HTTP pra dentro da request.
+ *
+ * Server Component não enxerga o método — só headers. E o contador da vitrine
+ * precisa disso: robô de link-checking pede `HEAD` na página a cada poucos
+ * minutos e isso entrava no número de "acessos" como se fosse gente.
+ */
+function comMetodo(request: NextRequest): Headers {
+  const h = new Headers(request.headers);
+  h.set("x-metodo", request.method);
+  return h;
+}
+
 // ─── Proxy Principal ──────────────────────────────────────────────────────────
 
 export async function proxy(request: NextRequest) {
@@ -358,7 +371,9 @@ export async function proxy(request: NextRequest) {
       const rewriteUrl = request.nextUrl.clone();
       rewriteUrl.pathname = `/vitrine/${subdomain}${pathname === "/" ? "" : pathname}`;
 
-      const response = NextResponse.rewrite(rewriteUrl);
+      const response = NextResponse.rewrite(rewriteUrl, {
+        request: { headers: comMetodo(request) },
+      });
       response.headers.set("x-tenant-slug", subdomain);
       return response;
     }
@@ -390,7 +405,9 @@ export async function proxy(request: NextRequest) {
       ? pathname
       : `${base}${pathname === "/" ? "" : pathname}`;
 
-    const response = NextResponse.rewrite(rewriteUrl);
+    const response = NextResponse.rewrite(rewriteUrl, {
+      request: { headers: comMetodo(request) },
+    });
     response.headers.set("x-tenant-slug", slug);
     return response;
   }
@@ -400,6 +417,7 @@ export async function proxy(request: NextRequest) {
   // (necessário para proteger rotas de vendedores no MainLayout)
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-pathname", pathname);
+  requestHeaders.set("x-metodo", request.method);
 
   let supabaseResponse = NextResponse.next({ request: { headers: requestHeaders } });
 

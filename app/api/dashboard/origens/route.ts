@@ -241,14 +241,23 @@ export async function GET(req: NextRequest) {
   // Acessos da vitrine (migration 059). Fora do Map de canais de propósito:
   // acesso não é lead, é o degrau ANTES dele — é o que responde se o problema
   // está no anúncio (pouca gente entra) ou na página (entra e não fala).
-  const [acessos, acessosAnterior] = await Promise.all([
+  // `acessos` é a SOMA do período. Sem hoje/ontem ao lado, o número parece um
+  // contador ao vivo: o catálogo pago entregou 748 acessos em 12-13/09, parou, e
+  // dias depois o painel ainda mostrava "748" — lido como tráfego chegando agora.
+  const hojeBRT = diaBRT(new Date());
+  const ontemBRT = diaBRT(new Date(Date.now() - 86400000));
+  const [acessos, acessosAnterior, dHoje, dOntem] = await Promise.all([
     visitasNoPeriodo(userId, diaBRT(periodo.inicio), diaBRT(periodo.fim)),
     visitasNoPeriodo(userId, diaBRT(periodo.inicioAnterior), diaBRT(new Date(periodo.inicio.getTime() - 1))),
+    visitasNoPeriodo(userId, hojeBRT, hojeBRT),
+    visitasNoPeriodo(userId, ontemBRT, ontemBRT),
   ]);
 
   const resumo = {
     leads:   totalLeads,
     acessos:          acessos.total,
+    acessosHoje:      dHoje.total,
+    acessosOntem:     dOntem.total,
     acessosCatalogo:  acessos.catalogo,
     acessosPorOrigem: acessos.porOrigem,
     quentes: somar(atual, "quentes"),
