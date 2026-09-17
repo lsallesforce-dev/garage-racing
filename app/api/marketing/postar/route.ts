@@ -13,13 +13,14 @@ import { requireAuth, getEffectiveUserId, requireVehicleOwner } from "@/lib/api-
 import { midiaDoVeiculo, COLUNAS_MIDIA } from "@/lib/veiculo-midia";
 import {
   resolverPaginaParaPostar, postarNoFacebook, postarNoInstagram,
-  type DestinoPost, type FormatoPost,
+  usaVideo, type DestinoPost, type FormatoPost,
 } from "@/lib/meta-organico";
 
 export const dynamic = "force-dynamic";
 // 10 imagens pra subir + a espera do Instagram processar cada container (o
-// publish antes disso falha com 9007). 60s ficou apertado com carrossel cheio.
-export const maxDuration = 120;
+// publish antes disso falha com 9007). Reels é pior: a Meta BAIXA e
+// TRANSCODIFICA o vídeo antes de liberar, o que passa fácil de 1 min.
+export const maxDuration = 300;
 
 const BUCKET = "fotos-veiculos";
 const PREFIXO_PUBLICO = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${BUCKET}/`;
@@ -67,7 +68,8 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const veiculoId: string = body?.veiculoId;
     const destinos: DestinoPost[] = Array.isArray(body?.destinos) ? body.destinos : [];
-    const formato: FormatoPost = body?.formato === "story" ? "story" : "feed";
+    const FORMATOS: FormatoPost[] = ["feed", "story", "reels", "story_video"];
+    const formato: FormatoPost = FORMATOS.includes(body?.formato) ? body.formato : "feed";
 
     if (!veiculoId) return NextResponse.json({ error: "veiculoId obrigatório" }, { status: 400 });
     if (!destinos.length) return NextResponse.json({ error: "Escolha ao menos um destino" }, { status: 400 });
@@ -93,7 +95,13 @@ export async function POST(req: NextRequest) {
         ? [midia.storyKit ?? midia.capaKit ?? midia.fotoCrua].filter(Boolean) as string[]
         : (midia.carrossel.length ? midia.carrossel : [midia.capaKit ?? midia.fotoCrua].filter(Boolean) as string[]);
 
-    if (!imagens.length) {
+    // Reels e story em vídeo usam o REEL do kit (midia.reel só vem preenchido
+    // quando o worker terminou: marketing_reel_status = "pronto").
+    const videoUrl = usaVideo(formato) ? midia.reel : null;
+    if (usaVideo(formato) && !videoUrl) {
+      return NextResponse.json({ error: "Este carro ainda não tem reel pronto — gere o reel antes." }, { status: 400 });
+    }
+    if (!usaVideo(formato) && !imagens.length) {
       return NextResponse.json({ error: "Este carro não tem arte pronta — gere o Kit de Postagem antes." }, { status: 400 });
     }
 
@@ -127,8 +135,8 @@ export async function POST(req: NextRequest) {
     const erros: string[] = [];
 
     if (destinos.includes("facebook")) {
-      if (formato === "story") {
-        erros.push("Story no Facebook ainda não é suportado pela API.");
+      if (formato !== "feed") {
+        erros.push("No Facebook, por enquanto, só o post de feed — story e reels saem só no Instagram.");
       } else {
         try {
           const r = await postarNoFacebook({ pageId: pagina.pageId, pageToken: pagina.pageToken, imagens, legenda });
@@ -146,9 +154,10 @@ export async function POST(req: NextRequest) {
         erros.push("Nenhuma conta do Instagram vinculada a esta Página do Facebook.");
       } else {
         try {
-          const imagensIg = await Promise.all(imagens.map(jpegParaInstagram));
+          const imagensIg = usaVideo(formato) ? [] : await Promise.all(imagens.map(jpegParaInstagram));
           const r = await postarNoInstagram({
-            igUserId: pagina.igUserId, pageToken: pagina.pageToken, imagens: imagensIg, legenda, formato,
+            igUserId: pagina.igUserId, pageToken: pagina.pageToken,
+            imagens: imagensIg, videoUrl, legenda, formato,
           });
           resultado.instagram = { id: r.mediaId, permalink: r.permalink };
         } catch (e: any) {

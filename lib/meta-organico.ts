@@ -17,7 +17,18 @@
 const GRAPH = "https://graph.facebook.com/v23.0";
 
 export type DestinoPost = "facebook" | "instagram";
-export type FormatoPost = "feed" | "story";
+/**
+ * feed         → fotos do kit no feed (Face e/ou Insta)
+ * story        → arte 9:16 como story
+ * reels        → o REEL (vídeo) do kit publicado como Reels do Instagram
+ * story_video  → o mesmo reel publicado como story em vídeo
+ */
+export type FormatoPost = "feed" | "story" | "reels" | "story_video";
+
+/** Formatos que usam o VÍDEO do kit em vez das artes. */
+export function usaVideo(f: FormatoPost): boolean {
+  return f === "reels" || f === "story_video";
+}
 
 async function post(path: string, token: string, body: Record<string, any>) {
   const res = await fetch(`${GRAPH}/${path}?access_token=${encodeURIComponent(token)}`, {
@@ -65,12 +76,12 @@ async function esperarContainer(id: string, token: string, tetoMs = 25000): Prom
     const r = await get(id, token, { fields: "status_code,status" });
     if (r.status_code === "FINISHED") return;
     if (r.status_code === "ERROR" || r.status_code === "EXPIRED") {
-      throw new Error(`O Instagram não conseguiu processar a imagem: ${r.status ?? r.status_code}`);
+      throw new Error(`O Instagram não conseguiu processar a mídia: ${r.status ?? r.status_code}`);
     }
     await new Promise((s) => setTimeout(s, espera));
     espera = Math.min(espera * 1.5, 3000);
   }
-  throw new Error("O Instagram demorou demais para processar as imagens. Tente de novo em um minuto.");
+  throw new Error("O Instagram demorou demais para processar a mídia. Tente de novo em um minuto.");
 }
 
 /**
@@ -206,9 +217,27 @@ export async function postarNoInstagram(p: {
   igUserId: string;
   pageToken: string;
   imagens: string[];
+  /** Reel do kit — obrigatório quando o formato é `reels` ou `story_video`. */
+  videoUrl?: string | null;
   legenda: string;
   formato: FormatoPost;
 }): Promise<{ mediaId: string; permalink: string }> {
+  // ── Vídeo: Reels ou Story em vídeo ──────────────────────────────────────────
+  // Mesmo fluxo de dois tempos das fotos, mas a Meta BAIXA e TRANSCODIFICA o
+  // vídeo — demora bem mais que imagem, daí o teto de espera maior (90s).
+  if (usaVideo(p.formato)) {
+    if (!p.videoUrl) throw new Error("Este carro ainda não tem reel pronto.");
+    const c = await post(`${p.igUserId}/media`, p.pageToken, {
+      media_type: p.formato === "reels" ? "REELS" : "STORIES",
+      video_url: p.videoUrl,
+      // Story não leva legenda (o Instagram ignora); Reels leva.
+      ...(p.formato === "reels" ? { caption: p.legenda } : {}),
+    });
+    await esperarContainer(c.id, p.pageToken, 90000);
+    const r = await post(`${p.igUserId}/media_publish`, p.pageToken, { creation_id: c.id });
+    return { mediaId: r.id, permalink: await linkDaMidia(r.id, p.pageToken) };
+  }
+
   const imagens = p.imagens.filter(Boolean).slice(0, 10);
   if (!imagens.length) throw new Error("Nenhuma imagem para publicar.");
 

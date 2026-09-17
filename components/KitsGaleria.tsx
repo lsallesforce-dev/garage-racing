@@ -38,7 +38,7 @@ interface PostPublicado {
   destino: "facebook" | "instagram";
   post_id: string;
   permalink: string;
-  formato: "feed" | "story";
+  formato: "feed" | "story" | "reels" | "story_video";
   em: string;
   removido_em: string | null;
 }
@@ -198,7 +198,10 @@ export default function KitsGaleria() {
 
   /** Posts desse carro que ainda estão publicados (feed; story do IG expira em 24h). */
   function noAr(c: CarroKit): PostPublicado[] {
-    return (c.marketing_posts ?? []).filter((p) => p && !p.removido_em && p.formato !== "story");
+    // Story (arte ou vídeo) some sozinho em 24h — não entra no "no ar".
+    return (c.marketing_posts ?? []).filter(
+      (p) => p && !p.removido_em && p.formato !== "story" && p.formato !== "story_video",
+    );
   }
 
   function desde(iso: string): string {
@@ -338,7 +341,11 @@ export default function KitsGaleria() {
   }
 
   /** Publica o kit como post normal na Página e/ou no Instagram da loja. */
-  async function postarAgora(id: string, destinos: ("facebook" | "instagram")[], formato: "feed" | "story") {
+  async function postarAgora(
+    id: string,
+    destinos: ("facebook" | "instagram")[],
+    formato: "feed" | "story" | "reels" | "story_video",
+  ) {
     setPostando((p) => ({ ...p, [id]: true }));
     setErro((p) => ({ ...p, [id]: "" }));
     try {
@@ -352,7 +359,10 @@ export default function KitsGaleria() {
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error ?? "Erro ao publicar");
-      const onde = Object.keys(d.publicado ?? {}).map((k) => (k === "facebook" ? "Facebook" : "Instagram"));
+      const nomeFormato = formato === "reels" ? "Reels" : formato.startsWith("story") ? "Story" : "";
+      const onde = Object.keys(d.publicado ?? {}).map(
+        (k) => (k === "facebook" ? "Facebook" : "Instagram") + (nomeFormato ? " (" + nomeFormato + ")" : ""),
+      );
       // Mostra a Página que recebeu o post: com mais de uma Página na conta,
       // é assim que se percebe que o post foi pra Página errada (15/09).
       if (d.posts) patchCarro(id, { marketing_posts: d.posts });
@@ -813,6 +823,29 @@ export default function KitsGaleria() {
                         </button>
                         <button onClick={() => gerarReel(c.id)} disabled={reelBusy[c.id]} title="Regerar reel" className="flex items-center justify-center rounded-xl bg-gray-900 px-3 py-2.5 text-white hover:bg-red-600 disabled:opacity-50">
                           {reelBusy[c.id] ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                        </button>
+                      </div>
+
+                      {/* O mesmo vídeo nos dois lugares do Instagram. Reels fica
+                          no perfil pra sempre; story some em 24h — por isso o
+                          story não entra no aviso "no ar" nem na limpeza da venda. */}
+                      <div className="mt-2 flex items-center gap-2">
+                        <button
+                          onClick={() => postarAgora(c.id, ["instagram"], "reels")}
+                          disabled={!!postando[c.id]}
+                          title="Publica o reel do kit como Reels no Instagram"
+                          className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gray-900 py-2.5 text-[9px] font-black uppercase tracking-widest text-white hover:bg-red-600 disabled:opacity-50"
+                        >
+                          {postando[c.id] ? <Loader2 size={12} className="animate-spin" /> : <Film size={12} />}
+                          {postando[c.id] ? "Postando..." : "Reels no Insta"}
+                        </button>
+                        <button
+                          onClick={() => postarAgora(c.id, ["instagram"], "story_video")}
+                          disabled={!!postando[c.id]}
+                          title="Publica o mesmo vídeo como story (some em 24h)"
+                          className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gray-100 py-2.5 text-[9px] font-black uppercase tracking-widest text-gray-600 hover:bg-gray-200 disabled:opacity-40"
+                        >
+                          <Send size={12} /> Story com o vídeo
                         </button>
                       </div>
                     </>
