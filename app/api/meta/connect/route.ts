@@ -26,7 +26,13 @@ export async function GET(req: NextRequest) {
     // pages_manage_posts + instagram_content_publish = postar orgânico pelo
     // Kit (lib/meta-organico.ts). Escopo novo NÃO entra em token já emitido:
     // quem conectou antes precisa reconectar em Configurações.
-    scope:         "ads_management,pages_manage_ads,business_management,pages_show_list,pages_read_engagement,instagram_basic,pages_manage_posts,instagram_content_publish",
+    // instagram_manage_contents = APAGAR o post do Instagram quando o carro é
+    // vendido (app/api/veiculo/vender). No Facebook o pages_manage_posts já
+    // apaga; o Instagram exige essa permissão à parte. Ainda não aprovada em
+    // App Review — mas já vale para quem tem cargo no app (admin/testador),
+    // que é como a APROVE usa hoje. Para os demais a Meta simplesmente não
+    // concede o escopo e o login segue normal.
+    scope:         "ads_management,pages_manage_ads,business_management,pages_show_list,pages_read_engagement,instagram_basic,pages_manage_posts,instagram_content_publish,instagram_manage_contents",
     response_type: "code",
     state:         userId,
   });
