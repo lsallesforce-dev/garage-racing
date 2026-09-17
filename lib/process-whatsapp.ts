@@ -1061,6 +1061,42 @@ function modeloApareceNoTexto(modelo: string | null | undefined, texto: string):
     .some(w => palavras.has(w));
 }
 
+/** Distância de edição <= 1 (typo de uma letra). */
+function distancia1(a: string, b: string): boolean {
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0, j = 0, dif = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { i++; j++; continue; }
+    if (++dif > 1) return false;
+    if (a.length > b.length) i++;
+    else if (a.length < b.length) j++;
+    else { i++; j++; }
+  }
+  return dif + (a.length - i) + (b.length - j) <= 1;
+}
+
+/**
+ * O carro que a busca devolveu é MESMO o que o texto cita?
+ *
+ * `findVehicleForMedia` casa por token solto e quase nunca devolve null: em
+ * 17/09 ela respondeu Fox pra "Tá bom" e Tucson pra "Só preciso da estrada pra
+ * trabalho", e saíram 18 fotos do carro errado nas duas vezes. A resposta dela
+ * só vale se alguma palavra do MODELO reaparece no texto: igual (3+ letras,
+ * cobre Uno/Fox/Gol) ou, pra palavras de 5+ letras, contida numa palavra do
+ * texto ("estrada" contém "strada") ou a um typo de distância 1 ("Freedon" ≈
+ * "Freedom") — a correção de typo da busca não pode regredir.
+ */
+function modeloBateNoTexto(modelo: string | null | undefined, texto: string): boolean {
+  const norm = (t: string) => t.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+  const palavras = norm(texto).split(/[^a-z0-9]+/).filter(Boolean);
+  const doModelo = norm(modelo ?? "").split(/[^a-z0-9]+/).filter(w => w.length >= 3 && !/^\d/.test(w));
+  return doModelo.some(w =>
+    palavras.some(p =>
+      p === w || (w.length >= 5 && p.length >= 5 && (p.includes(w) || w.includes(p) || distancia1(p, w))),
+    ),
+  );
+}
+
 /** Tira do começo da mensagem os blocos que o sistema injeta (anúncio, link),
  *  mesmo quando têm várias linhas. O texto do anúncio NÃO é fala do cliente. */
 function semBlocosDeContexto(msg: string): string {
@@ -2625,6 +2661,10 @@ Responda apenas com o JSON, sem markdown.`;
   //
   // Fix: aceitar mensagem CURTA (≤ 6 palavras) que contenha palavra positiva E não tenha
   // palavra interrogativa (que indicaria mudança de assunto, ex: "Quero saber o preço").
+  // "preciso" saiu da lista de positivas em 17/09: é palavra de NECESSIDADE, não
+  // de consentimento. "Só preciso da estrada pra trabalho" (6 palavras, passava no
+  // limite) virava confirmação e, como o agente tinha citado foto antes, disparou
+  // um despejo de 18 fotos do carro errado. Quem quer mídia diz sim/manda/pode.
   const msgConfirmacao = (() => {
     const msg = userMessage.trim();
     const palavras = msg.split(/\s+/);
@@ -2634,7 +2674,7 @@ Responda apenas com o JSON, sem markdown.`;
     // "mm" quebra a word boundary depois de "sim". Agora aceita repetição.
     // Caso real: Valdene (5516999778070) disse "Simm" depois de "Quer ver as fotos?"
     // e o sistema não enviou.
-    const temPositiva = /\b(s[ií]m+|envi[ae]+|envia+r|mand[ae]+|manda+r|enviar+|pod[ei]+|quer[oei]+a?|queri[ae]+|gostari[ae]+|vai+|clar[oa]+|ok+|okay+|isso+|bora+|aham+|uhum+|positivo+|cert[oa]+|preciso+|t[áa]\s*bom|com\s+certeza|por\s+favor|please)\b/i.test(msg);
+    const temPositiva = /\b(s[ií]m+|envi[ae]+|envia+r|mand[ae]+|manda+r|enviar+|pod[ei]+|quer[oei]+a?|queri[ae]+|gostari[ae]+|vai+|clar[oa]+|ok+|okay+|isso+|bora+|aham+|uhum+|positivo+|cert[oa]+|t[áa]\s*bom|com\s+certeza|por\s+favor|please)\b/i.test(msg);
     const temInterrogativa = /\b(quanto|qual|como|onde|por\s*qu[eê]|porqu[eê]|porque|quando|cad[eê]|aceita|tem\s+como|d[áa]\s+pra)\b/i.test(msg) || msg.includes("?");
     return temPositiva && !temInterrogativa;
   })();
@@ -2817,7 +2857,11 @@ Responda apenas com o JSON, sem markdown.`;
         // Usa apenas o texto digitado pelo cliente (sem contexto de anúncio injetado)
         // para evitar que tokens do link preview identifiquem o carro errado em mensagens vagas
         const msgSemContexto = semBlocosDeContexto(userMessage).trim();
-        const veiculoMidia = msgSemContexto ? await findVehicleForMedia(msgSemContexto, tenantUserId) : null;
+        const midiaBruta = msgSemContexto ? await findVehicleForMedia(msgSemContexto, tenantUserId) : null;
+        // Sem esta trava, mensagem que não cita carro nenhum ainda voltava com um:
+        // "Tá bom" -> Fox e "Só preciso da estrada pra trabalho" -> Tucson (17/09),
+        // 18 fotos do carro errado em cada uma.
+        const veiculoMidia = midiaBruta && modeloBateNoTexto(midiaBruta.modelo, msgSemContexto) ? midiaBruta : null;
 
         // 3. Pedido de foto que não nomeia carro ("sim", "tem fotos?") — a pista de
         // qual carro está viva só no que o PRÓPRIO AGENTE ofereceu por último, não
@@ -2848,7 +2892,7 @@ Responda apenas com o JSON, sem markdown.`;
         // "HB20X Premium 1.6 automático 2015, branco" devolvia o Renegade Longitude
         // 2015 (medido). Só aceita se uma palavra do MODELO achado está na frase.
         const veiculoOfertaAgente =
-          ofertaBruta && modeloApareceNoTexto(ofertaBruta.modelo, ultimaMsgAgenteSozinha)
+          ofertaBruta && modeloBateNoTexto(ofertaBruta.modelo, ultimaMsgAgenteSozinha)
             ? ofertaBruta
             : null;
 
