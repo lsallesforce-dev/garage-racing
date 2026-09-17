@@ -21,6 +21,47 @@ export const dynamic = "force-dynamic";
 // publish antes disso falha com 9007). 60s ficou apertado com carrossel cheio.
 export const maxDuration = 120;
 
+const BUCKET = "fotos-veiculos";
+const PREFIXO_PUBLICO = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${BUCKET}/`;
+
+/**
+ * Versão JPEG da arte, para o Instagram.
+ *
+ * O IG baixa a imagem da URL que a gente manda, e engasga com o PNG do kit:
+ * 17/09, slide de 1,9 MB com canal alfa, erro 9004/2207052 ("Não foi possível
+ * obter a mídia deste URI"). O MESMO arquivo passa numa tentativa e falha na
+ * outra — com 10 slides em paralelo, a chance de um falhar é alta. A doc do IG
+ * pede JPEG, e converter ainda derruba o peso (1,9 MB → ~250 kB), o que torna o
+ * download da Meta rápido e confiável.
+ *
+ * O Facebook aceita o PNG numa boa — por isso a conversão vale só pro IG.
+ * Falhou a conversão? Devolve a URL original: melhor tentar do que não postar.
+ */
+async function jpegParaInstagram(url: string): Promise<string> {
+  try {
+    if (!/\.png(\?|$)/i.test(url) || !url.startsWith(PREFIXO_PUBLICO)) return url;
+    const caminhoJpg = url.slice(PREFIXO_PUBLICO.length).split("?")[0].replace(/\.png$/i, ".jpg");
+
+    // Já convertida antes (o lojista republica o mesmo carro) — reusa.
+    const { data: existente } = await supabaseAdmin.storage.from(BUCKET).list(
+      caminhoJpg.split("/").slice(0, -1).join("/"),
+      { search: caminhoJpg.split("/").pop() },
+    );
+    if (existente?.length) return PREFIXO_PUBLICO + caminhoJpg;
+
+    const png = Buffer.from(await (await fetch(url)).arrayBuffer());
+    const sharp = (await import("sharp")).default;
+    const jpg = await sharp(png).flatten({ background: "#ffffff" }).jpeg({ quality: 88 }).toBuffer();
+    const { error } = await supabaseAdmin.storage.from(BUCKET)
+      .upload(caminhoJpg, jpg, { contentType: "image/jpeg", upsert: true });
+    if (error) throw error;
+    return PREFIXO_PUBLICO + caminhoJpg;
+  } catch (e: any) {
+    console.warn("⚠️ [marketing/postar] conversão pra JPEG falhou, indo de PNG:", e?.message ?? e);
+    return url;
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -103,8 +144,9 @@ export async function POST(req: NextRequest) {
         erros.push("Nenhuma conta do Instagram vinculada a esta Página do Facebook.");
       } else {
         try {
+          const imagensIg = await Promise.all(imagens.map(jpegParaInstagram));
           const r = await postarNoInstagram({
-            igUserId: pagina.igUserId, pageToken: pagina.pageToken, imagens, legenda, formato,
+            igUserId: pagina.igUserId, pageToken: pagina.pageToken, imagens: imagensIg, legenda, formato,
           });
           resultado.instagram = r.mediaId;
         } catch (e: any) {
