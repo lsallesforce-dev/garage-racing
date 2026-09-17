@@ -46,6 +46,33 @@ async function get(path: string, token: string, params: Record<string, string> =
   return data;
 }
 
+/**
+ * Espera o container do Instagram ficar pronto.
+ *
+ * O upload do IG é assíncrono: `/media` devolve o id na hora, mas a Meta ainda
+ * está BAIXANDO a imagem da URL. Publicar antes disso falha com 9007/2207027
+ * ("Media ID is not available" / "A mídia não está pronta para ser publicada").
+ * Foi o que derrubou o post do Cronos na APROVE (17/09) — o Facebook saiu, o
+ * Instagram não, porque o código publicava no mesmo instante em que criava.
+ *
+ * As artes do kit são PNG de ~1,8 MB; com 10 imagens a Meta leva alguns
+ * segundos por container.
+ */
+async function esperarContainer(id: string, token: string, tetoMs = 25000): Promise<void> {
+  const limite = Date.now() + tetoMs;
+  let espera = 800;
+  while (Date.now() < limite) {
+    const r = await get(id, token, { fields: "status_code,status" });
+    if (r.status_code === "FINISHED") return;
+    if (r.status_code === "ERROR" || r.status_code === "EXPIRED") {
+      throw new Error(`O Instagram não conseguiu processar a imagem: ${r.status ?? r.status_code}`);
+    }
+    await new Promise((s) => setTimeout(s, espera));
+    espera = Math.min(espera * 1.5, 3000);
+  }
+  throw new Error("O Instagram demorou demais para processar as imagens. Tente de novo em um minuto.");
+}
+
 export interface PaginaParaPostar {
   pageId: string;
   pageToken: string;
@@ -142,6 +169,7 @@ export async function postarNoInstagram(p: {
       image_url: imagens[0],
       media_type: "STORIES",
     });
+    await esperarContainer(c.id, p.pageToken);
     const r = await post(`${p.igUserId}/media_publish`, p.pageToken, { creation_id: c.id });
     return { mediaId: r.id };
   }
@@ -151,6 +179,7 @@ export async function postarNoInstagram(p: {
       image_url: imagens[0],
       caption: p.legenda,
     });
+    await esperarContainer(c.id, p.pageToken);
     const r = await post(`${p.igUserId}/media_publish`, p.pageToken, { creation_id: c.id });
     return { mediaId: r.id };
   }
@@ -162,11 +191,14 @@ export async function postarNoInstagram(p: {
       )
     )
   );
+  // Os filhos precisam estar prontos ANTES do container pai — o pai só junta ids.
+  await Promise.all(filhos.map((id) => esperarContainer(id, p.pageToken)));
   const pai = await post(`${p.igUserId}/media`, p.pageToken, {
     media_type: "CAROUSEL",
     children: filhos,
     caption: p.legenda,
   });
+  await esperarContainer(pai.id, p.pageToken);
   const r = await post(`${p.igUserId}/media_publish`, p.pageToken, { creation_id: pai.id });
   return { mediaId: r.id };
 }

@@ -17,7 +17,9 @@ import {
 } from "@/lib/meta-organico";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60; // subir 10 imagens pra Meta passa dos 10s padrão
+// 10 imagens pra subir + a espera do Instagram processar cada container (o
+// publish antes disso falha com 9007). 60s ficou apertado com carrossel cheio.
+export const maxDuration = 120;
 
 export async function POST(req: NextRequest) {
   try {
