@@ -4,7 +4,56 @@ import { sendAvisaMessage } from "@/lib/avisa";
 import { buscarLeadsOrfaos } from "@/lib/leads";
 import { requireVehicleOwner } from "@/lib/api-auth";
 import { pausarCampanhasDoVeiculo } from "@/lib/meta-campanhas";
+import { apagarPost, resolverPaginaParaPostar } from "@/lib/meta-organico";
 import { NextRequest, NextResponse } from "next/server";
+
+/**
+ * Tira do ar os posts orgânicos do carro vendido.
+ *
+ * NUNCA lança — dar baixa no carro não pode depender da Meta estar de pé. O que
+ * não sair fica marcado e volta na resposta com o permalink, pro gerente apagar
+ * na mão (é o caso do Instagram hoje: apagar exige a permissão
+ * `instagram_manage_contents`, que o app ainda não tem).
+ */
+async function removerPostsDoVeiculo(
+  veiculoId: string,
+  userId: string,
+): Promise<{ removidos: number; pendentes: { destino: string; permalink: string; motivo: string }[] }> {
+  const pendentes: { destino: string; permalink: string; motivo: string }[] = [];
+  let removidos = 0;
+  try {
+    const { data: rows } = await supabaseAdmin
+      .from("veiculos").select("marketing_posts").eq("id", veiculoId).limit(1);
+    const posts: any[] = Array.isArray(rows?.[0]?.marketing_posts) ? rows![0].marketing_posts : [];
+    const noAr = posts.filter((p) => p?.post_id && !p.removido_em);
+    if (!noAr.length) return { removidos: 0, pendentes: [] };
+
+    const { data: cfg } = await supabaseAdmin
+      .from("config_garage").select("meta_ads_token, meta_access_token")
+      .eq("user_id", userId).order("created_at", { ascending: false }).limit(1);
+    const token = cfg?.[0]?.meta_ads_token || cfg?.[0]?.meta_access_token;
+    if (!token) return { removidos: 0, pendentes: noAr.map((p) => ({ destino: p.destino, permalink: p.permalink ?? "", motivo: "Facebook não conectado" })) };
+
+    const { data: pgs } = await supabaseAdmin
+      .from("meta_paginas").select("page_id").eq("user_id", userId).limit(1);
+    const pagina = await resolverPaginaParaPostar(token, pgs?.[0]?.page_id);
+
+    const agora = new Date().toISOString();
+    for (const p of noAr) {
+      try {
+        await apagarPost(p.post_id, pagina.pageToken);
+        p.removido_em = agora;
+        removidos++;
+      } catch (e: any) {
+        pendentes.push({ destino: p.destino, permalink: p.permalink ?? "", motivo: e?.message ?? "falhou" });
+      }
+    }
+    await supabaseAdmin.from("veiculos").update({ marketing_posts: posts }).eq("id", veiculoId);
+  } catch (e: any) {
+    console.error("❌ [vender] remover posts orgânicos:", e?.message ?? e);
+  }
+  return { removidos, pendentes };
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -71,6 +120,12 @@ export async function POST(req: NextRequest) {
       console.log(`⏸️ [vender] Meta Ads do veículo ${id}: ${pausadas} pausada(s), ${falhas} falha(s)`);
     }
 
+    // 2d. Tira do ar os posts ORGÂNICOS do Face/Insta (migration 061).
+    // O pago já para em 2c; o post continuava no feed trazendo mensagem sobre
+    // carro que não existe mais. Nunca bloqueia a venda: o que falhar é
+    // reportado na resposta com o link, pro gerente apagar na mão.
+    const postagens = await removerPostsDoVeiculo(id, veiculo.user_id);
+
     // 3. Registrar no histórico de vendas (vendas_concluidas)
     // ANTES isto rodava só `if (veiculo.vendedor_responsavel_id)` — e como
     // nenhum tenant preenche vendedor responsável (0 de 33 veículos na APROVE),
@@ -117,10 +172,14 @@ export async function POST(req: NextRequest) {
     // Executa as notificações em paralelo
     await Promise.allSettled(notificationPromises);
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       notifiedCount: leads.length,
-      veiculo: nomeCarro
+      veiculo: nomeCarro,
+      postsRemovidos: postagens.removidos,
+      // O que não deu pra apagar volta com o link — hoje é o Instagram, que
+      // exige `instagram_manage_contents` (App Review pendente).
+      postsPendentes: postagens.pendentes,
     });
   } catch (error: any) {
     console.error("Venda API Error:", error);

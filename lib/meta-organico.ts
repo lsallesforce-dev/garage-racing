@@ -73,6 +73,53 @@ async function esperarContainer(id: string, token: string, tetoMs = 25000): Prom
   throw new Error("O Instagram demorou demais para processar as imagens. Tente de novo em um minuto.");
 }
 
+/**
+ * Tira do ar um post publicado (Facebook ou Instagram).
+ *
+ * Usado quando o carro é VENDIDO: o anúncio pago já era pausado
+ * (lib/meta-campanhas.ts), mas o post orgânico continuava no feed atraindo
+ * mensagem sobre carro que não existe mais.
+ *
+ * ⚠️ Facebook funciona com o que a gente já tem (`pages_manage_posts`).
+ * O Instagram exige a permissão **`instagram_manage_contents`**, que o app
+ * ainda NÃO tem (hoje só `instagram_basic` + `instagram_content_publish`) —
+ * precisa de App Review. Até lá a chamada falha e o post do IG tem que sair na
+ * mão; por isso o permalink fica guardado em `veiculos.marketing_posts`.
+ */
+export async function apagarPost(postId: string, pageToken: string): Promise<void> {
+  const res = await fetch(`${GRAPH}/${postId}?access_token=${encodeURIComponent(pageToken)}`, {
+    method: "DELETE",
+  });
+  const data = await res.json().catch(() => ({}));
+  if (data?.error) {
+    const e = data.error;
+    console.error(`[meta-organico DELETE ${postId}]`, JSON.stringify(e));
+    throw new Error(e.error_user_msg || e.message);
+  }
+}
+
+/**
+ * Link do post da Página. O id vem como `{pageId}_{postId}` e é isso mesmo que
+ * o facebook.com/ aceita na URL.
+ */
+function linkDoPost(id: string): string {
+  return `https://www.facebook.com/${id}`;
+}
+
+/**
+ * Link do post no Instagram. Só dá pra saber DEPOIS de publicado (a Meta monta
+ * o shortcode), então é uma chamada extra — barata, e é o que permite abrir o
+ * post direto da galeria e apagar na mão quando o carro vende.
+ */
+async function linkDaMidia(mediaId: string, token: string): Promise<string> {
+  try {
+    const r = await get(mediaId, token, { fields: "permalink" });
+    return r.permalink ?? "";
+  } catch {
+    return "";
+  }
+}
+
 export interface PaginaParaPostar {
   pageId: string;
   pageToken: string;
@@ -120,7 +167,7 @@ export async function postarNoFacebook(p: {
   pageToken: string;
   imagens: string[];
   legenda: string;
-}): Promise<{ postId: string }> {
+}): Promise<{ postId: string; permalink: string }> {
   const imagens = p.imagens.filter(Boolean).slice(0, 10);
   if (!imagens.length) throw new Error("Nenhuma imagem para publicar.");
 
@@ -129,7 +176,8 @@ export async function postarNoFacebook(p: {
       url: imagens[0],
       caption: p.legenda,
     });
-    return { postId: r.post_id ?? r.id };
+    const id = r.post_id ?? r.id;
+    return { postId: id, permalink: linkDoPost(id) };
   }
 
   const ids = await Promise.all(
@@ -141,7 +189,7 @@ export async function postarNoFacebook(p: {
     message: p.legenda,
     attached_media: ids.map((media_fbid) => ({ media_fbid })),
   });
-  return { postId: r.id };
+  return { postId: r.id, permalink: linkDoPost(r.id) };
 }
 
 /**
@@ -160,7 +208,7 @@ export async function postarNoInstagram(p: {
   imagens: string[];
   legenda: string;
   formato: FormatoPost;
-}): Promise<{ mediaId: string }> {
+}): Promise<{ mediaId: string; permalink: string }> {
   const imagens = p.imagens.filter(Boolean).slice(0, 10);
   if (!imagens.length) throw new Error("Nenhuma imagem para publicar.");
 
@@ -171,7 +219,7 @@ export async function postarNoInstagram(p: {
     });
     await esperarContainer(c.id, p.pageToken);
     const r = await post(`${p.igUserId}/media_publish`, p.pageToken, { creation_id: c.id });
-    return { mediaId: r.id };
+    return { mediaId: r.id, permalink: await linkDaMidia(r.id, p.pageToken) };
   }
 
   if (imagens.length === 1) {
@@ -181,7 +229,7 @@ export async function postarNoInstagram(p: {
     });
     await esperarContainer(c.id, p.pageToken);
     const r = await post(`${p.igUserId}/media_publish`, p.pageToken, { creation_id: c.id });
-    return { mediaId: r.id };
+    return { mediaId: r.id, permalink: await linkDaMidia(r.id, p.pageToken) };
   }
 
   const filhos = await Promise.all(
@@ -200,5 +248,5 @@ export async function postarNoInstagram(p: {
   });
   await esperarContainer(pai.id, p.pageToken);
   const r = await post(`${p.igUserId}/media_publish`, p.pageToken, { creation_id: pai.id });
-  return { mediaId: r.id };
+  return { mediaId: r.id, permalink: await linkDaMidia(r.id, p.pageToken) };
 }

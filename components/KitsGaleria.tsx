@@ -34,6 +34,15 @@ import {
   Wand2,
 } from "lucide-react";
 
+interface PostPublicado {
+  destino: "facebook" | "instagram";
+  post_id: string;
+  permalink: string;
+  formato: "feed" | "story";
+  em: string;
+  removido_em: string | null;
+}
+
 interface CarroKit {
   id: string;
   marca: string | null;
@@ -52,6 +61,8 @@ interface CarroKit {
   video_takes: string[] | null;
   video_url: string | null;
   marketing_capturas: MarketingCapturas | null;
+  /** Posts orgânicos já publicados (migration 061). */
+  marketing_posts: PostPublicado[] | null;
   roteiro_pitch: string | null;
 }
 
@@ -143,7 +154,7 @@ export default function KitsGaleria() {
     if (!effectiveUserId) return;
     supabase
       .from("veiculos")
-      .select("id, marca, modelo, versao, ano, ano_modelo, fotos, status_venda, marketing_capa_url, marketing_story_url, marketing_carrossel, marketing_legenda, marketing_reel_url, marketing_reel_status, video_takes, video_url, marketing_capturas, roteiro_pitch")
+      .select("id, marca, modelo, versao, ano, ano_modelo, fotos, status_venda, marketing_capa_url, marketing_story_url, marketing_carrossel, marketing_legenda, marketing_reel_url, marketing_reel_status, video_takes, video_url, marketing_capturas, roteiro_pitch, marketing_posts")
       .eq("user_id", effectiveUserId)
       .neq("status_venda", "VENDIDO")
       .order("created_at", { ascending: false })
@@ -184,6 +195,21 @@ export default function KitsGaleria() {
     }, 8000);
     return () => clearInterval(t);
   }, [carros]);
+
+  /** Posts desse carro que ainda estão publicados (feed; story do IG expira em 24h). */
+  function noAr(c: CarroKit): PostPublicado[] {
+    return (c.marketing_posts ?? []).filter((p) => p && !p.removido_em && p.formato !== "story");
+  }
+
+  function desde(iso: string): string {
+    const min = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+    if (!isFinite(min) || min < 1) return "agora";
+    if (min < 60) return `há ${min} min`;
+    const h = Math.floor(min / 60);
+    if (h < 24) return `há ${h}h`;
+    const d = Math.floor(h / 24);
+    return d === 1 ? "ontem" : `há ${d} dias`;
+  }
 
   function titulo(c: CarroKit) {
     return `${c.marca ?? ""} ${c.modelo ?? ""}`.trim() || "Sem nome";
@@ -329,6 +355,7 @@ export default function KitsGaleria() {
       const onde = Object.keys(d.publicado ?? {}).map((k) => (k === "facebook" ? "Facebook" : "Instagram"));
       // Mostra a Página que recebeu o post: com mais de uma Página na conta,
       // é assim que se percebe que o post foi pra Página errada (15/09).
+      if (d.posts) patchCarro(id, { marketing_posts: d.posts });
       setPostado((p) => ({ ...p, [id]: `${onde.join(" e ")}${d.pagina ? ` · ${d.pagina}` : ""}` }));
       if (d.avisos?.length) setErro((p) => ({ ...p, [id]: d.avisos.join(" | ") }));
       setTimeout(() => setPostado((p) => ({ ...p, [id]: "" })), 6000);
@@ -731,10 +758,11 @@ export default function KitsGaleria() {
                       <button
                         onClick={() => postarAgora(c.id, ["facebook", "instagram"], "feed")}
                         disabled={!!postando[c.id]}
+                        title={noAr(c).length ? "Publicar de novo cria um post NOVO — o antigo continua no ar" : undefined}
                         className="flex flex-[2] items-center justify-center gap-1.5 rounded-xl bg-gray-900 py-2.5 text-[9px] font-black uppercase tracking-widest text-white hover:bg-red-600 disabled:opacity-50"
                       >
-                        {postando[c.id] ? <Loader2 size={12} className="animate-spin" /> : postado[c.id] ? <Check size={12} className="text-green-400" /> : <Send size={12} />}
-                        {postando[c.id] ? "Postando..." : postado[c.id] ? `No ar no ${postado[c.id]}` : "Postar no Face + Insta"}
+                        {postando[c.id] ? <Loader2 size={12} className="animate-spin" /> : postado[c.id] || noAr(c).length ? <Check size={12} className="text-green-400" /> : <Send size={12} />}
+                        {postando[c.id] ? "Postando..." : postado[c.id] ? `No ar no ${postado[c.id]}` : noAr(c).length ? "Postar de novo" : "Postar no Face + Insta"}
                       </button>
                       <button
                         onClick={() => postarAgora(c.id, ["instagram"], "story")}
@@ -745,6 +773,27 @@ export default function KitsGaleria() {
                         <Send size={12} /> Story no Insta
                       </button>
                     </div>
+
+                    {/* Onde esse carro JÁ está publicado. O aviso verde do clique
+                        some em 6s e não sobrevive a um refresh — sem isto, o
+                        lojista não tem como saber o que já foi e acaba postando
+                        duas vezes. Vem de veiculos.marketing_posts. */}
+                    {noAr(c).length > 0 && (
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-1 text-[9px] font-black uppercase tracking-widest text-gray-400">
+                        <span className="text-green-600">● No ar</span>
+                        {noAr(c).map((p) => (
+                          <a
+                            key={p.post_id}
+                            href={p.permalink || undefined}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline decoration-dotted underline-offset-2 hover:text-gray-700"
+                          >
+                            {p.destino === "facebook" ? "Facebook" : "Instagram"} · {desde(p.em)}
+                          </a>
+                        ))}
+                      </div>
+                    )}
                   </>
                 )}
 

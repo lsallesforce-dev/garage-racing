@@ -132,7 +132,9 @@ export async function POST(req: NextRequest) {
       } else {
         try {
           const r = await postarNoFacebook({ pageId: pagina.pageId, pageToken: pagina.pageToken, imagens, legenda });
-          resultado.facebook = r.postId;
+          // objeto (id + link) porque a venda precisa do id pra apagar e a
+          // galeria do link pra abrir o post.
+          resultado.facebook = { id: r.postId, permalink: r.permalink };
         } catch (e: any) {
           erros.push(`Facebook: ${e?.message ?? e}`);
         }
@@ -148,7 +150,7 @@ export async function POST(req: NextRequest) {
           const r = await postarNoInstagram({
             igUserId: pagina.igUserId, pageToken: pagina.pageToken, imagens: imagensIg, legenda, formato,
           });
-          resultado.instagram = r.mediaId;
+          resultado.instagram = { id: r.mediaId, permalink: r.permalink };
         } catch (e: any) {
           erros.push(`Instagram: ${e?.message ?? e}`);
         }
@@ -160,10 +162,31 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: erros.join(" | ") || "Não foi possível publicar" }, { status: 400 });
     }
 
+    // Guarda o que foi publicado (migration 061). Serve pra dois lugares: o
+    // botão da galeria mostrar "já postado" mesmo depois de recarregar a
+    // página, e a venda conseguir tirar o post do ar.
+    const novos = Object.entries(resultado).map(([destino, r]: [string, any]) => ({
+      destino,
+      post_id: r.id,
+      permalink: r.permalink ?? "",
+      formato,
+      em: new Date().toISOString(),
+      removido_em: null,
+    }));
+    const { data: atualRow } = await supabaseAdmin
+      .from("veiculos").select("marketing_posts").eq("id", veiculoId).limit(1);
+    const anteriores: any[] = Array.isArray(atualRow?.[0]?.marketing_posts) ? atualRow![0].marketing_posts : [];
+    const { error: erroSalvar } = await supabaseAdmin
+      .from("veiculos")
+      .update({ marketing_posts: [...anteriores, ...novos] })
+      .eq("id", veiculoId);
+    if (erroSalvar) console.warn("⚠️ [marketing/postar] não gravou marketing_posts:", erroSalvar.message);
+
     return NextResponse.json({
       ok: true,
       pagina: pagina.pageNome,
       publicado: resultado,
+      posts: [...anteriores, ...novos],
       ...(erros.length ? { avisos: erros } : {}),
     });
   } catch (e: any) {
