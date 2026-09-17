@@ -1097,6 +1097,43 @@ function modeloBateNoTexto(modelo: string | null | undefined, texto: string): bo
   );
 }
 
+/**
+ * Carros do estoque citados NOMINALMENTE num texto — usado quando o cliente pede
+ * foto de VÁRIOS ("dos dois", "de cada um") sem repetir os nomes: quem sabe quais
+ * são é a última fala do agente.
+ *
+ * Caso real (APROVE, 16/09): agente ofereceu "Fiat Palio 2008 e VW Gol Trendline
+ * 2015", cliente disse "Deixa eu ver as fotos dos dois?" e saíram as capas de Uno,
+ * Strada Ranch, Compass e 208 — os 4 primeiros da busca, nenhum deles o ofertado.
+ *
+ * Casa só pelas DUAS primeiras palavras do modelo ("Palio ELX", "Gol Trendline"):
+ * o resto do nome é ficha técnica ("1.0 Flex 8V 5p") e casaria com o estoque todo.
+ */
+async function veiculosCitadosNoTexto(texto: string, tenantUserId: string): Promise<Vehicle[]> {
+  const { data } = await supabaseAdmin
+    .from("veiculos")
+    .select("id, marca, modelo, versao, ano, ano_modelo, preco_sugerido, fotos, capa_marketing_url, marketing_capa_url, video_url, video_marketing_url")
+    .eq("user_id", tenantUserId)
+    .eq("status_venda", "DISPONIVEL")
+    .limit(500);
+  const norm = (t: string) => t.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+  // 1ª palavra = o nome do modelo (Palio, Gol, Strada); 2ª = a versão (ELX, Ranch).
+  const cands = ((data ?? []) as any[]).map((v) => {
+    const [p1, p2] = String(v.modelo ?? "").trim().split(/\s+/);
+    return {
+      v,
+      p1: p1 ?? "",
+      temP1: modeloBateNoTexto(p1, texto),
+      temP2: !!p2 && modeloBateNoTexto(p2, texto),
+    };
+  }).filter((c) => c.temP1);
+  // Dois carros do mesmo modelo: se o texto cita a VERSÃO de algum deles, os irmãos
+  // sem versão citada saem — senão "Gol Trendline" arrastava o Gol MSI junto. Modelo
+  // sem irmão citado fica ("Fiat Palio 2008" não diz "ELX").
+  const comVersao = new Set(cands.filter((c) => c.temP2).map((c) => norm(c.p1)));
+  return cands.filter((c) => c.temP2 || !comVersao.has(norm(c.p1))).map((c) => c.v) as Vehicle[];
+}
+
 /** Tira do começo da mensagem os blocos que o sistema injeta (anúncio, link),
  *  mesmo quando têm várias linhas. O texto do anúncio NÃO é fala do cliente. */
 function semBlocosDeContexto(msg: string): string {
@@ -2772,7 +2809,16 @@ Responda apenas com o JSON, sem markdown.`;
     //   4. veiculoPrincipal (carro em foco)
     let veiculosParaFoto: Vehicle[];
     if (pedindoFotosMultiplos) {
-      veiculosParaFoto = topVeiculos.slice(0, 4);
+      // "os dois" = os que o AGENTE acabou de oferecer. topVeiculos vem da busca
+      // pelo texto do cliente, que aqui não nomeia carro nenhum — e devolvia os 4
+      // primeiros do estoque.
+      const ofertados = ultimaMsgAgenteSozinha
+        ? await veiculosCitadosNoTexto(ultimaMsgAgenteSozinha, tenantUserId)
+        : [];
+      if (ofertados.length >= 2) {
+        console.log(`📸 [Foto] Vários — carros que o agente ofereceu: ${ofertados.map(v => `${v.marca} ${v.modelo}`).join(" | ")}`);
+      }
+      veiculosParaFoto = (ofertados.length >= 2 ? ofertados : topVeiculos).slice(0, 4);
     } else {
       // 1. Tenta achar o carro mencionado dentro dos veículos já em contexto
       const msgNorm = mensagemClientePura
