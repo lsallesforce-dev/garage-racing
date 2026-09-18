@@ -164,6 +164,7 @@ export interface GarageConfig {
   endereco?: string;
   endereco_complemento?: string;
   cidade?: string;
+  estado?: string;
   whatsapp?: string;
   whatsapp_agente?: string;         // número onde a instância do agente está pareada
   whatsapp_financeiro?: string;
@@ -497,6 +498,10 @@ ${roteiroEstadoCarro}
    6) **NUNCA invente data passada.** Se o cliente disse "26/04" e hoje já passou disso, entenda como ano seguinte (ou pergunte naturalmente: "26 de abril que vem, né?").
    7) **HORÁRIO DE FUNCIONAMENTO:** Se o cliente propuser horário fora do expediente da loja (ver acima), avise gentilmente e sugira o slot mais próximo.
    ⚠️ CLIENTE DE OUTRA CIDADE — NUNCA DESISTA DO LEAD: Se o cliente disser que é de outra cidade/estado ou que "é longe", NUNCA desista ou se despeça. Muitos clientes viajam porque o preço compensa. Responda com confiança: "Ah, muitos clientes nossos vêm de fora justamente pelo preço — vale a viagem!" ou "A gente recebe gente de várias cidades. O Gol por R$ X compensa o deslocamento." Mantenha a conversa viva e continue vendendo.
+   ⚠️ ONDE A LOJA FICA × ONDE O CLIENTE ESTÁ — duas coisas diferentes, não confunda:
+   - Se o cliente perguntar "a loja é aqui em [lugar]?", "é em São Paulo?", "fica aqui?", NUNCA responda só "Sim" ou "Não". Diga a cidade E o estado da loja (ver CIDADE DA LOJA) e, se você ainda não sabe a cidade do cliente, pergunte. "São Paulo" pode ser o estado ou a capital. Ex: "Ficamos em ${p.cidadeGaragem || "[cidade da loja]"}. Você está em qual cidade?"
+   - Quando você perguntou "de qual cidade?" e o cliente respondeu só com o nome da cidade da loja, isso é a cidade DELE — não responda "Isso, somos de [cidade]" como se ele tivesse perguntado da loja. Diga algo como "Ótimo, então fica pertinho!" e siga.
+   - Se depois aparecer sinal contrário (ele fala de outra cidade, de "aqui em [outro lugar]", de viagem ou distância), pergunte UMA vez, direto: "Você está em qual cidade?". Isso muda tudo pra marcar a visita.
 9. CATEGORIA E ALTERNATIVAS (Cross-sell): SOMENTE ofereça outro carro se o carro pedido NÃO estiver no estoque. Se estiver disponível, mantenha o foco 100% nele até o final da conversa. É TERMINANTEMENTE PROIBIDO mencionar ou sugerir outro veículo enquanto o cliente estiver interessado no carro atual. Cross-sell deve respeitar categoria: cliente buscando Sedan → sugerir Sedan; cliente buscando SUV → sugerir SUV. NUNCA ofereça uma Pickup para quem perguntou sobre Sedan.
    ⚠️ EXCEÇÃO DE PREÇO: Se o cliente perguntar o preço de um veículo que está na seção ALTERNATIVAS, responda o preço imediatamente — preço nunca é "dado faltante". Informe com naturalidade, ex: "O XEI 2016 está por R$ 85.000."
 10. PÓS-VENDA E PROBLEMAS (Triagem de Emergência): Se o cliente relatar defeito, problema mecânico ou usar palavras como "quebrou", "garantia" ou "oficina", mude o tom imediatamente para acolhedor e resolutivo. Nunca tente vender. Peça desculpas, identifique o veículo e avise que a gerência vai assumir o caso.
@@ -2016,7 +2021,10 @@ Responda apenas com o JSON, sem markdown.`;
   const nomeAgente = garageConfig?.nome_agente || "Assistente";
   const enderecoGaragem = garageConfig?.endereco || "";
   const enderecoComplemento = garageConfig?.endereco_complemento || "";
-  const cidadeGaragem = garageConfig?.cidade || "";
+  // Cidade COM estado: "São José do Rio Preto - SP". Só com a cidade, o cliente
+  // perguntou "sua loja é aqui em São Paulo mesmo?" e a IA respondeu "Não" —
+  // Rio Preto é SP; ele se referia ao estado (APROVE 18/09).
+  const cidadeGaragem = [garageConfig?.cidade, garageConfig?.estado].filter(Boolean).join(" - ");
   const telefoneLojaDisplay = garageConfig?.telefone_loja || "";
   // urlVitrine() (lib/repasse) dá prioridade ao domínio próprio do tenant. O
   // agente montava a URL na mão e mandava sempre autozap.digital/vitrine/{slug}
