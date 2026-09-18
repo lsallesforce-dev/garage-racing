@@ -843,11 +843,11 @@ function CentralChatInner() {
                       <div className="text-[11px] text-gray-500 px-1 max-w-[260px] truncate">{msg.content}</div>
                     )}
                     <div className="flex items-center gap-1.5 px-1">
-                      <span className="text-[8px] text-gray-400 font-bold uppercase tracking-wider">
+                      <span className="text-[16px] text-gray-500 font-bold uppercase tracking-wider">
                         {isAgente ? (msg.enviado_por_humano ? "Vendedor" : "IA") : (selectedLead.nome || "Cliente")}
                       </span>
-                      <span className="text-[8px] text-gray-300">
-                        {new Date(msg.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                      <span className="text-[16px] text-gray-500">
+                        {new Date(msg.created_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).replace(",", "")}
                       </span>
                     </div>
                   </div>
