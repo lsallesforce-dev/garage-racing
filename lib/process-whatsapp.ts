@@ -1092,14 +1092,22 @@ function distancia1(a: string, b: string): boolean {
  * "Freedom") — a correção de typo da busca não pode regredir.
  */
 function modeloBateNoTexto(modelo: string | null | undefined, texto: string): boolean {
+  return palavrasDoModeloNoTexto(modelo, texto) > 0;
+}
+
+/** Quantas palavras do modelo aparecem no texto (mesma regra de modeloBateNoTexto).
+ *  Serve pra desempatar dois carros que batem no mesmo texto: "Strada Ranch"
+ *  (2 palavras) é mais específico que "Strada Freedom" (1) numa frase que diz
+ *  "fotos da Strada Ranch"; já em "fotos do Gol" os dois Gol empatam em 1. */
+function palavrasDoModeloNoTexto(modelo: string | null | undefined, texto: string): number {
   const norm = (t: string) => t.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
   const palavras = norm(texto).split(/[^a-z0-9]+/).filter(Boolean);
-  const doModelo = norm(modelo ?? "").split(/[^a-z0-9]+/).filter(w => w.length >= 3 && !/^\d/.test(w));
-  return doModelo.some(w =>
+  const doModelo = [...new Set(norm(modelo ?? "").split(/[^a-z0-9]+/).filter(w => w.length >= 3 && !/^\d/.test(w)))];
+  return doModelo.filter(w =>
     palavras.some(p =>
       p === w || (w.length >= 5 && p.length >= 5 && (p.includes(w) || w.includes(p) || distancia1(p, w))),
     ),
-  );
+  ).length;
 }
 
 /**
@@ -2945,10 +2953,24 @@ Responda apenas com o JSON, sem markdown.`;
         // "automático"), e numa frase inteira do agente isso devolve carro errado —
         // "HB20X Premium 1.6 automático 2015, branco" devolvia o Renegade Longitude
         // 2015 (medido). Só aceita se uma palavra do MODELO achado está na frase.
-        const veiculoOfertaAgente =
+        const ofertaValida =
           ofertaBruta && modeloBateNoTexto(ofertaBruta.modelo, ultimaMsgAgenteSozinha)
             ? ofertaBruta
             : null;
+        // Oferta ambígua: "Quer ver as fotos do Gol?" com DOIS Gol no estoque.
+        // findVehicleForMedia devolvia o primeiro que achava (Trendline 2015) e o
+        // cliente recebeu 17 fotos do carro errado — o do anúncio e da conversa
+        // era o Gol MSI 2022, que é o veiculoPrincipal (APROVE 18/09, Cristiane).
+        // Se o carro em foco bate na frase do agente pelo menos tão bem quanto o
+        // achado, fica o carro em foco. Oferta de carro diferente (Renegade com
+        // KWID em foco, 03/09) ou mais específica ("Strada Ranch" com Strada
+        // Freedom em foco, 16/09) segue ganhando.
+        const veiculoOfertaAgente =
+          ofertaValida && veiculoPrincipal && ofertaValida.id !== veiculoPrincipal.id &&
+          palavrasDoModeloNoTexto(veiculoPrincipal.modelo, ultimaMsgAgenteSozinha) >=
+            palavrasDoModeloNoTexto(ofertaValida.modelo, ultimaMsgAgenteSozinha)
+            ? veiculoPrincipal
+            : ofertaValida;
 
         if (veiculoMidia) {
           console.log(`📸 [Foto] Selecionado por findVehicleForMedia: ${veiculoMidia.marca} ${veiculoMidia.modelo} (id: ${veiculoMidia.id})`);
