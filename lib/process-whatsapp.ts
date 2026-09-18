@@ -3106,6 +3106,28 @@ Responda apenas com o JSON, sem markdown.`;
 
   let videoEnviado = false;
 
+  // O vídeo do carro vai UMA vez por lead. Sem isso, cada "Ok"/"tá bom" depois
+  // de a IA ter oferecido o vídeo mandava ele de novo (APROVE 18/09, Toro:
+  // "Vou aguardar tá bom" → vídeo, "Ok" → o mesmo vídeo outra vez). Reenvia só
+  // se o cliente pedir de novo com todas as letras.
+  const pediuVideoDeNovo = /(de novo|novamente|outra vez|reenvi\w*|manda\w* (o )?v[ií]deo)|n[aã]o (chegou|abriu|carregou|abre|consigo ver)/i.test(mensagemLower);
+  const videoJaEnviado = async (v: any): Promise<boolean> => {
+    if (!lead?.id || pediuVideoDeNovo) return false;
+    const { data } = await supabaseAdmin
+      .from("mensagens")
+      .select("id")
+      .eq("lead_id", lead.id)
+      .eq("remetente", "agente")
+      .eq("media_tipo", "video")
+      .eq("content", `🎥 ${nomeCarroLimpo(v)}`)
+      .limit(1);
+    if (data?.length) {
+      console.log(`🎥 [vídeo] ${nomeCarroLimpo(v)} já foi enviado a esse lead — não repete.`);
+      return true;
+    }
+    return false;
+  };
+
   if (clientePediuVideo) {
     // Vídeo: veiculoPrincipal tem prioridade absoluta para mensagens vagas.
     // Se o cliente pediu um carro diferente, usa findVehicleForMedia (nunca hitsTextuais).
@@ -3116,7 +3138,7 @@ Responda apenas com o JSON, sem markdown.`;
       ? (msgSemContextoVideo ? (await findVehicleForMedia(msgSemContextoVideo, tenantUserId)) ?? veiculoPrincipal : veiculoPrincipal)
       : veiculoPrincipal);
 
-    if (veiculoParaVideo) {
+    if (veiculoParaVideo && !(await videoJaEnviado(veiculoParaVideo))) {
       // Prioridade: reel de marketing (já otimizado) → vídeo bruto
       const videoUrlRaw = (veiculoParaVideo as any).video_marketing_url ?? (veiculoParaVideo as any).video_url ?? null;
 
@@ -3798,7 +3820,7 @@ Responda apenas com o JSON, sem markdown.`;
         }
       }
 
-      if (veiculoSeguranca && indicaEnvioVideo && !videoEnviado) {
+      if (veiculoSeguranca && indicaEnvioVideo && !videoEnviado && !(await videoJaEnviado(veiculoSeguranca))) {
         const videoUrlRaw = (veiculoSeguranca as any).video_marketing_url ?? (veiculoSeguranca as any).video_url ?? null;
         if (videoUrlRaw) {
           try {
