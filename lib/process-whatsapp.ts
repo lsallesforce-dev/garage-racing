@@ -3259,6 +3259,10 @@ Responda apenas com o JSON, sem markdown.`;
 
   const nomeCliente = lead?.nome || null;
   let aiResponse = "";
+  // Cliente só confirmou ("Ok", "blz", "obrigado") e o Gemini, duas vezes, não
+  // achou nada a dizer: o certo é ficar calado. Antes caía no fallback "pode
+  // repetir sua última mensagem?" — pedido de repetição pra um "Ok" (APROVE 18/09).
+  let silenciarConfirmacao = false;
   let geminiIndisponivel = false; // blindagem: Gemini fora (circuit/cota) → handoff humano, não queima o lead
   let resumo = "";
   let temperatura: Temperatura = "FRIO";
@@ -3378,9 +3382,16 @@ Responda apenas com o JSON, sem markdown.`;
           }
         }
 
+        if (
+          (!parsed?.resposta || !String(parsed.resposta).trim()) &&
+          /^(ok+|okay|blz|beleza|t[aá]\s*(bom|certo)?|certo|show|valeu|vlw|obrigad[oa]|obg|brigad[oa]|joia|j[oó]ia|fechou|combinado|perfeito|entendi|beleza entao|beleza então|[👍🙏👌✅]+)[\s!.]*$/iu.test(mensagemClientePura)
+        ) {
+          silenciarConfirmacao = true;
+        }
+
         aiResponse =
           parsed.resposta ||
-          "Desculpa, pode repetir sua última mensagem? Quero te ajudar certinho.";
+          (silenciarConfirmacao ? "" : "Desculpa, pode repetir sua última mensagem? Quero te ajudar certinho.");
 
         // Strip emojis: o prompt proíbe mas o Gemini ignorava em ~22% das msgs.
         // Safety net pós-Gemini remove qualquer Extended_Pictographic (😊, 😉, 🚀, etc).
@@ -3520,6 +3531,11 @@ Responda apenas com o JSON, sem markdown.`;
     console.error("❌ ERRO FATAL NO GEMINI:", aiError);
     aiResponse =
       "Desculpa, pode repetir sua última mensagem? Quero te ajudar certinho.";
+  }
+
+  if (silenciarConfirmacao) {
+    console.log(`🤐 [Confirmação] "${mensagemClientePura}" de ${phone} sem nada a responder — IA fica calada`);
+    return;
   }
 
   // ── 12-bis. BLINDAGEM: Gemini indisponível → handoff humano (não queima o lead) ──
