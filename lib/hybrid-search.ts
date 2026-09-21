@@ -589,6 +589,50 @@ export async function hybridVehicleSearch(
     hitsTextuais = [];
     hitsFromFuzzy = false;
   }
+  // ── O carro que o CLIENTE TEM (troca) nao e carro do estoque ──────────────
+  // "Eu tenho uma saveiro 25" e "Vcs trocam num Tracker LTZ 2024" casavam na
+  // busca textual, viravam `clientePediuCarroDiferente` e TROCAVAM o carro em
+  // foco do lead — que tinha vindo de anuncio de outro carro. A partir dali
+  // foto, video e ficha saem todos do carro errado. Casos reais (APROVE 21/09):
+  // o lead 5518996731212 (anuncio da S10) recebeu 11 fotos da Saveiro da loja,
+  // e o Osmar (553496378223, anuncio da Toro) recebeu 14 fotos + video de uma
+  // S10 porque o "LTZ" do Tracker DELE casou com a S10 LTZ do patio.
+  //
+  // Regra: se TODA aparicao do nome do carro na mensagem vem logo depois de
+  // posse ("tenho", "meu", "troco", "trocam"), o carro e dele, nao nosso.
+  // "por" na mesma janela desarma a regra — em "trocar meu Gol por um Onix" o
+  // Onix e justamente o que ele quer comprar.
+  const carroEDoCliente = (v: Vehicle): boolean => {
+    const msg = normalizeStr(userMessage);
+    const palavras = normalizeStr(`${v.marca ?? ""} ${v.modelo ?? ""}`)
+      .split(/\s+/)
+      .filter((w) => w.length >= 3);
+    let achou = false;
+    for (const w of palavras) {
+      let i = msg.indexOf(w);
+      while (i !== -1) {
+        achou = true;
+        const janela = msg.slice(Math.max(0, i - 30), i);
+        const posse = /\b(tenho|meu|minha|meus|minhas|possuo|dou|entrego|troco|trocar|trocam|troca)\b/.test(janela);
+        if (!posse || /\bpor\b/.test(janela)) return false;
+        i = msg.indexOf(w, i + w.length);
+      }
+    }
+    return achou;
+  };
+  // So com carro JA em foco: sem foco, nao ha o que proteger e um lead que abre
+  // a conversa falando do proprio carro ainda merece ser vinculado a algo.
+  if (veiculoPrincipal && hitsTextuais.length > 0) {
+    const doCliente = hitsTextuais.filter(carroEDoCliente);
+    if (doCliente.length > 0) {
+      console.log(
+        `🔁 [Troca] Carro do CLIENTE ignorado na busca (fica no foco ${veiculoPrincipal.marca} ${veiculoPrincipal.modelo}): ` +
+          doCliente.map((v) => `${v.marca} ${v.modelo}`).join(" | "),
+      );
+      hitsTextuais = hitsTextuais.filter((h) => !doCliente.some((d) => d.id === h.id));
+    }
+  }
+
   const temHitsTextuais = hitsTextuais.length > 0;
 
   // ── Caso 1: Cliente mencionou um carro DIFERENTE do vinculado ─────────────
