@@ -1122,10 +1122,20 @@ function palavrasDoModeloNoTexto(modelo: string | null | undefined, texto: strin
  * Casa só pelas DUAS primeiras palavras do modelo ("Palio ELX", "Gol Trendline"):
  * o resto do nome é ficha técnica ("1.0 Flex 8V 5p") e casaria com o estoque todo.
  */
+/** Cor citada num texto, normalizada pro radical (branca/branco -> "branc").
+ *  Dois carros do mesmo modelo só se distinguem pela cor: "temos outra Toro
+ *  Freedom 2022 prata" -> as fotos têm que ser da prata, não da branca que está
+ *  em foco (APROVE 21/09, Osmar). */
+const RADICAIS_COR = ["branc", "pret", "prat", "cinz", "vermelh", "azul", "verde", "amarel", "marrom", "bege", "dourad", "laranj", "roxo", "vinho"];
+function corNoTexto(texto: string | null | undefined): string | null {
+  const t = (texto ?? "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+  return RADICAIS_COR.find((r) => t.includes(r)) ?? null;
+}
+
 async function veiculosCitadosNoTexto(texto: string, tenantUserId: string): Promise<Vehicle[]> {
   const { data } = await supabaseAdmin
     .from("veiculos")
-    .select("id, marca, modelo, versao, ano, ano_modelo, preco_sugerido, fotos, capa_marketing_url, marketing_capa_url, video_url, video_marketing_url")
+    .select("id, marca, modelo, versao, ano, ano_modelo, cor, preco_sugerido, fotos, capa_marketing_url, marketing_capa_url, video_url, video_marketing_url")
     .eq("user_id", tenantUserId)
     .eq("status_venda", "DISPONIVEL")
     .limit(500);
@@ -2977,6 +2987,20 @@ Responda apenas com o JSON, sem markdown.`;
           ofertaBruta && modeloBateNoTexto(ofertaBruta.modelo, ultimaMsgAgenteSozinha)
             ? ofertaBruta
             : null;
+        // COR desempata antes de tudo: com duas Toro Freedom 2022 no pátio, uma
+        // branca (a do anúncio, em foco) e uma prata, o cliente disse "não queria
+        // branco" e a IA ofereceu "outra Toro Freedom 2022 prata" — mas as fotos
+        // que saíram foram as da branca (APROVE 21/09, Osmar).
+        const corOfertada = corNoTexto(ultimaMsgAgenteSozinha);
+        let veiculoPorCor: Vehicle | null = null;
+        if (corOfertada && ultimaMsgAgenteSozinha) {
+          const citados = await veiculosCitadosNoTexto(ultimaMsgAgenteSozinha, tenantUserId);
+          const daCor = citados.filter((v) => corNoTexto((v as any).cor) === corOfertada);
+          if (daCor.length === 1) {
+            veiculoPorCor = daCor[0];
+            console.log(`📸 [Foto] Cor "${corOfertada}" citada pelo agente — usando ${veiculoPorCor.marca} ${veiculoPorCor.modelo} (${(veiculoPorCor as any).cor})`);
+          }
+        }
         // Oferta ambígua: "Quer ver as fotos do Gol?" com DOIS Gol no estoque.
         // findVehicleForMedia devolvia o primeiro que achava (Trendline 2015) e o
         // cliente recebeu 17 fotos do carro errado — o do anúncio e da conversa
@@ -2985,12 +3009,12 @@ Responda apenas com o JSON, sem markdown.`;
         // achado, fica o carro em foco. Oferta de carro diferente (Renegade com
         // KWID em foco, 03/09) ou mais específica ("Strada Ranch" com Strada
         // Freedom em foco, 16/09) segue ganhando.
-        const veiculoOfertaAgente =
-          ofertaValida && veiculoPrincipal && ofertaValida.id !== veiculoPrincipal.id &&
+        const veiculoOfertaAgente = veiculoPorCor ??
+          (ofertaValida && veiculoPrincipal && ofertaValida.id !== veiculoPrincipal.id &&
           palavrasDoModeloNoTexto(veiculoPrincipal.modelo, ultimaMsgAgenteSozinha) >=
             palavrasDoModeloNoTexto(ofertaValida.modelo, ultimaMsgAgenteSozinha)
             ? veiculoPrincipal
-            : ofertaValida;
+            : ofertaValida);
 
         if (veiculoMidia) {
           console.log(`📸 [Foto] Selecionado por findVehicleForMedia: ${veiculoMidia.marca} ${veiculoMidia.modelo} (id: ${veiculoMidia.id})`);
