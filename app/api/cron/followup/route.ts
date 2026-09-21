@@ -66,7 +66,10 @@ const CONVERSA_ENCERRADA_PATTERNS = [
   // Despedida explícita
   /\b(?:tchau|adeus|até\s*(?:mais|logo|breve)|flw|falou|valeu)\b/i,
   // Agradecimento final (sem pergunta = encerrou)
-  /^(?:obrigad[oa]|muito\s+obrigad[oa]|agradeço|grato)\b/i,
+  // Agradecimento final: so quando a mensagem e SO isso. Com o  solto,
+  // "Obrigado, a gente vai dar uma avaliada, mas acredito que..." encerrava
+  // lead QUENTE (medido: 28 dos 67 encerramentos vinham daqui).
+  /^(?:muito\s+)?(?:obrigad[oa]|agrade[çc]o|grato|vlw)[\s!.]*$/i,
   // Já comprou / resolveu
   /\b(?:j[áa]\s+compr[ei]|j[áa]\s+(?:fechei|resolvi|achei|troquei|peguei)|comprei\s+(?:outro|um))\b/i,
   // Outra cidade / longe
@@ -78,7 +81,11 @@ const CONVERSA_ENCERRADA_PATTERNS = [
   // Cliente toma a iniciativa, não insistir
   // Cobre: "te procuro", "procuro vc", "vou te procurar", "eu procuro depois",
   //        "eu te chamo", "te aviso", "vou avisar", "me chamo", "eu ligo", "te ligo"
-  /\b(?:te|me|eu\s+te|vou\s+te|vou)\s*(?:procur[oaá]r?|cham[oaá]r?|avis[oaá]r?|lig[oaá]r?|contat[oaá]r?|fal[oaá]r?)\b/i,
+  // "me chamo Alesir" e APRESENTACAO, nao "me chama depois": com "me" no
+  // mesmo grupo do verbo em 1a pessoa, quem dizia o nome tinha o follow-up
+  // cancelado (2 leads QUENTES medidos). E "deixa eu te falar" abre conversa.
+  /(?<!deixa\s)(?:te|eu\s+te|vou\s+te|vou)\s*(?:procur[oaá]r?|cham[oaá]r?|avis[oaá]r?|lig[oaá]r?|contat[oaá]r?|fal[oaá]r?)/i,
+  /me\s+(?:chama|avisa|liga|procura|chame|avise|ligue|procure)/i,
   /\bprocur[oa]\s+(?:vc|voc[eê]|tu|depois)\b/i,
   /\b(?:eu\s+)?(?:te\s+)?(?:procur[oaá]|cham[oaá])\s+(?:depois|amanh[aã]|mais\s+tarde|na\s+volta|qualquer\s+coisa)\b/i,
   /\b(?:se|qualquer\s+coisa|qualquer)\s+(?:tiver\s+interesse|interessar|coisa|resposta|novidade)\b.{0,30}\b(?:te|eu\s+te|me|procuro|chamo|aviso)\b/i,
@@ -108,6 +115,9 @@ function conversaEncerradaPeloCliente(
     const texto = msg.content
       .replace(/\[Lead veio do anúncio:.*?\]/gs, "")
       .replace(/\[Contexto do link:.*?\]/gs, "")
+      // "deixa eu te falar..." ABRE conversa; sem tirar, o "te falar" caía no
+      // padrão de "eu te chamo depois" e encerrava um lead quente.
+      .replace(/deixa\s+eu\s+(?:te\s+)?(?:falar|dizer|perguntar|contar|explicar)/gi, " ")
       .trim();
 
     if (!texto) continue;
@@ -572,7 +582,14 @@ export async function GET(req: NextRequest) {
       // ── 6. Detecção pré-Gemini de conversa encerrada ────────────────────────
       // Analisa últimas msgs do CLIENTE antes de gastar tokens do Gemini.
       // Se detectar despedida/rejeição/impossibilidade → encerra o ciclo.
-      const motivoEncerramento = conversaEncerradaPeloCliente(mensagensOrdenadas);
+      // Lead QUENTE nao e encerrado por educacao. "Vou ver aqui, eu lhe dou a
+      // resposta amanha" (QUENTE/AGENDADO, 18/09) e promessa de retorno, nao
+      // despedida - e era o tipo de lead que o filtro matava.
+      let motivoEncerramento = conversaEncerradaPeloCliente(mensagensOrdenadas);
+      if (motivoEncerramento && lead.status === "QUENTE") {
+        console.log(`🔥 [pré-Gemini] ${lead.wa_id} é QUENTE — ignorando "${motivoEncerramento}" e seguindo com o follow-up`);
+        motivoEncerramento = null;
+      }
       if (motivoEncerramento) {
         console.log(`⏭️ [pré-Gemini] ${lead.wa_id} — conversa encerrada detectada: "${motivoEncerramento}"`);
         await supabaseAdmin
