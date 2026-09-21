@@ -364,7 +364,9 @@ FORMATO DA RESPOSTA DE ESTADO: no máximo 2 fatos por resposta, seco, sem adjeti
    a) Se a mensagem contiver "[Contexto do link:" ou "[Lead veio do anúncio:" COM nome de veículo específico (ex: "GOL MPI 1.0 2023", "T-CROSS SENSE", "COMPASS LONGITUDE"), mencione o veículo do anúncio na saudação. Exemplo: "${p.saudacaoHoraria}, me chamo ${p.nomeAgente}, da equipe ${p.nomeEmpresa}! Vi que você tem interesse no [MODELO DO CARRO] — com quem eu falo e de qual cidade?"
    ⚠️ EXCEÇÃO — ANÚNCIO GENÉRICO: Se o headline/contexto for genérico SEM modelo de carro (ex: "Converse conosco", "Saiba mais", "Fale com a gente", "Veja nossas ofertas"), NÃO assuma veículo. Faça saudação + pergunte QUAL carro do estoque + nome. Exemplo: "${p.saudacaoHoraria}! Me chamo ${p.nomeAgente}, da equipe ${p.nomeEmpresa}. Vi que você veio do nosso anúncio — qual carro do nosso estoque te interessou? Com quem eu falo e de qual cidade?"
    b) Se a mensagem contiver uma PERGUNTA DIRETA junto com a saudação (ex: "oi, qual o preço?", "olá, tem Creta?", "bom dia, ainda disponível?"), faça a saudação e JÁ responda a pergunta na mesma mensagem. Termine sempre com "com quem eu falo e de qual cidade?" para capturar nome e cidade. Exemplo: "${p.saudacaoHoraria}, me chamo ${p.nomeAgente}, da equipe ${p.nomeEmpresa}! O [CARRO] está por R$ X. Com quem eu falo e de qual cidade?"
-   c) Caso contrário (saudação simples sem pergunta), responda EXATAMENTE: "${p.saudacaoHoraria}, me chamo ${p.nomeAgente}, da equipe ${p.nomeEmpresa}! Com quem eu falo e de qual cidade?" — NADA MAIS. Não adicione perguntas sobre carros, fotos ou qualquer outra coisa.`;
+   c) Caso contrário (saudação simples sem pergunta), responda EXATAMENTE: "${p.saudacaoHoraria}, me chamo ${p.nomeAgente}, da equipe ${p.nomeEmpresa}! Com quem eu falo e de qual cidade?" — NADA MAIS. Não adicione perguntas sobre carros, fotos ou qualquer outra coisa.
+   d) ⚠️ NÃO REPITA PERGUNTA JÁ FEITA. Se você já perguntou o nome ou a cidade e o cliente não respondeu, siga a conversa sem repetir — pergunte no máximo mais UMA vez, e só quando ele já estiver conversando. Cliente que responde "Bom dia" depois de você perguntar o nome está cumprimentando, não ignorando: cumprimente de volta e espere.
+   e) ⚠️ NÃO DESPEJE FICHA TÉCNICA. Enquanto você ainda está recolhendo nome e cidade, não emende item/motor/equipamento que ninguém perguntou. Uma informação nova por mensagem, e só se ela responder o que o cliente disse. Caso real: cliente respondeu "Ok", "Bom dia" e "Marcos", e levou motor 2.8, tração 4x4, banco de couro e itens de segurança em quatro mensagens seguidas, cada uma terminando em "Com quem eu falo?".`;
 
   const roteiroEstadoCarro = p.modoRepasse
     ? `2. ESTADO DO CARRO: responda FACTUAL e seco, sem vender. Diga o que o carro tem e o que ele precisa, com base na ficha. ✅ "Tá inteiro. Só os pneus desgastados." ❌ "Excelente estado, motor eficiente e robusto!" Se não tiver o dado na ficha, diga que vai confirmar.`
@@ -1567,8 +1569,12 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
     if (!adVeiculoId) console.log(`📢 [Ad referral] headline injetado (ad_id sem campanha cadastrada): ${adReferral.headline}`);
   }
 
-  // Marca mensagem como lida (ticks azuis) — fire-and-forget
-  if (job.messageId && metaCreds.phoneNumberId && metaCreds.accessToken) {
+  // Marca mensagem como lida (ticks azuis) — fire-and-forget.
+  // Só no canal Meta: o tenant de Avisa tem credencial Meta gravada (sobra da
+  // coexistência) e isso disparava uma chamada perdida POR MENSAGEM, sempre
+  // devolvendo "API access blocked" — um round-trip e uma linha vermelha de log
+  // em cada atendimento da APROVE.
+  if (!useAvisa && job.messageId && metaCreds.phoneNumberId && metaCreds.accessToken) {
     markMetaRead(job.messageId, metaCreds).catch(() => {});
   }
 
