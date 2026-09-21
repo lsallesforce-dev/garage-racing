@@ -2745,6 +2745,18 @@ Responda apenas com o JSON, sem markdown.`;
     // e o sistema não enviou.
     const temPositiva = /\b(s[ií]m+|envi[ae]+|envia+r|mand[ae]+|manda+r|enviar+|pod[ei]+|quer[oei]+a?|queri[ae]+|gostari[ae]+|vai+|clar[oa]+|ok+|okay+|isso+|bora+|aham+|uhum+|positivo+|cert[oa]+|t[áa]\s*bom|com\s+certeza|por\s+favor|please)\b/i.test(msg);
     const temInterrogativa = /\b(quanto|qual|como|onde|por\s*qu[eê]|porqu[eê]|porque|quando|cad[eê]|aceita|tem\s+como|d[áa]\s+pra)\b/i.test(msg) || msg.includes("?");
+    // "Vou te mandar" NAO e "me manda": e o CLIENTE avisando que VAI enviar as
+    // fotos DO CARRO DELE (troca). Casava em `manda+r`, virava confirmacao e,
+    // como o agente tinha acabado de pedir fotos do carro dele, o sistema
+    // despejou 11 fotos da Saveiro da LOJA em cima do cliente. Caso real
+    // (APROVE 21/09, 5518996731212): ele respondeu "Voces me mandaram as fotos
+    // da saveiro". Quem pede midia usa imperativo ("manda", "pode mandar");
+    // sujeito em 1a pessoa ("vou te mandar", "ja te mando", "mandei") e o oposto.
+    const clienteVaiEnviar =
+      /\b(vou|vou te|estou|ja|j[aá])\s+(te\s+)?(mandar|mando|enviar|envio|passar|passo)\b/i.test(msg) ||
+      /\bte\s+(mando|envio|mandei|enviei)\b/i.test(msg) ||
+      /\b(mandei|enviei|mandando|enviando)\b/i.test(msg);
+    if (clienteVaiEnviar) return false;
     return temPositiva && !temInterrogativa;
   })();
   // Strip prefixo de anúncio também da mensagem anterior (evita falso clientePediuFotoAntes
@@ -2982,25 +2994,33 @@ Responda apenas com o JSON, sem markdown.`;
         // (tem "?") e não nomeia carro — e saíram as 11 fotos do HB20X 2015, o carro
         // que ele tinha acabado de recusar. Todo pedido de foto que não nomeia carro
         // tem a pista viva só na oferta do agente, seja ele "sim" ou "tem fotos?".
-        const ofertaBruta = (!veiculoMidia && ultimaMsgAgenteSozinha)
-          ? await findVehicleForMedia(ultimaMsgAgenteSozinha, tenantUserId)
+        // Antes de procurar carro na fala do agente, tira o que e do CLIENTE.
+        // "Manda as fotos da SUA Saveiro pra gente avaliar" fala do carro da
+        // troca — mas a loja tinha uma Saveiro no patio, a busca achou a do
+        // estoque e o cliente recebeu 11 fotos de um carro que nunca pediu
+        // (APROVE 21/09). Possessivo de 2a pessoa ("sua/seu/tua/teu") so
+        // aparece quando o agente fala do carro dele; oferta da loja nunca usa.
+        const ofertaAgenteTexto = ultimaMsgAgenteSozinha
+          .replace(/\b(seu|sua|seus|suas|teu|tua|teus|tuas)\s+[^\s]+(\s+[^\s]+)?/gi, " ");
+        const ofertaBruta = (!veiculoMidia && ofertaAgenteTexto.trim())
+          ? await findVehicleForMedia(ofertaAgenteTexto, tenantUserId)
           : null;
         // ...com uma trava: findVehicleForMedia casa por token solto (ano, cor,
         // "automático"), e numa frase inteira do agente isso devolve carro errado —
         // "HB20X Premium 1.6 automático 2015, branco" devolvia o Renegade Longitude
         // 2015 (medido). Só aceita se uma palavra do MODELO achado está na frase.
         const ofertaValida =
-          ofertaBruta && modeloBateNoTexto(ofertaBruta.modelo, ultimaMsgAgenteSozinha)
+          ofertaBruta && modeloBateNoTexto(ofertaBruta.modelo, ofertaAgenteTexto)
             ? ofertaBruta
             : null;
         // COR desempata antes de tudo: com duas Toro Freedom 2022 no pátio, uma
         // branca (a do anúncio, em foco) e uma prata, o cliente disse "não queria
         // branco" e a IA ofereceu "outra Toro Freedom 2022 prata" — mas as fotos
         // que saíram foram as da branca (APROVE 21/09, Osmar).
-        const corOfertada = corNoTexto(ultimaMsgAgenteSozinha);
+        const corOfertada = corNoTexto(ofertaAgenteTexto);
         let veiculoPorCor: Vehicle | null = null;
-        if (corOfertada && ultimaMsgAgenteSozinha) {
-          const citados = await veiculosCitadosNoTexto(ultimaMsgAgenteSozinha, tenantUserId);
+        if (corOfertada && ofertaAgenteTexto.trim()) {
+          const citados = await veiculosCitadosNoTexto(ofertaAgenteTexto, tenantUserId);
           const daCor = citados.filter((v) => corNoTexto((v as any).cor) === corOfertada);
           if (daCor.length === 1) {
             veiculoPorCor = daCor[0];
@@ -3017,8 +3037,8 @@ Responda apenas com o JSON, sem markdown.`;
         // Freedom em foco, 16/09) segue ganhando.
         const veiculoOfertaAgente = veiculoPorCor ??
           (ofertaValida && veiculoPrincipal && ofertaValida.id !== veiculoPrincipal.id &&
-          palavrasDoModeloNoTexto(veiculoPrincipal.modelo, ultimaMsgAgenteSozinha) >=
-            palavrasDoModeloNoTexto(ofertaValida.modelo, ultimaMsgAgenteSozinha)
+          palavrasDoModeloNoTexto(veiculoPrincipal.modelo, ofertaAgenteTexto) >=
+            palavrasDoModeloNoTexto(ofertaValida.modelo, ofertaAgenteTexto)
             ? veiculoPrincipal
             : ofertaValida);
 
@@ -3182,7 +3202,7 @@ Responda apenas com o JSON, sem markdown.`;
   // de a IA ter oferecido o vídeo mandava ele de novo (APROVE 18/09, Toro:
   // "Vou aguardar tá bom" → vídeo, "Ok" → o mesmo vídeo outra vez). Reenvia só
   // se o cliente pedir de novo com todas as letras.
-  const pediuVideoDeNovo = /(de novo|novamente|outra vez|reenvi\w*|manda\w* (o )?v[ií]deo)|n[aã]o (chegou|abriu|carregou|abre|consigo ver)/i.test(mensagemLower);
+  const pediuVideoDeNovo = /\b(de novo|novamente|outra vez|reenvi\w*|manda\w* (o )?v[ií]deo)\b|n[aã]o (chegou|abriu|carregou|abre|consigo ver)/i.test(mensagemLower);
   const videoJaEnviado = async (v: any): Promise<boolean> => {
     if (!lead?.id || pediuVideoDeNovo) return false;
     const { data } = await supabaseAdmin
