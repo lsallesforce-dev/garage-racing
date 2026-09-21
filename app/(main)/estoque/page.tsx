@@ -376,7 +376,7 @@ export default function ListaEstoque() {
                         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest truncate">
                             {carro.versao || 'Configuração Esportiva'} • {carro.ano_modelo || '2024'}
                             {carro.placa && (
-                                <span className="ml-2 inline-block align-middle px-1.5 py-0.5 rounded bg-gray-100 border border-gray-300 text-gray-700 font-mono font-black tracking-wider">
+                                <span className="ml-2 inline-block align-middle px-2 py-0.5 rounded text-[12px] bg-gray-100 border border-gray-400 text-gray-800 font-mono font-black tracking-wider">
                                     {String(carro.placa).toUpperCase()}
                                 </span>
                             )}
