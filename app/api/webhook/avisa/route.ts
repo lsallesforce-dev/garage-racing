@@ -76,6 +76,7 @@ function extractFields(payload: any): {
   imageUrl?: string;         // URL criptografada da foto original (p/ decriptar em lib/whatsapp-image.ts)
   imageMediaKey?: string;    // chave de decriptação da foto original
   messageId?: string | null;
+  msgTimestamp?: string | null;  // carimbo do WhatsApp — detecta reentrega após reconexão
   adReferral?: { headline: string | null; body: string | null; source_type: string | null; ad_id: string | null; thumbnail?: string | null; image_url?: string | null } | null;
 } {
   console.log("📨 AVISA WEBHOOK PAYLOAD:", JSON.stringify(payload, null, 2));
@@ -104,6 +105,11 @@ function extractFields(payload: any): {
   let imageUrl: string | undefined;
   let imageMediaKey: string | undefined;
   let messageId: string | null = null;
+  // Horário que o WhatsApp carimbou na mensagem. Serve pra detectar RESSINCRONIZAÇÃO:
+  // quando a instância da Avisa reconecta, ela reentrega stanzas antigas e o
+  // webhook processava tudo como se fosse agora (20/09: ~20 clientes receberam
+  // resposta da IA de madrugada, pra mensagem de um ou dois dias antes).
+  let msgTimestamp: string | null = null;
   let adReferral: { headline: string | null; body: string | null; source_type: string | null; ad_id: string | null; thumbnail?: string | null; image_url?: string | null } | null = null;
 
   // ── Detecção de ligação perdida (todos os formatos) ──────────────────────────
@@ -140,6 +146,7 @@ function extractFields(payload: any): {
   if (parsedData?.event?.Info) {
     const info = parsedData.event.Info;
     const msg = parsedData.event.Message;
+    msgTimestamp = info.Timestamp ?? null;
     if (parsedData.type !== "Message") return { phone: "", userMessage: "", fromMe: true };
     // Ignorar mensagens de Status/Story do WhatsApp
     if (info.Chat === "status@broadcast") return { phone: "", userMessage: "", fromMe: true };
@@ -340,7 +347,7 @@ function extractFields(payload: any): {
     lidPhone: stripDevice(lidPhone),
     chatPhone: stripDevice(chatPhone),
     userMessage: userMessage?.trim() || "",
-    fromMe, audioUrl, audioMediaKey, imageThumbnail, imageUrl, imageMediaKey, messageId, adReferral,
+    fromMe, audioUrl, audioMediaKey, imageThumbnail, imageUrl, imageMediaKey, messageId, adReferral, msgTimestamp,
   };
 }
 
@@ -487,7 +494,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Validação Básica ──────────────────────────────────────────────────────
-    let { phone, isLid, lidPhone, chatPhone, groupJid, userMessage: rawMessage, fromMe, audioUrl, audioMediaKey, imageThumbnail, imageUrl, imageMediaKey, messageId, adReferral } =
+    let { phone, isLid, lidPhone, chatPhone, groupJid, userMessage: rawMessage, fromMe, audioUrl, audioMediaKey, imageThumbnail, imageUrl, imageMediaKey, messageId, adReferral, msgTimestamp } =
       extractFields(payload);
 
     // ── Grupos/Comunidades: a IA NUNCA responde em grupo ──────────────────────
@@ -777,6 +784,15 @@ export async function POST(req: NextRequest) {
     // ── Enfileira Processamento em Background ─────────────────────────────────
     // after() retorna imediatamente — o 200 OK vai para a Avisa em < 100ms
     // O processamento pesado (Gemini + busca + envio) roda após a resposta HTTP
+    // Mensagem reentregue pela Avisa depois de reconectar: grava no painel, mas
+    // NÃO responde. Sem isso a IA responde dias depois, fora de contexto — e para
+    // quem já foi atendido, responde duas vezes (APROVE, 20/09 12:19).
+    const idadeMs = msgTimestamp ? Date.now() - Date.parse(msgTimestamp) : 0;
+    const atrasada = Number.isFinite(idadeMs) && idadeMs > 15 * 60 * 1000;
+    if (atrasada) {
+      console.warn(`⏰ [Reentrega] Mensagem de ${phone} carimbada em ${msgTimestamp} (${Math.round(idadeMs / 60000)} min atrás) — salva sem resposta da IA.`);
+    }
+
     after(async () => {
       const job = {
         phone,
@@ -789,7 +805,7 @@ export async function POST(req: NextRequest) {
         messageId,
         tenantUserId: tenantUserId!,
         garageConfig,
-        ...(isLid ? { skipSend: true } : {}),
+        ...(isLid || atrasada ? { skipSend: true } : {}),
         ...(adReferral ? { adReferral } : {}),
       };
 
