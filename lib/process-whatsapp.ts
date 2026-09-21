@@ -2885,12 +2885,32 @@ Responda apenas com o JSON, sem markdown.`;
           }
         }
 
-        // Palavras únicas do nome completo, peso unificado
-        const palavrasNome = new Set(
-          nomeCompleto.split(/\s+/).filter((w) => w.length >= 3),
+        // MARCA vale menos que MODELO. Com peso unificado, "tô atrás de um carro
+        // da Hyundai" somava 50 (o piso) e levava um Hyundai qualquer: a Joice
+        // veio do anúncio do HB20X Premium 2015 e recebeu as fotos do HB20
+        // Comfort 2024 (APROVE 18/09). Marca sozinha agora fica ABAIXO do piso —
+        // continua servindo de desempate, não de seleção.
+        const palavrasModelo = new Set(
+          toNorm(`${v.modelo ?? ""} ${(v as any).versao ?? ""}`)
+            .split(/\s+/)
+            .filter((w) => w.length >= 3),
         );
-        for (const w of palavrasNome) {
-          if (msgNorm.includes(w)) score += 50;
+        const palavrasMarca = new Set(
+          toNorm(v.marca ?? "")
+            .split(/\s+/)
+            .filter((w) => w.length >= 3 && !palavrasModelo.has(w)),
+        );
+        // Palavra curta (3-4 letras) só conta inteira: sem isso "aut" casava com
+        // "automático" e "gol" com "golf" — match de graça em qualquer frase.
+        const bateNaMsg = (w: string) =>
+          w.length >= 5
+            ? msgNorm.includes(w)
+            : new RegExp(`(^|[^a-z0-9])${w}([^a-z0-9]|$)`).test(msgNorm);
+        for (const w of palavrasModelo) {
+          if (bateNaMsg(w)) score += 50;
+        }
+        for (const w of palavrasMarca) {
+          if (bateNaMsg(w)) score += 20;
         }
 
         if (veiculoPrincipal && v.id === veiculoPrincipal.id) score += 5;
