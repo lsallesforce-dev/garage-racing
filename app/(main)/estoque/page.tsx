@@ -82,7 +82,7 @@ function AnunciarEstoque({ carro }: { carro: any }) {
 // de 796 chamadas em /auth/v1/user em 35 min) a query passou de 1s para 25-45s
 // e o estoque ficava so rodando o spinner. Com as colunas explicitas: 132 kB.
 const COLUNAS_LISTA =
-  "id, marca, modelo, versao, ano, ano_fabricacao, ano_modelo, preco_sugerido, " +
+  "id, marca, modelo, versao, ano, ano_fabricacao, ano_modelo, placa, preco_sugerido, " +
   "preco_venda_final, data_venda, status_venda, created_at, " + COLUNAS_MIDIA;
 
 export default function ListaEstoque() {
@@ -375,6 +375,11 @@ export default function ListaEstoque() {
                         <h3 className="text-base md:text-xl font-black uppercase italic leading-none text-gray-900 group-hover:text-red-600 transition-colors truncate max-w-xs md:max-w-sm mb-1" title={`${carro.marca} ${carro.modelo}`}>{carro.marca} {carro.modelo}</h3>
                         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest truncate">
                             {carro.versao || 'Configuração Esportiva'} • {carro.ano_modelo || '2024'}
+                            {carro.placa && (
+                                <span className="ml-2 inline-block align-middle px-1.5 py-0.5 rounded bg-gray-100 border border-gray-300 text-gray-700 font-mono font-black tracking-wider">
+                                    {String(carro.placa).toUpperCase()}
+                                </span>
+                            )}
                         </p>
                         <p className="text-[11px] font-black text-slate-900 mt-2 tracking-tighter">
                             {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(carro.preco_sugerido || 0)}
