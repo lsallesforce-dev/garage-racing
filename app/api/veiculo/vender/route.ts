@@ -12,8 +12,8 @@ import { NextRequest, NextResponse } from "next/server";
  *
  * NUNCA lança — dar baixa no carro não pode depender da Meta estar de pé. O que
  * não sair fica marcado e volta na resposta com o permalink, pro gerente apagar
- * na mão (é o caso do Instagram hoje: apagar exige a permissão
- * `instagram_manage_contents`, que o app ainda não tem).
+ * na mão. Post que virou anúncio a Meta não deixa apagar pela API; story some
+ * sozinho em 24h.
  */
 async function removerPostsDoVeiculo(
   veiculoId: string,
@@ -41,7 +41,10 @@ async function removerPostsDoVeiculo(
     const agora = new Date().toISOString();
     for (const p of noAr) {
       try {
-        await apagarPost(p.post_id, pagina.pageToken);
+        // Instagram apaga com o token do USUÁRIO; Facebook, com o da Página.
+        // Trocar isso era o motivo de o post do IG sobreviver à venda.
+        const tokenDoDestino = p.destino === "instagram" ? token : pagina.pageToken;
+        await apagarPost(p.post_id, tokenDoDestino, p.destino);
         p.removido_em = agora;
         removidos++;
       } catch (e: any) {

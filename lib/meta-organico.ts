@@ -91,14 +91,27 @@ async function esperarContainer(id: string, token: string, tetoMs = 25000): Prom
  * (lib/meta-campanhas.ts), mas o post orgânico continuava no feed atraindo
  * mensagem sobre carro que não existe mais.
  *
- * ⚠️ Facebook funciona com o que a gente já tem (`pages_manage_posts`).
- * O Instagram exige a permissão **`instagram_manage_contents`**, que o app
- * ainda NÃO tem (hoje só `instagram_basic` + `instagram_content_publish`) —
- * precisa de App Review. Até lá a chamada falha e o post do IG tem que sair na
- * mão; por isso o permalink fica guardado em `veiculos.marketing_posts`.
+ * ⚠️ Os dois lados usam TOKEN DIFERENTE, e isso não é detalhe:
+ *   - Facebook (`pages_manage_posts`): token da PÁGINA.
+ *   - Instagram (`instagram_basic` + `instagram_manage_contents`): token do
+ *     USUÁRIO. A doc do IG Media Delete pede "Facebook User access token"
+ *     explicitamente — com o token da Página a chamada volta erro de permissão
+ *     mesmo com o escopo concedido. Era por isso que o post do IG ficava no ar.
+ *
+ * Limites da Meta (não são bug nosso): post que virou ANÚNCIO não pode ser
+ * apagado por aqui, e carrossel só sai inteiro, pelo id do álbum.
+ * O que não sair fica com o permalink em `veiculos.marketing_posts` pro
+ * gerente apagar na mão.
  */
-export async function apagarPost(postId: string, pageToken: string): Promise<void> {
-  const res = await fetch(`${GRAPH}/${postId}?access_token=${encodeURIComponent(pageToken)}`, {
+export async function apagarPost(
+  postId: string,
+  token: string,
+  destino: DestinoPost = "facebook",
+): Promise<void> {
+  // O IG aceita DELETE e POST no mesmo id; a doc documenta os dois. Mantemos
+  // DELETE, que é o que o Facebook também espera.
+  void destino;
+  const res = await fetch(`${GRAPH}/${postId}?access_token=${encodeURIComponent(token)}`, {
     method: "DELETE",
   });
   const data = await res.json().catch(() => ({}));
