@@ -3696,6 +3696,23 @@ Responda apenas com o JSON, sem markdown.`;
   // falso positivo quando o agente menciona um carro como alternativa de outro
   // que de fato não temos (ex: "Não temos Onix, mas temos um Polo Track novo").
   const denialPatternSentence = /n[ãa]o\s+(?:est[áa]|temos|tenho|tem|h[áa])(?:\s+(?:mais|dispon[íi]vel|em\s+estoque|no\s+p[áa]tio|atualmente|no\s+momento))?/i;
+  // Negar um DETALHE nao e negar o carro. Medido em 30 dias: 63 substituicoes
+  // em 42 conversas (os dois tenants), 15 delas repetindo a frase 2x ou mais e
+  // 8 clientes que pararam de responder logo depois. Quase todas eram o cliente
+  // pedindo uma variante que a loja nao tem — "Vc Cobalt preto", "quero uma
+  // touring", "eu queria o 2023", "Strada cabine estendida", "S10 LTZ flex" —
+  // e o agente respondendo CERTO. A guarda jogava a resposta boa fora.
+  const qualificadorDeVariante = new RegExp(
+    "\\b(" +
+      RADICAIS_COR.join("|") + "|" +
+      "flex|diesel|gasolina|gnv|h[íi]brid|el[ée]tric|" +
+      "autom[áa]tic|manual|c[âa]mbio|cambio|vers[ãa]o|versao|" +
+      "cabine|estendida|simples|dupla|4x4|4x2|turbo|aspirad|" +
+      "zero\\s*km|0\\s*km|novo|nova|seminovo|" +
+      "(?:19|20)\\d{2}" +
+    ")",
+    "i",
+  );
   if (denialPatternSentence.test(aiResponse)) {
     try {
       const { data: estoqueDisp } = await supabaseAdmin
@@ -3714,21 +3731,50 @@ Responda apenas com o JSON, sem markdown.`;
 
         for (const sent of sentencas) {
           if (!denialPatternSentence.test(sent)) continue;
-          const sentNorm = stripAccents(sent);
+          // "Não temos essa versão flex" / "não temos preto" / "não temos 2023":
+          // a negação é do detalhe, não do carro. Deixa passar.
+          if (qualificadorDeVariante.test(sent)) {
+            console.log(`🛡️ [Guarda] Negação de variante, não do carro — resposta mantida: "${sent.slice(0, 120)}"`);
+            continue;
+          }
+          // "Não temos Civic, MAS temos o Fit" e uma frase so: o que vem depois
+          // do "mas" e oferta, nao negacao. Sem cortar aqui, o Fit (que esta no
+          // patio) fazia a guarda derrubar uma resposta perfeita.
+          const parteNegada = sent.split(/\b(?:mas|por[ée]m|contudo|entretanto|no\s+entanto|s[óo]\s+temos)\b/i)[0];
+          const sentNorm = stripAccents(parteNegada);
 
           for (const v of estoqueDisp as Array<{ marca: string | null; modelo: string | null }>) {
-            const marca = stripAccents(v.marca ?? "");
             const modelo = stripAccents(v.modelo ?? "");
             const modeloPrimeira = modelo.split(/\s+/).find((w) => w.length >= 3) ?? "";
-            // Marca OU primeira palavra significativa do modelo precisa estar na MESMA sentença
-            const matchMarca = marca.length >= 3 && sentNorm.includes(marca);
+            // SÓ o modelo. Marca sozinha derrubava resposta certa: "não temos
+            // Civic, mas temos o Fit" disparava porque o Fit também é Honda.
             const matchModelo = modeloPrimeira.length >= 3 && sentNorm.includes(modeloPrimeira);
-            if (matchMarca || matchModelo) {
+            if (matchModelo) {
               falsoNegativo = { marca: v.marca ?? "", modelo: v.modelo ?? "", sentenca: sent };
               break;
             }
           }
           if (falsoNegativo) break;
+        }
+
+        // Primeira resposta do lead: trocar a saudação por "deixa eu confirmar"
+        // recebe o cliente com enrolação. Aconteceu 3x, uma delas num lead QUENTE.
+        const respostasAnteriores = historico.filter((h: any) => h.role === "model").length;
+        if (falsoNegativo && respostasAnteriores === 0) {
+          console.log("🛡️ [Guarda] Primeira resposta do lead — mantendo a saudação em vez de substituir");
+          falsoNegativo = null;
+        }
+        // Uma vez por conversa: teve cliente que levou a mesma frase 4 e 5 vezes.
+        if (falsoNegativo && lead?.id) {
+          const { count: jaAvisou } = await supabaseAdmin
+            .from("mensagens")
+            .select("id", { count: "exact", head: true })
+            .eq("lead_id", lead.id)
+            .ilike("content", "%está disponível sim%");
+          if ((jaAvisou ?? 0) > 0) {
+            console.log("🛡️ [Guarda] Já avisou nesta conversa — resposta original mantida");
+            falsoNegativo = null;
+          }
         }
 
         if (falsoNegativo) {
@@ -3737,7 +3783,10 @@ Responda apenas com o JSON, sem markdown.`;
             `🚨 [Guarda anti-mentira] Agente afirmou "não temos" mas ${carroLabel} ESTÁ disponível. Resposta substituída.`,
           );
           console.warn(`   Sentença interceptada: ${falsoNegativo.sentenca.slice(0, 200)}`);
-          aiResponse = `Deixa eu confirmar com o pessoal do pátio sobre o ${carroLabel} — qualquer dúvida já me chama aqui.`;
+          // A guarda só existe quando o carro ESTÁ no pátio — então a resposta
+          // certa é afirmar, não enrolar. A frase antiga ("vou confirmar com o
+          // pessoal do pátio") é a mesma que o prompt lista como falha grave.
+          aiResponse = `O ${carroLabel} está disponível sim! Quer ver as fotos ou prefere já agendar uma visita?`;
 
           if (lead?.id) {
             await supabaseAdmin
