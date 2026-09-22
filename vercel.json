@@ -5,6 +5,10 @@
       "schedule": "0 11,14,17,20,23 * * *"
     },
     {
+      "path": "/api/cron/pos-midia",
+      "schedule": "*/5 11-23 * * *"
+    },
+    {
       "path": "/api/cron/relatorio-semanal",
       "schedule": "0 13 * * 1"
     },
