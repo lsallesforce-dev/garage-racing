@@ -16,6 +16,7 @@ import { decryptWhatsAppAudio } from "@/lib/whatsapp-audio";
 import { decryptWhatsAppImage } from "@/lib/whatsapp-image";
 import { sintetizarVoz, prepararTextoParaVoz } from "@/lib/tts";
 import { hybridVehicleSearch, findVehicleForMedia } from "@/lib/hybrid-search";
+import { lerImagemDoCliente } from "@/lib/visao-imagem";
 import { urlVitrine } from "@/lib/repasse";
 import { logWebhookError } from "@/lib/error-log";
 import { lerAcoes, compararDecisoes, registrarShadow } from "@/lib/shadow-acoes";
@@ -507,6 +508,8 @@ ${roteiroEstadoCarro}
 9. CATEGORIA E ALTERNATIVAS (Cross-sell): SOMENTE ofereça outro carro se o carro pedido NÃO estiver no estoque. Se estiver disponível, mantenha o foco 100% nele até o final da conversa. É TERMINANTEMENTE PROIBIDO mencionar ou sugerir outro veículo enquanto o cliente estiver interessado no carro atual. Cross-sell deve respeitar categoria: cliente buscando Sedan → sugerir Sedan; cliente buscando SUV → sugerir SUV. NUNCA ofereça uma Pickup para quem perguntou sobre Sedan.
    ⚠️ EXCEÇÃO DE PREÇO: Se o cliente perguntar o preço de um veículo que está na seção ALTERNATIVAS, responda o preço imediatamente — preço nunca é "dado faltante". Informe com naturalidade, ex: "O XEI 2016 está por R$ 85.000."
 10. PÓS-VENDA E PROBLEMAS (Triagem de Emergência): Se o cliente relatar defeito, problema mecânico ou usar palavras como "quebrou", "garantia" ou "oficina", mude o tom imediatamente para acolhedor e resolutivo. Nunca tente vender. Peça desculpas, identifique o veículo e avise que a gerência vai assumir o caso.
+11c. PRINT DE ANÚNCIO: Se a mensagem começa com "[Cliente mandou um PRINT de anuncio...]", o cliente capturou a tela de um anúncio NOSSO e está perguntando sobre ESSE carro — normalmente se ainda está disponível. Trate exatamente como se ele tivesse digitado o nome do carro: confirme que está disponível (se estiver no estoque), diga preço e km, e siga a conversa. ⛔ PROIBIDO tratar como avaliação de troca ou dizer que vai encaminhar para avaliação — o carro da imagem é NOSSO, não dele.
+
 11b. FOTOS DO CLIENTE (Avaliação de Troca): Se a mensagem for "[Cliente enviou foto(s) do veículo]", o cliente está enviando fotos do próprio carro para avaliação de troca. Responda de forma acolhedora reconhecendo o recebimento das fotos, explique que a avaliação é feita pelo avaliador presencialmente na loja, e convide para agendar uma visita. Use precisa_instrucao com: "Cliente enviou fotos do veículo para avaliação de troca." NUNCA diga que não é possível avaliar por fotos de forma seca — seja receptivo.
 11. VISTORIA CAUTELAR: Se o cliente perguntar sobre vistoria cautelar, siga exatamente esta lógica:
    - Se o contexto do veículo mostrar "Vistoria cautelar: realizada" → informe que a loja já fez a cautelar e está em ordem.
@@ -1128,6 +1131,7 @@ function palavrasDoModeloNoTexto(modelo: string | null | undefined, texto: strin
  *  Dois carros do mesmo modelo só se distinguem pela cor: "temos outra Toro
  *  Freedom 2022 prata" -> as fotos têm que ser da prata, não da branca que está
  *  em foco (APROVE 21/09, Osmar). */
+const MARCA_FOTO_CLIENTE = "[Cliente enviou foto(s) do veículo]";
 const RADICAIS_COR = ["branc", "pret", "prat", "cinz", "vermelh", "azul", "verde", "amarel", "marrom", "bege", "dourad", "laranj", "roxo", "vinho"];
 function corNoTexto(texto: string | null | undefined): string | null {
   const t = (texto ?? "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
@@ -1809,6 +1813,11 @@ Responda apenas com o JSON, sem markdown.`;
   // O único gatilho para stand-by é o gerente assumir manualmente a conversa.
 
   let mensagemUsuarioId: string | null = null;
+  // Print de anuncio NAO e carro de troca — ver bloco 10c mais abaixo.
+  let printDeAnuncio = false;
+  // Carro que a visao reconheceu na foto do cliente ("Honda Civic"), pro alerta
+  // do gerente dizer QUAL carro veio na troca em vez de "fotos do veiculo".
+  let carroDaFotoDoCliente: string | null = null;
   if (lead && userMessage) {
     // Foto do cliente: tenta baixar + decriptar a foto ORIGINAL (protocolo do
     // WhatsApp — mesmo AES-256-CBC/HKDF do áudio, ver lib/whatsapp-image.ts) e
@@ -1817,10 +1826,12 @@ Responda apenas com o JSON, sem markdown.`;
     // como placeholder — dá pra confirmar "é uma foto de carro", não pra
     // avaliar lataria, documento ou o que quer que o cliente tenha mandado.
     let mediaUrlFoto: string | null = null;
+    let fotoBase64: string | null = null;
     if (job.imageUrl && job.imageMediaKey) {
       try {
         const fotoBuffer = await decryptWhatsAppImage(job.imageUrl, job.imageMediaKey);
         if (fotoBuffer) {
+          fotoBase64 = fotoBuffer.toString("base64");
           const path = `${tenantUserId}/${lead.id}/${randomUUID()}.jpg`;
           const { error: uploadErr } = await supabaseAdmin.storage
             .from("fotos-clientes")
@@ -1833,6 +1844,40 @@ Responda apenas com o JSON, sem markdown.`;
         }
       } catch (e) {
         console.warn("⚠️ [Foto cliente] Falha ao decriptar a foto original — caindo pro thumbnail:", e);
+      }
+    }
+
+    // ── O QUE TEM NA FOTO ────────────────────────────────────────────────
+    // Sem isto, toda imagem virava "avaliacao de troca" + handoff pro humano.
+    // Print do proprio anuncio da loja ("esse ainda ta disponivel?") e o caso
+    // mais comum e o mais caro: o cliente pergunta e recebe "vou avaliar seu
+    // carro". Caso real (APROVE 23/09, 5517992440348) com o post do Gol.
+    // Roda ANTES da busca de veiculo de proposito: reescrever `userMessage`
+    // aqui faz o print percorrer o pipeline inteiro como se o cliente tivesse
+    // digitado o nome do carro.
+    const imagemParaLer = fotoBase64 ?? job.imageThumbnail ?? null;
+    if (imagemParaLer) {
+      const leitura = await lerImagemDoCliente(imagemParaLer);
+      if (leitura) {
+        console.log(`👁️ [Visao] ${phone}: ${leitura.tipo}${leitura.carro ? ` — ${leitura.carro}` : ""}${leitura.preco ? ` (${leitura.preco})` : ""}`);
+        if (leitura.tipo === "carro_do_cliente") {
+          carroDaFotoDoCliente = leitura.carro;
+        }
+        if (leitura.tipo === "print_anuncio") {
+          printDeAnuncio = true;
+          const alvo = [leitura.carro, leitura.preco].filter(Boolean).join(" · ");
+          const legenda = userMessage === MARCA_FOTO_CLIENTE ? "" : userMessage;
+          userMessage =
+            `[Cliente mandou um PRINT de anuncio${alvo ? `: ${alvo}` : ""}` +
+            `${leitura.texto ? ` — texto na imagem: "${leitura.texto}"` : ""}]` +
+            (legenda ? `\n${legenda}` : "");
+        } else if (leitura.tipo === "documento" || leitura.tipo === "outro") {
+          // Nao e carro de troca: nao inventa "vou avaliar seu carro". Deixa o
+          // contexto explicito e o agente responde o que der.
+          const legenda = userMessage === MARCA_FOTO_CLIENTE ? "" : userMessage;
+          userMessage = `[Cliente enviou uma imagem: ${leitura.resumo || leitura.tipo}]` + (legenda ? `\n${legenda}` : "");
+          printDeAnuncio = true; // reaproveita a trava: nao e pre-avaliacao de troca
+        }
       }
     }
 
@@ -2646,7 +2691,7 @@ Responda apenas com o JSON, sem markdown.`;
   // deixar o Gemini responder (e pedir "qual dia"), damos um retorno fixo de que já
   // encaminhamos pro setor de avaliação, avisamos o gerente/avaliador e colocamos
   // em stand-by. O debounce de 45s garante 1 resposta + 1 alerta por sessão de fotos.
-  if (lead?.id && job.imageThumbnail) {
+  if (lead?.id && job.imageThumbnail && !printDeAnuncio) {
     const respFoto = "Recebi suas fotos! 📸 Já passei para o nosso setor de avaliação — em breve a gente te retorna com a análise. 😊";
     await sendText(phone, respFoto);
     await supabaseAdmin.from("mensagens").insert({
@@ -2655,7 +2700,9 @@ Responda apenas com o JSON, sem markdown.`;
 
     await supabaseAdmin.from("leads").update({
       em_atendimento_humano: true,
-      instrucao_pendente: "Cliente enviou fotos do veículo para pré-avaliação de troca.",
+      instrucao_pendente: carroDaFotoDoCliente
+        ? `Cliente enviou fotos de um ${carroDaFotoDoCliente} para pré-avaliação de troca.`
+        : "Cliente enviou fotos do veículo para pré-avaliação de troca.",
       instrucao_pendente_desde: new Date().toISOString(),
     }).eq("id", lead.id);
     await setTrocaStandby(tenantUserId, lead.id);
@@ -2663,7 +2710,9 @@ Responda apenas com o JSON, sem markdown.`;
     if (gerentePhone) {
       const veiculoLabelFoto = veiculoPrincipal ? `\n🚗 Interesse: ${veiculoPrincipal.marca} ${veiculoPrincipal.modelo}` : "";
       await sendAlertComLink(gerentePhone,
-        `📸 *Fotos para avaliação*\n\n👤 ${lead.nome || phone}\n📱 Número: +${phone}${veiculoLabelFoto}\n\n👉 Cliente enviou fotos do carro para pré-avaliação de troca. Assuma para avaliar.`,
+        `📸 *Fotos para avaliação*\n\n👤 ${lead.nome || phone}\n📱 Número: +${phone}${veiculoLabelFoto}` +
+        `${carroDaFotoDoCliente ? `\n🔄 Na troca: ${carroDaFotoDoCliente}` : ""}` +
+        `\n\n👉 Cliente enviou fotos do carro para pré-avaliação de troca. Assuma para avaliar.`,
         phone
       ).catch(() => {});
     }

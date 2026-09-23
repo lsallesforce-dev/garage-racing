@@ -198,7 +198,11 @@ function extractFields(payload: any): {
     audioMediaKey = msg?.audioMessage?.mediaKey ?? msg?.audioMessage?.MediaKey;
     messageId = info.ID;
     if (!userMessage && !audioUrl && msg?.imageMessage) {
-      userMessage = "[Cliente enviou foto(s) do veículo]";
+      // A LEGENDA da imagem era jogada fora. Cliente que manda o print do
+      // anuncio escrevendo "esse ainda ta disponivel?" tinha a pergunta
+      // apagada e virava so "[Cliente enviou foto(s)...]" (APROVE 23/09).
+      const legendaImg = (msg.imageMessage.caption ?? msg.imageMessage.Caption ?? "").trim();
+      userMessage = legendaImg || "[Cliente enviou foto(s) do veículo]";
       // Thumbnail base64 pro fallback (se a decriptação da foto original falhar)
       const thumb = msg.imageMessage.JPEGThumbnail ?? msg.imageMessage.jpegThumbnail;
       if (thumb) imageThumbnail = thumb;
@@ -304,7 +308,8 @@ function extractFields(payload: any): {
     userMessage = msg?.conversation || msg?.extendedTextMessage?.text || "";
     messageId = key.id;
     if (!userMessage && msg?.imageMessage) {
-      userMessage = "[Cliente enviou foto(s) do veículo]";
+      const legendaImgEvo = (msg.imageMessage.caption ?? msg.imageMessage.Caption ?? "").trim();
+      userMessage = legendaImgEvo || "[Cliente enviou foto(s) do veículo]";
       const thumb = msg.imageMessage.JPEGThumbnail ?? msg.imageMessage.jpegThumbnail;
       if (thumb) imageThumbnail = thumb;
       imageUrl = msg.imageMessage.URL ?? msg.imageMessage.url;
