@@ -204,6 +204,26 @@ export default function KitsGaleria() {
     );
   }
 
+  /**
+   * Canal que ficou pra tras: o post saiu num e falhou no outro.
+   *
+   * O aviso do clique some em segundos e nao sobrevive a refresh — o lojista
+   * so descobria olhando o feed. Caso real (23/09): a Saveiro Robust foi pro
+   * Facebook e o Instagram voltou 9007; ninguem viu ate o Lucas reparar.
+   * Story nao conta (expira em 24h) e Facebook so aceita feed.
+   */
+  function canalFaltando(c: CarroKit): "facebook" | "instagram" | null {
+    const feed = (c.marketing_posts ?? []).filter(
+      (p) => p && !p.removido_em && p.formato === "feed",
+    );
+    if (!feed.length) return null;
+    const temFb = feed.some((p) => p.destino === "facebook");
+    const temIg = feed.some((p) => p.destino === "instagram");
+    if (temFb && !temIg) return "instagram";
+    if (temIg && !temFb) return "facebook";
+    return null;
+  }
+
   function desde(iso: string): string {
     const min = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
     if (!isFinite(min) || min < 1) return "agora";
@@ -802,6 +822,25 @@ export default function KitsGaleria() {
                             {p.destino === "facebook" ? "Facebook" : "Instagram"} · {desde(p.em)}
                           </a>
                         ))}
+                      </div>
+                    )}
+
+                    {/* Publicou num canal e falhou no outro — fica visivel ate
+                        alguem resolver, com o botao que reenvia SO o que faltou
+                        (reenviar os dois duplicaria o que ja esta no ar). */}
+                    {canalFaltando(c) && (
+                      <div className="flex items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-2.5 py-2">
+                        <span className="text-[9px] font-black uppercase tracking-widest text-amber-700">
+                          ⚠ Não saiu no {canalFaltando(c) === "instagram" ? "Instagram" : "Facebook"}
+                        </span>
+                        <button
+                          onClick={() => postarAgora(c.id, [canalFaltando(c)!], "feed")}
+                          disabled={!!postando[c.id]}
+                          className="flex items-center gap-1 rounded-lg bg-amber-600 px-2.5 py-1.5 text-[9px] font-black uppercase tracking-widest text-white hover:bg-amber-700 disabled:opacity-50"
+                        >
+                          {postando[c.id] ? <Loader2 size={11} className="animate-spin" /> : <Send size={11} />}
+                          Reenviar
+                        </button>
                       </div>
                     )}
                   </>

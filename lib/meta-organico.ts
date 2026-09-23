@@ -85,6 +85,34 @@ async function esperarContainer(id: string, token: string, tetoMs = 25000): Prom
 }
 
 /**
+ * Cria container no Instagram tolerando erro TRANSITORIO da Meta.
+ *
+ * `{"code":2,"is_transient":true,"message":"An unexpected error has occurred.
+ * Please retry your request later."}` — acontece do nada no /media e derruba o
+ * post inteiro. Visto ao republicar a Saveiro Robust (23/09): primeira
+ * tentativa morreu no code 2, a segunda passou sem mudar NADA.
+ *
+ * Criar container e seguro de repetir: container que nao vira publish nao
+ * aparece pra ninguem e expira sozinho em 24h. Repetir o PUBLISH ja nao seria
+ * seguro (poderia duplicar o post), por isso la o retry so vale pro 9007, que
+ * garante que nada foi publicado.
+ */
+async function criarContainer(path: string, token: string, body: Record<string, any>) {
+  const esperas = [2000, 5000, 9000];
+  for (let tentativa = 0; ; tentativa++) {
+    try {
+      return await post(path, token, body);
+    } catch (e: any) {
+      const msg = String(e?.message ?? "");
+      const transitorio = /\(code 2\)|code 2\b|unexpected error/i.test(msg);
+      if (!transitorio || tentativa >= esperas.length) throw e;
+      console.warn(`⏳ [meta-organico] erro transitorio da Meta ao criar container — tentativa ${tentativa + 1}/${esperas.length}`);
+      await new Promise((s) => setTimeout(s, esperas[tentativa]));
+    }
+  }
+}
+
+/**
  * Publica o container do Instagram, tolerando o 9007.
  *
  * O `esperarContainer` já garante status_code=FINISHED antes daqui — e MESMO
@@ -275,7 +303,7 @@ export async function postarNoInstagram(p: {
   // vídeo — demora bem mais que imagem, daí o teto de espera maior (90s).
   if (usaVideo(p.formato)) {
     if (!p.videoUrl) throw new Error("Este carro ainda não tem reel pronto.");
-    const c = await post(`${p.igUserId}/media`, p.pageToken, {
+    const c = await criarContainer(`${p.igUserId}/media`, p.pageToken, {
       media_type: p.formato === "reels" ? "REELS" : "STORIES",
       video_url: p.videoUrl,
       // Story não leva legenda (o Instagram ignora); Reels leva.
@@ -290,7 +318,7 @@ export async function postarNoInstagram(p: {
   if (!imagens.length) throw new Error("Nenhuma imagem para publicar.");
 
   if (p.formato === "story") {
-    const c = await post(`${p.igUserId}/media`, p.pageToken, {
+    const c = await criarContainer(`${p.igUserId}/media`, p.pageToken, {
       image_url: imagens[0],
       media_type: "STORIES",
     });
@@ -300,7 +328,7 @@ export async function postarNoInstagram(p: {
   }
 
   if (imagens.length === 1) {
-    const c = await post(`${p.igUserId}/media`, p.pageToken, {
+    const c = await criarContainer(`${p.igUserId}/media`, p.pageToken, {
       image_url: imagens[0],
       caption: p.legenda,
     });
@@ -311,14 +339,14 @@ export async function postarNoInstagram(p: {
 
   const filhos = await Promise.all(
     imagens.map((image_url) =>
-      post(`${p.igUserId}/media`, p.pageToken, { image_url, is_carousel_item: true }).then(
+      criarContainer(`${p.igUserId}/media`, p.pageToken, { image_url, is_carousel_item: true }).then(
         (r) => r.id as string
       )
     )
   );
   // Os filhos precisam estar prontos ANTES do container pai — o pai só junta ids.
   await Promise.all(filhos.map((id) => esperarContainer(id, p.pageToken)));
-  const pai = await post(`${p.igUserId}/media`, p.pageToken, {
+  const pai = await criarContainer(`${p.igUserId}/media`, p.pageToken, {
     media_type: "CAROUSEL",
     children: filhos,
     caption: p.legenda,
