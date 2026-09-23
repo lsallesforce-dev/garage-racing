@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireVehicleOwner } from "@/lib/api-auth";
+import { tirarCarroVendidoDoAr } from "@/lib/veiculo-vendido";
 
 // Campos permitidos para edição via painel
 const ALLOWED_FIELDS = new Set([
@@ -60,11 +61,32 @@ export async function PATCH(req: NextRequest) {
     }
   }
 
+  // Virou VENDIDO agora? A tela de Vendas e o seletor de status vendem por
+  // aqui, não por /api/veiculo/vender — sem isto o post seguia no feed e a
+  // campanha seguia gastando. Só na TRANSIÇÃO: re-salvar um carro já vendido
+  // não repete nada.
+  let viraVendido: { userId: string } | null = null;
+  if (safeFields.status_venda === "VENDIDO") {
+    const { data: antes } = await supabaseAdmin
+      .from("veiculos").select("status_venda, user_id").eq("id", veiculoId).limit(1);
+    if (antes?.[0] && antes[0].status_venda !== "VENDIDO") viraVendido = { userId: antes[0].user_id };
+  }
+
   const { error } = await supabaseAdmin
     .from("veiculos")
     .update(safeFields)
     .eq("id", veiculoId);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  if (viraVendido) {
+    const saida = await tirarCarroVendidoDoAr(veiculoId, viraVendido.userId);
+    return NextResponse.json({
+      ok: true,
+      campanhasPausadas: saida.pausadas,
+      postsRemovidos: saida.removidos,
+      postsPendentes: saida.pendentes,
+    });
+  }
   return NextResponse.json({ ok: true });
 }
