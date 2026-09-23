@@ -85,6 +85,41 @@ async function esperarContainer(id: string, token: string, tetoMs = 25000): Prom
 }
 
 /**
+ * Publica o container do Instagram, tolerando o 9007.
+ *
+ * O `esperarContainer` já garante status_code=FINISHED antes daqui — e MESMO
+ * ASSIM o /media_publish volta 9007 ("Media ID is not available", subcode
+ * 2207027) de vez em quando. O FINISHED do carrossel chega antes de a mídia
+ * estar publicável de fato; é atraso de propagação do lado da Meta, não erro
+ * nosso. Caso real (APROVE 23/09): Saveiro Robust com 6 fotos — Facebook
+ * publicou, Instagram não. Mesma coisa tinha acontecido com o Cronos em 17/09
+ * e foi "resolvida" com a espera, que reduziu mas não eliminou.
+ *
+ * Então o publish insiste: 5 tentativas, ~55s no total. maxDuration da rota é
+ * 300s, cabe. Qualquer erro que NÃO seja 9007 sobe na hora.
+ */
+async function publicarNoInstagram(
+  igUserId: string,
+  pageToken: string,
+  creationId: string,
+): Promise<any> {
+  const esperas = [3000, 6000, 10000, 15000, 20000];
+  for (let tentativa = 0; ; tentativa++) {
+    try {
+      return await post(`${igUserId}/media_publish`, pageToken, { creation_id: creationId });
+    } catch (e: any) {
+      const msg = String(e?.message ?? "");
+      const ehNaoPronta = msg.includes("9007") || msg.includes("2207027");
+      if (!ehNaoPronta || tentativa >= esperas.length) throw e;
+      console.warn(
+        `⏳ [meta-organico] Instagram ainda não liberou a mídia (9007) — tentativa ${tentativa + 1}/${esperas.length}, esperando ${esperas[tentativa] / 1000}s`,
+      );
+      await new Promise((s) => setTimeout(s, esperas[tentativa]));
+    }
+  }
+}
+
+/**
  * Tira do ar um post publicado (Facebook ou Instagram).
  *
  * Usado quando o carro é VENDIDO: o anúncio pago já era pausado
@@ -247,7 +282,7 @@ export async function postarNoInstagram(p: {
       ...(p.formato === "reels" ? { caption: p.legenda } : {}),
     });
     await esperarContainer(c.id, p.pageToken, 90000);
-    const r = await post(`${p.igUserId}/media_publish`, p.pageToken, { creation_id: c.id });
+    const r = await publicarNoInstagram(p.igUserId, p.pageToken, c.id);
     return { mediaId: r.id, permalink: await linkDaMidia(r.id, p.pageToken) };
   }
 
@@ -260,7 +295,7 @@ export async function postarNoInstagram(p: {
       media_type: "STORIES",
     });
     await esperarContainer(c.id, p.pageToken);
-    const r = await post(`${p.igUserId}/media_publish`, p.pageToken, { creation_id: c.id });
+    const r = await publicarNoInstagram(p.igUserId, p.pageToken, c.id);
     return { mediaId: r.id, permalink: await linkDaMidia(r.id, p.pageToken) };
   }
 
@@ -270,7 +305,7 @@ export async function postarNoInstagram(p: {
       caption: p.legenda,
     });
     await esperarContainer(c.id, p.pageToken);
-    const r = await post(`${p.igUserId}/media_publish`, p.pageToken, { creation_id: c.id });
+    const r = await publicarNoInstagram(p.igUserId, p.pageToken, c.id);
     return { mediaId: r.id, permalink: await linkDaMidia(r.id, p.pageToken) };
   }
 
@@ -289,6 +324,6 @@ export async function postarNoInstagram(p: {
     caption: p.legenda,
   });
   await esperarContainer(pai.id, p.pageToken);
-  const r = await post(`${p.igUserId}/media_publish`, p.pageToken, { creation_id: pai.id });
+  const r = await publicarNoInstagram(p.igUserId, p.pageToken, pai.id);
   return { mediaId: r.id, permalink: await linkDaMidia(r.id, p.pageToken) };
 }
