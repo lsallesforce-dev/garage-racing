@@ -17,6 +17,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { criarCampanhaCarrosselEstoque } from "@/lib/meta-ads";
 import { midiaDoVeiculo, COLUNAS_MIDIA, CARROSSEL_MAX } from "@/lib/veiculo-midia";
 import { baseVitrine } from "@/lib/vitrine-tenant";
+import { statusPeloInicio } from "@/lib/meta-publicar";
 
 export const maxDuration = 300;
 
@@ -195,7 +196,7 @@ export async function POST(req: NextRequest) {
       adset_id:         result.adsetId,
       ad_id:            result.adId,
       leadform_id:      "",
-      status:           statusInicial === "PAUSED" ? "pausado" : "ativo",
+      status:           statusInicial === "PAUSED" ? "pausado" : statusPeloInicio(iniciaEm),
       placement:        placement ?? "facebook,instagram",
       orcamento_diario: orcamentoDiario ?? 30,
       duracao_dias:     duracaoDias ?? 7,

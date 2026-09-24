@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useUserRole } from "@/components/SidebarWrapper";
-import { Megaphone, LayoutList, Layers, Settings } from "lucide-react";
+import { Megaphone, LayoutList, Layers, Settings, CalendarDays } from "lucide-react";
 import PublicarMetaButton from "@/components/PublicarMetaButton";
 import PublicarPortaisModal, { publicadoNoPortal, type Portal } from "@/components/PublicarPortaisModal";
 import KitsGaleria from "@/components/KitsGaleria";
@@ -307,6 +307,12 @@ function MarketingPageInner() {
               className="flex items-center gap-2 px-4 py-2.5 bg-gray-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-wider hover:bg-indigo-600 transition-all"
             >
               <LayoutList size={14} /> Anúncios ativos
+            </Link>
+            <Link
+              href="/marketing/planejamento"
+              className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 text-gray-800 rounded-2xl text-[10px] font-black uppercase tracking-wider hover:border-indigo-300 hover:text-indigo-600 transition-all"
+            >
+              <CalendarDays size={14} /> Planejamento
             </Link>
           </div>
         </div>

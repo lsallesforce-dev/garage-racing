@@ -5,12 +5,13 @@
 //
 // Roda 1x/dia via Vercel Cron (vercel.json): 06:00 UTC (03:00 BRT).
 //
-// Para cada campanha "ativo":
-//   1. Busca insights (gasto, impressões) via Meta API com o meta_ads_token do tenant
-//   2. Atualiza meta_campanhas (gasto_total, impressoes e, quando a Meta
-//      devolve > 0, leads_gerados — click-to-WhatsApp não passa pelo webhook
-//      de leadgen, então sem isso o CPL do painel nunca fecha)
-//   3. Se encerra_em < now(), marca como "encerrado"
+// Para cada campanha "ativo" / "pausado" / "agendado" (sincronizarMetricasDoTenant):
+//   1. Busca na Meta gasto, impressões, alcance, cliques no link, CPC, CTR,
+//      frequência, conversas/leads e o effective_status do anúncio
+//   2. Atualiza meta_campanhas (leads_gerados só quando a Meta devolve > 0 —
+//      click-to-WhatsApp não passa pelo webhook de leadgen)
+//   3. agendado → ativo quando inicia_em passou
+//   4. Se encerra_em < now(), marca como "encerrado"
 //
 // Para cada tenant com meta_ads_token:
 //   1. Tenta um GET /me para validar se o token ainda funciona
@@ -18,8 +19,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { buscarMetricasCampanha } from "@/lib/meta-ads";
-import { pausarCampanhasDoVeiculo } from "@/lib/meta-campanhas";
+import { pausarCampanhasDoVeiculo, sincronizarMetricasDoTenant, FILTRO_SYNC } from "@/lib/meta-campanhas";
 
 export const maxDuration = 120;
 
@@ -43,6 +43,7 @@ export async function GET(req: NextRequest) {
   let campanhasEncerradas = 0;
   let tokensExpirados = 0;
   let campanhasPausadas = 0;
+  let campanhasIniciadas = 0;
 
   // ── Mapa user_id → meta_ads_token (mais recente por tenant) ────────────────
   // config_garage pode ter múltiplas linhas por tenant — ordena desc e fica
@@ -62,50 +63,27 @@ export async function GET(req: NextRequest) {
     if (cfg.meta_ads_token) tokenByUser.set(cfg.user_id, cfg.meta_ads_token);
   }
 
-  // ── 1. Sincronizar campanhas ativas (gasto + impressões) ───────────────────
+  // ── 1. Sincronizar campanhas vivas (métricas completas + transições) ──────
   // /{ad_id}/insights exige ads_read — usa o meta_ads_token do tenant, NÃO o
-  // page token. leads_gerados é mantido em tempo real pelo webhook.
-  // Campanha PAUSADA também entra: ela já gastou, e sem sincronizar o gasto
-  // final o card "Custo do lead" do painel some com o dinheiro dela.
+  // page token. Campanha PAUSADA também entra: ela já gastou, e sem
+  // sincronizar o gasto final o card "Custo do lead" do painel some com o
+  // dinheiro dela. AGENDADA entra pra virar "ativo" quando inicia_em passar.
+  // A lógica é a mesma do botão "Atualizar" do Planejamento de Postagens —
+  // vive em lib/meta-campanhas.ts (sincronizarMetricasDoTenant).
   const { data: campanhas } = await supabaseAdmin
     .from("meta_campanhas")
-    .select("id, ad_id, user_id, status, encerra_em, veiculo_id")
-    .in("status", ["ativo", "pausado"]);
+    .select("user_id, veiculo_id, status")
+    .or(FILTRO_SYNC);
 
-  for (const camp of campanhas ?? []) {
+  const tenantsComCampanha = [...new Set((campanhas ?? []).map((c: any) => c.user_id as string))];
+  for (const userId of tenantsComCampanha) {
     try {
-      const adToken = tokenByUser.get(camp.user_id);
-
-      // Sincroniza ANTES de encerrar — senão a campanha congela sem o gasto final.
-      if (camp.ad_id && adToken) {
-        const metricas = await buscarMetricasCampanha(camp.ad_id, adToken);
-
-        const campos: Record<string, any> = {
-          gasto_total: metricas.gasto,
-          impressoes:  metricas.impressoes,
-        };
-        // Click-to-WhatsApp não passa pelo webhook de leadgen: sem isso,
-        // leads_gerados fica 0 pra sempre e o CPL do painel não fecha.
-        if (metricas.leads > 0) campos.leads_gerados = metricas.leads;
-
-        await supabaseAdmin
-          .from("meta_campanhas")
-          .update(campos)
-          .eq("id", camp.id);
-
-        campanhasAtualizadas++;
-      }
-
-      // Passou da data de encerramento → congela o status (já com o gasto final).
-      if (camp.encerra_em && new Date(camp.encerra_em) < agora) {
-        await supabaseAdmin
-          .from("meta_campanhas")
-          .update({ status: "encerrado" })
-          .eq("id", camp.id);
-        campanhasEncerradas++;
-      }
+      const r = await sincronizarMetricasDoTenant(userId, tokenByUser.get(userId) ?? null);
+      campanhasAtualizadas += r.sincronizadas;
+      campanhasEncerradas += r.encerradas;
+      campanhasIniciadas += r.iniciadas;
     } catch (e: any) {
-      console.warn(`⚠️ [meta-sync] Erro na campanha ${camp.id}:`, e.message?.slice(0, 200));
+      console.warn(`⚠️ [meta-sync] Erro no tenant ${userId}:`, e.message?.slice(0, 200));
     }
   }
 
@@ -115,8 +93,9 @@ export async function GET(req: NextRequest) {
   // do ar, carro marcado como vendido direto no banco.
   // Campanha SEM veiculo_id fica em paz de propósito: carrossel de vários
   // carros é legítimo e não aponta pra um veículo só.
+  // (a lista acima inclui encerradas sem métricas completas — essas ficam de fora aqui)
   const idsComVeiculo = (campanhas ?? [])
-    .filter((c: any) => c.veiculo_id)
+    .filter((c: any) => c.veiculo_id && c.status !== "encerrado")
     .map((c: any) => c.veiculo_id);
 
   if (idsComVeiculo.length) {
@@ -177,12 +156,13 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  console.log(`✅ [meta-sync] campanhas_atualizadas=${campanhasAtualizadas} encerradas=${campanhasEncerradas} pausadas_por_venda=${campanhasPausadas} tokens_expirados=${tokensExpirados}`);
+  console.log(`✅ [meta-sync] campanhas_atualizadas=${campanhasAtualizadas} iniciadas=${campanhasIniciadas} encerradas=${campanhasEncerradas} pausadas_por_venda=${campanhasPausadas} tokens_expirados=${tokensExpirados}`);
 
   return NextResponse.json({
     ok: true,
     campanhas_atualizadas: campanhasAtualizadas,
     campanhas_encerradas: campanhasEncerradas,
+    campanhas_iniciadas: campanhasIniciadas,
     campanhas_pausadas_por_venda: campanhasPausadas,
     tokens_expirados: tokensExpirados,
   });

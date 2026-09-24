@@ -11,6 +11,7 @@
 // da Graph API, sem Supabase. Aqui a gente precisa dos dois.
 
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { buscarMetricasCampanha } from "@/lib/meta-ads";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 
@@ -42,7 +43,10 @@ export async function pausarCampanhasDoVeiculo(
       // pra cá). Confirmar PAUSED numa campanha que já está pausada é
       // inofensivo e idempotente; confiar num "pausado" mentiroso do banco
       // deixaria o anúncio de um carro vendido no ar.
-      .neq("status", "encerrado");
+      .neq("status", "encerrado")
+      // Rascunho não existe na Meta (campaign_id NULL) — POST em /null/ só
+      // contaria falha à toa.
+      .not("campaign_id", "is", null);
 
     if (!camps?.length) return { pausadas: 0, falhas: 0 };
 
@@ -102,4 +106,125 @@ export async function pausarCampanhasDoVeiculo(
   }
 
   return { pausadas, falhas };
+}
+
+// ─── Sincronização de métricas ────────────────────────────────────────────────
+
+/** Status que existem na Meta e ainda podem mudar de número. */
+export const STATUS_SINCRONIZAVEIS = ["ativo", "pausado", "agendado"] as const;
+
+/**
+ * Filtro PostgREST (.or) das linhas que a sincronização lê: vivas sempre;
+ * encerradas UMA vez, se nunca tiveram a leitura completa (anteriores à
+ * migration 063 só têm gasto/impressões/leads). Depois de ganhar metricas_em
+ * elas saem do filtro e não custam mais chamada à Meta.
+ */
+export const FILTRO_SYNC =
+  `status.in.(${STATUS_SINCRONIZAVEIS.join(",")}),` +
+  "and(status.eq.encerrado,metricas_em.is.null,ad_id.not.is.null)";
+
+export type ResultadoSync = {
+  sincronizadas: number;
+  falhas: number;
+  /** agendado → ativo porque inicia_em passou. */
+  iniciadas: number;
+  /** → encerrado porque encerra_em passou (com o gasto final já gravado). */
+  encerradas: number;
+};
+
+/**
+ * Lê na Meta as métricas completas de cada campanha viva do tenant e grava em
+ * meta_campanhas. Usada pelo cron meta-sync (1x/dia — o plano da Vercel não
+ * deixa cron mais frequente) E pelo botão "Atualizar" do Planejamento
+ * (/api/meta/planejamento/sync, com trava de 5 min lá).
+ *
+ * - Falha de leitura NÃO grava zero: antes o catch de buscarMetricasCampanha
+ *   devolvia zeros e o cron sobrescrevia o gasto real com 0.
+ * - leads_gerados só sobe (> 0): o webhook de leadgen também escreve ali.
+ * - Sincroniza ANTES de encerrar — senão a campanha congela sem o gasto final.
+ *
+ * `token` opcional: o cron já tem o mapa user→token e evita reler config_garage.
+ */
+export async function sincronizarMetricasDoTenant(
+  userId: string,
+  token?: string | null,
+): Promise<ResultadoSync> {
+  const r: ResultadoSync = { sincronizadas: 0, falhas: 0, iniciadas: 0, encerradas: 0 };
+
+  let adToken = token ?? null;
+  if (!adToken) {
+    // config_garage pode ter várias linhas por tenant — fica com a mais recente.
+    const { data } = await supabaseAdmin
+      .from("config_garage")
+      .select("meta_ads_token")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(1);
+    adToken = data?.[0]?.meta_ads_token || null;
+  }
+
+  const { data: campanhas } = await supabaseAdmin
+    .from("meta_campanhas")
+    .select("id, ad_id, status, inicia_em, encerra_em")
+    .eq("user_id", userId)
+    .or(FILTRO_SYNC);
+
+  const agora = Date.now();
+
+  const processar = async (camp: any) => {
+    try {
+      const campos: Record<string, any> = {};
+
+      if (camp.ad_id && adToken) {
+        const m = await buscarMetricasCampanha(camp.ad_id, adToken);
+        if (m.ok) {
+          Object.assign(campos, {
+            gasto_total: m.gasto,
+            impressoes:  m.impressoes,
+            alcance:     m.alcance,
+            cliques:     m.cliques,
+            cpc:         m.cpc,
+            ctr:         m.ctr,
+            frequencia:  m.frequencia,
+            conversas:   m.conversas,
+            meta_status: m.metaStatus,
+            metricas_em: new Date().toISOString(),
+          });
+          // Click-to-WhatsApp não passa pelo webhook de leadgen: sem isso,
+          // leads_gerados fica 0 pra sempre e o CPL do painel não fecha.
+          if (m.leads > 0) campos.leads_gerados = m.leads;
+          r.sincronizadas++;
+        } else {
+          r.falhas++;
+        }
+      }
+
+      // Programada que já começou.
+      if (camp.status === "agendado" && camp.inicia_em && new Date(camp.inicia_em).getTime() <= agora) {
+        campos.status = "ativo";
+        r.iniciadas++;
+      }
+      // Passou da data de encerramento → congela o status (já com o gasto final).
+      if (camp.status !== "encerrado" && camp.encerra_em && new Date(camp.encerra_em).getTime() < agora) {
+        campos.status = "encerrado";
+        r.encerradas++;
+      }
+
+      if (Object.keys(campos).length) {
+        await supabaseAdmin.from("meta_campanhas").update(campos).eq("id", camp.id).eq("user_id", userId);
+      }
+    } catch (e: any) {
+      r.falhas++;
+      console.warn(`⚠️ [meta-campanhas] sync da campanha ${camp.id} falhou:`, e?.message?.slice(0, 200));
+    }
+  };
+
+  // Lotes de 5: um tenant com 30 campanhas não enfileira 30 GETs em série
+  // (estouraria o maxDuration do cron), nem dispara 30 de uma vez na Graph API.
+  const lista = campanhas ?? [];
+  for (let i = 0; i < lista.length; i += 5) {
+    await Promise.all(lista.slice(i, i + 5).map(processar));
+  }
+
+  return r;
 }

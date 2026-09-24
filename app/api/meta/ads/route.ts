@@ -20,7 +20,8 @@ export async function GET(req: NextRequest) {
       .from("meta_campanhas")
       .select("veiculo_id")
       .eq("user_id", getEffectiveUserId(user!))
-      .eq("status", "ativo");
+      // Agendada já está na Meta (Programada) — conta como anúncio do carro.
+      .in("status", ["ativo", "agendado"]);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     const ativasPorVeiculo: Record<string, number> = {};
     for (const c of data ?? []) {

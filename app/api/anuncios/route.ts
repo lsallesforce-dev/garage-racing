@@ -24,7 +24,9 @@ export async function GET(req: NextRequest) {
       .from("meta_campanhas")
       .select("id, status, placement, orcamento_diario, leads_gerados, gasto_total, impressoes, created_at, veiculos(marca, modelo, ano, preco_sugerido, fotos, capa_marketing_url)")
       .eq("user_id", userId)
-      .neq("status", "cancelado")
+      // Rascunho (e o "publicando" transitório) não está no ar — vive só no
+      // Planejamento de Postagens; aqui viraria card de anúncio publicado.
+      .not("status", "in", "(cancelado,rascunho,publicando)")
       .order("created_at", { ascending: false }),
   ]);
 

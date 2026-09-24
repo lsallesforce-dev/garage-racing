@@ -55,7 +55,7 @@ export interface CriarCampanhaParams {
 export type ObjetivoAnuncio = "leads" | "whatsapp";
 
 export interface ConfigCampanha {
-  placement: string;          // "facebook" | "instagram" | "facebook,instagram"
+  placement: string;          // "facebook" | "instagram" | "facebook,instagram" | "stories"
   /** "leads" = formulário instantâneo | "whatsapp" = abre conversa (CTWA) */
   objetivo?: ObjetivoAnuncio;
   /** Formato do criativo — decide a forma do object_story_spec. */
@@ -355,6 +355,20 @@ export async function criarLeadForm(
  * teto de raio — não adianta aumentar o número aqui.
  */
 export const RAIO_MAX_KM = 70;
+
+/**
+ * Posicionamento "só stories" (FB story + IG story). Valor próprio em vez de
+ * mais uma combinação de "facebook,instagram" porque o feed some — e o
+ * `placement.includes("instagram")` espalhado pelo arquivo NÃO pode casar com
+ * ele (a variante 4:5→9:16 do asset_feed_spec não faz sentido quando só há story).
+ */
+export const PLACEMENT_STORIES = "stories";
+export const PLACEMENTS_VALIDOS = ["facebook", "instagram", "facebook,instagram", PLACEMENT_STORIES] as const;
+
+/** true quando o anúncio vai aparecer no Instagram (precisa de instagram_user_id). */
+export function placementUsaInstagram(placement: string): boolean {
+  return placement === PLACEMENT_STORIES || placement.includes("instagram");
+}
 export const RAIO_MIN_KM = 1;
 
 /**
@@ -369,11 +383,19 @@ export function montarTargeting(
   const publisherPlatforms: string[] = [];
   const facebookPositions: string[] = [];
   const instagramPositions: string[] = [];
-  if (cfg.placement.includes("facebook")) {
+  if (cfg.placement === PLACEMENT_STORIES) {
+    // Só story, nas duas redes. A Meta NÃO aceita facebook_positions=["story"]
+    // sozinho ("you must also select Facebook feed or Instagram story" — doc de
+    // Placement Targeting), por isso stories é sempre FB + IG juntos e exige
+    // conta do Instagram conectada (validado em lib/meta-publicar.ts).
+    publisherPlatforms.push("facebook", "instagram");
+    facebookPositions.push("story");
+    instagramPositions.push("story");
+  } else if (cfg.placement.includes("facebook")) {
     publisherPlatforms.push("facebook");
     facebookPositions.push("feed", "marketplace");
   }
-  if (cfg.placement.includes("instagram")) {
+  if (cfg.placement !== PLACEMENT_STORIES && cfg.placement.includes("instagram")) {
     publisherPlatforms.push("instagram");
     instagramPositions.push("stream", "story", "reels");
   }
@@ -689,7 +711,7 @@ export async function criarCampanhaLeadAd(p: CriarCampanhaParams): Promise<Campa
   // novas). Usar o nome velho faz a Meta recusar com "(#100) Param
   // instagram_actor_id must be a valid Instagram account id" mesmo com um ID
   // correto — a mensagem engana porque não menciona a troca do campo.
-  if (instagramActorId && configuracao.placement.includes("instagram")) {
+  if (instagramActorId && placementUsaInstagram(configuracao.placement)) {
     storySpec.instagram_user_id = instagramActorId;
   }
 
@@ -993,7 +1015,7 @@ export async function criarCampanhaCarrosselEstoque(
   // valendo pra todas as versões da API. O nome velho faz a Meta recusar com
   // "(#100) Param instagram_actor_id must be a valid Instagram account id" mesmo
   // com um ID correto.
-  if (instagramActorId && configuracao.placement.includes("instagram")) {
+  if (instagramActorId && placementUsaInstagram(configuracao.placement)) {
     storySpec.instagram_user_id = instagramActorId;
   }
 
@@ -1056,21 +1078,56 @@ export async function buscarDadosLead(leadgenId: string, pageAccessToken: string
 // insights de anúncio: a chamada falha e (por causa do catch abaixo) retorna
 // zeros silenciosamente, zerando o painel.
 
-export async function buscarMetricasCampanha(adId: string, accessToken: string): Promise<{
+export interface MetricasAnuncio {
+  /** false = a Meta não respondeu; os números abaixo são zeros de mentira e NÃO devem ser gravados. */
+  ok: boolean;
   gasto: number;
-  leads: number;
   impressoes: number;
-}> {
+  alcance: number;
+  /**
+   * inline_link_clicks — clique que leva ao DESTINO (abre o WhatsApp ou o
+   * formulário). O `clicks` cru da Meta soma curtida, clique no perfil,
+   * "ver mais"... (no carrossel do Uno da APROVE: 222 clicks × 129 link
+   * clicks) e inflaria o CTR. cpc/ctr seguem a mesma base
+   * (cost_per_inline_link_click / inline_link_click_ctr), senão os três não
+   * fecham entre si.
+   */
+  cliques: number;
+  cpc: number | null;
+  /** Em % (1.8 = 1,8%), como a Meta devolve. */
+  ctr: number | null;
+  frequencia: number | null;
+  /** Conversas iniciadas no WhatsApp (CTWA). */
+  conversas: number;
+  /** Formulários instantâneos enviados. */
+  formularios: number;
+  /** Compat: conversas se houver, senão formulários (o que o cron sempre gravou em leads_gerados). */
+  leads: number;
+  /** effective_status do anúncio (ACTIVE, CAMPAIGN_PAUSED, PENDING_REVIEW, DISAPPROVED...). */
+  metaStatus: string | null;
+}
+
+const METRICAS_ZERADAS: Omit<MetricasAnuncio, "ok" | "metaStatus"> = {
+  gasto: 0, impressoes: 0, alcance: 0, cliques: 0, cpc: null, ctr: null,
+  frequencia: null, conversas: 0, formularios: 0, leads: 0,
+};
+
+export async function buscarMetricasCampanha(adId: string, accessToken: string): Promise<MetricasAnuncio> {
   try {
+    // Uma chamada só: status do anúncio + insights lifetime por field expansion.
     // `date_preset: "lifetime"` FOI REMOVIDO da Graph API (virou "maximum").
     // Mandar "lifetime" derruba a chamada em erro de parametro -> cai no catch
     // -> grava zero. Foi o que deixou o card "Custo do lead" mudo ate 07/09/26.
-    const data = await graphGet(`${adId}/insights`, accessToken, {
-      fields: "spend,actions,impressions",
-      date_preset: "maximum",
+    const data = await graphGet(adId, accessToken, {
+      fields:
+        "effective_status,insights.date_preset(maximum){spend,impressions,reach,inline_link_clicks," +
+        "cost_per_inline_link_click,inline_link_click_ctr,frequency,actions}",
     });
-    const insights = data.data?.[0];
-    if (!insights) return { gasto: 0, leads: 0, impressoes: 0 };
+    const metaStatus: string | null = data.effective_status ?? null;
+    const insights = data.insights?.data?.[0];
+    // Anúncio que ainda não entregou (agendado, em análise) não tem insights —
+    // aí zero é verdade, então ok=true.
+    if (!insights) return { ok: true, metaStatus, ...METRICAS_ZERADAS };
 
     // Anuncio de click-to-WhatsApp NAO gera action_type "lead" (isso e de
     // formulario). O evento dele e a conversa iniciada.
@@ -1089,14 +1146,156 @@ export async function buscarMetricasCampanha(adId: string, accessToken: string):
       valorDe("onsite_conversion.total_messaging_connection") ??
       0;
     const formularios = valorDe("lead") ?? 0;
+    const num = (v: unknown): number | null => {
+      const n = parseFloat(String(v ?? ""));
+      return Number.isFinite(n) ? n : null;
+    };
 
     return {
-      gasto:      parseFloat(insights.spend ?? "0"),
-      leads:      conversas || formularios,
-      impressoes: parseInt(insights.impressions ?? "0"),
+      ok:          true,
+      metaStatus,
+      gasto:       num(insights.spend) ?? 0,
+      impressoes:  parseInt(insights.impressions ?? "0") || 0,
+      alcance:     parseInt(insights.reach ?? "0") || 0,
+      cliques:     parseInt(insights.inline_link_clicks ?? "0") || 0,
+      cpc:         num(insights.cost_per_inline_link_click),
+      ctr:         num(insights.inline_link_click_ctr),
+      frequencia:  num(insights.frequency),
+      conversas,
+      formularios,
+      leads:       conversas || formularios,
     };
   } catch (e: any) {
     console.warn(`⚠️ [meta-ads] insights do ad ${adId} falhou:`, e?.message?.slice(0, 200));
-    return { gasto: 0, leads: 0, impressoes: 0 };
+    return { ok: false, metaStatus: null, ...METRICAS_ZERADAS };
+  }
+}
+
+// ─── Saldo da conta de anúncios ───────────────────────────────────────────────
+
+export interface SaldoConta {
+  /** R$ que ainda dá pra gastar. null = a Meta não expõe (ex.: cartão sem limite). */
+  disponivel: number | null;
+  moeda: string;
+  prepago: boolean | null;
+  /** Texto cru da Meta ("Saldo disponível (R$205,59 BRL)") ou explicação nossa. */
+  texto: string | null;
+  contaId: string | null;
+  contaNome: string | null;
+  /** spend_cap em reais (limite de gastos da conta). null = sem limite. */
+  limiteGasto: number | null;
+  /** amount_spent em reais (gasto acumulado da conta, vida inteira). */
+  gastoTotalConta: number | null;
+  erro?: string;
+}
+
+/**
+ * "R$1.234,56" / "Saldo disponível (R$205,59 BRL)" / "$1,234.56 USD" → número.
+ * O separador decimal é o ÚLTIMO . ou , seguido de exatamente 2 dígitos no
+ * fim do número; os outros são separador de milhar.
+ */
+export function parseValorMonetario(txt: string): number | null {
+  const m = txt.match(/\d[\d.,]*/);
+  if (!m) return null;
+  const bruto = m[0].replace(/[.,]+$/, "");
+  const dec = bruto.match(/[.,](\d{2})$/);
+  const inteiro = (dec ? bruto.slice(0, -3) : bruto).replace(/[.,]/g, "");
+  const n = parseFloat(dec ? `${inteiro}.${dec[1]}` : inteiro);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Saldo da conta de anúncios — de onde sai o "saldo disponível".
+ *
+ * Medido na conta da APROVE (PRÉ-PAGA, BRL) em 24/09/2026:
+ *   is_prepay_account: true
+ *   balance: "395"            → centavos DEVIDOS ainda não debitados (NÃO é saldo)
+ *   amount_spent / spend_cap  → centavos; spend_cap − amount_spent dava R$ 180,61
+ *   funding_source_details: { type: 20, display_string: "Saldo disponível (R$205,59 BRL)",
+ *                             coupons: [crédito promocional já zerado] }
+ * O "Saldo disponível" do Gerenciador é o do display_string (R$ 205,59). O
+ * spend_cap − amount_spent é o LIMITE de gastos da conta — conceito diferente,
+ * errava por R$ 25. Então:
+ *   pré-paga (caminho principal) → parse do display_string; só cai no
+ *              spend_cap − amount_spent se o texto não trouxer valor;
+ *   cartão   → não existe "saldo", a Meta cobra no cartão. Com limite de
+ *              gastos (spend_cap > 0) o disponível é o que falta pro limite;
+ *              sem limite → null + texto explicando.
+ * Valores monetários da conta vêm em CENTAVOS (offset 100 do BRL).
+ */
+export async function buscarSaldoConta(adAccountId: string, accessToken: string): Promise<SaldoConta> {
+  const vazio: SaldoConta = {
+    disponivel: null, moeda: "BRL", prepago: null, texto: null,
+    contaId: adAccountId || null, contaNome: null, limiteGasto: null, gastoTotalConta: null,
+  };
+  try {
+    const d = await graphGet(adAccountId, accessToken, {
+      fields: "name,currency,account_status,amount_spent,spend_cap,is_prepay_account,funding_source_details",
+    });
+    const centavos = (v: unknown): number | null => {
+      const n = parseInt(String(v ?? ""), 10);
+      return Number.isFinite(n) ? n / 100 : null;
+    };
+    const limite = centavos(d.spend_cap);
+    const gasto = centavos(d.amount_spent);
+    const limiteValido = limite != null && limite > 0 ? limite : null;
+    const restanteLimite = limiteValido != null && gasto != null ? Math.max(0, limiteValido - gasto) : null;
+    const display: string | null = d.funding_source_details?.display_string ?? null;
+    const prepago = typeof d.is_prepay_account === "boolean" ? d.is_prepay_account : null;
+
+    let disponivel: number | null;
+    let texto: string | null = display;
+    if (prepago) {
+      disponivel = display ? parseValorMonetario(display) : null;
+      if (disponivel == null) {
+        disponivel = restanteLimite;
+        texto = restanteLimite != null
+          ? "A Meta não informou o saldo pré-pago — mostrando o que falta do limite de gastos da conta."
+          : "A Meta não informou o saldo pré-pago desta conta.";
+      }
+    } else {
+      disponivel = restanteLimite;
+      texto = restanteLimite != null
+        ? `Cobrança em ${display ?? "cartão"} — disponível = limite de gastos da conta menos o já gasto.`
+        : `Cobrança em ${display ?? "cartão"} — conta sem limite de gastos, não há saldo a mostrar.`;
+    }
+
+    // account_status 1 = ativa. Qualquer outro (2 desativada, 3 pagamento
+    // pendente...) para a entrega — vale avisar na tela.
+    const erro = d.account_status != null && d.account_status !== 1
+      ? `Conta de anúncios com status ${d.account_status} na Meta (não está ativa).`
+      : undefined;
+
+    return {
+      disponivel: disponivel != null ? Math.round(disponivel * 100) / 100 : null,
+      moeda: d.currency ?? "BRL",
+      prepago,
+      texto,
+      contaId: d.id ?? adAccountId,
+      contaNome: d.name ?? null,
+      limiteGasto: limiteValido,
+      gastoTotalConta: gasto,
+      ...(erro ? { erro } : {}),
+    };
+  } catch (e: any) {
+    return { ...vazio, texto: "Não foi possível ler a conta de anúncios na Meta.", erro: e?.message?.slice(0, 200) };
+  }
+}
+
+/** Gasto real da conta inteira num intervalo (YYYY-MM-DD, inclusivo). null = falhou. */
+export async function buscarGastoConta(
+  adAccountId: string, accessToken: string, desde: string, ate: string,
+): Promise<number | null> {
+  try {
+    const d = await graphGet(`${adAccountId}/insights`, accessToken, {
+      fields: "spend",
+      level: "account",
+      time_range: JSON.stringify({ since: desde, until: ate }),
+    });
+    // Período sem entrega volta data: [] — é zero de verdade, não falha.
+    return parseFloat(d.data?.[0]?.spend ?? "0") || 0;
+  } catch (e: any) {
+    console.warn(`⚠️ [meta-ads] insights da conta ${adAccountId} falhou:`, e?.message?.slice(0, 200));
+    return null;
   }
 }

@@ -28,13 +28,22 @@ export async function POST(req: NextRequest) {
   // Busca a campanha no banco
   const { data: camp } = await supabaseAdmin
     .from("meta_campanhas")
-    .select("id, campaign_id, status, pagina_id, user_id, meta_paginas(page_access_token)")
+    .select("id, campaign_id, status, inicia_em, pagina_id, user_id, meta_paginas(page_access_token)")
     .eq("id", campanhaId)
     .eq("user_id", userId)
     .single();
 
   if (!camp) {
     return NextResponse.json({ error: "Campanha não encontrada" }, { status: 404 });
+  }
+
+  // Rascunho não existe na Meta — POST em /null/ daria erro cru da Graph API.
+  if (!camp.campaign_id) {
+    return NextResponse.json({
+      error: camp.status === "rascunho"
+        ? "Rascunho ainda não foi publicado — publique ou apague pelo Planejamento."
+        : "Campanha sem ID na Meta.",
+    }, { status: 400 });
   }
 
   if (camp.status === "encerrado" && acao !== "retomar") {
@@ -89,7 +98,11 @@ export async function POST(req: NextRequest) {
       cancelar: "cancelado",
     };
 
-    const novoStatus = dbStatusMap[acao];
+    // Retomar uma campanha programada antes do início: na Meta ela volta a
+    // "Programada", então aqui volta a "agendado", não "ativo".
+    const novoStatus = acao === "retomar" && camp.inicia_em && new Date(camp.inicia_em).getTime() > Date.now()
+      ? "agendado"
+      : dbStatusMap[acao];
     const updateFields: Record<string, any> = { status: novoStatus };
 
     // Se cancelar, registra quando foi cancelado

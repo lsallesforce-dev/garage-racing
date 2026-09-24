@@ -13,7 +13,7 @@ import {
   Loader2, CheckCircle2, AlertCircle, Facebook, Instagram, X, ChevronDown,
   MapPin, Zap, Search, Users, Target, Wallet, CalendarClock, Play, Pause,
   Trash2, Pencil, MessageCircle, FileText, Info, Image as ImageIcon,
-  LayoutGrid, Film, Sparkles,
+  LayoutGrid, Film, Sparkles, Smartphone, Save,
 } from "lucide-react";
 import { melhorFormato, motivoIndisponivel, type FormatoAnuncio, type MidiaVeiculo } from "@/lib/veiculo-midia";
 
@@ -81,6 +81,46 @@ interface Props {
   onClose?: () => void;
   /** Pré-seleciona o formato — o card do Kit abre já no mais forte disponível. */
   formatoInicial?: FormatoAnuncio;
+  /**
+   * Aberto pela tela de Planejamento: data E hora de início viram obrigatórias,
+   * o total do anúncio fica em destaque e o rodapé ganha "Salvar rascunho" ao
+   * lado de "Agendar". Sem o botão-gatilho: quem abre é a própria página.
+   */
+  modoPlanejamento?: boolean;
+  /** Edição de rascunho: "Salvar rascunho" vira PATCH e "Agendar" publica ESTE rascunho. */
+  rascunhoId?: string;
+  /** Body salvo do rascunho (mesmo formato do POST /criar) — preenche o formulário. */
+  payloadInicial?: any;
+  /** Avisa quem abriu que algo foi salvo/publicado — a página recarrega a lista. */
+  onSalvo?: (r: { id: string; status: string }) => void;
+}
+
+type Placement = "facebook" | "instagram" | "facebook,instagram" | "stories";
+const PLACEMENTS: Placement[] = ["facebook", "instagram", "facebook,instagram", "stories"];
+
+// Sentinela pra rascunho salvo com "raio por cidade" mas sem o id do público
+// salvo (payload antigo): mantém o comportamento sem pintar chip nenhum.
+const PUBLICO_DO_RASCUNHO = "__rascunho__";
+
+/** Data de amanhã no fuso de Brasília (YYYY-MM-DD) — default do planejamento. */
+function amanhaBRT(): string {
+  return new Date(Date.now() - 3 * 3600_000 + 24 * 3600_000).toISOString().slice(0, 10);
+}
+/** Hoje em Brasília — o `min` do input de data. toISOString() puro é UTC e,
+ *  depois das 21h, já bloquearia o dia de hoje. */
+function hojeBRT(): string {
+  return new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
+}
+/** ISO → { data, hora } em Brasília, pra repor um rascunho no formulário. */
+function isoParaBRT(iso: string): { data: string; hora: string } | null {
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return null;
+  const brt = new Date(t - 3 * 3600_000).toISOString();
+  return { data: brt.slice(0, 10), hora: brt.slice(11, 16) };
+}
+/** "2026-09-25" + "14:30" → instante absoluto em -03:00. */
+function inicioMs(data: string, hora: string): number {
+  return new Date(`${data}T${hora || "09:00"}:00-03:00`).getTime();
 }
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
@@ -126,7 +166,12 @@ const FORMATOS: { id: FormatoAnuncio; titulo: string; icone: React.ReactNode }[]
   { id: "reel",      titulo: "Reel",      icone: <Film size={16} /> },
 ];
 
-export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, fotoUrl, defaultOpen = false, onClose, formatoInicial }: Props) {
+export default function PublicarMetaButton({
+  veiculoId, marca, modelo, ano, fotoUrl, defaultOpen = false, onClose, formatoInicial,
+  modoPlanejamento = false, rascunhoId, payloadInicial, onSalvo,
+}: Props) {
+  // Rascunho em edição também é planejamento, mesmo que quem abriu esqueça a flag.
+  const planejando = modoPlanejamento || !!rascunhoId;
   const [open, setOpen] = useState(defaultOpen);
 
   const handleClose = () => { setOpen(false); onClose?.(); };
@@ -145,7 +190,7 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
   // Configuração
   const [paginaId, setPaginaId]   = useState("");
   const [objetivo, setObjetivo]   = useState<"leads" | "whatsapp">("whatsapp");
-  const [placement, setPlacement] = useState<"facebook" | "instagram" | "facebook,instagram">("facebook,instagram");
+  const [placement, setPlacement] = useState<Placement>("facebook,instagram");
 
   // Criativo — artes do Kit de Postagem
   const [midia, setMidia]         = useState<MidiaVeiculo | null>(null);
@@ -161,7 +206,11 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
   const [orcamentoTotal, setOrcamentoTotal] = useState(210);
   const [duracao, setDuracao]             = useState(7);
   const [semDataFim, setSemDataFim]       = useState(false);
-  const [iniciaEm, setIniciaEm]           = useState("");
+  // Data e hora em Brasília. No planejamento nasce "amanhã 09:00" (o horário
+  // que o modal sempre usou); no fluxo avulso, vazio = começa agora.
+  const [iniciaEm, setIniciaEm]           = useState(planejando ? amanhaBRT() : "");
+  const [horaInicio, setHoraInicio]       = useState("09:00");
+  const [salvandoRascunho, setSalvandoRascunho] = useState(false);
 
   // Localização
   const [cidade, setCidade]               = useState("");
@@ -256,6 +305,9 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
       if (paginasData.cidade) setCidade(paginasData.cidade);
       const conectado = paginasData.adsConectado ?? false;
       if (!conectado) setErroToken(true);
+      // Rascunho por último: sobrescreve os defaults (formato do kit, cidade da
+      // loja, legenda) com o que o lojista deixou salvo.
+      if (payloadInicial) aplicarPayload(payloadInicial);
     }).catch(() => setErro("Erro ao carregar dados"))
       .finally(() => setLoading(false));
   }, [open, veiculoId]);
@@ -312,6 +364,58 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
     finally { setLoadingInteresse(false); }
   }, []);
 
+  // Repõe no formulário um body salvo do /criar. Tolerante de propósito: o
+  // payload pode ser de uma versão antiga do modal, então cada campo só entra
+  // se vier no formato esperado — o resto fica no default.
+  const aplicarPayload = (p: any) => {
+    if (!p || typeof p !== "object") return;
+    const num = (v: unknown): number | null => {
+      if (v === null || v === undefined || v === "") return null;
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    };
+    if (typeof p.paginaId === "string" && p.paginaId) setPaginaId(p.paginaId);
+    if (p.objetivo === "leads" || p.objetivo === "whatsapp") setObjetivo(p.objetivo);
+    if (PLACEMENTS.includes(p.placement)) setPlacement(p.placement);
+    if (FORMATOS.some(f => f.id === p.formato)) setFormato(p.formato);
+    if (typeof p.legenda === "string" && p.legenda.trim()) { setLegenda(p.legenda); setLegendaTocada(true); }
+    if (typeof p.usarCapaKit === "boolean") setUsarCapaKit(p.usarCapaKit);
+    if (p.tipoOrcamento === "diario" || p.tipoOrcamento === "total") setTipoOrcamento(p.tipoOrcamento);
+    const od = num(p.orcamentoDiario); if (od != null) setOrcamento(od);
+    const ot = num(p.orcamentoTotal);  if (ot != null) setOrcamentoTotal(ot);
+    const dd = num(p.duracaoDias);     if (dd != null && dd > 0) setDuracao(dd);
+    if (typeof p.semDataFim === "boolean") setSemDataFim(p.semDataFim);
+    if (typeof p.iniciaEm === "string" && p.iniciaEm) {
+      const dh = isoParaBRT(p.iniciaEm);
+      if (dh) { setIniciaEm(dh.data); setHoraInicio(dh.hora); }
+    }
+    const rk = num(p.raioKm);    if (rk != null) setRaio(Math.min(RAIO_MAX, Math.max(5, rk)));
+    const imn = num(p.idadeMin); if (imn != null) setIdadeMin(imn);
+    const imx = num(p.idadeMax); if (imx != null) setIdadeMax(imx);
+    if (p.genero === "todos" || p.genero === "masculino" || p.genero === "feminino") setGenero(p.genero);
+    if (Array.isArray(p.interesses)) {
+      setInteresses(p.interesses
+        .filter((i: any) => i && i.id)
+        .map((i: any) => ({ id: String(i.id), nome: String(i.nome ?? i.name ?? i.id) })));
+    }
+    if (Array.isArray(p.regioes)) {
+      const rs: Regiao[] = p.regioes
+        .filter((r: any) => r && r.key)
+        .map((r: any) => ({ key: String(r.key), nome: String(r.nome ?? r.name ?? r.key) }));
+      setRegioes(rs);
+      setModoAlcance(rs.length ? "estado" : "raio");
+    }
+    if (Array.isArray(p.cidadesExtras)) {
+      setCidadesExtras(p.cidadesExtras.filter((c: any) => c && c.nome).map((c: any): CidadeResult => ({
+        key: c.key ?? null, nome: String(c.nome), estado: c.estado ?? "", source: "meta",
+        lat: c.lat, lng: c.lng, radiusKm: c.radiusKm ?? null,
+      })));
+    }
+    if (typeof p.cidade === "string") setCidade(p.cidade);
+    if (typeof p.publicoSalvoId === "string" && p.publicoSalvoId) setPublicoSelecionado(p.publicoSalvoId);
+    else if (p.usarRaioPorCidade) setPublicoSelecionado(PUBLICO_DO_RASCUNHO);
+  };
+
   const addInteresse = (i: Interesse) => {
     setInteresses(prev => prev.some(x => x.id === i.id) ? prev : [...prev, i]);
   };
@@ -331,53 +435,101 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
     if (p.idadeMax) setIdadeMax(p.idadeMax);
   };
 
+  // ISO com a hora exata escolhida, sempre no fuso de Brasília (-03:00).
+  // Antes era fixo T09:00 — agora o horário é do lojista, 09:00 só é o default.
+  const iniciaEmIso = (): string | null =>
+    iniciaEm ? new Date(inicioMs(iniciaEm, horaInicio)).toISOString() : null;
+
+  // Body do /criar — o mesmo vai no PATCH do rascunho. `publicoSalvoId` e
+  // `cidade` o backend ignora; ficam no payload só pra repor a tela na edição.
+  const montarBody = () => ({
+    veiculoId,
+    paginaId: paginaId || undefined,
+    objetivo,
+    placement,
+    formato,
+    legenda: legenda.trim() || undefined,
+    usarCapaKit,
+    tipoOrcamento,
+    orcamentoDiario: orcamento,
+    orcamentoTotal: tipoOrcamento === "total" ? orcamentoTotal : undefined,
+    duracaoDias: duracao,
+    semDataFim: tipoOrcamento === "diario" ? semDataFim : false,
+    iniciaEm: iniciaEmIso(),
+    raioKm: raio,
+    idadeMin,
+    idadeMax,
+    genero,
+    interesses: interesses.map(i => ({ id: i.id, nome: i.nome })),
+    comportamentos: [],
+    regioes: modoAlcance === "estado" ? regioes : [],
+    cidadesExtras: cidadesExtras.map(c => ({ key: c.key ?? null, nome: c.nome, lat: c.lat, lng: c.lng, radiusKm: c.radiusKm })),
+    usarRaioPorCidade: !!publicoSelecionado,
+    publicoSalvoId: publicoSelecionado && publicoSelecionado !== PUBLICO_DO_RASCUNHO ? publicoSelecionado : undefined,
+    cidade: cidade || undefined,
+  });
+
+  // Erro de qualquer rota de anúncio: token ausente/vencido e vídeo recusado
+  // têm remédio próprio na tela; o resto vira a caixa vermelha.
+  const tratarErroResposta = (res: Response, data: any, padrao: string): never => {
+    // Token ausente OU expirado levam ao MESMO lugar: reconectar o OAuth.
+    // Só "não configurado" batia aqui, então o token vencido (code 190, que
+    // acontece a cada 60 dias) caía na caixa vermelha genérica — texto
+    // mandando o lojista procurar um botão, em vez do botão.
+    if (res.status === 401 || /Token Meta Ads (não configurado|expirado)/.test(data?.error ?? "")) {
+      setErroToken(true);
+      if (/expirado/.test(data?.error ?? "") || res.status === 401) setTokenExpirado(true);
+    }
+    // A Meta pode recusar vídeo nesta conta — desabilita o formato e joga o
+    // lojista de volta pra foto em vez de deixá-lo tentando de novo.
+    if (data?.formatoIndisponivel === "reel") { setReelBloqueado(true); setFormato("foto"); }
+    throw new Error(data?.error || padrao);
+  };
+
+  const chamar = async (url: string, method: string, body?: unknown) => {
+    const res = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    return { res, data };
+  };
+
   const handlePublicar = async () => {
+    // No planejamento o clique gasta dinheiro de verdade numa data que o
+    // lojista pode nem estar olhando — confirmação explícita com valor e hora.
+    if (planejando) {
+      const ok = confirm(
+        `${inicioFuturo ? "Agendar" : "Publicar agora"} este anúncio pago?\n\n` +
+        `Investimento: ${fmtBRL(totalInvestimento)}${semDataFim && tipoOrcamento === "diario" ? " (estimativa de 30 dias — roda até pausar)" : ""}\n` +
+        `Início: ${inicioLegivel}\n\n` +
+        `É dinheiro real: a Meta cobra da conta de anúncios da loja.`,
+      );
+      if (!ok) return;
+    }
+
     setPublicando(true);
     setErro(null);
     try {
-      const res = await fetch("/api/meta/ads/criar", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          veiculoId,
-          paginaId: paginaId || undefined,
-          objetivo,
-          placement,
-          formato,
-          legenda: legenda.trim() || undefined,
-          usarCapaKit,
-          tipoOrcamento,
-          orcamentoDiario: orcamento,
-          orcamentoTotal: tipoOrcamento === "total" ? orcamentoTotal : undefined,
-          duracaoDias: duracao,
-          semDataFim: tipoOrcamento === "diario" ? semDataFim : false,
-          iniciaEm: iniciaEm ? new Date(`${iniciaEm}T09:00:00-03:00`).toISOString() : null,
-          raioKm: raio,
-          idadeMin,
-          idadeMax,
-          genero,
-          interesses: interesses.map(i => ({ id: i.id, nome: i.nome })),
-          comportamentos: [],
-          regioes: modoAlcance === "estado" ? regioes : [],
-          cidadesExtras: cidadesExtras.map(c => ({ key: c.key ?? null, nome: c.nome, lat: c.lat, lng: c.lng, radiusKm: c.radiusKm })),
-          usarRaioPorCidade: !!publicoSelecionado,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        // Token ausente OU expirado levam ao MESMO lugar: reconectar o OAuth.
-        // Só "não configurado" batia aqui, então o token vencido (code 190, que
-        // acontece a cada 60 dias) caía na caixa vermelha genérica — texto
-        // mandando o lojista procurar um botão, em vez do botão.
-        if (res.status === 401 || /Token Meta Ads (não configurado|expirado)/.test(data.error ?? "")) {
-          setErroToken(true);
-          if (/expirado/.test(data.error ?? "") || res.status === 401) setTokenExpirado(true);
-        }
-        // A Meta pode recusar vídeo nesta conta — desabilita o formato e joga o
-        // lojista de volta pra foto em vez de deixá-lo tentando de novo.
-        if (data.formatoIndisponivel === "reel") { setReelBloqueado(true); setFormato("foto"); }
-        throw new Error(data.error || "Erro ao criar campanha");
+      let id = "";
+      let status = "";
+      if (rascunhoId) {
+        // Salva a versão da tela ANTES de publicar — senão iria ao ar o que
+        // estava no banco, não o que o lojista acabou de ajustar.
+        const salvo = await chamar(`/api/meta/ads/rascunho/${rascunhoId}`, "PATCH", montarBody());
+        if (!salvo.res.ok) tratarErroResposta(salvo.res, salvo.data, "Erro ao salvar o rascunho");
+        const pub = await chamar(`/api/meta/ads/rascunho/${rascunhoId}/publicar`, "POST");
+        if (!pub.res.ok) tratarErroResposta(pub.res, pub.data, "Erro ao publicar o rascunho");
+        id = pub.data.id ?? rascunhoId;
+        status = pub.data.status ?? (inicioFuturo ? "agendado" : "ativo");
+      } else {
+        const { res, data } = await chamar("/api/meta/ads/criar", "POST", montarBody());
+        if (!res.ok) tratarErroResposta(res, data, "Erro ao criar campanha");
+        id = data.id ?? data.campaignId ?? "";
+        status = data.status ?? (inicioFuturo ? "agendado" : "ativo");
       }
+      onSalvo?.({ id, status });
       setSucesso(true);
       await recarregarCampanhas();
       setTimeout(() => setSucesso(false), 4000);
@@ -385,6 +537,24 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
       setErro(e.message);
     } finally {
       setPublicando(false);
+    }
+  };
+
+  // Rascunho não toca a Meta: fica só no banco, sem gastar nada, até alguém
+  // clicar em Publicar/Agendar (aqui ou na lista do Planejamento).
+  const handleSalvarRascunho = async () => {
+    setSalvandoRascunho(true);
+    setErro(null);
+    try {
+      const { res, data } = rascunhoId
+        ? await chamar(`/api/meta/ads/rascunho/${rascunhoId}`, "PATCH", montarBody())
+        : await chamar("/api/meta/ads/criar", "POST", { ...montarBody(), rascunho: true });
+      if (!res.ok) tratarErroResposta(res, data, "Erro ao salvar o rascunho");
+      onSalvo?.({ id: data.id ?? rascunhoId ?? "", status: data.status ?? "rascunho" });
+    } catch (e: any) {
+      setErro(e.message);
+    } finally {
+      setSalvandoRascunho(false);
     }
   };
 
@@ -433,9 +603,21 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
   // midia null = ainda carregando ou rota falhou; nesse caso não travamos o
   // publish (o backend valida de novo e responde com o motivo).
   const formatoInvalido = !!midia && !midia.formatosDisponiveis.includes(formato);
+  // Folga de 1 min: "agora + segundos" não é agendamento, é publicar já.
+  const inicioFuturo = !!iniciaEm && inicioMs(iniciaEm, horaInicio) > Date.now() + 60_000;
+  const semDataPlanejada = planejando && !iniciaEm;
+  const bloqueiaPublicar = publicando || salvandoRascunho || !fotoUrl || orcamentoInvalido || formatoInvalido
+    || (modoAlcance === "estado" && regioes.length === 0) || semDataPlanejada;
+  const inicioLegivel = iniciaEm
+    ? new Date(inicioMs(iniciaEm, horaInicio)).toLocaleString("pt-BR", {
+        timeZone: "America/Sao_Paulo", weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+      })
+    : "agora";
 
   return (
     <>
+      {/* No planejamento quem abre o modal é a página — o botão-gatilho sobraria solto na tela. */}
+      {!planejando && (
       <button
         onClick={() => setOpen(true)}
         className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-black text-[11px] uppercase tracking-widest transition-all shadow-sm"
@@ -448,6 +630,7 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
           <span className="bg-white/20 rounded-full px-1.5 py-0.5 text-[9px]">{campanhasVivas.length}</span>
         )}
       </button>
+      )}
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4">
@@ -456,7 +639,7 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
             {/* Header */}
             <div className="flex items-center justify-between p-5 border-b border-gray-100 sticky top-0 bg-white rounded-t-3xl z-20">
               <div className="min-w-0">
-                <p className="font-black text-gray-900 text-sm">Anunciar no Meta Ads <span className="ml-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-amber-700 align-middle">pago</span></p>
+                <p className="font-black text-gray-900 text-sm">{rascunhoId ? "Editar postagem planejada" : planejando ? "Planejar anúncio" : "Anunciar no Meta Ads"} <span className="ml-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-amber-700 align-middle">pago</span></p>
                 <p className="text-[11px] text-gray-400 truncate max-w-[240px]">{veiculoNome || "Veículo"}</p>
               </div>
               <button onClick={handleClose} className="p-2 hover:bg-gray-100 rounded-xl transition-colors">
@@ -472,7 +655,9 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
               <div className="p-5 space-y-6">
 
                 {/* ── CAMPANHAS NO AR ─────────────────────────────── */}
-                {campanhasVivas.length > 0 && (
+                {/* No planejamento a lista de campanhas já está na página por trás
+                    do modal — repetir aqui só empurra o formulário pra baixo. */}
+                {!planejando && campanhasVivas.length > 0 && (
                   <div className="space-y-2">
                     <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">Campanhas deste carro</p>
                     {campanhasVivas.map(c => {
@@ -763,9 +948,12 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
                     </Secao>
 
                     {/* ── ONDE PUBLICAR ─────────────────────────────── */}
-                    <Secao icone={<Instagram size={11} />} titulo="Onde publicar">
-                      <div className="grid grid-cols-3 gap-2">
-                        {(["facebook", "instagram", "facebook,instagram"] as const).map(p => (
+                    <Secao icone={<Instagram size={11} />} titulo="Onde publicar"
+                      dica={placement === "stories"
+                        ? "Só nos Stories do Facebook e do Instagram — tela cheia, vertical. Fica fora do feed."
+                        : undefined}>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        {PLACEMENTS.map(p => (
                           <button key={p} onClick={() => setPlacement(p)}
                             className={`flex flex-col items-center gap-1.5 py-3 rounded-2xl border-2 transition-all ${
                               placement === p ? "border-blue-500 bg-blue-50" : "border-gray-100 bg-gray-50 hover:border-gray-200"
@@ -778,8 +966,9 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
                                 <Instagram size={14} className={placement === p ? "text-purple-600" : "text-gray-400"} />
                               </div>
                             )}
+                            {p === "stories" && <Smartphone size={18} className={placement === p ? "text-pink-600" : "text-gray-400"} />}
                             <span className={`text-[9px] font-black uppercase tracking-wide ${placement === p ? "text-blue-700" : "text-gray-400"}`}>
-                              {p === "facebook" ? "Facebook" : p === "instagram" ? "Instagram" : "Ambos"}
+                              {p === "facebook" ? "Facebook" : p === "instagram" ? "Instagram" : p === "stories" ? "Só stories" : "Ambos"}
                             </span>
                           </button>
                         ))}
@@ -1206,10 +1395,28 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
                       )}
 
                       <div>
-                        <p className="text-[9px] text-gray-400 mb-1.5">Começar em (vazio = agora)</p>
-                        <input type="date" value={iniciaEm} min={new Date().toISOString().slice(0, 10)}
-                          onChange={e => setIniciaEm(e.target.value)}
-                          className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-[12px] text-gray-700" />
+                        <p className="text-[9px] text-gray-400 mb-1.5">
+                          {planejando ? "Começa em (data e hora de Brasília)" : "Começar em (vazio = agora)"}
+                        </p>
+                        <div className="flex gap-2">
+                          <input type="date" value={iniciaEm} min={hojeBRT()} required={planejando}
+                            onChange={e => setIniciaEm(e.target.value)}
+                            className={`flex-1 min-w-0 bg-gray-50 border rounded-xl px-3 py-2 text-[12px] text-gray-700 ${semDataPlanejada ? "border-red-300" : "border-gray-200"}`} />
+                          {/* Hora só vale com data: sem data o anúncio sai na hora do clique. */}
+                          <input type="time" value={horaInicio} disabled={!iniciaEm} step={300}
+                            onChange={e => setHoraInicio(e.target.value || "09:00")}
+                            className="w-28 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-[12px] text-gray-700 disabled:opacity-40" />
+                        </div>
+                        {semDataPlanejada && (
+                          <p className="text-[9px] text-red-500 font-bold mt-1.5">Escolha a data de início.</p>
+                        )}
+                        {iniciaEm && (
+                          <p className="text-[9px] text-gray-400 mt-1.5 leading-snug">
+                            {inicioFuturo
+                              ? `A Meta põe no ar sozinha em ${inicioLegivel}. Até lá não gasta nada.`
+                              : "Esse horário já passou — o anúncio entra no ar assim que publicar."}
+                          </p>
+                        )}
                       </div>
 
                       {tipoOrcamento === "total" && (
@@ -1254,15 +1461,57 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
                       </div>
                     </div>
 
+                    {/* ── TOTAL (planejamento) ──────────────────────── */}
+                    {planejando && (
+                      <div className="bg-gray-900 rounded-2xl p-4 text-white">
+                        <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">
+                          {semDataFim && tipoOrcamento === "diario" ? "Total estimado (30 dias)" : "Total do anúncio"}
+                        </p>
+                        <p className="text-3xl font-black italic leading-none mt-1">{fmtBRL(totalInvestimento)}</p>
+                        <p className="text-[10px] text-gray-400 mt-1.5 leading-snug">
+                          {tipoOrcamento === "total"
+                            ? `Valor fechado, distribuído em ${duracao} dias`
+                            : semDataFim
+                              ? `${fmtBRL(orcamento)}/dia · roda até pausar`
+                              : `${fmtBRL(orcamento)}/dia × ${duracao} dias`}
+                          {" · "}início {inicioLegivel}
+                        </p>
+                      </div>
+                    )}
+
+                    {planejando ? (
+                      // Dois caminhos: guardar sem gastar nada, ou mandar pra Meta
+                      // (que agenda sozinha quando a data é futura).
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={handleSalvarRascunho}
+                          disabled={publicando || salvandoRascunho || semDataPlanejada}
+                          className="py-3.5 rounded-2xl bg-white border-2 border-gray-200 hover:border-gray-300 disabled:opacity-50 text-gray-700 font-black text-[11px] uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+                        >
+                          {salvandoRascunho ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                          Salvar rascunho
+                        </button>
+                        <button
+                          onClick={handlePublicar}
+                          disabled={bloqueiaPublicar}
+                          className="py-3.5 rounded-2xl bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 text-white font-black text-[11px] uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+                        >
+                          {publicando
+                            ? <><Loader2 size={14} className="animate-spin" /> Enviando...</>
+                            : inicioFuturo ? <><CalendarClock size={14} /> Agendar</> : "Publicar agora"}
+                        </button>
+                      </div>
+                    ) : (
                     <button
                       onClick={handlePublicar}
-                      disabled={publicando || !fotoUrl || orcamentoInvalido || formatoInvalido || (modoAlcance === "estado" && regioes.length === 0)}
+                      disabled={bloqueiaPublicar}
                       className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 text-white font-black text-[12px] uppercase tracking-widest transition-all flex items-center justify-center gap-2"
                     >
                       {publicando
                         ? <><Loader2 size={16} className="animate-spin" /> Criando campanha...</>
-                        : "Publicar agora"}
+                        : inicioFuturo ? "Agendar" : "Publicar agora"}
                     </button>
+                    )}
 
                     {!fotoUrl && <p className="text-center text-[10px] text-orange-500">Adicione uma foto ao veículo para criar o anúncio</p>}
                     {modoAlcance === "estado" && regioes.length === 0 && (
