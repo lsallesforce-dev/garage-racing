@@ -98,8 +98,18 @@ export type Planejamento = {
   impostoMes: number | null;
   /** 0.1215 — alíquota sobre o valor depositado. */
   aliquotaImposto: number;
-  /** Quanto depositar (imposto incluso) pra cobrir o que falta; null se sobra saldo. */
+  /**
+   * Quanto DEPOSITAR (imposto incluso) pra cobrir o que falta de SALDO
+   * pré-pago; null se o saldo cobre. Não resolve falta de teto.
+   */
   depositoNecessario: number | null;
+  /**
+   * Quanto falta de LIMITE DE GASTOS da conta (spend_cap) pro planejado; null
+   * se o teto cobre. Depósito não resolve — é subir o limite no Gerenciador.
+   */
+  faltaLimite: number | null;
+  /** Já gasto no mês + o que falta gastar do planejado: comparável ao gastoMes. */
+  fechamentoPrevisto: number;
   /** De onde saiu o gastoMes: conta inteira na Meta (inclui campanha feita fora do AutoZap) ou soma local. */
   gastoMesFonte: "meta" | "campanhas";
   atualizadoEm: string;
@@ -252,7 +262,7 @@ export async function montarPlanejamento(userId: string, mesPedido?: string | nu
       ? buscarSaldoConta(contaPadrao, token)
       : Promise.resolve<SaldoConta>({
           disponivel: null, moeda: "BRL", prepago: null, contaId: contaPadrao, contaNome: null,
-          limiteGasto: null, gastoTotalConta: null,
+          limiteGasto: null, gastoTotalConta: null, saldoPrePago: null, restanteLimite: null, limitadoPor: null,
           texto: !token ? "Meta Ads não conectado." : "Nenhuma conta de anúncios configurada na página.",
           erro: !token ? "sem_token" : "sem_conta",
         }),
@@ -443,10 +453,16 @@ export async function montarPlanejamento(userId: string, mesPedido?: string | nu
     gastoMes: r2(gastoMes),
     impostoMes: brl ? r2(gastoMes * IMPOSTO_SOBRE_GASTO) : null,
     aliquotaImposto: ALIQUOTA_IMPOSTO_META_BR,
+    // Os dois tetos separados: cada um tem remédio diferente.
     depositoNecessario:
-      brl && saldoProjetado != null && saldoProjetado < 0
-        ? r2(-saldoProjetado / (1 - ALIQUOTA_IMPOSTO_META_BR))
+      brl && saldo.saldoPrePago != null && aGastarRestante > saldo.saldoPrePago
+        ? r2((aGastarRestante - saldo.saldoPrePago) / (1 - ALIQUOTA_IMPOSTO_META_BR))
         : null,
+    faltaLimite:
+      saldo.restanteLimite != null && aGastarRestante > saldo.restanteLimite
+        ? r2(aGastarRestante - saldo.restanteLimite)
+        : null,
+    fechamentoPrevisto: r2(gastoMes + aGastarRestante),
     gastoMesFonte: gastoMeta != null ? "meta" : "campanhas",
     // Sem campanha viva sincronizada, o dado mais velho da tela é o saldo, lido agora.
     atualizadoEm: metricasMaisAntiga ?? new Date(agora).toISOString(),

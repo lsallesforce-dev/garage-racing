@@ -1186,6 +1186,12 @@ export interface SaldoConta {
   limiteGasto: number | null;
   /** amount_spent em reais (gasto acumulado da conta, vida inteira). */
   gastoTotalConta: number | null;
+  /** Saldo pré-pago lido do display_string (null se não for pré-paga ou não deu pra ler). */
+  saldoPrePago: number | null;
+  /** spend_cap − amount_spent: quanto falta pro teto da conta (null = sem teto). */
+  restanteLimite: number | null;
+  /** Qual dos dois tetos manda no `disponivel` — o MENOR. null = só existe um (ou nenhum). */
+  limitadoPor: "saldo" | "limite" | null;
   erro?: string;
 }
 
@@ -1227,6 +1233,7 @@ export async function buscarSaldoConta(adAccountId: string, accessToken: string)
   const vazio: SaldoConta = {
     disponivel: null, moeda: "BRL", prepago: null, texto: null,
     contaId: adAccountId || null, contaNome: null, limiteGasto: null, gastoTotalConta: null,
+    saldoPrePago: null, restanteLimite: null, limitadoPor: null,
   };
   try {
     const d = await graphGet(adAccountId, accessToken, {
@@ -1245,8 +1252,18 @@ export async function buscarSaldoConta(adAccountId: string, accessToken: string)
 
     let disponivel: number | null;
     let texto: string | null = display;
+    let saldoPrePago: number | null = null;
+    let limitadoPor: "saldo" | "limite" | null = null;
     if (prepago) {
-      disponivel = display ? parseValorMonetario(display) : null;
+      saldoPrePago = display ? parseValorMonetario(display) : null;
+      disponivel = saldoPrePago;
+      // Pré-paga COM spend_cap tem dois tetos e manda o MENOR. APROVE 24/09:
+      // saldo R$190,76 × teto restante R$167,58 — a entrega para no teto, e
+      // depositar não sobe o spend_cap (é acumulado desde a abertura da conta).
+      if (saldoPrePago != null && restanteLimite != null) {
+        limitadoPor = restanteLimite < saldoPrePago ? "limite" : "saldo";
+        disponivel = Math.min(saldoPrePago, restanteLimite);
+      }
       if (disponivel == null) {
         disponivel = restanteLimite;
         texto = restanteLimite != null
@@ -1275,6 +1292,9 @@ export async function buscarSaldoConta(adAccountId: string, accessToken: string)
       contaNome: d.name ?? null,
       limiteGasto: limiteValido,
       gastoTotalConta: gasto,
+      saldoPrePago: saldoPrePago != null ? Math.round(saldoPrePago * 100) / 100 : null,
+      restanteLimite: restanteLimite != null ? Math.round(restanteLimite * 100) / 100 : null,
+      limitadoPor,
       ...(erro ? { erro } : {}),
     };
   } catch (e: any) {

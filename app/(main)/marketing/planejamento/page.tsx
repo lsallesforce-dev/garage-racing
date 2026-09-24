@@ -86,6 +86,10 @@ interface Planejamento {
     contaNome: string | null;
     limiteGasto: number | null;
     gastoTotalConta: number | null;
+    saldoPrePago?: number | null;
+    restanteLimite?: number | null;
+    /** Qual teto manda no disponível: saldo pré-pago ou limite de gastos da conta. */
+    limitadoPor?: "saldo" | "limite" | null;
     erro?: string;
   };
   previsaoMes: number;
@@ -97,6 +101,10 @@ interface Planejamento {
   aliquotaImposto: number;
   /** Recarga (imposto incluso) pra cobrir o que falta; null quando sobra. */
   depositoNecessario: number | null;
+  /** Falta de limite de gastos (spend_cap) — depositar não resolve. */
+  faltaLimite?: number | null;
+  /** Já gasto + falta gastar: comparável ao "Gasto no mês". */
+  fechamentoPrevisto?: number;
   atualizadoEm: string;
   campanhas: CampanhaPlano[];
 }
@@ -796,8 +804,21 @@ export default function PlanejamentoPage() {
                 sub={semSaldo ? null : (
                   <>
                     {saldo?.contaNome && <span className="block truncate">{saldo.contaNome}</span>}
-                    {saldo?.prepago === true && "Saldo pré-pago"}
-                    {saldo?.prepago === false && "Conta pós-paga (cartão)"}
+                    {/* Pré-paga com spend_cap: vale o MENOR dos dois tetos, e a
+                        tela diz qual — depositar não sobe o limite de gastos. */}
+                    {saldo?.limitadoPor === "limite" ? (
+                      <span className="block text-amber-700 font-black">
+                        Limitado pelo teto da conta · saldo pré-pago {brl(saldo.saldoPrePago)}
+                      </span>
+                    ) : (
+                      <>
+                        {saldo?.prepago === true && "Saldo pré-pago"}
+                        {saldo?.prepago === false && "Conta pós-paga (cartão)"}
+                        {saldo?.restanteLimite != null && saldo?.limitadoPor === "saldo" && (
+                          <span className="block">Teto da conta: faltam {brl(saldo.restanteLimite)}</span>
+                        )}
+                      </>
+                    )}
                   </>
                 )}
               >
@@ -816,7 +837,16 @@ export default function PlanejamentoPage() {
                 icone={<TrendingUp size={12} />}
                 titulo="Previsão do mês"
                 valor={brl(dados.previsaoMes)}
-                sub={`Falta gastar ${brl(dados.aGastarRestante)}`}
+                sub={
+                  <>
+                    Falta gastar {brl(dados.aGastarRestante)}
+                    {/* Previsão = só o planejado; o gasto do mês é da conta inteira.
+                        O fechamento é o número comparável com "Gasto no mês". */}
+                    {dados.fechamentoPrevisto != null && (
+                      <span className="block">Fechamento previsto do mês: {brl(dados.fechamentoPrevisto)}</span>
+                    )}
+                  </>
+                }
               />
 
               {/* Imposto não vem da API: na conta pré-paga a Meta desconta 12,15%
@@ -840,8 +870,16 @@ export default function PlanejamentoPage() {
                   : projetado < 0
                     ? <span className="text-red-600 font-black">
                         Vai faltar {brl(Math.abs(projetado))}
-                        {dados.depositoNecessario != null && <> — deposite {brl(dados.depositoNecessario)} (com imposto)</>}
-                        {dados.depositoNecessario == null && <> — recarregue ou corte orçamento</>}
+                        {/* Cada teto tem remédio próprio; se os dois apertam, mostra os dois. */}
+                        {dados.depositoNecessario != null && (
+                          <span className="block">Falta saldo: recarregue {brl(dados.depositoNecessario)} (com imposto)</span>
+                        )}
+                        {dados.faltaLimite != null && (
+                          <span className="block">Bateu o teto: suba o limite de gastos da conta no Gerenciador (+{brl(dados.faltaLimite)})</span>
+                        )}
+                        {dados.depositoNecessario == null && dados.faltaLimite == null && (
+                          <span className="block">Recarregue ou corte orçamento</span>
+                        )}
                       </span>
                     : "Sobra depois do que está planejado"}
               />
