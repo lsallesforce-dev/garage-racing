@@ -29,7 +29,7 @@ import { COLUNAS_MIDIA, melhorFormato, midiaDoVeiculo, miniatura, type FormatoAn
 
 // ─── Contrato do backend (GET /api/meta/planejamento) ────────────────────────
 
-type StatusPlano = "rascunho" | "publicando" | "agendado" | "ativo" | "pausado" | "encerrado" | "erro";
+type StatusPlano = "rascunho" | "publicando" | "cancelado" | "agendado" | "ativo" | "pausado" | "encerrado" | "erro";
 
 interface Metricas {
   gasto: number | null;
@@ -215,6 +215,9 @@ const STATUS_CFG: Record<StatusPlano, { label: string; cls: string; dot: string 
   ativo:     { label: "Ativo",     cls: "bg-green-100 text-green-700", dot: "bg-green-500" },
   pausado:   { label: "Pausado",   cls: "bg-amber-100 text-amber-700", dot: "bg-amber-500" },
   encerrado: { label: "Encerrado", cls: "bg-gray-700 text-gray-100",   dot: "bg-gray-300" },
+  // Cancelada antes de rodar. Sem config própria caía no fallback "Rascunho"
+  // — COM botão Publicar — num anúncio que nunca foi rascunho (Onix da APROVE).
+  cancelado: { label: "Cancelado", cls: "bg-gray-100 text-gray-400",   dot: "bg-gray-300" },
   erro:      { label: "Erro",      cls: "bg-red-100 text-red-600",     dot: "bg-red-500" },
 };
 
@@ -243,7 +246,8 @@ function metaStatusUtil(c: CampanhaPlano): string | null {
 }
 
 function StatusPill({ c }: { c: CampanhaPlano }) {
-  const cfg = STATUS_CFG[c.status] ?? STATUS_CFG.rascunho;
+  // Status desconhecido mostra o próprio nome, neutro — nunca "Rascunho".
+  const cfg = STATUS_CFG[c.status] ?? { label: String(c.status), cls: "bg-gray-100 text-gray-500", dot: "bg-gray-400" };
   const extra = metaStatusUtil(c);
   return (
     <div className="flex flex-col items-start gap-0.5">
@@ -265,7 +269,7 @@ const FILTROS: { id: "todos" | "rascunho" | "agendado" | "ativos" | "encerrados"
   { id: "agendado",   label: "Agendados",  casa: s => s === "agendado" },
   // Pausado conta como ativo: ainda é campanha viva, só parada.
   { id: "ativos",     label: "Ativos",     casa: s => s === "ativo" || s === "pausado" },
-  { id: "encerrados", label: "Encerrados", casa: s => s === "encerrado" || s === "erro" },
+  { id: "encerrados", label: "Encerrados", casa: s => s === "encerrado" || s === "erro" || s === "cancelado" },
 ];
 
 // ─── Miniatura ───────────────────────────────────────────────────────────────
@@ -554,11 +558,21 @@ export default function PlanejamentoPage() {
 
   const campanhas = useMemo(() => {
     const lista = [...(dados?.campanhas ?? [])];
-    // Ordem cronológica de veiculação; sem data (rascunho antigo) vai pro fim.
+    // Ativos primeiro, sempre (pedido do Lucas 24/09). Dentro do grupo, pela
+    // data: o que vai começar (agendado/rascunho) do mais próximo pro mais
+    // longe; o resto do mais recente pro mais antigo. Sem data vai pro fim.
+    const ORDEM: Record<string, number> = {
+      ativo: 0, agendado: 1, publicando: 2, rascunho: 3, pausado: 4, erro: 5, encerrado: 6, cancelado: 7,
+    };
+    const futuro = (s: string) => s === "agendado" || s === "rascunho" || s === "publicando";
     lista.sort((a, b) => {
-      const ta = a.inicia_em ? new Date(a.inicia_em).getTime() : Infinity;
-      const tb = b.inicia_em ? new Date(b.inicia_em).getTime() : Infinity;
-      return ta - tb;
+      const ga = ORDEM[a.status] ?? 9;
+      const gb = ORDEM[b.status] ?? 9;
+      if (ga !== gb) return ga - gb;
+      const ta = a.inicia_em ? new Date(a.inicia_em).getTime() : null;
+      const tb = b.inicia_em ? new Date(b.inicia_em).getTime() : null;
+      if (ta == null || tb == null) return ta == null ? (tb == null ? 0 : 1) : -1;
+      return futuro(a.status) ? ta - tb : tb - ta;
     });
     return lista;
   }, [dados]);
