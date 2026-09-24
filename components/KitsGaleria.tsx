@@ -19,7 +19,7 @@ import PisoRestauro from "@/components/PisoRestauro";
 import ReelEditor from "@/components/ReelEditor";
 import PublicarMetaButton from "@/components/PublicarMetaButton";
 import type { MarketingCapturas } from "@/lib/marketing-shotlist";
-import { midiaDoVeiculo, melhorFormato } from "@/lib/veiculo-midia";
+import { midiaDoVeiculo, melhorFormato, miniatura } from "@/lib/veiculo-midia";
 import {
   Check,
   ChevronDown,
@@ -681,7 +681,7 @@ export default function KitsGaleria() {
                   <div className="w-16 h-16 flex-shrink-0 rounded-xl overflow-hidden bg-gray-100">
                     {c.marketing_capa_url || c.fotos?.[0] ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={c.marketing_capa_url ?? c.fotos![0]} alt={titulo(c)} className="w-full h-full object-cover" />
+                      <img src={miniatura(c.marketing_capa_url ?? c.fotos![0], 64)!} alt={titulo(c)} loading="lazy" decoding="async" className="w-full h-full object-cover" />
                     ) : null}
                   </div>
                   <div className="min-w-0 flex-1">
@@ -836,7 +836,7 @@ export default function KitsGaleria() {
                           {c.marketing_carrossel!.map((u, i) => (
                             <div key={u} className="relative flex-shrink-0">
                               {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img src={u} alt={`Slide ${i + 1}`} className="w-12 h-12 rounded-lg object-cover border border-gray-100" />
+                              <img src={miniatura(u, 48)!} alt={`Slide ${i + 1}`} loading="lazy" decoding="async" className="w-12 h-12 rounded-lg object-cover border border-gray-100" />
                               <span className="absolute -top-1 -left-1 w-4 h-4 rounded-full bg-gray-900 text-white text-[8px] font-black flex items-center justify-center">{i + 1}</span>
                             </div>
                           ))}

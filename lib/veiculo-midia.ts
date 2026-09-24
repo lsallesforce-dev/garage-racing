@@ -103,3 +103,25 @@ export function motivoIndisponivel(formato: FormatoAnuncio, m: MidiaVeiculo): st
 
 /** Máximo de cards que a Meta aceita num anúncio carrossel. */
 export const CARROSSEL_MAX = 10;
+
+/**
+ * Miniatura leve de uma imagem do Supabase Storage (Image Transformation).
+ *
+ * As artes do kit são PNG 1080x1350 de ~1,7 MB. A galeria de Kits mostrava cada
+ * uma (capa + até 10 slides por carro) como quadradinho de 48-64 px: 38 carros
+ * = centenas de MB baixados só pra miniatura, e a aba travava. Via /render/image
+ * o mesmo slide sai com ~43 kB.
+ *
+ * URL fora do Storage público (R2, externa) volta intacta.
+ * `lado` é o tamanho em px CSS — pede o dobro pra tela retina.
+ */
+export function miniatura(url: string | null | undefined, lado: number, alturaCss?: number): string | null {
+  const u = limpar(url);
+  if (!u) return null;
+  const marca = "/storage/v1/object/public/";
+  if (!u.includes(marca)) return u;
+  const w = Math.round(lado * 2);
+  const h = Math.round((alturaCss ?? lado) * 2);
+  const base = u.split("?")[0].replace(marca, "/storage/v1/render/image/public/");
+  return `${base}?width=${w}&height=${h}&resize=cover&quality=70`;
+}

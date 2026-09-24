@@ -10,7 +10,7 @@ import PublicarMetaButton from "@/components/PublicarMetaButton";
 import PublicarPortaisModal, { publicadoNoPortal, type Portal } from "@/components/PublicarPortaisModal";
 import KitsGaleria from "@/components/KitsGaleria";
 import CarrosselEstoqueModal from "@/components/CarrosselEstoqueModal";
-import { midiaDoVeiculo, melhorFormato, COLUNAS_MIDIA } from "@/lib/veiculo-midia";
+import { midiaDoVeiculo, melhorFormato, miniatura, COLUNAS_MIDIA } from "@/lib/veiculo-midia";
 
 // ─── Ícones de plataforma ─────────────────────────────────────────────────────
 
@@ -117,7 +117,7 @@ function VeiculoMarketingCard({ carro, conexoes, metaAtivas }: { carro: any; con
           <div className="w-28 h-20 flex-shrink-0 bg-gray-100 rounded-xl overflow-hidden relative">
             {fotoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={fotoUrl} alt={carro.modelo} className="w-full h-full object-cover" />
+              <img src={miniatura(fotoUrl, 112, 80)!} alt={carro.modelo} loading="lazy" decoding="async" className="w-full h-full object-cover" />
             ) : (
               <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-gray-300">
                 <Megaphone size={20} />
