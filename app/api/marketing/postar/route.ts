@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireAuth, getEffectiveUserId, requireVehicleOwner } from "@/lib/api-auth";
 import { midiaDoVeiculo, COLUNAS_MIDIA } from "@/lib/veiculo-midia";
+import { removerPostsDoVeiculo } from "@/lib/veiculo-vendido";
 import {
   resolverPaginaParaPostar, postarNoFacebook, postarNoInstagram,
   usaVideo, type DestinoPost, type FormatoPost,
@@ -67,7 +68,9 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const veiculoId: string = body?.veiculoId;
-    const destinos: DestinoPost[] = Array.isArray(body?.destinos) ? body.destinos : [];
+    let destinos: DestinoPost[] = Array.isArray(body?.destinos) ? body.destinos : [];
+    // true = apaga o post que já está no ar e publica o novo no lugar.
+    const substituir = body?.substituir === true;
     const FORMATOS: FormatoPost[] = ["feed", "story", "reels", "story_video"];
     const formato: FormatoPost = FORMATOS.includes(body?.formato) ? body.formato : "feed";
 
@@ -109,6 +112,37 @@ export async function POST(req: NextRequest) {
       ? body.legenda.trim()
       : (midia.legenda ?? "");
 
+    // Anti-duplicado. Feed e Reels ficam no perfil pra sempre: clicar de novo
+    // criava um SEGUNDO post do mesmo carro (o antigo continuava no ar). Agora
+    // o canal que já tem post vivo é pulado — a não ser que o lojista peça
+    // "Substituir", aí o antigo sai ANTES do novo entrar. Story expira em 24h e
+    // repostar é intencional, então fica de fora.
+    const erros: string[] = [];
+    if (formato === "feed" || formato === "reels") {
+      const { data: postsRow } = await supabaseAdmin
+        .from("veiculos").select("marketing_posts").eq("id", veiculoId).limit(1);
+      const posts: any[] = Array.isArray(postsRow?.[0]?.marketing_posts) ? postsRow![0].marketing_posts : [];
+      const vivo = (p: any) =>
+        p?.post_id && !p.removido_em && p.formato === formato && destinos.includes(p.destino);
+      const canaisVivos = [...new Set(posts.filter(vivo).map((p) => p.destino as DestinoPost))];
+      const nome = (d: string) => (d === "facebook" ? "Facebook" : "Instagram");
+
+      if (canaisVivos.length && !substituir) {
+        destinos = destinos.filter((d) => !canaisVivos.includes(d));
+        const aviso = `Já está no ar no ${canaisVivos.map(nome).join(" e ")} — use "Substituir post" pra trocar.`;
+        if (!destinos.length) return NextResponse.json({ error: aviso, jaNoAr: canaisVivos }, { status: 409 });
+        erros.push(aviso);
+      } else if (canaisVivos.length && substituir) {
+        const { pendentes } = await removerPostsDoVeiculo(veiculoId, userId, vivo);
+        // Não apagou o antigo? Não posta o novo nesse canal — senão duplica.
+        for (const pend of pendentes) {
+          destinos = destinos.filter((d) => d !== pend.destino);
+          erros.push(`${nome(pend.destino)}: não consegui apagar o post antigo (${pend.motivo}). Apague na mão: ${pend.permalink}`);
+        }
+        if (!destinos.length) return NextResponse.json({ error: erros.join(" | ") }, { status: 400 });
+      }
+    }
+
     const { data: garagens } = await supabaseAdmin
       .from("config_garage")
       .select("meta_ads_token, meta_access_token")
@@ -132,7 +166,6 @@ export async function POST(req: NextRequest) {
     // Instagram tem que reportar os dois, senão o lojista tenta de novo e
     // duplica o post do Face.
     const resultado: Record<string, any> = {};
-    const erros: string[] = [];
 
     if (destinos.includes("facebook")) {
       if (formato !== "feed") {

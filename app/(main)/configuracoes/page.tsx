@@ -428,7 +428,11 @@ export default function ConfiguracoesPage() {
   const [showNFSenha, setShowNFSenha] = useState(false);
 
   type Tab = "loja" | "whatsapp" | "portais" | "fiscal";
-  const [activeTab, setActiveTab] = useState<Tab>("loja");
+  // ?tab=portais abre direto na aba (links "Conectar" da página de Marketing).
+  const [activeTab, setActiveTab] = useState<Tab>(() => {
+    const t = searchParams.get("tab");
+    return t === "whatsapp" || t === "portais" || t === "fiscal" ? t : "loja";
+  });
 
   // Carrega o Facebook SDK para Embedded Signup
   useEffect(() => {

@@ -5,6 +5,10 @@
 //   · gerar kit (capa/carrossel/story/legenda) + preview + downloads
 //   · reel (gerar no worker, assistir, baixar)
 // Config da legenda/capa (nível loja) fica no topo, não por carro.
+//
+// Vocabulário da tela: POSTAR = orgânico, grátis, no Face/Insta da loja.
+// ANUNCIAR = Meta Ads, pago. Cada cartão tem 3 seções (Criar · Publicar · Reel)
+// em vez de ~10 blocos empilhados.
 
 import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -27,7 +31,7 @@ import {
   Loader2,
   Megaphone,
   RefreshCw,
-  Save,
+  Search,
   Send,
   Sparkles,
   Video,
@@ -66,6 +70,9 @@ interface CarroKit {
   roteiro_pitch: string | null;
 }
 
+type FiltroKit = "todos" | "sem_kit" | "nao_postado" | "no_ar" | "reel";
+type SecaoKit = "criar" | "publicar" | "reel";
+
 function reelToProxy(url: string): string {
   const m = url.match(/https?:\/\/[^/]+\/(.+)$/);
   return m && url.includes(".r2.dev") ? `/api/r2/${m[1]}` : url;
@@ -91,7 +98,8 @@ function PublicarKit({ carro }: { carro: CarroKit }) {
         className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 py-3 text-[10px] font-black uppercase tracking-widest text-white transition-all hover:from-blue-700 hover:to-purple-700 disabled:opacity-40"
       >
         <Megaphone size={13} />
-        Publicar no Meta
+        Anunciar no Meta Ads
+        <span className="rounded-full bg-amber-300/90 px-1.5 py-0.5 text-[8px] text-amber-900">pago</span>
         {!semArte && (
           <span className="rounded-full bg-white/20 px-1.5 py-0.5 text-[8px] capitalize">
             {melhorFormato(midia)}
@@ -135,6 +143,9 @@ export default function KitsGaleria() {
   // Post ORGÂNICO (grátis) — diferente do PublicarMetaButton, que é anúncio pago.
   const [postando, setPostando] = useState<Record<string, boolean>>({});
   const [postado, setPostado] = useState<Record<string, string>>({});
+  const [busca, setBusca] = useState("");
+  const [filtroKit, setFiltroKit] = useState<FiltroKit>("todos");
+  const [secao, setSecao] = useState<Record<string, SecaoKit>>({});
 
   // Config da loja (nível tenant)
   const [cfgAberta, setCfgAberta] = useState(false);
@@ -365,6 +376,7 @@ export default function KitsGaleria() {
     id: string,
     destinos: ("facebook" | "instagram")[],
     formato: "feed" | "story" | "reels" | "story_video",
+    substituir = false,
   ) {
     setPostando((p) => ({ ...p, [id]: true }));
     setErro((p) => ({ ...p, [id]: "" }));
@@ -375,7 +387,7 @@ export default function KitsGaleria() {
       const res = await fetch("/api/marketing/postar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ veiculoId: id, destinos, formato, legenda }),
+        body: JSON.stringify({ veiculoId: id, destinos, formato, legenda, substituir }),
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error ?? "Erro ao publicar");
@@ -394,6 +406,24 @@ export default function KitsGaleria() {
     } finally {
       setPostando((p) => ({ ...p, [id]: false }));
     }
+  }
+
+  /**
+   * Troca o post que está no ar por um novo (arte/legenda atualizadas).
+   * "Postar de novo" criava um SEGUNDO post do mesmo carro no perfil; agora o
+   * servidor recusa duplicar e só publica por cima quando é pedido aqui.
+   */
+  function substituirPost(c: CarroKit, formato: "feed" | "reels") {
+    const vivos = noAr(c).filter((p) => p.formato === formato);
+    const destinos = [...new Set(vivos.map((p) => p.destino))];
+    if (formato === "feed") {
+      // Canal que falhou da outra vez entra junto: substituir deixa os dois certos.
+      if (!destinos.includes("facebook")) destinos.push("facebook");
+      if (!destinos.includes("instagram")) destinos.push("instagram");
+    }
+    const onde = formato === "reels" ? "o Reels" : "o post do feed";
+    if (!window.confirm(`Apagar ${onde} que está no ar e publicar de novo com a arte e a legenda atuais?\n\nCurtidas e comentários do post antigo se perdem.`)) return;
+    postarAgora(c.id, destinos, formato, true);
   }
 
   function copiar(id: string, legenda: string) {
@@ -496,6 +526,21 @@ export default function KitsGaleria() {
 
   const semKitCount = carros.filter((c) => !c.marketing_capa_url && (c.fotos?.length ?? 0) > 0).length;
 
+  // Filtros da galeria — com 40 carros, cada um com o cartão cheio, achar
+  // "o que falta postar" era rolar a página inteira.
+  const FILTROS: { id: FiltroKit; label: string; teste: (c: CarroKit) => boolean }[] = [
+    { id: "todos",      label: "Todos",        teste: () => true },
+    { id: "sem_kit",    label: "Sem kit",      teste: (c) => !c.marketing_capa_url },
+    { id: "nao_postado", label: "Não postado", teste: (c) => !!c.marketing_capa_url && noAr(c).length === 0 },
+    { id: "no_ar",      label: "No ar",        teste: (c) => noAr(c).length > 0 },
+    { id: "reel",       label: "Com reel",     teste: (c) => c.marketing_reel_status === "pronto" },
+  ];
+  const termo = busca.trim().toLowerCase();
+  const testeFiltro = FILTROS.find((f) => f.id === filtroKit)!.teste;
+  const visiveis = carros.filter(
+    (c) => testeFiltro(c) && (!termo || `${titulo(c)} ${c.versao ?? ""} ${c.ano_modelo ?? c.ano ?? ""}`.toLowerCase().includes(termo)),
+  );
+
   return (
     <div className="flex flex-col gap-5">
       {/* Barra de ações da loja */}
@@ -583,16 +628,52 @@ export default function KitsGaleria() {
         </div>
       )}
 
+      {/* Busca + filtros */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+        <div className="relative flex-1 sm:max-w-xs">
+          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300" />
+          <input
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="Buscar carro..."
+            className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-8 pr-3 text-xs font-bold text-gray-700 placeholder:text-gray-300"
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-1 bg-white rounded-xl p-1 border border-gray-100 shadow-sm w-fit">
+          {FILTROS.map((f) => {
+            const n = carros.filter(f.teste).length;
+            return (
+              <button
+                key={f.id}
+                onClick={() => setFiltroKit(f.id)}
+                className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all ${
+                  filtroKit === f.id ? "bg-gray-900 text-white shadow" : "text-gray-400 hover:text-gray-700"
+                }`}
+              >
+                {f.label} <span className="opacity-60">{n}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Grid de carros */}
-      {carros.length === 0 ? (
+      {visiveis.length === 0 ? (
         <div className="py-24 text-center bg-white rounded-[3rem] border-2 border-dashed border-gray-100 italic font-black uppercase text-gray-300 tracking-widest text-xs">
-          Nenhum veículo disponível no estoque.
+          {carros.length === 0 ? "Nenhum veículo disponível no estoque." : "Nenhum carro neste filtro."}
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          {carros.map((c) => {
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
+          {visiveis.map((c) => {
             const temKit = !!c.marketing_capa_url;
+            const reelPronto = c.marketing_reel_status === "pronto" && !!c.marketing_reel_url;
+            const vivos = noAr(c);
+            const feedNoAr = vivos.filter((p) => p.formato === "feed");
+            const reelsNoAr = vivos.filter((p) => p.formato === "reels");
+            const faltando = canalFaltando(c);
+            const aba: SecaoKit = secao[c.id] ?? (temKit ? "publicar" : "criar");
             const capturaAberta = aberto[c.id] ?? !temKit; // sem kit: captura aberta por padrão
+
             return (
               <div key={c.id} className="bg-white rounded-3xl border border-gray-100 shadow-sm p-4 flex flex-col gap-3">
                 {/* Header */}
@@ -607,12 +688,22 @@ export default function KitsGaleria() {
                     <p className="text-sm font-black uppercase italic text-gray-900 truncate">
                       {titulo(c)} {c.ano_modelo ?? c.ano ?? ""}
                     </p>
-                    <div className="flex items-center gap-2 mt-1">
+                    <div className="flex flex-wrap items-center gap-1.5 mt-1">
                       <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${temKit ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-400"}`}>
                         {temKit ? "Kit pronto" : "Sem kit"}
                       </span>
-                      {c.marketing_reel_status === "pronto" && (
+                      {reelPronto && (
                         <span className="text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">Reel</span>
+                      )}
+                      {vivos.length > 0 && (
+                        <span className="text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
+                          ● No ar
+                        </span>
+                      )}
+                      {faltando && (
+                        <span className="text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                          ⚠ Falta {faltando === "instagram" ? "Insta" : "Face"}
+                        </span>
                       )}
                     </div>
                   </div>
@@ -621,314 +712,352 @@ export default function KitsGaleria() {
                   </Link>
                 </div>
 
-                {/* Marketing AI Factory — pitch de venda pra Reels/TikTok (colapsável) */}
-                <div className="rounded-2xl bg-[#e2e2de] p-3 relative overflow-hidden">
-                  <div className="absolute top-0 right-0 w-20 h-20 bg-red-600/5 blur-2xl rounded-full -mr-8 -mt-8" />
-                  <button
-                    onClick={() => setRoteiroAberto((p) => ({ ...p, [c.id]: !p[c.id] }))}
-                    className="flex w-full items-center justify-between relative z-10"
-                  >
-                    <span className="flex items-center gap-1.5 text-[10px] font-black uppercase italic tracking-tight text-gray-900">
-                      <Video size={13} /> Marketing AI
-                      <span className="px-1.5 py-0.5 bg-red-600 text-white text-[7px] font-black rounded-full uppercase not-italic">Factory</span>
-                    </span>
-                    <ChevronDown size={13} className={`text-gray-400 transition-transform ${roteiroAberto[c.id] ? "rotate-180" : ""}`} />
-                  </button>
+                {/* Seções do cartão — antes era tudo empilhado (~10 blocos) */}
+                <div className="grid grid-cols-3 gap-1 rounded-xl bg-gray-50 p-1">
+                  {([
+                    ["criar", "Criar", <Sparkles key="i" size={11} />],
+                    ["publicar", "Publicar", <Send key="i" size={11} />],
+                    ["reel", "Reel", <Film key="i" size={11} />],
+                  ] as const).map(([id, label, icone]) => (
+                    <button
+                      key={id}
+                      onClick={() => setSecao((p) => ({ ...p, [c.id]: id }))}
+                      className={`flex items-center justify-center gap-1.5 rounded-lg py-2 text-[9px] font-black uppercase tracking-widest transition-all ${
+                        aba === id ? "bg-white text-gray-900 shadow-sm" : "text-gray-400 hover:text-gray-700"
+                      }`}
+                    >
+                      {icone} {label}
+                    </button>
+                  ))}
+                </div>
 
-                  {roteiroAberto[c.id] && (
-                    <div className="relative z-10 mt-3">
-                      <p className="text-[10px] text-gray-400 mb-3 leading-relaxed">
-                        Pitch matador para Reels e TikTok gerado em segundos.
-                      </p>
+                {/* ─── CRIAR: material + geração do kit ─── */}
+                {aba === "criar" && (
+                  <div className="flex flex-col gap-2">
+                    <div className="grid grid-cols-[1fr_auto] gap-1.5">
                       <button
-                        onClick={() => gerarRoteiro(c.id)}
-                        disabled={gerandoRoteiro[c.id]}
-                        className="w-full py-2.5 bg-gray-900 text-white text-[10px] font-black uppercase italic rounded-xl hover:bg-red-600 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                        onClick={async () => { if (await gerar(c.id)) setSecao((p) => ({ ...p, [c.id]: "publicar" })); }}
+                        disabled={gerando[c.id]}
+                        className="flex items-center justify-center gap-1.5 rounded-xl bg-gray-900 py-2.5 font-black uppercase italic text-white transition-all hover:bg-red-600 disabled:opacity-50 text-xs"
                       >
-                        {gerandoRoteiro[c.id] ? <Loader2 size={13} className="animate-spin" /> : <Video size={13} />}
-                        {gerandoRoteiro[c.id] ? "Roteirizando..." : c.roteiro_pitch ? "Regerar Pitch de Venda" : "Gerar Pitch de Venda"}
+                        {gerando[c.id] ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                        {gerando[c.id] ? "Gerando..." : temKit ? "Regerar kit" : "Gerar kit"}
                       </button>
+                      <button
+                        onClick={() => gerar(c.id, true)}
+                        disabled={gerando[c.id]}
+                        title="Gera só a capa (feed + story) e a legenda, sem os slides do carrossel"
+                        className="flex items-center justify-center gap-1.5 rounded-xl bg-gray-100 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-gray-700 transition-all hover:bg-gray-200 disabled:opacity-50"
+                      >
+                        <ImageIcon size={13} /> Só capa
+                      </button>
+                    </div>
 
-                      {c.roteiro_pitch && (
-                        <div className="mt-3 p-3 bg-gray-50 rounded-xl border border-gray-100">
-                          <p className="text-[9px] font-black uppercase tracking-widest text-red-600 mb-2">
-                            Roteiro (Reels/TikTok)
-                          </p>
-                          <pre className="text-[10px] text-gray-600 whitespace-pre-wrap font-sans leading-relaxed italic">
+                    <button
+                      onClick={() => setAberto((p) => ({ ...p, [c.id]: !capturaAberta }))}
+                      className="flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2 text-[9px] font-black uppercase tracking-widest text-gray-500 hover:bg-gray-100"
+                    >
+                      Captura guiada (fotos + takes)
+                      <ChevronDown size={13} className={`transition-transform ${capturaAberta ? "rotate-180" : ""}`} />
+                    </button>
+                    {capturaAberta && (
+                      <CapturaGuiada
+                        veiculoId={c.id}
+                        capturas={c.marketing_capturas ?? {}}
+                        videoUrl={c.video_url}
+                        onChange={(cap, fotosNovas) =>
+                          patchCarro(c.id, { marketing_capturas: cap, ...(fotosNovas ? { fotos: fotosNovas } : {}) })
+                        }
+                      />
+                    )}
+
+                    <button
+                      onClick={() => setPisoAberto((p) => ({ ...p, [c.id]: !p[c.id] }))}
+                      className="flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2 text-[9px] font-black uppercase tracking-widest text-gray-500 hover:bg-gray-100"
+                    >
+                      <span className="flex items-center gap-1.5"><Wand2 size={12} /> Piso e calçada</span>
+                      <ChevronDown size={13} className={`transition-transform ${pisoAberto[c.id] ? "rotate-180" : ""}`} />
+                    </button>
+                    {pisoAberto[c.id] && (
+                      <PisoRestauro
+                        veiculoId={c.id}
+                        fotos={c.fotos ?? []}
+                        capturas={c.marketing_capturas ?? {}}
+                        onChange={(cap, fotosNovas) =>
+                          patchCarro(c.id, { marketing_capturas: cap, ...(fotosNovas ? { fotos: fotosNovas } : {}) })
+                        }
+                        onAplicado={() => { if (c.marketing_capa_url) gerar(c.id); }}
+                      />
+                    )}
+
+                    <button
+                      onClick={() => setRoteiroAberto((p) => ({ ...p, [c.id]: !p[c.id] }))}
+                      className="flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2 text-[9px] font-black uppercase tracking-widest text-gray-500 hover:bg-gray-100"
+                    >
+                      <span className="flex items-center gap-1.5"><Video size={12} /> Roteiro de venda (Reels/TikTok)</span>
+                      <ChevronDown size={13} className={`transition-transform ${roteiroAberto[c.id] ? "rotate-180" : ""}`} />
+                    </button>
+                    {roteiroAberto[c.id] && (
+                      <div className="rounded-xl bg-gray-50 p-3">
+                        <button
+                          onClick={() => gerarRoteiro(c.id)}
+                          disabled={gerandoRoteiro[c.id]}
+                          className="w-full py-2.5 bg-gray-900 text-white text-[10px] font-black uppercase italic rounded-xl hover:bg-red-600 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                          {gerandoRoteiro[c.id] ? <Loader2 size={13} className="animate-spin" /> : <Video size={13} />}
+                          {gerandoRoteiro[c.id] ? "Roteirizando..." : c.roteiro_pitch ? "Regerar roteiro" : "Gerar roteiro"}
+                        </button>
+                        {c.roteiro_pitch && (
+                          <pre className="mt-3 text-[10px] text-gray-600 whitespace-pre-wrap font-sans leading-relaxed italic">
                             {c.roteiro_pitch}
                           </pre>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* ─── PUBLICAR: legenda, postar (grátis), anunciar (pago) ─── */}
+                {aba === "publicar" && (
+                  !temKit ? (
+                    <div className="rounded-xl bg-gray-50 p-4 text-center">
+                      <p className="text-[10px] font-bold text-gray-400 mb-2">Gere o kit pra ter a arte e a legenda.</p>
+                      <button
+                        onClick={() => setSecao((p) => ({ ...p, [c.id]: "criar" }))}
+                        className="rounded-xl bg-gray-900 px-4 py-2 text-[9px] font-black uppercase tracking-widest text-white hover:bg-red-600"
+                      >
+                        Ir para Criar
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-2.5">
+                      {(c.marketing_carrossel?.length ?? 0) > 1 && (
+                        <div className="flex gap-1.5 overflow-x-auto pb-1" title="Post de feed: sai como carrossel nesta ordem">
+                          {c.marketing_carrossel!.map((u, i) => (
+                            <div key={u} className="relative flex-shrink-0">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={u} alt={`Slide ${i + 1}`} className="w-12 h-12 rounded-lg object-cover border border-gray-100" />
+                              <span className="absolute -top-1 -left-1 w-4 h-4 rounded-full bg-gray-900 text-white text-[8px] font-black flex items-center justify-center">{i + 1}</span>
+                            </div>
+                          ))}
                         </div>
                       )}
-                    </div>
-                  )}
-                </div>
 
-                {/* Captura guiada (colapsável) */}
-                <button
-                  onClick={() => setAberto((p) => ({ ...p, [c.id]: !capturaAberta }))}
-                  className="flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2 text-[9px] font-black uppercase tracking-widest text-gray-500 hover:bg-gray-100"
-                >
-                  Captura guiada (fotos + takes)
-                  <ChevronDown size={13} className={`transition-transform ${capturaAberta ? "rotate-180" : ""}`} />
-                </button>
-                {capturaAberta && (
-                  <CapturaGuiada
-                    veiculoId={c.id}
-                    capturas={c.marketing_capturas ?? {}}
-                    videoUrl={c.video_url}
-                    onChange={(cap, fotosNovas) =>
-                      patchCarro(c.id, { marketing_capturas: cap, ...(fotosNovas ? { fotos: fotosNovas } : {}) })
-                    }
-                  />
-                )}
-
-                {/* Piso e calçada (colapsável) */}
-                <button
-                  onClick={() => setPisoAberto((p) => ({ ...p, [c.id]: !p[c.id] }))}
-                  className="flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2 text-[9px] font-black uppercase tracking-widest text-gray-500 hover:bg-gray-100"
-                >
-                  <span className="flex items-center gap-1.5"><Wand2 size={12} /> Piso e calçada</span>
-                  <ChevronDown size={13} className={`transition-transform ${pisoAberto[c.id] ? "rotate-180" : ""}`} />
-                </button>
-                {pisoAberto[c.id] && (
-                  <PisoRestauro
-                    veiculoId={c.id}
-                    fotos={c.fotos ?? []}
-                    capturas={c.marketing_capturas ?? {}}
-                    onChange={(cap, fotosNovas) =>
-                      patchCarro(c.id, { marketing_capturas: cap, ...(fotosNovas ? { fotos: fotosNovas } : {}) })
-                    }
-                    onAplicado={() => { if (c.marketing_capa_url) gerar(c.id); }}
-                  />
-                )}
-
-                {/* Gerar / Regerar kit — completo ou só a capa */}
-                <div className="grid grid-cols-[1fr_auto] gap-1.5">
-                  <button
-                    onClick={() => gerar(c.id)}
-                    disabled={gerando[c.id]}
-                    className="flex items-center justify-center gap-1.5 rounded-xl bg-gray-900 py-2 font-black uppercase italic text-white transition-all hover:bg-red-600 disabled:opacity-50 text-xs"
-                  >
-                    {gerando[c.id] ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                    {gerando[c.id] ? "Gerando..." : temKit ? "Regerar kit" : "Gerar kit"}
-                  </button>
-                  <button
-                    onClick={() => gerar(c.id, true)}
-                    disabled={gerando[c.id]}
-                    title="Gera só a capa (feed + story) e a legenda, sem os slides do carrossel"
-                    className="flex items-center justify-center gap-1.5 rounded-xl bg-gray-100 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-gray-700 transition-all hover:bg-gray-200 disabled:opacity-50"
-                  >
-                    <ImageIcon size={13} /> Só capa
-                  </button>
-                </div>
-
-                {/* Preview do kit */}
-                {temKit && (
-                  <>
-                    {(c.marketing_carrossel?.length ?? 0) > 1 && (
-                      <div className="flex gap-1.5 overflow-x-auto pb-1" title="Post de feed: publique como carrossel nesta ordem">
-                        {c.marketing_carrossel!.map((u, i) => (
-                          <div key={u} className="relative flex-shrink-0">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={u} alt={`Slide ${i + 1}`} className="w-12 h-12 rounded-lg object-cover border border-gray-100" />
-                            <span className="absolute -top-1 -left-1 w-4 h-4 rounded-full bg-gray-900 text-white text-[8px] font-black flex items-center justify-center">{i + 1}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    <textarea
-                      // key muda a cada "Regerar kit" (marketing_capa_url carrega
-                      // timestamp) — força o React a remontar o campo com o
-                      // defaultValue novo. Sem isso, defaultValue só pega na
-                      // primeira renderização e o campo fica preso na legenda
-                      // antiga (ou vazio, se abriu antes do kit existir).
-                      key={`${c.id}-${c.marketing_capa_url ?? ""}`}
-                      ref={(el) => { legendaRefs.current[c.id] = el; }}
-                      defaultValue={c.marketing_legenda ?? ""}
-                      rows={6}
-                      onBlur={(e) => {
-                        if (e.target.value !== (c.marketing_legenda ?? "")) {
-                          patchCarro(c.id, { marketing_legenda: e.target.value });
-                          salvarLegenda(c.id, e.target.value);
-                        }
-                      }}
-                      className="w-full rounded-2xl border border-gray-100 bg-gray-50 p-3 text-xs leading-relaxed"
-                    />
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => {
-                          const legenda = legendaRefs.current[c.id]?.value ?? "";
-                          patchCarro(c.id, { marketing_legenda: legenda });
-                          salvarLegenda(c.id, legenda);
+                      <textarea
+                        // key muda a cada "Regerar kit" (marketing_capa_url carrega
+                        // timestamp) — força o React a remontar o campo com o
+                        // defaultValue novo. Sem isso, defaultValue só pega na
+                        // primeira renderização e o campo fica preso na legenda
+                        // antiga (ou vazio, se abriu antes do kit existir).
+                        key={`${c.id}-${c.marketing_capa_url ?? ""}`}
+                        ref={(el) => { legendaRefs.current[c.id] = el; }}
+                        defaultValue={c.marketing_legenda ?? ""}
+                        rows={5}
+                        // Salva sozinha ao sair do campo — o botão "Salvar legenda" saiu.
+                        onBlur={(e) => {
+                          if (e.target.value !== (c.marketing_legenda ?? "")) {
+                            patchCarro(c.id, { marketing_legenda: e.target.value });
+                            salvarLegenda(c.id, e.target.value);
+                          }
                         }}
-                        disabled={salvando[c.id] === "salvando"}
-                        className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gray-900 py-2.5 text-[9px] font-black uppercase tracking-widest text-white hover:bg-red-600 disabled:opacity-50"
-                      >
-                        {salvando[c.id] === "salvando" ? <Loader2 size={12} className="animate-spin" /> : salvando[c.id] === "ok" ? <Check size={12} className="text-green-400" /> : <Save size={12} />}
-                        {salvando[c.id] === "salvando" ? "Salvando..." : salvando[c.id] === "ok" ? "Salva!" : "Salvar legenda"}
-                      </button>
-                      <button onClick={() => copiar(c.id, c.marketing_legenda ?? "")} className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gray-100 py-2.5 text-[9px] font-black uppercase tracking-widest text-gray-600 hover:bg-gray-200">
-                        {copiado === c.id ? <Check size={12} className="text-green-600" /> : <Copy size={12} />}
-                        {copiado === c.id ? "Copiada!" : "Copiar legenda"}
-                      </button>
-                      <button onClick={() => baixar(c, "carrossel")} disabled={!!baixando[c.id]} className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gray-100 py-2.5 text-[9px] font-black uppercase tracking-widest text-gray-600 hover:bg-gray-200 disabled:opacity-40">
-                        {baixando[c.id] === "carrossel" ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} Feed ({c.marketing_carrossel?.length ?? 1})
-                      </button>
-                      <button onClick={() => baixar(c, "story")} disabled={!c.marketing_story_url || !!baixando[c.id]} className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gray-100 py-2.5 text-[9px] font-black uppercase tracking-widest text-gray-600 hover:bg-gray-200 disabled:opacity-40">
-                        {baixando[c.id] === "story" ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} Story
-                      </button>
-                    </div>
+                        className="w-full rounded-2xl border border-gray-100 bg-gray-50 p-3 text-xs leading-relaxed"
+                      />
 
-                    {/* Postar orgânico — a mesma arte que o lojista baixava pra
-                        postar do celular, publicada daqui. Não é anúncio: nada
-                        de verba, nada de campanha. */}
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => postarAgora(c.id, ["facebook", "instagram"], "feed")}
-                        disabled={!!postando[c.id]}
-                        title={noAr(c).length ? "Publicar de novo cria um post NOVO — o antigo continua no ar" : undefined}
-                        className="flex flex-[2] items-center justify-center gap-1.5 rounded-xl bg-gray-900 py-2.5 text-[9px] font-black uppercase tracking-widest text-white hover:bg-red-600 disabled:opacity-50"
-                      >
-                        {postando[c.id] ? <Loader2 size={12} className="animate-spin" /> : postado[c.id] || noAr(c).length ? <Check size={12} className="text-green-400" /> : <Send size={12} />}
-                        {postando[c.id] ? "Postando..." : postado[c.id] ? `No ar no ${postado[c.id]}` : noAr(c).length ? "Postar de novo" : "Postar no Face + Insta"}
-                      </button>
-                      <button
-                        onClick={() => postarAgora(c.id, ["instagram"], "story")}
-                        disabled={!c.marketing_story_url || !!postando[c.id]}
-                        title={c.marketing_story_url ? "Publica a arte 9:16 como story no Instagram" : "Gere o kit pra ter a arte de story"}
-                        className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gray-100 py-2.5 text-[9px] font-black uppercase tracking-widest text-gray-600 hover:bg-gray-200 disabled:opacity-40"
-                      >
-                        <Send size={12} /> Story no Insta
-                      </button>
-                    </div>
-
-                    {/* Onde esse carro JÁ está publicado. O aviso verde do clique
-                        some em 6s e não sobrevive a um refresh — sem isto, o
-                        lojista não tem como saber o que já foi e acaba postando
-                        duas vezes. Vem de veiculos.marketing_posts. */}
-                    {noAr(c).length > 0 && (
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-1 text-[9px] font-black uppercase tracking-widest text-gray-400">
-                        <span className="text-green-600">● No ar</span>
-                        {noAr(c).map((p) => (
-                          <a
-                            key={p.post_id}
-                            href={p.permalink || undefined}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="underline decoration-dotted underline-offset-2 hover:text-gray-700"
-                          >
-                            {p.destino === "facebook" ? "Facebook" : "Instagram"} · {desde(p.em)}
-                          </a>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Publicou num canal e falhou no outro — fica visivel ate
-                        alguem resolver, com o botao que reenvia SO o que faltou
-                        (reenviar os dois duplicaria o que ja esta no ar). */}
-                    {canalFaltando(c) && (
-                      <div className="flex items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-2.5 py-2">
-                        <span className="text-[9px] font-black uppercase tracking-widest text-amber-700">
-                          ⚠ Não saiu no {canalFaltando(c) === "instagram" ? "Instagram" : "Facebook"}
-                        </span>
-                        <button
-                          onClick={() => postarAgora(c.id, [canalFaltando(c)!], "feed")}
-                          disabled={!!postando[c.id]}
-                          className="flex items-center gap-1 rounded-lg bg-amber-600 px-2.5 py-1.5 text-[9px] font-black uppercase tracking-widest text-white hover:bg-amber-700 disabled:opacity-50"
-                        >
-                          {postando[c.id] ? <Loader2 size={11} className="animate-spin" /> : <Send size={11} />}
-                          Reenviar
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-[9px] font-black uppercase tracking-widest text-gray-400">
+                        <button onClick={() => copiar(c.id, legendaRefs.current[c.id]?.value ?? c.marketing_legenda ?? "")} className="flex items-center gap-1 hover:text-gray-700">
+                          {copiado === c.id ? <Check size={11} className="text-green-600" /> : <Copy size={11} />} {copiado === c.id ? "Copiada" : "Copiar legenda"}
+                        </button>
+                        <span className="text-gray-200">|</span>
+                        <span>Baixar:</span>
+                        <button onClick={() => baixar(c, "carrossel")} disabled={!!baixando[c.id]} className="flex items-center gap-1 hover:text-gray-700 disabled:opacity-40">
+                          {baixando[c.id] === "carrossel" ? <Loader2 size={11} className="animate-spin" /> : <Download size={11} />} Feed ({c.marketing_carrossel?.length || 1})
+                        </button>
+                        <button onClick={() => baixar(c, "story")} disabled={!c.marketing_story_url || !!baixando[c.id]} className="flex items-center gap-1 hover:text-gray-700 disabled:opacity-40">
+                          {baixando[c.id] === "story" ? <Loader2 size={11} className="animate-spin" /> : <Download size={11} />} Story
                         </button>
                       </div>
-                    )}
-                  </>
+
+                      {/* POSTAR — grátis, no Face e Insta da loja */}
+                      <div className="rounded-2xl border border-gray-100 p-3 flex flex-col gap-2">
+                        <p className="text-[9px] font-black uppercase tracking-widest text-gray-500">
+                          Postar no seu Face e Insta <span className="ml-1 rounded-full bg-green-100 px-1.5 py-0.5 text-green-700">grátis</span>
+                        </p>
+
+                        {feedNoAr.length === 0 ? (
+                          <button
+                            onClick={() => postarAgora(c.id, ["facebook", "instagram"], "feed")}
+                            disabled={!!postando[c.id]}
+                            className="flex items-center justify-center gap-1.5 rounded-xl bg-gray-900 py-2.5 text-[9px] font-black uppercase tracking-widest text-white hover:bg-red-600 disabled:opacity-50"
+                          >
+                            {postando[c.id] ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+                            {postando[c.id] ? "Postando..." : "Postar no feed (Face + Insta)"}
+                          </button>
+                        ) : (
+                          <div className="flex items-center justify-between gap-2 rounded-xl bg-emerald-50 px-3 py-2">
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[9px] font-black uppercase tracking-widest text-emerald-700">
+                              <span>● No feed</span>
+                              {feedNoAr.map((p) => (
+                                <a key={p.post_id} href={p.permalink || undefined} target="_blank" rel="noopener noreferrer"
+                                  className="underline decoration-dotted underline-offset-2 hover:text-emerald-900">
+                                  {p.destino === "facebook" ? "Facebook" : "Instagram"} · {desde(p.em)}
+                                </a>
+                              ))}
+                            </div>
+                            <button
+                              onClick={() => substituirPost(c, "feed")}
+                              disabled={!!postando[c.id]}
+                              title="Apaga o post atual e publica o kit de novo no lugar"
+                              className="flex flex-shrink-0 items-center gap-1 rounded-lg bg-white px-2.5 py-1.5 text-[9px] font-black uppercase tracking-widest text-gray-600 border border-gray-200 hover:bg-gray-100 disabled:opacity-50"
+                            >
+                              {postando[c.id] ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+                              Substituir
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Publicou num canal e falhou no outro — reenvia SÓ o que faltou. */}
+                        {faltando && (
+                          <div className="flex items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-50 px-2.5 py-2">
+                            <span className="text-[9px] font-black uppercase tracking-widest text-amber-700">
+                              ⚠ Não saiu no {faltando === "instagram" ? "Instagram" : "Facebook"}
+                            </span>
+                            <button
+                              onClick={() => postarAgora(c.id, [faltando], "feed")}
+                              disabled={!!postando[c.id]}
+                              className="flex items-center gap-1 rounded-lg bg-amber-600 px-2.5 py-1.5 text-[9px] font-black uppercase tracking-widest text-white hover:bg-amber-700 disabled:opacity-50"
+                            >
+                              {postando[c.id] ? <Loader2 size={11} className="animate-spin" /> : <Send size={11} />}
+                              Reenviar
+                            </button>
+                          </div>
+                        )}
+
+                        <button
+                          onClick={() => postarAgora(c.id, ["instagram"], "story")}
+                          disabled={!c.marketing_story_url || !!postando[c.id]}
+                          title={c.marketing_story_url ? "Publica a arte 9:16 como story no Instagram (some em 24h)" : "Gere o kit pra ter a arte de story"}
+                          className="flex items-center justify-center gap-1.5 rounded-xl bg-gray-100 py-2 text-[9px] font-black uppercase tracking-widest text-gray-600 hover:bg-gray-200 disabled:opacity-40"
+                        >
+                          <Send size={11} /> Story no Insta (24h)
+                        </button>
+
+                        {postado[c.id] && (
+                          <p className="text-[9px] font-black uppercase tracking-widest text-green-600">✓ No ar no {postado[c.id]}</p>
+                        )}
+                      </div>
+
+                      {/* ANUNCIAR — pago, Meta Ads */}
+                      <PublicarKit carro={c} />
+                    </div>
+                  )
                 )}
 
-                {/* Reel */}
-                <div className="rounded-2xl border border-gray-100 bg-gray-50 p-3">
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <Film size={12} className="text-gray-400" />
-                    <span className="text-[9px] font-black uppercase tracking-widest text-gray-500">Reel (vídeo)</span>
-                  </div>
-                  {c.marketing_reel_status === "pronto" && c.marketing_reel_url ? (
-                    <>
-                      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                      <video src={reelToProxy(c.marketing_reel_url)} controls className="w-full rounded-xl border border-gray-100 bg-black mb-2" />
-                      <div className="flex items-center gap-2">
-                        <button onClick={() => baixarReel(c)} disabled={!!baixando[c.id]} className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gray-100 py-2.5 text-[9px] font-black uppercase tracking-widest text-gray-600 hover:bg-gray-200 disabled:opacity-40">
-                          {baixando[c.id] === "reel" ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} {baixando[c.id] === "reel" ? "Baixando..." : "Baixar reel"}
-                        </button>
-                        <button onClick={() => gerarReel(c.id)} disabled={reelBusy[c.id]} title="Regerar reel" className="flex items-center justify-center rounded-xl bg-gray-900 px-3 py-2.5 text-white hover:bg-red-600 disabled:opacity-50">
-                          {reelBusy[c.id] ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-                        </button>
-                      </div>
+                {/* ─── REEL ─── */}
+                {aba === "reel" && (
+                  <div className="flex flex-col gap-2">
+                    {reelPronto ? (
+                      <>
+                        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                        <video src={reelToProxy(c.marketing_reel_url!)} controls className="w-full max-h-[420px] rounded-xl border border-gray-100 bg-black" />
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => baixarReel(c)} disabled={!!baixando[c.id]} className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gray-100 py-2.5 text-[9px] font-black uppercase tracking-widest text-gray-600 hover:bg-gray-200 disabled:opacity-40">
+                            {baixando[c.id] === "reel" ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} {baixando[c.id] === "reel" ? "Baixando..." : "Baixar reel"}
+                          </button>
+                          <button onClick={() => gerarReel(c.id)} disabled={reelBusy[c.id]} title="Regerar reel" className="flex items-center justify-center rounded-xl bg-gray-900 px-3 py-2.5 text-white hover:bg-red-600 disabled:opacity-50">
+                            {reelBusy[c.id] ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                          </button>
+                        </div>
 
-                      {/* O mesmo vídeo nos dois lugares do Instagram. Reels fica
-                          no perfil pra sempre; story some em 24h — por isso o
-                          story não entra no aviso "no ar" nem na limpeza da venda. */}
-                      <div className="mt-2 flex items-center gap-2">
-                        <button
-                          onClick={() => postarAgora(c.id, ["instagram"], "reels")}
-                          disabled={!!postando[c.id]}
-                          title="Publica o reel do kit como Reels no Instagram"
-                          className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gray-900 py-2.5 text-[9px] font-black uppercase tracking-widest text-white hover:bg-red-600 disabled:opacity-50"
-                        >
-                          {postando[c.id] ? <Loader2 size={12} className="animate-spin" /> : <Film size={12} />}
-                          {postando[c.id] ? "Postando..." : "Reels no Insta"}
-                        </button>
-                        <button
-                          onClick={() => postarAgora(c.id, ["instagram"], "story_video")}
-                          disabled={!!postando[c.id]}
-                          title="Publica o mesmo vídeo como story (some em 24h)"
-                          className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gray-100 py-2.5 text-[9px] font-black uppercase tracking-widest text-gray-600 hover:bg-gray-200 disabled:opacity-40"
-                        >
-                          <Send size={12} /> Story com o vídeo
-                        </button>
+                        {/* Reels fica no perfil pra sempre (anti-duplicado igual ao
+                            feed); story some em 24h e pode repetir. */}
+                        <div className="rounded-2xl border border-gray-100 p-3 flex flex-col gap-2">
+                          <p className="text-[9px] font-black uppercase tracking-widest text-gray-500">
+                            Postar no Insta <span className="ml-1 rounded-full bg-green-100 px-1.5 py-0.5 text-green-700">grátis</span>
+                          </p>
+                          {reelsNoAr.length === 0 ? (
+                            <button
+                              onClick={() => postarAgora(c.id, ["instagram"], "reels")}
+                              disabled={!!postando[c.id]}
+                              className="flex items-center justify-center gap-1.5 rounded-xl bg-gray-900 py-2.5 text-[9px] font-black uppercase tracking-widest text-white hover:bg-red-600 disabled:opacity-50"
+                            >
+                              {postando[c.id] ? <Loader2 size={12} className="animate-spin" /> : <Film size={12} />}
+                              {postando[c.id] ? "Postando..." : "Postar como Reels"}
+                            </button>
+                          ) : (
+                            <div className="flex items-center justify-between gap-2 rounded-xl bg-emerald-50 px-3 py-2">
+                              <div className="flex flex-wrap items-center gap-x-2 text-[9px] font-black uppercase tracking-widest text-emerald-700">
+                                <span>● Reels</span>
+                                {reelsNoAr.map((p) => (
+                                  <a key={p.post_id} href={p.permalink || undefined} target="_blank" rel="noopener noreferrer"
+                                    className="underline decoration-dotted underline-offset-2 hover:text-emerald-900">
+                                    Instagram · {desde(p.em)}
+                                  </a>
+                                ))}
+                              </div>
+                              <button
+                                onClick={() => substituirPost(c, "reels")}
+                                disabled={!!postando[c.id]}
+                                className="flex flex-shrink-0 items-center gap-1 rounded-lg bg-white px-2.5 py-1.5 text-[9px] font-black uppercase tracking-widest text-gray-600 border border-gray-200 hover:bg-gray-100 disabled:opacity-50"
+                              >
+                                {postando[c.id] ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+                                Substituir
+                              </button>
+                            </div>
+                          )}
+                          <button
+                            onClick={() => postarAgora(c.id, ["instagram"], "story_video")}
+                            disabled={!!postando[c.id]}
+                            title="Publica o mesmo vídeo como story (some em 24h)"
+                            className="flex items-center justify-center gap-1.5 rounded-xl bg-gray-100 py-2 text-[9px] font-black uppercase tracking-widest text-gray-600 hover:bg-gray-200 disabled:opacity-40"
+                          >
+                            <Send size={11} /> Story com o vídeo (24h)
+                          </button>
+                        </div>
+                      </>
+                    ) : c.marketing_reel_status === "processando" ? (
+                      <div className="flex items-center gap-2 py-2 text-[10px] font-bold text-gray-500">
+                        <Loader2 size={13} className="animate-spin" /> Renderizando o vídeo... (pode levar alguns minutos)
                       </div>
-                    </>
-                  ) : c.marketing_reel_status === "processando" ? (
-                    <div className="flex items-center gap-2 py-2 text-[10px] font-bold text-gray-500">
-                      <Loader2 size={13} className="animate-spin" /> Renderizando o vídeo... (pode levar alguns minutos)
-                    </div>
-                  ) : temTakes(c) ? (
-                    <button onClick={() => gerarReel(c.id)} disabled={reelBusy[c.id]} className="flex w-full items-center justify-center gap-2 rounded-xl bg-gray-900 py-2.5 text-[10px] font-black uppercase tracking-widest text-white hover:bg-red-600 disabled:opacity-50">
-                      {reelBusy[c.id] ? <Loader2 size={12} className="animate-spin" /> : <Film size={12} />}
-                      {c.marketing_reel_status === "erro" ? "Tentar de novo" : "Gerar reel"}
-                    </button>
-                  ) : (
-                    <p className="text-center text-[9px] font-bold uppercase tracking-widest text-gray-400 py-1">
-                      Suba os takes na captura guiada acima pra liberar o reel
-                    </p>
-                  )}
-
-                  {/* Editor estilo CapCut: duração + legenda de cada take */}
-                  {temTakes(c) && c.marketing_reel_status !== "processando" && (
-                    <>
-                      <button
-                        onClick={() => setEditando((p) => ({ ...p, [c.id]: !p[c.id] }))}
-                        className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white py-2 text-[9px] font-black uppercase tracking-widest text-gray-500 hover:bg-gray-100"
-                      >
-                        <Wand2 size={12} /> {editando[c.id] ? "Fechar editor" : "Editar takes e legendas"}
+                    ) : temTakes(c) ? (
+                      <button onClick={() => gerarReel(c.id)} disabled={reelBusy[c.id]} className="flex w-full items-center justify-center gap-2 rounded-xl bg-gray-900 py-2.5 text-[10px] font-black uppercase tracking-widest text-white hover:bg-red-600 disabled:opacity-50">
+                        {reelBusy[c.id] ? <Loader2 size={12} className="animate-spin" /> : <Film size={12} />}
+                        {c.marketing_reel_status === "erro" ? "Tentar de novo" : "Gerar reel"}
                       </button>
-                      {editando[c.id] && (
-                        <ReelEditor
-                          veiculoId={c.id}
-                          capturasVersao={(c.marketing_capturas?.takes ?? []).map((t) => `${t.tag}:${t.url}`).join("|")}
-                          onGerar={() => {
-                            setEditando((p) => ({ ...p, [c.id]: false }));
-                            gerarReel(c.id);
-                          }}
-                        />
-                      )}
-                    </>
-                  )}
-                </div>
+                    ) : (
+                      <div className="rounded-xl bg-gray-50 p-4 text-center">
+                        <p className="text-[10px] font-bold text-gray-400 mb-2">Suba os takes na captura guiada pra liberar o reel.</p>
+                        <button
+                          onClick={() => { setSecao((p) => ({ ...p, [c.id]: "criar" })); setAberto((p) => ({ ...p, [c.id]: true })); }}
+                          className="rounded-xl bg-gray-900 px-4 py-2 text-[9px] font-black uppercase tracking-widest text-white hover:bg-red-600"
+                        >
+                          Abrir captura guiada
+                        </button>
+                      </div>
+                    )}
 
-                {/* Publicar direto daqui — gerou a arte, anuncia sem trocar de aba.
-                    O modal abre já no formato mais forte que este carro tem. */}
-                <PublicarKit carro={c} />
+                    {/* Editor estilo CapCut: duração + legenda de cada take */}
+                    {temTakes(c) && c.marketing_reel_status !== "processando" && (
+                      <>
+                        <button
+                          onClick={() => setEditando((p) => ({ ...p, [c.id]: !p[c.id] }))}
+                          className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white py-2 text-[9px] font-black uppercase tracking-widest text-gray-500 hover:bg-gray-100"
+                        >
+                          <Wand2 size={12} /> {editando[c.id] ? "Fechar editor" : "Editar takes e legendas"}
+                        </button>
+                        {editando[c.id] && (
+                          <ReelEditor
+                            veiculoId={c.id}
+                            capturasVersao={(c.marketing_capturas?.takes ?? []).map((t) => `${t.tag}:${t.url}`).join("|")}
+                            onGerar={() => {
+                              setEditando((p) => ({ ...p, [c.id]: false }));
+                              gerarReel(c.id);
+                            }}
+                          />
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
 
                 <div className="min-h-[14px]">
                   {salvando[c.id] === "salvando" && <span className="text-[9px] font-bold text-gray-400">Salvando legenda...</span>}

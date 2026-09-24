@@ -1,15 +1,33 @@
 // app/api/meta/ads/route.ts
-// Lista campanhas Meta Ads de um veículo específico
+// Lista campanhas Meta Ads de um veículo específico (ou, sem veiculoId, o
+// resumo de campanhas ativas por veículo do tenant)
 
 import { NextRequest, NextResponse } from "next/server";
-import { requireVehicleOwner, getEffectiveUserId } from "@/lib/api-auth";
+import { requireAuth, requireVehicleOwner, getEffectiveUserId } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const veiculoId = searchParams.get("veiculoId");
 
-  if (!veiculoId) return NextResponse.json({ error: "veiculoId obrigatório" }, { status: 400 });
+  // Sem veiculoId: resumo do tenant inteiro ({ veiculoId: nº de campanhas
+  // ativas }). A página de Marketing pintava a bolinha do Meta com UMA chamada
+  // por carro — 40 carros, 40 requests no carregamento.
+  if (!veiculoId) {
+    const { user, error: authError } = await requireAuth();
+    if (authError) return authError;
+    const { data, error } = await supabaseAdmin
+      .from("meta_campanhas")
+      .select("veiculo_id")
+      .eq("user_id", getEffectiveUserId(user!))
+      .eq("status", "ativo");
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    const ativasPorVeiculo: Record<string, number> = {};
+    for (const c of data ?? []) {
+      if (c.veiculo_id) ativasPorVeiculo[c.veiculo_id] = (ativasPorVeiculo[c.veiculo_id] ?? 0) + 1;
+    }
+    return NextResponse.json({ ativasPorVeiculo });
+  }
 
   const auth = await requireVehicleOwner(veiculoId);
   if (auth.error) return auth.error;

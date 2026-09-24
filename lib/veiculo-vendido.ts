@@ -27,6 +27,8 @@ export interface PostPendente {
 export async function removerPostsDoVeiculo(
   veiculoId: string,
   userId: string,
+  /** Só os posts que passarem aqui — sem filtro, todos (caso da venda). */
+  filtro?: (p: any) => boolean,
 ): Promise<{ removidos: number; pendentes: PostPendente[] }> {
   const pendentes: PostPendente[] = [];
   let removidos = 0;
@@ -34,7 +36,7 @@ export async function removerPostsDoVeiculo(
     const { data: rows } = await supabaseAdmin
       .from("veiculos").select("marketing_posts").eq("id", veiculoId).limit(1);
     const posts: any[] = Array.isArray(rows?.[0]?.marketing_posts) ? rows![0].marketing_posts : [];
-    const noAr = posts.filter((p) => p?.post_id && !p.removido_em);
+    const noAr = posts.filter((p) => p?.post_id && !p.removido_em && (!filtro || filtro(p)));
     if (!noAr.length) return { removidos: 0, pendentes: [] };
 
     const { data: cfg } = await supabaseAdmin

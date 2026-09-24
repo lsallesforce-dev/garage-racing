@@ -189,9 +189,11 @@ export default function CarrosselEstoqueModal({ veiculos, onClose }: Props) {
           <div className="flex items-center gap-2.5">
             <Layers size={18} className="text-indigo-600" />
             <div>
-              <h2 className="text-sm font-black uppercase tracking-wider text-gray-900">Carrossel do Estoque</h2>
+              <h2 className="text-sm font-black uppercase tracking-wider text-gray-900">
+                Anunciar o estoque <span className="ml-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] text-amber-700 align-middle">pago</span>
+              </h2>
               <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
-                Cada card abre a página do carro na sua vitrine
+                Anúncio carrossel no Meta Ads · cada card abre o carro na vitrine
               </p>
             </div>
           </div>

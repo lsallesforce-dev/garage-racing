@@ -443,7 +443,7 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
           <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
         </svg>
-        Publicar no Meta
+        Anunciar no Meta Ads
         {campanhasVivas.length > 0 && (
           <span className="bg-white/20 rounded-full px-1.5 py-0.5 text-[9px]">{campanhasVivas.length}</span>
         )}
@@ -456,7 +456,7 @@ export default function PublicarMetaButton({ veiculoId, marca, modelo, ano, foto
             {/* Header */}
             <div className="flex items-center justify-between p-5 border-b border-gray-100 sticky top-0 bg-white rounded-t-3xl z-20">
               <div className="min-w-0">
-                <p className="font-black text-gray-900 text-sm">Publicar no Meta</p>
+                <p className="font-black text-gray-900 text-sm">Anunciar no Meta Ads <span className="ml-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-amber-700 align-middle">pago</span></p>
                 <p className="text-[11px] text-gray-400 truncate max-w-[240px]">{veiculoNome || "Veículo"}</p>
               </div>
               <button onClick={handleClose} className="p-2 hover:bg-gray-100 rounded-xl transition-colors">
