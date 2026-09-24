@@ -152,8 +152,6 @@ const dataHora = (iso: string | null | undefined) =>
     ? new Date(iso).toLocaleString("pt-BR", { timeZone: TZ, day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
     : "—";
 
-const soData = (iso: string | null | undefined) =>
-  iso ? new Date(iso).toLocaleDateString("pt-BR", { timeZone: TZ, day: "2-digit", month: "2-digit" }) : "—";
 
 /** Mês corrente em Brasília (YYYY-MM) — o navegador pode estar em outro fuso. */
 function mesAtualBRT(): string {
@@ -190,6 +188,22 @@ function fimDe(c: CampanhaPlano): string | null {
     return new Date(new Date(c.inicia_em).getTime() + c.duracao_dias * 86_400_000).toISOString();
   }
   return null;
+}
+
+/**
+ * Contagem até o término, pra quem está rodando ou agendado. O "até 05/09"
+ * miúdo embaixo do início passava batido (Lucas não achou o fim, 24/09).
+ */
+function contagemFim(c: CampanhaPlano, fim: string | null, agora: number): { texto: string; alerta: boolean } | null {
+  if (!fim) return c.sem_data_fim ? { texto: "sem data de fim", alerta: false } : null;
+  const ms = new Date(fim).getTime() - agora;
+  if (c.status !== "ativo" && c.status !== "agendado" && c.status !== "rascunho") {
+    return ms <= 0 ? { texto: "terminou", alerta: false } : null;
+  }
+  if (ms <= 0) return { texto: "terminou", alerta: false };
+  const dias = Math.ceil(ms / 86_400_000);
+  if (ms < 86_400_000) return { texto: `termina em ${Math.max(1, Math.round(ms / 3_600_000))} h`, alerta: true };
+  return { texto: dias === 1 ? "falta 1 dia" : `faltam ${dias} dias`, alerta: dias <= 2 };
 }
 
 /** Quanto a campanha custa inteira — o número que a confirmação mostra. */
@@ -933,7 +947,8 @@ export default function PlanejamentoPage() {
                       <tr className="border-b border-gray-100 text-[8px] font-black uppercase tracking-widest text-gray-400">
                         <th className="px-4 py-3">Anúncio</th>
                         <th className="px-3 py-3">Status</th>
-                        <th className="px-3 py-3">Veiculação</th>
+                        <th className="px-3 py-3">Início</th>
+                        <th className="px-3 py-3">Término</th>
                         <th className="px-3 py-3 text-right">Orçamento</th>
                         <th className="px-3 py-3 text-right">Previsto no mês</th>
                         <th className="px-3 py-3 text-right">Gasto</th>
@@ -969,7 +984,13 @@ export default function PlanejamentoPage() {
                             <td className="px-3 py-3"><StatusPill c={c} /></td>
                             <td className="px-3 py-3 whitespace-nowrap">
                               <p className="font-bold">{c.inicia_em ? dataHora(c.inicia_em) : "—"}</p>
-                              <p className="text-[9px] text-gray-400">{fim ? `até ${soData(fim)}` : c.sem_data_fim ? "contínua" : "—"}</p>
+                            </td>
+                            <td className="px-3 py-3 whitespace-nowrap">
+                              <p className="font-bold">{fim ? dataHora(fim) : c.sem_data_fim ? "Contínua" : "—"}</p>
+                              {(() => {
+                                const k = contagemFim(c, fim, agora);
+                                return k && <p className={`text-[9px] font-bold ${k.alerta ? "text-amber-600" : "text-gray-400"}`}>{k.texto}</p>;
+                              })()}
                             </td>
                             <td className="px-3 py-3 text-right whitespace-nowrap">
                               {c.tipo_orcamento === "total"
@@ -997,7 +1018,7 @@ export default function PlanejamentoPage() {
                     </tbody>
                     <tfoot>
                       <tr className="bg-gray-50 text-[11px] font-black text-gray-900">
-                        <td className="px-4 py-3 text-[9px] uppercase tracking-widest text-gray-500" colSpan={4}>
+                        <td className="px-4 py-3 text-[9px] uppercase tracking-widest text-gray-500" colSpan={5}>
                           Total · {visiveis.length} {visiveis.length === 1 ? "postagem" : "postagens"}
                         </td>
                         <td className="px-3 py-3 text-right whitespace-nowrap">{brl(total.previsto)}</td>
@@ -1039,9 +1060,13 @@ export default function PlanejamentoPage() {
 
                         <div className="grid grid-cols-2 gap-2 mt-3 text-[10px]">
                           <div className="bg-gray-50 rounded-xl p-2.5">
-                            <p className="text-[8px] font-black uppercase tracking-widest text-gray-400">Veiculação</p>
+                            <p className="text-[8px] font-black uppercase tracking-widest text-gray-400">Início → Término</p>
                             <p className="font-bold text-gray-800 mt-0.5">{c.inicia_em ? dataHora(c.inicia_em) : "—"}</p>
-                            <p className="text-gray-400">{fim ? `até ${soData(fim)}` : c.sem_data_fim ? "contínua" : "—"}</p>
+                            <p className="font-bold text-gray-800">→ {fim ? dataHora(fim) : c.sem_data_fim ? "Contínua" : "—"}</p>
+                            {(() => {
+                              const k = contagemFim(c, fim, agora);
+                              return k && <p className={`font-bold ${k.alerta ? "text-amber-600" : "text-gray-400"}`}>{k.texto}</p>;
+                            })()}
                           </div>
                           <div className="bg-gray-50 rounded-xl p-2.5">
                             <p className="text-[8px] font-black uppercase tracking-widest text-gray-400">Orçamento</p>
