@@ -20,7 +20,7 @@ import Link from "next/link";
 import {
   ChevronLeft, ChevronRight, Plus, RefreshCw, Wallet, TrendingUp, PiggyBank,
   Receipt, ExternalLink, Pause, Play, Pencil, Trash2, Send, Search, X,
-  Megaphone, AlertCircle, Loader2, CalendarDays, ArrowLeft, Info,
+  Megaphone, AlertCircle, Loader2, CalendarDays, ArrowLeft, Info, Landmark,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useUserRole } from "@/components/SidebarWrapper";
@@ -92,6 +92,11 @@ interface Planejamento {
   aGastarRestante: number;
   saldoProjetado: number | null;
   gastoMes: number;
+  /** Estimado: 12,15% da recarga (≈13,83% do gasto). null = conta fora de BRL. */
+  impostoMes: number | null;
+  aliquotaImposto: number;
+  /** Recarga (imposto incluso) pra cobrir o que falta; null quando sobra. */
+  depositoNecessario: number | null;
   atualizadoEm: string;
   campanhas: CampanhaPlano[];
 }
@@ -782,8 +787,8 @@ export default function PlanejamentoPage() {
           // Trocando de mês: mantém o mês anterior esmaecido e sem clique (ação
           // em linha velha seria na campanha errada) até a resposta chegar.
           <div className={`transition-opacity ${carregando ? "opacity-50 pointer-events-none" : ""}`}>
-            {/* ── 4 cards ── */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
+            {/* ── 5 cards (imposto no meio, pedido do Lucas 24/09) ── */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mb-8">
               <CardResumo
                 icone={<Wallet size={12} />}
                 titulo="Saldo na Meta"
@@ -814,6 +819,17 @@ export default function PlanejamentoPage() {
                 sub={`Falta gastar ${brl(dados.aGastarRestante)}`}
               />
 
+              {/* Imposto não vem da API: na conta pré-paga a Meta desconta 12,15%
+                  na recarga, então o saldo e o gasto já são líquidos. */}
+              <CardResumo
+                icone={<Landmark size={12} />}
+                titulo="Imposto no mês"
+                valor={dados.impostoMes == null ? "—" : brl(dados.impostoMes)}
+                sub={dados.impostoMes == null
+                  ? "Só pra conta em reais"
+                  : `Estimado: ${String((dados.aliquotaImposto * 100).toFixed(2)).replace(".", ",")}% da recarga (PIS/COFINS + ISS) · ${brl(dados.gastoMes + dados.impostoMes)} com imposto`}
+              />
+
               <CardResumo
                 icone={<PiggyBank size={12} />}
                 titulo="Saldo projetado"
@@ -822,7 +838,11 @@ export default function PlanejamentoPage() {
                 sub={projetado == null
                   ? "Precisa do saldo da Meta pra projetar"
                   : projetado < 0
-                    ? <span className="text-red-600 font-black">Vai faltar {brl(Math.abs(projetado))} — recarregue ou corte orçamento</span>
+                    ? <span className="text-red-600 font-black">
+                        Vai faltar {brl(Math.abs(projetado))}
+                        {dados.depositoNecessario != null && <> — deposite {brl(dados.depositoNecessario)} (com imposto)</>}
+                        {dados.depositoNecessario == null && <> — recarregue ou corte orçamento</>}
+                      </span>
                     : "Sobra depois do que está planejado"}
               />
 

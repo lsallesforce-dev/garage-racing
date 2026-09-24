@@ -14,6 +14,18 @@ import { buscarSaldoConta, buscarGastoConta, buscarCampanhasDaConta, type SaldoC
 import { midiaDoVeiculo, miniatura, COLUNAS_MIDIA } from "@/lib/veiculo-midia";
 
 const DIA_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Imposto da Meta no Brasil desde jan/2026: PIS/COFINS 9,25% + ISS 2,9% =
+ * 12,15% do valor DEPOSITADO. Na conta pré-paga ele sai na recarga — de
+ * R$ 1.000 no Pix, R$ 878,50 viram saldo de anúncio e R$ 121,50 são imposto.
+ * Por isso o débito diário do saldo bate com o gasto do insights (conferido na
+ * APROVE: R$ 2.280,82 cobrados × R$ 2.280,35 gastos de 01 a 23/09/2026) e o
+ * imposto não aparece em lugar nenhum da API — é calculado aqui.
+ * Sobre o gasto: 12,15 / 87,85 ≈ 13,83%.
+ */
+export const ALIQUOTA_IMPOSTO_META_BR = 0.1215;
+const IMPOSTO_SOBRE_GASTO = ALIQUOTA_IMPOSTO_META_BR / (1 - ALIQUOTA_IMPOSTO_META_BR);
 const OFFSET_BRT = "-03:00";
 
 /**
@@ -82,6 +94,12 @@ export type Planejamento = {
   aGastarRestante: number;
   saldoProjetado: number | null;
   gastoMes: number;
+  /** Imposto estimado sobre o gasto do mês (null se a conta não é em BRL). */
+  impostoMes: number | null;
+  /** 0.1215 — alíquota sobre o valor depositado. */
+  aliquotaImposto: number;
+  /** Quanto depositar (imposto incluso) pra cobrir o que falta; null se sobra saldo. */
+  depositoNecessario: number | null;
   /** De onde saiu o gastoMes: conta inteira na Meta (inclui campanha feita fora do AutoZap) ou soma local. */
   gastoMesFonte: "meta" | "campanhas";
   atualizadoEm: string;
@@ -412,13 +430,23 @@ export async function montarPlanejamento(userId: string, mesPedido?: string | nu
   const gastoLocal = campanhas.filter((c) => c.origem === "autozap").reduce((s, c) => s + c.metricas.gasto, 0);
   const gastoMes = gastoMeta != null ? gastoMeta : gastoLocal;
 
+  const saldoProjetado = saldo.disponivel != null ? r2(saldo.disponivel - aGastarRestante) : null;
+  // O imposto de 12,15% é regra de anunciante no Brasil — só vale pra conta em real.
+  const brl = (saldo.moeda || "BRL").toUpperCase() === "BRL";
+
   return {
     mes,
     saldo,
     previsaoMes: r2(previsaoMes),
     aGastarRestante: r2(aGastarRestante),
-    saldoProjetado: saldo.disponivel != null ? r2(saldo.disponivel - aGastarRestante) : null,
+    saldoProjetado,
     gastoMes: r2(gastoMes),
+    impostoMes: brl ? r2(gastoMes * IMPOSTO_SOBRE_GASTO) : null,
+    aliquotaImposto: ALIQUOTA_IMPOSTO_META_BR,
+    depositoNecessario:
+      brl && saldoProjetado != null && saldoProjetado < 0
+        ? r2(-saldoProjetado / (1 - ALIQUOTA_IMPOSTO_META_BR))
+        : null,
     gastoMesFonte: gastoMeta != null ? "meta" : "campanhas",
     // Sem campanha viva sincronizada, o dado mais velho da tela é o saldo, lido agora.
     atualizadoEm: metricasMaisAntiga ?? new Date(agora).toISOString(),
