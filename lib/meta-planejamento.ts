@@ -10,14 +10,18 @@
 // horário de verão em 2019). Os cálculos usam instantes UTC com offset −03:00.
 
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { buscarSaldoConta, buscarGastoConta, type SaldoConta } from "@/lib/meta-ads";
+import { buscarSaldoConta, buscarGastoConta, buscarCampanhasDaConta, type SaldoConta, type CampanhaExterna } from "@/lib/meta-ads";
 import { midiaDoVeiculo, miniatura, COLUNAS_MIDIA } from "@/lib/veiculo-midia";
 
 const DIA_MS = 24 * 60 * 60 * 1000;
 const OFFSET_BRT = "-03:00";
 
-/** Status que ainda vão (ou podem) gastar — entram na previsão do mês. */
-const STATUS_PREVISAO = new Set(["rascunho", "publicando", "agendado", "ativo", "pausado"]);
+/**
+ * Status que entram na previsão do mês. Pausada NÃO entra: não gasta, e
+ * pausada sem data de fim contava o mês inteiro — a "Campanha de Junho" da
+ * APROVE (pausada no Gerenciador) jogava R$ 165 mil na previsão (24/09/2026).
+ */
+const STATUS_PREVISAO = new Set(["rascunho", "publicando", "agendado", "ativo"]);
 /** Dos acima, os que gastam daqui pra frente (pausada não gasta até alguém religar). */
 const STATUS_A_GASTAR = new Set(["rascunho", "publicando", "agendado", "ativo"]);
 
@@ -38,6 +42,13 @@ export type MetricasPlanejamento = {
 
 export type CampanhaPlanejamento = {
   id: string;
+  /**
+   * "gerenciador" = existe na conta mas não foi criada pelo AutoZap (post
+   * turbinado, campanha feita à mão). Só leitura: pausar/editar é no Gerenciador.
+   */
+  origem: "autozap" | "gerenciador";
+  /** Nome da campanha na Meta — usado quando não há veículo. */
+  nome: string | null;
   status: string;
   meta_status: string | null;
   veiculo: { id: string; nome: string; thumb: string | null } | null;
@@ -183,7 +194,7 @@ export async function montarPlanejamento(userId: string, mesPedido?: string | nu
   const { data: rows } = await supabaseAdmin
     .from("meta_campanhas")
     .select(
-      "id, status, meta_status, veiculo_id, veiculo_ids, pagina_id, ad_id, formato, objetivo, placement, " +
+      "id, status, meta_status, campaign_id, veiculo_id, veiculo_ids, pagina_id, ad_id, formato, objetivo, placement, " +
       "inicia_em, encerra_em, created_at, orcamento_diario, tipo_orcamento, orcamento_total, duracao_dias, " +
       "sem_data_fim, idade_min, idade_max, genero, criativo_url, gasto_total, impressoes, alcance, cliques, " +
       "cpc, ctr, frequencia, leads_gerados, conversas, metricas_em, erro_msg, payload",
@@ -218,7 +229,7 @@ export async function montarPlanejamento(userId: string, mesPedido?: string | nu
   const ateDia = ultimoDia < hojeBRT ? ultimoDia : hojeBRT;
   const mesFuturo = iniDia > hojeBRT;
 
-  const [saldo, gastoMeta] = await Promise.all([
+  const [saldo, gastoMeta, externasTodas] = await Promise.all([
     contaPadrao && token
       ? buscarSaldoConta(contaPadrao, token)
       : Promise.resolve<SaldoConta>({
@@ -232,6 +243,9 @@ export async function montarPlanejamento(userId: string, mesPedido?: string | nu
       : contaPadrao && token
         ? buscarGastoConta(contaPadrao, token, iniDia, ateDia)
         : Promise.resolve<number | null>(null),
+    contaPadrao && token
+      ? buscarCampanhasDaConta(contaPadrao, token)
+      : Promise.resolve<CampanhaExterna[]>([]),
   ]);
 
   // ── Monta a lista ──────────────────────────────────────────────────────────
@@ -266,6 +280,8 @@ export async function montarPlanejamento(userId: string, mesPedido?: string | nu
 
     return {
       id: c.id,
+      origem: "autozap",
+      nome: null,
       status: c.status,
       meta_status: c.meta_status ?? null,
       veiculo: v
@@ -307,10 +323,93 @@ export async function montarPlanejamento(userId: string, mesPedido?: string | nu
     };
   });
 
+  // ── Campanhas da conta que o AutoZap não criou ─────────────────────────────
+  // Entram na lista E na previsão: dinheiro saindo da mesma conta pré-paga.
+  const doAutoZap = new Set((rows ?? []).map((c: any) => c.campaign_id).filter(Boolean));
+  for (const e of externasTodas) {
+    if (doAutoZap.has(e.campaignId)) continue;
+    const ini = e.inicio ? new Date(e.inicio).getTime() : null;
+    const fim = e.fim ? new Date(e.fim).getTime() : null;
+    let status: string;
+    if (e.metaStatus === "DELETED" || e.metaStatus === "ARCHIVED") status = "encerrado";
+    else if (fim != null && fim <= agora) status = "encerrado";
+    // A Meta deixa a campanha ACTIVE depois do stop_time e com o conjunto
+    // pausado — o que vale é se ainda tem conjunto rodando.
+    else if (e.metaStatus !== "ACTIVE" || !e.temConjuntoAtivo) status = "pausado";
+    else if (ini != null && ini > agora) status = "agendado";
+    else status = "ativo";
+
+    // Mesmo formato da linha do banco, pra reusar janela() e gastoPlanejado().
+    const linha = {
+      status,
+      inicia_em: e.inicio,
+      encerra_em: e.fim,
+      created_at: e.inicio ?? new Date(agora).toISOString(),
+      sem_data_fim: !e.fim,
+      duracao_dias: null,
+      tipo_orcamento: e.orcamentoDiario == null && e.orcamentoTotal != null ? "total" : "diario",
+      orcamento_diario: e.orcamentoDiario,
+      orcamento_total: e.orcamentoTotal,
+    };
+    const j = janela(linha, agora);
+    if (!(j.ini < fimMes && j.fim >= iniMes)) continue;
+
+    const previsto = STATUS_PREVISAO.has(status) ? gastoPlanejado(linha, j, iniMes, fimMes) : 0;
+    previsaoMes += previsto;
+    if (STATUS_A_GASTAR.has(status) && inicioRestante < fimMes) {
+      aGastarRestante += gastoPlanejado(linha, j, inicioRestante, fimMes);
+    }
+    const resultados = e.metricas.conversas || e.metricas.formularios;
+    const act = contaPadrao?.replace(/^act_/, "");
+    campanhas.push({
+      id: `meta:${e.campaignId}`,
+      origem: "gerenciador",
+      nome: e.nome,
+      status,
+      meta_status: e.metaStatus,
+      veiculo: null,
+      veiculo_ids: null,
+      formato: null,
+      objetivo: e.metricas.conversas > 0 ? "whatsapp" : e.metricas.formularios > 0 ? "leads" : null,
+      placement: null,
+      inicia_em: e.inicio,
+      encerra_em: e.fim,
+      orcamento_diario: e.orcamentoDiario,
+      tipo_orcamento: linha.tipo_orcamento,
+      orcamento_total: e.orcamentoTotal,
+      duracao_dias: null,
+      sem_data_fim: !e.fim,
+      idade_min: null,
+      idade_max: null,
+      genero: null,
+      thumb: e.thumb,
+      metricas: {
+        gasto: e.metricas.gasto,
+        impressoes: e.metricas.impressoes,
+        alcance: e.metricas.alcance,
+        cliques: e.metricas.cliques,
+        cpc: e.metricas.cpc,
+        ctr: e.metricas.ctr,
+        frequencia: e.metricas.frequencia,
+        leads: e.metricas.formularios,
+        conversas: e.metricas.conversas,
+        resultados,
+        custo_resultado: resultados > 0 ? r2(e.metricas.gasto / resultados) : null,
+      },
+      // Lida da Meta agora mesmo, a cada abertura da página.
+      metricas_em: new Date(agora).toISOString(),
+      previsto_mes: r2(previsto),
+      erro_msg: null,
+      gerenciador_url: act
+        ? `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${act}&selected_campaign_ids=${e.campaignId}`
+        : null,
+    });
+  }
+
   // Se a Meta não respondeu, soma o gasto das campanhas do AutoZap no mês —
   // aproximação (gasto_total é lifetime, e campanha feita direto no
   // Gerenciador fica de fora); gastoMesFonte diz qual valeu.
-  const gastoLocal = campanhas.reduce((s, c) => s + c.metricas.gasto, 0);
+  const gastoLocal = campanhas.filter((c) => c.origem === "autozap").reduce((s, c) => s + c.metricas.gasto, 0);
   const gastoMes = gastoMeta != null ? gastoMeta : gastoLocal;
 
   return {

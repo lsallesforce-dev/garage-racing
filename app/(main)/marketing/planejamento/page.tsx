@@ -47,6 +47,9 @@ interface Metricas {
 
 interface CampanhaPlano {
   id: string;
+  /** "gerenciador" = post turbinado / campanha feita fora do AutoZap — só leitura. */
+  origem?: "autozap" | "gerenciador";
+  nome?: string | null;
   status: StatusPlano;
   meta_status: string | null;
   veiculo: { id: string; nome: string; thumb: string | null } | null;
@@ -282,12 +285,14 @@ function Thumb({ url, lado = 44 }: { url: string | null | undefined; lado?: numb
 
 function nomeCampanha(c: CampanhaPlano): string {
   if (c.veiculo?.nome) return c.veiculo.nome;
+  if (c.nome) return c.nome;
   const n = c.veiculo_ids?.length ?? 0;
   return n > 1 ? `Estoque · ${n} carros` : "Anúncio";
 }
 
 function detalheCampanha(c: CampanhaPlano): string {
   const partes = [
+    c.origem === "gerenciador" ? "Criada no Gerenciador" : null,
     c.formato,
     c.objetivo === "whatsapp" ? "WhatsApp" : c.objetivo === "leads" ? "Formulário" : null,
     c.placement === "stories" ? "Só stories" : c.placement?.replace(",", " + "),
@@ -426,13 +431,15 @@ function BotoesAcao({ c, ocupado, onAcao, onEditar, compacto = false }: {
           </button>
         </>
       )}
-      {(c.status === "ativo" || c.status === "agendado") && (
+      {/* Campanha de fora do AutoZap: pausar/ativar é no Gerenciador (a rota
+          de status só conhece as linhas de meta_campanhas). */}
+      {c.origem !== "gerenciador" && (c.status === "ativo" || c.status === "agendado") && (
         <button disabled={ocupado} onClick={() => onAcao(c, "pausar")} title="Pausar"
           className={`${base} bg-amber-50 text-amber-700 hover:bg-amber-100`}>
           <Pause size={12} />{rot("Pausar")}
         </button>
       )}
-      {c.status === "pausado" && (
+      {c.origem !== "gerenciador" && c.status === "pausado" && (
         <button disabled={ocupado} onClick={() => onAcao(c, "ativar")} title="Ativar"
           className={`${base} bg-green-50 text-green-700 hover:bg-green-100`}>
           <Play size={12} />{rot("Ativar")}

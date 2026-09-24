@@ -1299,3 +1299,105 @@ export async function buscarGastoConta(
     return null;
   }
 }
+
+// ─── Campanhas da conta criadas FORA do AutoZap ───────────────────────────────
+
+/**
+ * Campanha que existe na conta de anúncios mas não em meta_campanhas: post
+ * turbinado pelo botão "Turbinar" do Face/Insta, ou feita à mão no
+ * Gerenciador. Sem isso o Planejamento mostrava "previsão R$ 0" com dinheiro
+ * correndo — APROVE 24/09/2026: 2 posts turbinados (Strada e Palio, R$16/dia
+ * cada) ativos e invisíveis na tela.
+ */
+export interface CampanhaExterna {
+  campaignId: string;
+  nome: string;
+  /** effective_status da campanha (a Meta mantém ACTIVE mesmo depois do stop_time). */
+  metaStatus: string | null;
+  /** Algum conjunto ainda ativo? Campanha ACTIVE com todos os conjuntos pausados não gasta. */
+  temConjuntoAtivo: boolean;
+  objetivo: string | null;
+  inicio: string | null;
+  fim: string | null;
+  /** Em reais. Orçamento da campanha (CBO) ou soma dos conjuntos. */
+  orcamentoDiario: number | null;
+  orcamentoTotal: number | null;
+  thumb: string | null;
+  metricas: Omit<MetricasAnuncio, "ok" | "metaStatus">;
+}
+
+/**
+ * Lista as campanhas da conta (mais recentes primeiro) com orçamento, datas,
+ * miniatura do criativo e insights lifetime — tudo numa chamada, por field
+ * expansion. Só leitura. Falhou → [] (a tela segue com as do AutoZap).
+ */
+export async function buscarCampanhasDaConta(adAccountId: string, accessToken: string): Promise<CampanhaExterna[]> {
+  try {
+    const d = await graphGet(`${adAccountId}/campaigns`, accessToken, {
+      limit: "60",
+      fields:
+        "id,name,effective_status,objective,start_time,stop_time,daily_budget,lifetime_budget," +
+        "adsets.limit(20){effective_status,daily_budget,lifetime_budget,start_time,end_time}," +
+        "ads.limit(1){creative{thumbnail_url,image_url}}," +
+        "insights.date_preset(maximum){spend,impressions,reach,inline_link_clicks," +
+        "cost_per_inline_link_click,inline_link_click_ctr,frequency,actions}",
+    });
+    const num = (v: unknown): number | null => {
+      const x = parseFloat(String(v ?? ""));
+      return Number.isFinite(x) ? x : null;
+    };
+    // Orçamento vem na menor unidade da moeda (centavos em BRL).
+    const reais = (v: unknown): number | null => {
+      const x = num(v);
+      return x != null && x > 0 ? x / 100 : null;
+    };
+
+    return ((d.data as any[]) ?? []).map((c: any) => {
+      const conjuntos: any[] = c.adsets?.data ?? [];
+      const somaConj = (campo: string) => {
+        const s = conjuntos.reduce((t, a) => t + (reais(a[campo]) ?? 0), 0);
+        return s > 0 ? s : null;
+      };
+      const ins = c.insights?.data?.[0];
+      const acoes = (ins?.actions as any[]) ?? [];
+      const valorDe = (tipo: string): number | null => {
+        const a = acoes.find((x: any) => x.action_type === tipo);
+        return a ? (parseInt(a.value) || 0) : null;
+      };
+      // Mesma regra do buscarMetricasCampanha: os dois tipos de messaging se
+      // sobrepõem — nunca somar.
+      const conversas =
+        valorDe("onsite_conversion.messaging_conversation_started_7d") ??
+        valorDe("onsite_conversion.total_messaging_connection") ?? 0;
+      const formularios = valorDe("lead") ?? 0;
+      const criativo = c.ads?.data?.[0]?.creative;
+      return {
+        campaignId: c.id,
+        nome: c.name ?? "Campanha",
+        metaStatus: c.effective_status ?? null,
+        temConjuntoAtivo: conjuntos.length === 0 || conjuntos.some((a) => a.effective_status === "ACTIVE"),
+        objetivo: c.objective ?? null,
+        inicio: c.start_time ?? conjuntos[0]?.start_time ?? null,
+        fim: c.stop_time ?? conjuntos[0]?.end_time ?? null,
+        orcamentoDiario: reais(c.daily_budget) ?? somaConj("daily_budget"),
+        orcamentoTotal: reais(c.lifetime_budget) ?? somaConj("lifetime_budget"),
+        thumb: criativo?.thumbnail_url ?? criativo?.image_url ?? null,
+        metricas: {
+          gasto: num(ins?.spend) ?? 0,
+          impressoes: parseInt(ins?.impressions ?? "0") || 0,
+          alcance: parseInt(ins?.reach ?? "0") || 0,
+          cliques: parseInt(ins?.inline_link_clicks ?? "0") || 0,
+          cpc: num(ins?.cost_per_inline_link_click),
+          ctr: num(ins?.inline_link_click_ctr),
+          frequencia: num(ins?.frequency),
+          conversas,
+          formularios,
+          leads: conversas || formularios,
+        },
+      };
+    });
+  } catch (e: any) {
+    console.warn(`⚠️ [meta-ads] campanhas da conta ${adAccountId} falhou:`, e?.message?.slice(0, 200));
+    return [];
+  }
+}
