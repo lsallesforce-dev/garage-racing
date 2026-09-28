@@ -29,8 +29,8 @@ function parseInstagramUrl(url: string): boolean {
 
 // ─── Fallback: RapidAPI ───────────────────────────────────────────────────────
 // Se yt-dlp não estiver instalado, tenta RapidAPI como fallback.
-// Assine o plano free em: rapidapi.com → busque "instagram-downloader-download-instagram-videos-stories"
-// Adicione ao .env.local: RAPIDAPI_KEY=sua_chave
+// Assine o plano free no RapidAPI de pelo menos um dos PROVIDERS abaixo.
+// Env: RAPIDAPI_KEY=sua_chave
 
 function deepFindVideoUrl(obj: unknown, depth = 0): string | null {
   if (depth > 6 || !obj) return null;
@@ -60,6 +60,24 @@ function deepFindVideoUrl(obj: unknown, depth = 0): string | null {
   return null;
 }
 
+// Provedores tentados em ordem — a mesma RAPIDAPI_KEY vale pra todos, mas cada
+// API precisa de assinatura própria no RapidAPI (não assinada → 403, pula).
+// O instagram120 saiu do ar em 09/2026 (404 "API doesn't exists") e derrubou o
+// import inteiro por ser provedor único.
+const PROVIDERS: { host: string; req: (u: string) => { path: string; init: RequestInit } }[] = [
+  {
+    host: "social-download-all-in-one.p.rapidapi.com",
+    req: (u) => ({
+      path: "/v1/social/autolink",
+      init: { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: u }) },
+    }),
+  },
+  {
+    host: "instagram-downloader-download-instagram-videos-stories.p.rapidapi.com",
+    req: (u) => ({ path: `/index?url=${encodeURIComponent(u)}`, init: { method: "GET" } }),
+  },
+];
+
 async function fetchViaRapidApi(instagramUrl: string): Promise<string | null> {
   const key = process.env.RAPIDAPI_KEY;
   if (!key) {
@@ -67,30 +85,27 @@ async function fetchViaRapidApi(instagramUrl: string): Promise<string | null> {
     return null;
   }
 
-  const host = "instagram120.p.rapidapi.com";
-
-  try {
-    const res = await fetch("https://instagram120.p.rapidapi.com/api/instagram/links", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-RapidAPI-Key": key,
-        "X-RapidAPI-Host": host,
-      },
-      body: JSON.stringify({ url: instagramUrl }),
-    });
-    const raw = await res.text();
-    console.log(`📡 RapidAPI instagram120 status=${res.status} body=${raw.slice(0, 300)}`);
-    if (!res.ok) return null;
-    let data: unknown;
-    try { data = JSON.parse(raw); } catch { return null; }
-    const found = deepFindVideoUrl(data);
-    if (found) {
-      console.log(`✅ RapidAPI encontrou URL`);
-      return found;
+  for (const p of PROVIDERS) {
+    try {
+      const { path, init } = p.req(instagramUrl);
+      const res = await fetch(`https://${p.host}${path}`, {
+        ...init,
+        headers: { ...(init.headers as Record<string, string>), "X-RapidAPI-Key": key, "X-RapidAPI-Host": p.host },
+        signal: AbortSignal.timeout(20_000),
+      });
+      const raw = await res.text();
+      console.log(`📡 RapidAPI ${p.host} status=${res.status} body=${raw.slice(0, 300)}`);
+      if (!res.ok) continue;
+      let data: unknown;
+      try { data = JSON.parse(raw); } catch { continue; }
+      const found = deepFindVideoUrl(data);
+      if (found) {
+        console.log(`✅ RapidAPI ${p.host} encontrou URL`);
+        return found;
+      }
+    } catch (e) {
+      console.error(`RapidAPI ${p.host} error:`, e);
     }
-  } catch (e) {
-    console.error("RapidAPI error:", e);
   }
 
   return null;
