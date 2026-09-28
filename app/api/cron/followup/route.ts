@@ -605,15 +605,34 @@ export async function GET(req: NextRequest) {
       const nomeEmpresa = garagem.nome_fantasia || garagem.nome_empresa || "a loja";
 
       const useAvisa   = !!garagem.avisa_base_url && !!garagem.avisa_token;
+      const useMeta    = !useAvisa && !!garagem.meta_phone_id && !!garagem.meta_access_token;
+      if (!useAvisa && !useMeta) { ignorar("sem_canal"); continue; }
 
-      // Follow-up proativo só é permitido via Avisa API.
-      // Meta Cloud API exige template aprovado para mensagens fora da janela de sessão
-      // de 24h — enviar mensagem livre fora da sessão viola a política da Meta.
-      if (!useAvisa) { ignorar("meta_api_sem_followup"); continue; }
+      // Cloud API: texto livre só dentro da janela de atendimento de 24h, contada
+      // da última mensagem DO CLIENTE. Fora dela só template aprovado, e ainda não
+      // temos. Antes daqui o Meta era pulado inteiro, e a APROVE ficou 2 dias sem
+      // follow-up quando saiu da Avisa (26/09): 55% dos follow-ups dela caíam
+      // dentro da janela. Busca dedicada porque ultimasMsgsDesc só traz 5 e a
+      // última do cliente pode ter ficado atrás de várias do agente. Margem de 1h
+      // pro Gemini gerar e a mensagem chegar antes da janela fechar.
+      if (useMeta) {
+        const { data: ultimaDoCliente } = await supabaseAdmin
+          .from("mensagens")
+          .select("created_at")
+          .eq("lead_id", lead.id)
+          .eq("remetente", "usuario")
+          .order("created_at", { ascending: false })
+          .limit(1);
+        const desdeCliente = ultimaDoCliente?.[0]
+          ? (agora.getTime() - new Date(ultimaDoCliente[0].created_at).getTime()) / (60 * 60 * 1000)
+          : Infinity;
+        if (desdeCliente > 23) { ignorar("meta_fora_janela_24h"); continue; }
+      }
 
       const avisaCreds = { baseUrl: garagem.avisa_base_url ?? "", token: garagem.avisa_token ?? "" };
+      const metaCreds  = { phoneNumberId: garagem.meta_phone_id ?? "", accessToken: garagem.meta_access_token ?? "" };
       const sendText = (to: string, text: string) =>
-        sendAvisaMessage(to, text, avisaCreds);
+        useAvisa ? sendAvisaMessage(to, text, avisaCreds) : sendMetaMessage(to, text, metaCreds);
 
       // ── 8. Dados do veículo ────────────────────────────────────────────────
       if (!lead.veiculo_id) {
