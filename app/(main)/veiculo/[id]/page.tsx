@@ -1057,14 +1057,30 @@ export default function DetalheVeiculo() {
         body: JSON.stringify({ url: igUrl.trim(), veiculoId: veiculo.id }),
       });
       const data = await res.json();
-      if (data.success) {
-        setIgStatus("ok");
-        setIgMsg("Vídeo importado e vinculado ao veículo!");
-        setVeiculo((p: any) => ({ ...p, video_url: data.url }));
-        setIgUrl("");
-      } else {
-        throw new Error(data.error || "Falha desconhecida");
+      if (!data.success) throw new Error(data.error || "Falha desconhecida");
+      setVeiculo((p: any) => ({ ...p, video_url: data.url }));
+      setIgUrl("");
+
+      // Mesma análise IA do "Enviar vídeo" (transcrição + campos) — antes o
+      // import só vinculava o vídeo e a transcrição ficava vazia.
+      setIgMsg("Vídeo importado. Analisando com IA... (pode levar alguns minutos)");
+      const { data: { user } } = await supabase.auth.getUser();
+      const analyzeRes = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          videoUrl: data.url,
+          vendedorId: user?.id || "00000000-0000-0000-0000-000000000000",
+          veiculoId: veiculo.id,
+        }),
+      });
+      const analyzeData = await analyzeRes.json().catch(() => ({}));
+      if (!analyzeData.success) {
+        throw new Error(`Vídeo importado, mas a análise IA falhou: ${analyzeData.error || analyzeRes.status}`);
       }
+      setIgStatus("ok");
+      setIgMsg("Vídeo importado e analisado!");
+      setTimeout(() => window.location.reload(), 500);
     } catch (e: any) {
       setIgStatus("error");
       setIgMsg(e.message);
@@ -1374,11 +1390,13 @@ export default function DetalheVeiculo() {
                 </button>
               </div>
 
-              {igStatus !== "idle" && (
+              {igStatus !== "idle" ? (
                 <p className={`mt-3 text-[10px] font-black uppercase tracking-widest ${igStatus === "ok" ? "text-green-600" : "text-red-600"}`}>
                   {igStatus === "ok" ? "✓" : "✗"} {igMsg}
                 </p>
-              )}
+              ) : importandoIG && igMsg ? (
+                <p className="mt-3 text-[10px] font-black uppercase tracking-widest text-gray-500">{igMsg}</p>
+              ) : null}
 
               {veiculo.video_url && (
                 <div className="mt-4 p-4 bg-gray-50 rounded-2xl border border-gray-100">
