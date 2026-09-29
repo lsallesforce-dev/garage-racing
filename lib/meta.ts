@@ -435,3 +435,56 @@ export async function baixarMidiaMeta(mediaId: string, accessToken: string): Pro
   }
   return Buffer.from(await dl.arrayBuffer());
 }
+
+// ─── Alerta ao gerente por TEMPLATE (fora da janela de 24h) ───────────────────
+// Texto livre pro gerente só entrega se ele escreveu pro número da loja nas
+// últimas 24h — e gerente não conversa com o próprio número (APROVE: última vez
+// em 24/08). Template utility aprovado entrega sempre. Criado no WABA do tenant
+// com o nome ALERTA_TEMPLATE (corpo: "Aviso do atendimento da {{1}}: {{2}}
+// Cliente: +{{3}}..."). Parâmetro de template NÃO aceita quebra de linha nem
+// 4+ espaços seguidos — o alerta é achatado numa linha só.
+export const ALERTA_TEMPLATE = "alerta_gerente";
+
+function paramTemplate(texto: string, max = 900): string {
+  return texto
+    .replace(/[*_]/g, "")
+    .replace(/\s*\n+\s*/g, " · ")
+    .replace(/\s{2,}/g, " ")
+    .trim()
+    .slice(0, max) || "-";
+}
+
+/** Devolve true só se a Meta aceitou. Nunca lança. */
+export async function sendMetaAlertaTemplate(
+  to: string,
+  loja: string,
+  texto: string,
+  clientePhone: string,
+  creds: Partial<MetaCreds>,
+): Promise<boolean> {
+  const c = resolveCreds(creds);
+  if (!c) return false;
+  try {
+    await post(`/${c.phoneNumberId}/messages`, {
+      messaging_product: "whatsapp",
+      to: formatPhone(to),
+      type: "template",
+      template: {
+        name: ALERTA_TEMPLATE,
+        language: { code: "pt_BR" },
+        components: [{
+          type: "body",
+          parameters: [
+            { type: "text", text: paramTemplate(loja, 60) },
+            { type: "text", text: paramTemplate(texto) },
+            { type: "text", text: String(clientePhone || "").replace(/\D/g, "") || "-" },
+          ],
+        }],
+      },
+    }, c.accessToken);
+    return true;
+  } catch (e: any) {
+    console.warn(`⚠️ [Alerta template] não enviado pra ${to}: ${e?.message?.slice(0, 160)}`);
+    return false;
+  }
+}

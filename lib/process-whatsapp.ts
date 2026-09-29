@@ -6,7 +6,7 @@
 import { randomUUID } from "crypto";
 import { geminiFlashSales, geminiFlashFallback, parseGeminiJson } from "@/lib/gemini";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { sendMetaMessage, sendMetaImage, sendMetaVideo, sendMetaAudio, sendMetaCtaButton, markMetaRead, baixarMidiaMeta } from "@/lib/meta";
+import { sendMetaMessage, sendMetaImage, sendMetaVideo, sendMetaAudio, sendMetaCtaButton, markMetaRead, baixarMidiaMeta, sendMetaAlertaTemplate } from "@/lib/meta";
 import { alertaTenantPorEmail } from "@/lib/alerta-interno";
 import {
   falaDeFinanciamento, extrairDadosFinanciamento, faltando, textoPedidoInicial,
@@ -1261,9 +1261,19 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   // Redis). Fora da janela a Meta aceita a chamada e descarta depois (131047)
   // — então nem tenta: manda por e-mail pro dono do tenant. Na Avisa não existe
   // janela; lá o alerta sempre chegava.
-  const alertaForaDaJanela = async (text: string): Promise<boolean> => {
+  //
+  // Fora da janela: 1º o template utility "alerta_gerente" (entrega sempre,
+  // desde que aprovado e com forma de pagamento no WABA); se a Meta recusar,
+  // e-mail. Gerente não conversa com o próprio número da loja — sem template o
+  // alerta nunca chegava no WhatsApp dele (APROVE, 29/09).
+  const alertaForaDaJanela = async (to: string, text: string): Promise<boolean> => {
     if (useAvisa) return false;
     if (await gerenteNaJanela(tenantUserId)) return false;
+    const loja = garageConfig?.nome_fantasia || garageConfig?.nome_empresa || "loja";
+    if (await sendMetaAlertaTemplate(to, loja, text, phone, metaCreds)) {
+      console.log(`📨 [Alerta] ${to} fora da janela de 24h — enviado por template`);
+      return true;
+    }
     const primeiraLinha = text.split("\n").find((l) => l.trim())?.replace(/[*_]/g, "").trim() ?? "Alerta do agente";
     await alertaTenantPorEmail(tenantUserId, primeiraLinha.slice(0, 90), text.replace(/[*_]/g, ""));
     return true;
@@ -1275,7 +1285,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
       console.log(`🔕 [Alerta suprimido] destino ${to} é o próprio número do agente — ver no painel.`);
       return null as any;
     }
-    if (await alertaForaDaJanela(text)) return null as any;
+    if (await alertaForaDaJanela(to, text)) return null as any;
     if (useAvisa) return sendAvisaMessage(to, text, avisaCreds, { typing: false });
     try {
       return await sendMetaMessage(to, text, metaCreds);
@@ -1294,7 +1304,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
     }
     const clienteClean = clientePhone.replace(/\D/g, "");
     const waLink = `https://wa.me/${clienteClean}`;
-    if (await alertaForaDaJanela(`${body}\n\n🔗 ${waLink}`)) return;
+    if (await alertaForaDaJanela(gerenteTo, body)) return;
     if (!useAvisa && metaCreds.phoneNumberId && metaCreds.accessToken) {
       return sendMetaCtaButton(gerenteTo, body, "Abrir Conversa", waLink, metaCreds)
         .catch(() => sendAlert(gerenteTo, `${body}\n\n🔗 ${waLink}`).catch(() => {}));
