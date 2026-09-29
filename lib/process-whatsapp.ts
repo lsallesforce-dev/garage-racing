@@ -8,6 +8,10 @@ import { geminiFlashSales, geminiFlashFallback, parseGeminiJson } from "@/lib/ge
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendMetaMessage, sendMetaImage, sendMetaVideo, sendMetaAudio, sendMetaCtaButton, markMetaRead, baixarMidiaMeta } from "@/lib/meta";
 import { alertaTenantPorEmail } from "@/lib/alerta-interno";
+import {
+  falaDeFinanciamento, extrairDadosFinanciamento, faltando, textoPedidoInicial,
+  textoPedidoRestante, TEXTO_COLETA_COMPLETA, lerColeta, salvarColeta, encerrarColeta,
+} from "@/lib/financiamento-coleta";
 import { sendAvisaMessage, sendAvisaImage, sendAvisaVideo, sendAvisaAudio } from "@/lib/avisa";
 import { gerarRelatorioPista } from "@/lib/leads";
 import { resolverVendedor } from "@/lib/lead-routing";
@@ -384,7 +388,7 @@ ${tomBlock}${repasseBlock}
 - LINGUAGEM: tom natural e comercial, português informal porém correto. NUNCA caricato. ⛔ PROIBIDO GÍRIA: nada de "blz", "mano", "tá ligado", "firmeza", "suave", "de boa", "tmj", "kkk". Mesmo que o cliente use gíria, você responde natural mas SEM gíria.
 - ⛔ NUNCA use travessão (—) nem meia-risca (–) na resposta. Ninguém digita isso no WhatsApp; é cara de robô/IA. Use vírgula, ponto ou reticências. Errado: "Tá no pátio — pode vir". Certo: "Tá no pátio, pode vir."
 - ⛔ REGRA ANTI-RESPOSTA-VAZIA: Toda resposta DEVE conter informação concreta. Se o cliente perguntou preço, a resposta DEVE conter o preço. Se perguntou km, DEVE conter o km. É PROIBIDO TERMINANTE responder com frases genéricas como "Pronto para te ajudar!", "Fico à disposição!", "É só chamar!" sem responder o que foi perguntado. Cada mensagem sua deve ter SUBSTÂNCIA — algo que o cliente não sabia antes de ler.
-- ⛔ REGRA ANTI-REPETIÇÃO DE FRASE: NUNCA repita a mesma frase ou frase quase idêntica em mensagens diferentes da conversa. Se já disse "Sim, trabalhamos com financiamento! Já vou chamar nosso especialista" e o cliente perguntar de novo sobre parcelas, responda DIFERENTE: "Já encaminhei pro pessoal do financeiro — eles vão te dar as condições certinhas." ou "O gerente já tá ciente, pode ficar tranquilo que ele vai te passar os valores." PROIBIDO repetir a mesma resposta sobre financiamento duas vezes.
+- ⛔ REGRA ANTI-REPETIÇÃO DE FRASE: NUNCA repita a mesma frase ou frase quase idêntica em mensagens diferentes da conversa. Varie o jeito de falar a cada turno.
 - ⛔ EMOJI MODERADO: Use emoji no MÁXIMO 1 vez a cada 5 mensagens enviadas. Vendedor profissional é sóbrio. PROIBIDO terminar mensagens com 😉 ou 😊 em sequência. Se as últimas 3 mensagens suas têm emoji, a próxima NÃO pode ter. Emojis excessivos = sinal de robô.
 - USO DO NOME DO CLIENTE: ⛔ REGRA CRÍTICA — Use o nome do cliente NO MÁXIMO uma vez TODA a conversa, e SOMENTE no momento de fechamento (quando ele confirma visita ou compra). NUNCA use o nome em respostas regulares. Olhe TODO o histórico antes de digitar — se você JÁ usou o nome alguma vez, NÃO use de novo. Vendedor humano que repete o nome 5x em 5 mensagens parece bot da Vivo. Comece a resposta SEMPRE pelo conteúdo, nunca pelo vocativo. ❌ "Certo, Nicinha! O Argo tem..." ✅ "O Argo tem...". A exceção é apenas a MENSAGEM INICIAL após o cliente dar o nome (1 vez, máximo).
 - SAUDAÇÕES REPETIDAS: NUNCA repita "Bom dia", "Boa tarde", "Boa noite" se a saudação já foi usada no histórico. Após a primeira troca de saudação, vá direto ao assunto.
@@ -486,7 +490,7 @@ ${roteiroEstadoCarro}
    a) PERGUNTA SIMPLES sobre se aceita troca ("aceita troca?", "vocês fazem troca?", "tem troca?", "trocam?"): confirme que sim e CONVIDE A ENVIAR FOTOS para uma pré-avaliação. Ex: "Aceitamos sim! A avaliação final é presencial, mas se quiser já adiantar, é só me mandar fotos do seu carro pra uma pré-avaliação." ⚠️ NÃO use precisa_instrucao.
    b) INTENÇÃO REAL de trocar ("tenho um HRV 2020 pra dar", "quero trocar meu carro X", "vou dar meu Y na troca", cliente forneceu o próprio veículo): confirme que aceita e PEÇA FOTOS do carro pra uma pré-avaliação. Ex: "Aceitamos seu [carro] na troca! A avaliação final é presencial. Pode me enviar fotos dele pra uma pré-avaliação?" NÃO precisa de precisa_instrucao — quando o cliente ENVIAR as fotos, o sistema já encaminha automaticamente pro setor de avaliação e avisa o time.
 6. VALOR DA TROCA: Nunca estime o valor do carro do cliente. Oriente que só é possível após avaliação do nosso avaliador presencial.
-7. FINANCIAMENTO: Se o cliente perguntar sobre financiamento, parcelas ou entrada, responda APENAS com uma mensagem curta confirmando que financia e que vai passar para o especialista cuidar — ex: "Sim, trabalhamos com financiamento! Já vou chamar nosso especialista para te atender 😊". NUNCA calcule parcelas, NUNCA cite valores de prestação, NUNCA faça simulações. O gerente assume a conversa em seguida.
+7. FINANCIAMENTO: o sistema cuida desse assunto sozinho — ele pede ao cliente o valor de entrada, o CPF e a data de nascimento e manda pro gerente fazer a simulação. Se o assunto aparecer na sua resposta, diga APENAS que pra simulação você precisa desses três dados (entrada, CPF e data de nascimento). ⛔ PROIBIDO falar de: parcelar entrada, entrada no cartão, aprovação, análise de crédito, "nome sujo"/score, bancos, taxas, prazos, valor de parcela, "vir até a loja pra fazer a análise", "fazemos tudo na hora". Você NÃO sabe se o crédito vai passar — prometer isso gera cliente frustrado quando o banco recusa.
 7b. ENTREGA, LOGÍSTICA E STATUS DE PREPARO — PROIBIDO INVENTAR: Você NÃO sabe se a loja faz entrega, se o carro "está pronto", quando a documentação/preparação fica pronta, nem horários combinados de retirada — a menos que isso esteja EXPLÍCITO nas instruções da loja ou na conversa. NUNCA afirme "não fazemos entrega", "o carro está pronto", "pode buscar a partir das Xh" por conta própria. Nesses assuntos responda neutro — ex: "Vou confirmar esse detalhe com o pessoal aqui e já te retorno!" — e use precisa_instrucao descrevendo o que o cliente pediu (ex: "Cliente perguntou se entregamos em [cidade]"). Errar isso faz a loja contradizer o cliente minutos depois.
 8. NEGOCIAÇÃO E DESCONTO: Você não tem autorização para dar descontos finais pelo WhatsApp. Jogue para a gerência de forma natural ("Deixa eu ver o que consigo com meu gerente"). Não convide o cliente para a loja em TODAS as respostas — isso cansa e afasta.
    ▶ FUNIL DE AQUECIMENTO (siga esta ordem antes de chamar para visita):
@@ -2751,6 +2755,74 @@ Responda apenas com o JSON, sem markdown.`;
     return;
   }
 
+  // ── 10d. Financiamento → coleta entrada, CPF e data de nascimento ────────────
+  // Sem Gemini: a IA não fala de condição de crédito (ver lib/financiamento-coleta).
+  // Detectou o assunto → pede os três dados. Enquanto a coleta está aberta,
+  // cada mensagem com dado é absorvida e só o que falta é cobrado. Completou →
+  // manda tudo pro gerente/financeiro e o lead vai pra atendimento humano.
+  // Mensagem que não traz dado nem fala de financiamento (pergunta do carro,
+  // "vou ver") segue o fluxo normal com a coleta ainda aberta.
+  // Fora do modo repasse: lá o cliente é lojista e não financia.
+  if (lead?.id && !skipSend && !garageConfig?.modo_repasse && mensagemClientePura) {
+    const coletaAtual = await lerColeta(tenantUserId, lead.id);
+    const detectou = falaDeFinanciamento(mensagemClientePura);
+    if (coletaAtual || detectou) {
+      const ext = extrairDadosFinanciamento(mensagemClientePura);
+      const trouxeDado = !!(ext.entrada || ext.cpf || ext.nascimento || ext.cpfInvalido);
+      if (detectou || trouxeDado) {
+        const coleta = {
+          ...(coletaAtual ?? { iniciadaEm: new Date().toISOString() }),
+          ...(ext.entrada ? { entrada: ext.entrada } : {}),
+          ...(ext.cpf ? { cpf: ext.cpf } : {}),
+          ...(ext.nascimento ? { nascimento: ext.nascimento } : {}),
+        };
+        const falta = faltando(coleta);
+        let respFin: string;
+
+        if (falta.length === 0) {
+          respFin = TEXTO_COLETA_COMPLETA;
+          const resumoFin =
+            `Financiamento — fazer simulação. Entrada: ${coleta.entrada} · CPF: ${coleta.cpf} · Nascimento: ${coleta.nascimento}`;
+          await supabaseAdmin.from("leads").update({
+            em_atendimento_humano: true,
+            status: "QUENTE",
+            instrucao_pendente: resumoFin,
+            instrucao_pendente_desde: new Date().toISOString(),
+          }).eq("id", lead.id);
+          await encerrarColeta(tenantUserId, lead.id);
+
+          const destinoFin = financeiroPhone || gerentePhone;
+          if (destinoFin) {
+            const veiculoLabelFin = veiculoPrincipal
+              ? `\n🚗 Interesse: ${veiculoPrincipal.marca} ${veiculoPrincipal.modelo}${veiculoPrincipal.ano ? ` ${veiculoPrincipal.ano}` : ""}`
+              : "";
+            await sendAlertComLink(destinoFin,
+              `💳 *Financiamento — dados pra simulação*\n\n👤 ${lead.nome || "Cliente"}\n📱 +${phone}${veiculoLabelFin}` +
+              `\n\n💰 Entrada: ${coleta.entrada}\n📄 CPF: ${coleta.cpf}\n🎂 Nascimento: ${coleta.nascimento}` +
+              `\n\n👉 Faça a simulação e responda o cliente. A IA está em stand-by nesse lead.`,
+              phone
+            ).catch(() => {});
+          }
+          console.log(`💳 [Financiamento] ${phone} — coleta completa, gerente notificado, IA em stand-by`);
+        } else {
+          respFin = coletaAtual
+            ? textoPedidoRestante(falta, !!ext.cpfInvalido && !coleta.cpf)
+            : textoPedidoInicial(falta);
+          await salvarColeta(tenantUserId, lead.id, coleta);
+          console.log(`💳 [Financiamento] ${phone} — coleta ${coletaAtual ? "em andamento" : "iniciada"}, falta: ${falta.join(", ")}`);
+        }
+
+        await sendText(phone, respFin);
+        await supabaseAdmin.from("mensagens").insert({
+          lead_id: lead.id, content: respFin, remetente: "agente",
+        });
+        await invalidateHistory(tenantUserId, lead.id).catch(() => {});
+        await releaseLeadLock(tenantUserId, lead.id).catch(() => {});
+        return;
+      }
+    }
+  }
+
   // ── 11. Enviar Foto ─────────────────────────────────────────────────────────
   // Detecção robusta de pedido de foto:
   // 1. Verbo de intenção (radicais cobrem conjugações: manda/mandar/mandou, envia/enviar/enviou…)
@@ -4502,26 +4574,10 @@ Retorne JSON estrito:
   // fotos; só aí avisa o gerente e entra em stand-by ("já passei pro setor de avaliação").
   // Isso evita que a palavra "troca" trave o lead antes das fotos chegarem.
 
-  // ── 15c. Financiamento — passa para atendimento humano imediatamente ──────────
-  // Detecta perguntas sobre financiamento/parcelas. O agente já respondeu com
-  // uma mensagem curta (conforme instrução do prompt). Aqui ativamos o stand-by
-  // e notificamos o gerente para assumir a conversa.
-  const FINANCIAMENTO_KEYWORDS = /\b(financiamento|financiar|financiado|parcela[s]?|prestação|prestações|entrada.*mês|mês.*entrada|simulate?|simula[rç]|quanto fica por mês|cabe no bolso|valor.*mensal|mensal.*valor|banco.*financ|financ.*banco|cdc|consórcio|fgts|fundo.*garanti)\b/i;
-  if (lead?.id && !lead.em_atendimento_humano && FINANCIAMENTO_KEYWORDS.test(mensagemClientePura)) {
-    await supabaseAdmin.from("leads").update({ em_atendimento_humano: true }).eq("id", lead.id);
-    await setTrocaStandby(tenantUserId, lead.id); // marca handoff automático → cliente recebe rede de segurança (passo 4) em vez de silêncio
-    const gerenteWaFin = garageConfig?.whatsapp_financeiro ?? garageConfig?.whatsapp ?? null;
-    if (gerenteWaFin && !alertaGerenteJaEnviado) {
-      const normWa = (n: string) => { const d = n.replace(/\D/g, ""); return d.startsWith("55") ? d : `55${d}`; };
-      const nomeLeadFin = (lead as any).nome || `Lead ${phone.slice(-4)}`;
-      const veiculoLabelFin = veiculoPrincipal ? `\n🚗 Interesse: ${veiculoPrincipal.marca} ${veiculoPrincipal.modelo}` : "";
-      await sendAlertComLink(normWa(gerenteWaFin),
-        `💳 *Financiamento*\n\n👤 Cliente: ${nomeLeadFin}\n📱 Número: +${phone}${veiculoLabelFin}\n\n💬 "${rawMessage.slice(0, 200)}"\n\n👉 Assuma a conversa para negociar o financiamento.`,
-        phone
-      ).catch(() => {});
-    }
-    console.log(`💳 [Financiamento] Stand-by ativado para lead ${lead.id} — gerente notificado`);
-  }
+  // ── 15c. Financiamento — REMOVIDO ──
+  // Virou o passo 10d (coleta de entrada/CPF/nascimento ANTES do Gemini). O
+  // detector daqui rodava DEPOIS da resposta da IA e com regex furada
+  // ("parcelar" não casava) — a IA já tinha prometido condição de crédito.
 
   if (lead?.id) await releaseLeadLock(tenantUserId, lead.id).catch(() => {});
 }
