@@ -58,14 +58,14 @@ export async function markMetaRead(
 ): Promise<void> {
   const c = resolveCreds(creds);
   if (!c) return;
+  const base = { messaging_product: "whatsapp", status: "read", message_id: messageId };
   try {
-    await post(`/${c.phoneNumberId}/messages`, {
-      messaging_product: "whatsapp",
-      status: "read",
-      message_id: messageId,
-    }, c.accessToken);
+    // "digitando..." oficial da Cloud API: vai junto com o read e some sozinho
+    // quando a resposta sai (ou em 25s). A Avisa mostrava; a Meta não mostrava.
+    await post(`/${c.phoneNumberId}/messages`, { ...base, typing_indicator: { type: "text" } }, c.accessToken);
   } catch {
-    // não bloqueia o fluxo
+    // Se a versão da Graph recusar o typing_indicator, não perde o tique azul.
+    try { await post(`/${c.phoneNumberId}/messages`, base, c.accessToken); } catch { /* não bloqueia o fluxo */ }
   }
 }
 
@@ -394,4 +394,44 @@ export async function syncSmbAppData(
     console.error(`🚨 [smb_app_data/${syncType}] erro de rede:`, String(e).slice(0, 200));
     return { ok: false, error: String(e?.message ?? e).slice(0, 200) };
   }
+}
+
+// ─── Janela de atendimento de 24h (Cloud API) ─────────────────────────────────
+// Texto livre só entrega se o CLIENTE mandou mensagem nas últimas 24h. Fora
+// disso só template aprovado. Margem de 1h (23h) pro envio chegar antes da
+// janela fechar. Usado por todo envio PROATIVO no canal Meta (follow-up,
+// pós-mídia, reativação, reprocessamento) — sem isso a chamada é aceita e o
+// erro 131047 chega depois, calado.
+export async function dentroJanela24h(leadId: string, margemHoras = 23): Promise<boolean> {
+  const { supabaseAdmin } = await import("@/lib/supabase-admin");
+  const { data } = await supabaseAdmin
+    .from("mensagens")
+    .select("created_at")
+    .eq("lead_id", leadId)
+    .eq("remetente", "usuario")
+    .order("created_at", { ascending: false })
+    .limit(1);
+  const ultima = data?.[0]?.created_at;
+  if (!ultima) return false;
+  return (Date.now() - new Date(ultima).getTime()) / 3_600_000 <= margemHoras;
+}
+
+// ─── Baixar mídia recebida (foto/áudio do cliente) ────────────────────────────
+// Cloud API entrega só o media id; troca por uma URL autenticada e baixa.
+export async function baixarMidiaMeta(mediaId: string, accessToken: string): Promise<Buffer | null> {
+  if (!mediaId || !accessToken) return null;
+  const auth = { headers: { Authorization: `Bearer ${accessToken}` } };
+  const meta = await fetch(`${GRAPH_URL}/${mediaId}`, auth);
+  if (!meta.ok) {
+    console.warn(`⚠️ [Meta mídia] ${mediaId} → HTTP ${meta.status}`);
+    return null;
+  }
+  const { url } = (await meta.json()) as { url?: string };
+  if (!url) return null;
+  const dl = await fetch(url, auth);
+  if (!dl.ok) {
+    console.warn(`⚠️ [Meta mídia] download ${mediaId} → HTTP ${dl.status}`);
+    return null;
+  }
+  return Buffer.from(await dl.arrayBuffer());
 }

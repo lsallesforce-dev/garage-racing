@@ -30,7 +30,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { sendMetaMessage } from "@/lib/meta";
+import { sendMetaMessage, dentroJanela24h } from "@/lib/meta";
 import { sendAvisaMessage } from "@/lib/avisa";
 import { geminiFlashSales } from "@/lib/gemini";
 
@@ -615,19 +615,7 @@ export async function GET(req: NextRequest) {
       // dentro da janela. Busca dedicada porque ultimasMsgsDesc só traz 5 e a
       // última do cliente pode ter ficado atrás de várias do agente. Margem de 1h
       // pro Gemini gerar e a mensagem chegar antes da janela fechar.
-      if (useMeta) {
-        const { data: ultimaDoCliente } = await supabaseAdmin
-          .from("mensagens")
-          .select("created_at")
-          .eq("lead_id", lead.id)
-          .eq("remetente", "usuario")
-          .order("created_at", { ascending: false })
-          .limit(1);
-        const desdeCliente = ultimaDoCliente?.[0]
-          ? (agora.getTime() - new Date(ultimaDoCliente[0].created_at).getTime()) / (60 * 60 * 1000)
-          : Infinity;
-        if (desdeCliente > 23) { ignorar("meta_fora_janela_24h"); continue; }
-      }
+      if (useMeta && !(await dentroJanela24h(lead.id))) { ignorar("meta_fora_janela_24h"); continue; }
 
       const avisaCreds = { baseUrl: garagem.avisa_base_url ?? "", token: garagem.avisa_token ?? "" };
       const metaCreds  = { phoneNumberId: garagem.meta_phone_id ?? "", accessToken: garagem.meta_access_token ?? "" };

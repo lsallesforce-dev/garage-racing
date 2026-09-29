@@ -666,3 +666,29 @@ export async function getVitrineSlugOwner(
     return null;
   }
 }
+
+// ─── Janela de 24h do GERENTE na Cloud API ───────────────────────────────────
+// Alerta pro gerente é texto livre, e a Meta só entrega texto livre se o
+// destinatário mandou mensagem pro número nas últimas 24h. Fora disso a API
+// aceita a chamada e o erro 131047 chega depois, pelo webhook de status —
+// o alerta morre calado. O webhook Meta marca aqui toda vez que o gerente
+// escreve pro número da loja; quem vai alertar consulta antes de tentar.
+// TTL de 23h = 1h de margem, mesma regra do follow-up.
+export async function marcarGerenteNaJanela(tenantUserId: string): Promise<void> {
+  try {
+    await getClient().set(`gerente_janela:${tenantUserId}`, Date.now(), { ex: 23 * 3600 });
+  } catch (e) {
+    console.warn("⚠️ [Redis] marcarGerenteNaJanela falhou (non-fatal):", e);
+  }
+}
+
+// FAIL-OPEN: sem Redis, tenta o WhatsApp — se falhar, o status de erro fica
+// registrado em erros_webhook pelo webhook Meta.
+export async function gerenteNaJanela(tenantUserId: string): Promise<boolean> {
+  try {
+    return (await getClient().get(`gerente_janela:${tenantUserId}`)) !== null;
+  } catch (e) {
+    console.warn("⚠️ [Redis] gerenteNaJanela falhou (fail-open = tenta WhatsApp):", e);
+    return true;
+  }
+}

@@ -15,6 +15,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendAvisaMessage } from "@/lib/avisa";
+import { gerenteNaJanela } from "@/lib/redis";
+import { alertaTenantPorEmail } from "@/lib/alerta-interno";
 import { sendMetaMessage } from "@/lib/meta";
 import { CONFIG_GARAGE_SELECT } from "@/lib/config-garage";
 
@@ -52,6 +54,11 @@ async function avisar(cfg: Cfg, to: string, corpo: string): Promise<boolean> {
       return await sendAvisaMessage(to, corpo, { baseUrl: cfg.avisa_base_url, token: cfg.avisa_token }, { typing: false });
     }
     if (!cfg.meta_phone_id || !cfg.meta_access_token) return false;
+    // Cloud API: gerente fora da janela de 24h → texto livre não entrega
+    // (131047). Vai por e-mail pro dono do tenant em vez de morrer calado.
+    if (cfg.user_id && !(await gerenteNaJanela(cfg.user_id))) {
+      return await alertaTenantPorEmail(cfg.user_id, corpo.split("\n")[0].replace(/[*_]/g, "").slice(0, 90), corpo.replace(/[*_]/g, ""));
+    }
     const r = await sendMetaMessage(to, corpo, {
       phoneNumberId: cfg.meta_phone_id,
       accessToken: cfg.meta_access_token,

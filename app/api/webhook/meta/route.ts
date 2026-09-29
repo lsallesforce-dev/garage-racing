@@ -14,7 +14,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createHmac, timingSafeEqual } from "crypto";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { processWhatsAppMessage } from "@/lib/process-whatsapp";
-import { isDuplicateMessage, rateLimit, debounceClientImages, debounceFirstContact } from "@/lib/redis";
+import { isDuplicateMessage, rateLimit, debounceClientImages, debounceFirstContact, marcarGerenteNaJanela } from "@/lib/redis";
 import { logWebhookError } from "@/lib/error-log";
 import { buscarDadosLead } from "@/lib/meta-ads";
 import { sendMetaMessage, sendMetaCtaButton } from "@/lib/meta";
@@ -183,11 +183,12 @@ async function processSmbEcho(value: any) {
   // Resolve tenant pelo phone_number_id (config_garage pode ter múltiplas linhas)
   const { data: garageRows } = await supabaseAdmin
     .from("config_garage")
-    .select("user_id")
+    .select("user_id, whatsapp_agente")
     .eq("meta_phone_id", phoneNumberId)
     .order("created_at", { ascending: false })
     .limit(1);
   const tenantUserId = garageRows?.[0]?.user_id;
+  const numeroAgente = soDigitos(garageRows?.[0]?.whatsapp_agente ?? value?.metadata?.display_phone_number);
   if (!tenantUserId) {
     console.warn(`⚠️ [SMB echo] Nenhum tenant para phone_number_id=${phoneNumberId}`);
     return;
@@ -203,20 +204,53 @@ async function processSmbEcho(value: any) {
       continue;
     }
 
+    // Conversa do lojista com ele mesmo ("Mensagens para mim"): não é lead.
+    if (numeroAgente && soDigitos(customer).endsWith(numeroAgente.slice(-11))) {
+      console.log(`📝 [SMB echo] anotação do lojista no próprio número — ignorada`);
+      continue;
+    }
+
     // Conteúdo textual (text, caption de mídia, ou rótulo do tipo)
     const content: string =
       echo?.text?.body
       ?? echo?.[echo?.type]?.caption
-      ?? `[${echo?.type ?? "mensagem"} enviada pelo lojista]`;
+      ?? (echo?.type === "audio" ? "🎤 Áudio enviado pelo gerente" : `[${echo?.type ?? "mensagem"} enviada pelo lojista]`);
+
+    // Comandos do lojista pelo celular — mesmos da Avisa (webhook/avisa):
+    //   !ia  → libera a IA nessa conversa   |  !off → contato pessoal
+    // "!ia 5517..." de qualquer chat mira outro número. Tratado ANTES do
+    // takeover, senão o próprio "!ia" travaria o lead em atendimento humano.
+    const cmdMatch = String(echo?.text?.body ?? "").trim().toLowerCase()
+      .match(/^!(ia|off|nao|não)(?:\s+(\+?[\d\s()-]{8,}))?$/);
+    if (cmdMatch) {
+      const liberar = cmdMatch[1] === "ia";
+      const alvoExplicito = soDigitos(cmdMatch[2]);
+      const alvo = alvoExplicito ? alvoExplicito.replace(/^(?!55)/, "55") : soDigitos(customer);
+      if (alvo.length >= 12) {
+        await supabaseAdmin.from("leads").upsert(
+          {
+            user_id: tenantUserId,
+            wa_id: alvo,
+            ia_liberada: liberar,
+            ...(liberar ? { em_atendimento_humano: false, instrucao_pendente: null } : {}),
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id, wa_id" },
+        );
+        console.log(`🎚️ [SMB echo] comando "${echo?.text?.body}" → ${alvo} ia_liberada=${liberar}`);
+      }
+      continue;
+    }
 
     // Find-or-create do lead (NÃO usar upsert p/ não sobrescrever status de lead existente)
     let leadId: string | null = null;
     const { data: leadExistente } = await supabaseAdmin
       .from("leads")
-      .select("id")
+      .select("id, em_atendimento_humano")
       .eq("user_id", tenantUserId)
       .eq("wa_id", customer)
       .maybeSingle();
+    const jaEraHumano = !!leadExistente?.em_atendimento_humano;
     if (leadExistente) {
       leadId = leadExistente.id;
     } else {
@@ -235,12 +269,23 @@ async function processSmbEcho(value: any) {
       content,
       remetente: "agente",
       delivered: true,
+      // Sem essa marca o painel mostrava a fala do gerente como se fosse da IA
+      // (na Avisa sempre foi marcada — webhook/avisa/route.ts).
+      enviado_por_humano: true,
     });
 
     // Takeover: humano respondeu pelo celular → IA em standby para esse lead
     await supabaseAdmin
       .from("leads")
-      .update({ em_atendimento_humano: true, updated_at: new Date().toISOString() })
+      .update({
+        em_atendimento_humano: true,
+        ...(jaEraHumano ? {} : {
+          instrucao_pendente: leadExistente
+            ? "Gerente assumiu a conversa respondendo pelo WhatsApp."
+            : "Gerente iniciou a conversa pelo WhatsApp.",
+        }),
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", leadId);
 
     console.log(`👤 [SMB echo] lojista respondeu ${customer} pelo app → lead ${leadId} em standby humano`);
@@ -433,6 +478,26 @@ async function processSmbStateSync(value: any) {
   if (renomeados) console.log(`🏷️ [SMB state_sync] ${renomeados} lead(s) do tenant ${tenantUserId} ganharam nome da agenda`);
 }
 
+// ─── Status de entrega com erro ──────────────────────────────────────────────
+// A Cloud API aceita o envio (HTTP 200) e o erro de verdade chega DEPOIS, aqui.
+// Ex.: 131047 = fora da janela de 24h (alerta pro gerente que não falou com a
+// loja hoje). Só ia pro console — sem linha no banco, falha invisível.
+// Fire-and-forget: não pode atrasar o 200 pra Meta.
+function registrarStatusComErro(phoneNumberId: string, s: any) {
+  const err = s?.errors?.[0];
+  tenantPorPhoneNumberId(phoneNumberId)
+    .then((tenantUserId) =>
+      logWebhookError({
+        tenantUserId,
+        phone: s?.recipient_id ?? null,
+        messageId: s?.id ?? null,
+        etapa: `meta_status_${err?.code ?? "erro"}`,
+        erro: `${err?.title ?? ""} ${err?.error_data?.details ?? err?.message ?? ""}`.trim() || JSON.stringify(s.errors),
+      }),
+    )
+    .catch(() => {});
+}
+
 // ─── Extração de Campos do Payload Meta ──────────────────────────────────────
 function extractFields(payload: any): {
   phone: string;
@@ -441,7 +506,9 @@ function extractFields(payload: any): {
   messageId: string | null;
   phoneNumberId: string;
   audioMediaId: string | null;
-  adReferral?: { headline: string | null; body: string | null; source_type: string | null; ad_id: string | null } | null;
+  imageMediaId?: string | null;
+  msgTimestamp?: number | null;
+  adReferral?: { headline: string | null; body: string | null; source_type: string | null; ad_id: string | null; image_url?: string | null } | null;
   isClientImage?: boolean;
 } {
   try {
@@ -462,7 +529,15 @@ function extractFields(payload: any): {
 
     const phone      = msg.from ?? "";
     const messageId  = msg.id ?? null;
-    let userMessage = msg.text?.body ?? msg.interactive?.button_reply?.title ?? "";
+    let userMessage =
+      msg.text?.body
+      ?? msg.interactive?.button_reply?.title
+      ?? msg.interactive?.list_reply?.title
+      ?? msg.button?.text          // botão de resposta rápida de TEMPLATE
+      ?? "";
+    // Carimbo do WhatsApp (segundos). A Meta reentrega webhook que falhou por
+    // até dias — sem isto a IA responderia mensagem velha como se fosse agora.
+    const msgTimestamp = Number(msg.timestamp) || null;
 
     // Áudio (voice note ou arquivo de áudio)
     const audioMediaId: string | null = msg.type === "audio" ? (msg.audio?.id ?? null) : null;
@@ -470,9 +545,14 @@ function extractFields(payload: any): {
     // Imagem enviada pelo cliente — marcada com flag para debounce no POST handler.
     // O texto "[Cliente enviou foto(s)]" é injetado após debounce para evitar que
     // cada foto gere um processamento individual (spam de fotos + links).
+    // Foto: o media id vai no job pro process-whatsapp baixar a original (Vision,
+    // painel, pré-avaliação de troca). A LEGENDA vira a mensagem — antes era
+    // jogada fora e "esse ainda tá disponível?" chegava só como "[foto]".
     const isClientImage = (msg.type === "image" || msg.type === "sticker") && !userMessage;
+    const imageMediaId: string | null = msg.type === "image" ? (msg.image?.id ?? null) : null;
     if (isClientImage) {
-      userMessage = "[Cliente enviou foto(s) do veículo]";
+      const legenda = String(msg.image?.caption ?? "").trim();
+      userMessage = legenda || "[Cliente enviou foto(s) do veículo]";
     }
 
     // Referral de anúncio (Facebook/Instagram Ads Click-to-WhatsApp)
@@ -482,6 +562,9 @@ function extractFields(payload: any): {
       body:        ref.body       ?? null,
       source_type: ref.source_type ?? null,
       ad_id:       ref.source_id  ?? null,
+      // Imagem do anúncio: o process-whatsapp lê o carro nela (Gemini Vision)
+      // quando o ad_id não está em meta_campanhas. A Avisa já mandava.
+      image_url:   ref.image_url ?? ref.thumbnail_url ?? null,
     } : null;
 
     // Link preview context — quando o cliente envia mensagem via link de Instagram/Facebook
@@ -498,12 +581,15 @@ function extractFields(payload: any): {
     // Ignorar status updates (delivered, read, sent) — não são mensagens
     if (value?.statuses?.length && !value?.messages?.length) {
       const s = value.statuses[0];
-      if (s?.errors?.length) console.error(`❌ Meta status error [${s.status}]:`, JSON.stringify(s.errors));
+      if (s?.errors?.length) {
+        console.error(`❌ Meta status error [${s.status}]:`, JSON.stringify(s.errors));
+        registrarStatusComErro(phoneNumberId, s);
+      }
       else console.log(`ℹ️ Meta status: ${s?.status} id=${s?.id}`);
       return { phone: "", userMessage: "", fromMe: true, messageId: null, phoneNumberId, audioMediaId: null, isClientImage: false };
     }
 
-    return { phone, userMessage: userMessage.trim(), fromMe: false, messageId, phoneNumberId, audioMediaId, adReferral, isClientImage };
+    return { phone, userMessage: userMessage.trim(), fromMe: false, messageId, phoneNumberId, audioMediaId, imageMediaId, msgTimestamp, adReferral, isClientImage };
   } catch (e) {
     console.error("❌ Erro ao extrair campos do payload Meta:", e);
     return { phone: "", userMessage: "", fromMe: true, messageId: null, phoneNumberId: "", audioMediaId: null, isClientImage: false };
@@ -590,7 +676,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ status: "coexistencia_sync_queued" });
     }
 
-    const { phone, userMessage, fromMe, messageId, phoneNumberId, audioMediaId, adReferral, isClientImage } = extractFields(payload);
+    const { phone, userMessage, fromMe, messageId, phoneNumberId, audioMediaId, imageMediaId, msgTimestamp, adReferral, isClientImage } = extractFields(payload);
 
     // Responde 200 imediatamente (Meta requer resposta em < 20s ou vai reenviar)
     if (fromMe || !phone) {
@@ -610,6 +696,13 @@ export async function POST(req: NextRequest) {
     }
 
     const tenantUserId = garageConfig.user_id;
+
+    // Gerente escreveu pro número da loja → abre a janela de 24h dele, e os
+    // alertas voltam a sair pelo WhatsApp (process-whatsapp consulta isso).
+    const numGerente = soDigitos(garageConfig.whatsapp).replace(/^(?!55)/, "55");
+    if (numGerente.length >= 12 && soDigitos(phone) === numGerente) {
+      await marcarGerenteNaJanela(tenantUserId);
+    }
 
     // Gate de assinatura
     const agora = new Date();
@@ -654,7 +747,7 @@ export async function POST(req: NextRequest) {
     // Sem debounce: 4 processamentos → 4 blocos de fotos do estoque + 4 links.
     // Com debounce: só a PRIMEIRA foto é processada; as demais são contadas
     // mas ignoradas. O texto "[Cliente enviou foto(s)]" já cobre o contexto.
-    if (isClientImage) {
+    if (isClientImage || imageMediaId) {
       const isFirst = await debounceClientImages(tenantUserId, phone);
       if (!isFirst) {
         console.log(`📸 [Debounce] Foto adicional de ${phone} — já processando a primeira`);
@@ -671,12 +764,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ status: "rate_limited" });
     }
 
+    // Reentrega atrasada: grava no painel, mas NÃO responde (mesma regra da
+    // Avisa — responder mensagem de horas atrás soa robô e duplica atendimento).
+    const idadeMs = msgTimestamp ? Date.now() - msgTimestamp * 1000 : 0;
+    const atrasada = Number.isFinite(idadeMs) && idadeMs > 15 * 60 * 1000;
+    if (atrasada) {
+      console.warn(`⏰ [Reentrega Meta] Mensagem de ${phone} de ${Math.round(idadeMs / 60000)} min atrás — salva sem resposta da IA.`);
+    }
+
     // Processa em background com retry exponencial: 0s → 3s → 15s
     after(async () => {
       const job = {
         phone,
         rawMessage: userMessage,
         ...(audioMediaId  ? { audioMediaId }  : {}),
+        ...(imageMediaId  ? { imageMediaId }  : {}),
+        ...(atrasada      ? { skipSend: true } : {}),
         ...(adReferral    ? { adReferral }     : {}),
         messageId,
         tenantUserId,

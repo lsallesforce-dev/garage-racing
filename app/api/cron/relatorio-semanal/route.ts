@@ -7,6 +7,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendMetaMessage } from "@/lib/meta";
 import { sendAvisaMessage } from "@/lib/avisa";
+import { gerenteNaJanela } from "@/lib/redis";
+import { alertaTenantPorEmail } from "@/lib/alerta-interno";
 import { cronGuard } from "@/lib/redis";
 import { inicioDiaBRT } from "@/lib/periodo";
 
@@ -128,8 +130,11 @@ export async function GET(req: NextRequest) {
 
       if (useAvisa) {
         await sendAvisaMessage(t.whatsapp, mensagem, { baseUrl: t.avisa_base_url, token: t.avisa_token });
-      } else {
+      } else if (await gerenteNaJanela(uid)) {
         await sendMetaMessage(t.whatsapp, mensagem, { phoneNumberId: t.meta_phone_id, accessToken: t.meta_access_token });
+      } else {
+        // Cloud API fora da janela de 24h do gerente: texto livre não entrega.
+        await alertaTenantPorEmail(uid, "Relatório semanal", mensagem.replace(/[*_]/g, ""));
       }
       enviados++;
 

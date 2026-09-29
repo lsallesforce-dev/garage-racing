@@ -15,7 +15,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Receiver } from "@upstash/qstash";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendAvisaMessage } from "@/lib/avisa";
-import { sendMetaMessage } from "@/lib/meta";
+import { sendMetaMessage, dentroJanela24h } from "@/lib/meta";
 import { geminiFlashSales } from "@/lib/gemini";
 
 const receiver = new Receiver({
@@ -84,6 +84,12 @@ export async function POST(req: NextRequest) {
   const useAvisa = !!(cfg.avisa_base_url && cfg.avisa_token);
   const useMeta  = !useAvisa && !!(cfg.meta_phone_id && cfg.meta_access_token);
   if (!useAvisa && !useMeta) return NextResponse.json({ ok: true, skip: "sem_canal" });
+  // Cloud API: texto livre só dentro da janela de 24h do cliente. Reativação é
+  // de conversa parada há 48h+, então quase sempre está fora — sem este gate a
+  // Meta aceitava e descartava (131047) e o lead era marcado como reativado.
+  if (useMeta && !(await dentroJanela24h(lead.id))) {
+    return NextResponse.json({ ok: true, skip: "meta_fora_janela_24h" });
+  }
 
   // ── Últimas mensagens da conversa ────────────────────────────────────────────
   const { data: msgsDesc } = await supabaseAdmin

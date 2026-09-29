@@ -23,6 +23,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendAvisaMessage } from "@/lib/avisa";
+import { sendMetaMessage, dentroJanela24h } from "@/lib/meta";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -105,7 +106,7 @@ export async function GET(req: NextRequest) {
   const tenantIds = [...new Set(leads.map((l) => l.user_id))];
   const { data: configs } = await supabaseAdmin
     .from("config_garage")
-    .select("user_id, created_at, avisa_base_url, avisa_token, agente_pausado, plano_ativo, trial_ends_at, plano_vence_em")
+    .select("user_id, created_at, avisa_base_url, avisa_token, meta_phone_id, meta_access_token, agente_pausado, plano_ativo, trial_ends_at, plano_vence_em")
     .in("user_id", tenantIds);
 
   const configMap = new Map<string, any>();
@@ -131,10 +132,13 @@ export async function GET(req: NextRequest) {
       && new Date(garagem.plano_vence_em) > agora;
     if (trialConfigurado && !trialValido && !planoValido) { ignorar("assinatura_expirada"); continue; }
 
-    // Mesma regra do followup: mensagem proativa só pela Avisa. Na Meta Cloud
-    // API, texto livre fora da janela de 24h exige template aprovado.
+    // Mesma regra do followup: na Meta Cloud API, texto livre só dentro da
+    // janela de 24h (fora dela exige template). A cutucada sai ~minutos depois
+    // da mídia, então quase sempre cai dentro — era pulada inteira na Meta.
     const useAvisa = !!garagem.avisa_base_url && !!garagem.avisa_token;
-    if (!useAvisa) { ignorar("canal_meta"); continue; }
+    const useMeta  = !useAvisa && !!garagem.meta_phone_id && !!garagem.meta_access_token;
+    if (!useAvisa && !useMeta) { ignorar("sem_canal"); continue; }
+    if (useMeta && !(await dentroJanela24h(lead.id))) { ignorar("meta_fora_janela_24h"); continue; }
 
     const midiaEm = ultimaMidia.get(lead.id)!;
 
@@ -168,10 +172,16 @@ export async function GET(req: NextRequest) {
     const texto = jaFalouDeTroca ? CUTUCADA_SEM_TROCA : CUTUCADA_PADRAO;
 
     try {
-      await sendAvisaMessage(lead.wa_id, texto, {
-        baseUrl: garagem.avisa_base_url ?? "",
-        token: garagem.avisa_token ?? "",
-      });
+      const ok = useAvisa
+        ? await sendAvisaMessage(lead.wa_id, texto, {
+            baseUrl: garagem.avisa_base_url ?? "",
+            token: garagem.avisa_token ?? "",
+          })
+        : await sendMetaMessage(lead.wa_id, texto, {
+            phoneNumberId: garagem.meta_phone_id ?? "",
+            accessToken: garagem.meta_access_token ?? "",
+          });
+      if (ok == null || ok === false) throw new Error("envio não confirmado");
       await supabaseAdmin.from("mensagens").insert({
         lead_id: lead.id, remetente: "agente", content: texto,
       });

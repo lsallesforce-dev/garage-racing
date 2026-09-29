@@ -6,7 +6,8 @@
 import { randomUUID } from "crypto";
 import { geminiFlashSales, geminiFlashFallback, parseGeminiJson } from "@/lib/gemini";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { sendMetaMessage, sendMetaImage, sendMetaVideo, sendMetaAudio, sendMetaCtaButton, markMetaRead } from "@/lib/meta";
+import { sendMetaMessage, sendMetaImage, sendMetaVideo, sendMetaAudio, sendMetaCtaButton, markMetaRead, baixarMidiaMeta } from "@/lib/meta";
+import { alertaTenantPorEmail } from "@/lib/alerta-interno";
 import { sendAvisaMessage, sendAvisaImage, sendAvisaVideo, sendAvisaAudio } from "@/lib/avisa";
 import { gerarRelatorioPista } from "@/lib/leads";
 import { resolverVendedor } from "@/lib/lead-routing";
@@ -20,7 +21,7 @@ import { lerImagemDoCliente } from "@/lib/visao-imagem";
 import { urlVitrine } from "@/lib/repasse";
 import { logWebhookError } from "@/lib/error-log";
 import { lerAcoes, compararDecisoes, registrarShadow } from "@/lib/shadow-acoes";
-import { getCachedHistory, cacheHistory, invalidateHistory, appendHistory, circuitIsOpen, circuitRecordFailure, circuitRecordSuccess, acquireLeadLock, releaseLeadLock, setTrocaStandby, isTrocaStandby, clearTrocaStandby } from "@/lib/redis";
+import { getCachedHistory, cacheHistory, invalidateHistory, appendHistory, circuitIsOpen, circuitRecordFailure, circuitRecordSuccess, acquireLeadLock, releaseLeadLock, setTrocaStandby, isTrocaStandby, clearTrocaStandby, gerenteNaJanela } from "@/lib/redis";
 import { Vehicle } from "@/types/vehicle";
 
 type Temperatura = "FRIO" | "MORNO" | "QUENTE";
@@ -208,6 +209,7 @@ export interface WhatsAppJobPayload {
   imageThumbnail?: string; // base64 JPEG thumbnail de foto enviada pelo cliente (fallback se a decriptação da foto original falhar)
   imageUrl?: string;       // URL criptografada da foto original enviada pelo cliente (Avisa/Baileys)
   imageMediaKey?: string;  // chave de decriptação da foto original
+  imageMediaId?: string;   // Meta Cloud API: media ID da foto do cliente (baixada via Graph API)
   messageId?: string | null;
   tenantUserId: string;
   garageConfig: GarageConfig | null;
@@ -1250,15 +1252,33 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
     return dest === numeroAgente;
   };
 
+  // Cloud API: alerta pro gerente é texto livre, que só entrega se o gerente
+  // escreveu pro número da loja nas últimas 24h (o webhook Meta marca isso no
+  // Redis). Fora da janela a Meta aceita a chamada e descarta depois (131047)
+  // — então nem tenta: manda por e-mail pro dono do tenant. Na Avisa não existe
+  // janela; lá o alerta sempre chegava.
+  const alertaForaDaJanela = async (text: string): Promise<boolean> => {
+    if (useAvisa) return false;
+    if (await gerenteNaJanela(tenantUserId)) return false;
+    const primeiraLinha = text.split("\n").find((l) => l.trim())?.replace(/[*_]/g, "").trim() ?? "Alerta do agente";
+    await alertaTenantPorEmail(tenantUserId, primeiraLinha.slice(0, 90), text.replace(/[*_]/g, ""));
+    return true;
+  };
+
   // sendAlert: para notificações ao gerente — sem typing delay, para não ser cortado pelo runtime
-  const sendAlert = (to: string, text: string) => {
+  const sendAlert = async (to: string, text: string) => {
     if (ehAutoEnvio(to)) {
       console.log(`🔕 [Alerta suprimido] destino ${to} é o próprio número do agente — ver no painel.`);
-      return Promise.resolve(null as any);
+      return null as any;
     }
-    return useAvisa
-      ? sendAvisaMessage(to, text, avisaCreds, { typing: false })
-      : sendMetaMessage(to, text, metaCreds);
+    if (await alertaForaDaJanela(text)) return null as any;
+    if (useAvisa) return sendAvisaMessage(to, text, avisaCreds, { typing: false });
+    try {
+      return await sendMetaMessage(to, text, metaCreds);
+    } catch (e) {
+      await alertaTenantPorEmail(tenantUserId, "Alerta do agente", text.replace(/[*_]/g, ""));
+      throw e;
+    }
   };
 
   // sendAlertComLink: alerta ao gerente com botão "Abrir Conversa" (wa.me link clicável)
@@ -1270,6 +1290,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
     }
     const clienteClean = clientePhone.replace(/\D/g, "");
     const waLink = `https://wa.me/${clienteClean}`;
+    if (await alertaForaDaJanela(`${body}\n\n🔗 ${waLink}`)) return;
     if (!useAvisa && metaCreds.phoneNumberId && metaCreds.accessToken) {
       return sendMetaCtaButton(gerenteTo, body, "Abrir Conversa", waLink, metaCreds)
         .catch(() => sendAlert(gerenteTo, `${body}\n\n🔗 ${waLink}`).catch(() => {}));
@@ -1818,6 +1839,9 @@ Responda apenas com o JSON, sem markdown.`;
   // Carro que a visao reconheceu na foto do cliente ("Honda Civic"), pro alerta
   // do gerente dizer QUAL carro veio na troca em vez de "fotos do veiculo".
   let carroDaFotoDoCliente: string | null = null;
+  // Foto original do cliente em base64 (Avisa: decriptada; Meta: baixada pela
+  // Graph API). Fora do bloco porque o passo 10c decide a pré-avaliação por ela.
+  let fotoBase64: string | null = null;
   if (lead && userMessage) {
     // Foto do cliente: tenta baixar + decriptar a foto ORIGINAL (protocolo do
     // WhatsApp — mesmo AES-256-CBC/HKDF do áudio, ver lib/whatsapp-image.ts) e
@@ -1826,10 +1850,15 @@ Responda apenas com o JSON, sem markdown.`;
     // como placeholder — dá pra confirmar "é uma foto de carro", não pra
     // avaliar lataria, documento ou o que quer que o cliente tenha mandado.
     let mediaUrlFoto: string | null = null;
-    let fotoBase64: string | null = null;
-    if (job.imageUrl && job.imageMediaKey) {
+    if ((job.imageUrl && job.imageMediaKey) || job.imageMediaId) {
       try {
-        const fotoBuffer = await decryptWhatsAppImage(job.imageUrl, job.imageMediaKey);
+        // Cloud API: a foto não vem criptografada no payload — vem um media id
+        // que se troca por uma URL autenticada (mesmo caminho do áudio, passo 1).
+        // Sem isto, na Meta a foto do cliente virava só "[Cliente enviou foto]":
+        // sem Vision, sem foto no painel, sem pré-avaliação (APROVE, 27/09).
+        const fotoBuffer = job.imageMediaId
+          ? await baixarMidiaMeta(job.imageMediaId, metaCreds.accessToken)
+          : await decryptWhatsAppImage(job.imageUrl!, job.imageMediaKey!);
         if (fotoBuffer) {
           fotoBase64 = fotoBuffer.toString("base64");
           const path = `${tenantUserId}/${lead.id}/${randomUUID()}.jpg`;
@@ -2691,7 +2720,7 @@ Responda apenas com o JSON, sem markdown.`;
   // deixar o Gemini responder (e pedir "qual dia"), damos um retorno fixo de que já
   // encaminhamos pro setor de avaliação, avisamos o gerente/avaliador e colocamos
   // em stand-by. O debounce de 45s garante 1 resposta + 1 alerta por sessão de fotos.
-  if (lead?.id && job.imageThumbnail && !printDeAnuncio) {
+  if (lead?.id && (job.imageThumbnail || fotoBase64) && !printDeAnuncio) {
     const respFoto = "Recebi suas fotos! 📸 Já passei para o nosso setor de avaliação — em breve a gente te retorna com a análise. 😊";
     await sendText(phone, respFoto);
     await supabaseAdmin.from("mensagens").insert({
