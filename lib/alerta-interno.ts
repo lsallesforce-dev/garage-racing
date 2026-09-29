@@ -133,10 +133,11 @@ export async function alertaInterno(
 }
 
 /**
- * Alerta pro DONO do tenant por e-mail — rede de segurança dos alertas ao
- * gerente no canal Meta, quando o gerente está fora da janela de 24h (texto
- * livre não entrega e ainda não há template). Destino: e-mail de login do
- * tenant no Supabase Auth.
+ * Rede de segurança dos alertas ao gerente no canal Meta, quando nem o texto
+ * livre (fora da janela de 24h) nem o template entregaram. Vai pro MESMO
+ * destino dos alertas internos (AUTOZAP_ALERT_EMAIL / RESEND_TO — o operador
+ * do AutoZap), com o nome da loja no assunto. Antes ia pro e-mail de login do
+ * tenant, e o da APROVE (aprove@aprove.com.br) não existe: o alerta sumia.
  */
 export async function alertaTenantPorEmail(
   tenantUserId: string,
@@ -144,29 +145,34 @@ export async function alertaTenantPorEmail(
   corpo: string,
 ): Promise<boolean> {
   const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) {
-    console.warn(`⚠️ [alerta-tenant] RESEND_API_KEY ausente — alerta de ${tenantUserId} perdido`);
+  const para = emailDestino();
+  if (!apiKey || !para) {
+    console.warn(`⚠️ [alerta-tenant] ${!apiKey ? "RESEND_API_KEY" : "AUTOZAP_ALERT_EMAIL/RESEND_TO"} ausente — alerta de ${tenantUserId} perdido`);
     return false;
   }
   try {
-    const { data } = await supabaseAdmin.auth.admin.getUserById(tenantUserId);
-    const para = data?.user?.email;
-    if (!para) {
-      console.warn(`⚠️ [alerta-tenant] tenant ${tenantUserId} sem e-mail`);
-      return false;
-    }
+    const { data: cfg } = await supabaseAdmin
+      .from("config_garage")
+      .select("nome_fantasia, nome_empresa")
+      .eq("user_id", tenantUserId)
+      .order("created_at", { ascending: false })
+      .limit(1);
+    const loja = cfg?.[0]?.nome_fantasia || cfg?.[0]?.nome_empresa || tenantUserId;
     const resend = new Resend(apiKey);
     const { error } = await resend.emails.send({
       from: process.env.RESEND_FROM ?? "AutoZap <autozap@autozap.digital>",
       to: para,
-      subject: `[AutoZap] ${assunto}`,
-      text: `${corpo}\n\n—\nEste alerta veio por e-mail porque o WhatsApp do gerente está fora da janela de 24h da Meta. Mande qualquer mensagem pro número da loja para voltar a receber pelo WhatsApp.`,
+      subject: `[AutoZap · ${loja}] ${assunto}`,
+      text: `${corpo}
+
+—
+Alerta pro gerente da ${loja} que NÃO chegou no WhatsApp dele (fora da janela de 24h e o template da Meta não entregou). Repasse pro gerente.`,
     });
     if (error) {
       console.warn(`⚠️ [alerta-tenant] Resend falhou: ${String((error as any).message ?? error).slice(0, 160)}`);
       return false;
     }
-    console.log(`📧 [alerta-tenant] alerta enviado por e-mail para o tenant ${tenantUserId}`);
+    console.log(`📧 [alerta-tenant] alerta de ${loja} enviado por e-mail pro operador`);
     return true;
   } catch (err: any) {
     console.warn(`⚠️ [alerta-tenant] ${err?.message?.slice(0, 160)}`);
