@@ -112,6 +112,8 @@ export async function POST(req: NextRequest) {
           logoUri,
           fontData,
           ts,
+          // Texto que o lojista reescreveu slide a slide — "Regerar kit" não desfaz.
+          textos: veiculo.marketing_slides_textos ?? null,
         });
 
     // Legenda do post + legendas de cada take do reel saem juntas: as duas leem a

@@ -381,11 +381,21 @@ export function renderCapa(opts: {
 const OPCIONAL_MAX = 38;
 export function encurtarOpcional(bruto: string): string {
   let t = String(bruto).replace(/\s*\([^)]*\)\s*/g, " ").trim();
-  if (t.length > OPCIONAL_MAX) t = t.split(/\s+(?:com|para|mediante)\s+/i)[0].trim();
+  if (t.length > OPCIONAL_MAX) {
+    // Só corta no "com/para" se o que sobra ainda diz alguma coisa. Uma palavra
+    // solta vira nonsense: "Faróis com acendimento automático…" saía "Faróis"
+    // (carro sem farol?). Nesse caso cai no truncamento por palavra abaixo.
+    const antes = t.split(/\s+(?:com|para|mediante)\s+/i)[0].trim();
+    if (antes.split(/\s+/).length >= 2) t = antes;
+  }
   if (t.length <= OPCIONAL_MAX) return t;
   const corte = t.slice(0, OPCIONAL_MAX);
   const espaco = corte.lastIndexOf(" ");
-  return (espaco > 12 ? corte.slice(0, espaco) : corte).trim();
+  // Tira conector que sobrou no fim do corte ("…automático e", "…sensor de").
+  return (espaco > 12 ? corte.slice(0, espaco) : corte)
+    .trim()
+    .replace(/(?:\s+(?:e|de|do|da|dos|das|com|para|a|o|em|no|na))+$/i, "")
+    .trim();
 }
 
 // Slides 2..N do carrossel de feed: mesma moldura da capa (foto + gradientes +

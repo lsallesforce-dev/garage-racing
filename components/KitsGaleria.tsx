@@ -18,6 +18,7 @@ import CapturaGuiada from "@/components/CapturaGuiada";
 import PisoRestauro from "@/components/PisoRestauro";
 import ReelEditor from "@/components/ReelEditor";
 import PublicarMetaButton from "@/components/PublicarMetaButton";
+import SlidesTextoEditor from "@/components/SlidesTextoEditor";
 import type { MarketingCapturas } from "@/lib/marketing-shotlist";
 import { midiaDoVeiculo, melhorFormato, miniatura } from "@/lib/veiculo-midia";
 import {
@@ -841,6 +842,12 @@ export default function KitsGaleria() {
                             </div>
                           ))}
                         </div>
+                      )}
+                      {(c.marketing_carrossel?.length ?? 0) > 1 && (
+                        <SlidesTextoEditor
+                          veiculoId={c.id}
+                          onCarrossel={(carrossel) => patchCarro(c.id, { marketing_carrossel: carrossel })}
+                        />
                       )}
 
                       <textarea
