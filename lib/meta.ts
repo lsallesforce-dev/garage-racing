@@ -454,6 +454,36 @@ function paramTemplate(texto: string, max = 900): string {
     .slice(0, max) || "-";
 }
 
+/** Template genérico (só corpo). Devolve true só se a Meta aceitou. Nunca lança. */
+export async function sendMetaTemplate(
+  to: string,
+  nome: string,
+  params: string[],
+  creds: Partial<MetaCreds>,
+): Promise<boolean> {
+  const c = resolveCreds(creds);
+  if (!c) return false;
+  try {
+    await post(`/${c.phoneNumberId}/messages`, {
+      messaging_product: "whatsapp",
+      to: formatPhone(to),
+      type: "template",
+      template: {
+        name: nome,
+        language: { code: "pt_BR" },
+        components: [{
+          type: "body",
+          parameters: params.map((t) => ({ type: "text", text: paramTemplate(t) })),
+        }],
+      },
+    }, c.accessToken);
+    return true;
+  } catch (e: any) {
+    console.warn(`⚠️ [Template ${nome}] não enviado pra ${to}: ${e?.message?.slice(0, 160)}`);
+    return false;
+  }
+}
+
 /** Devolve true só se a Meta aceitou. Nunca lança. */
 export async function sendMetaAlertaTemplate(
   to: string,

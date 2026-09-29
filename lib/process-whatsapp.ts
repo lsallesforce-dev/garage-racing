@@ -6,7 +6,7 @@
 import { randomUUID } from "crypto";
 import { geminiFlashSales, geminiFlashFallback, parseGeminiJson } from "@/lib/gemini";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { sendMetaMessage, sendMetaImage, sendMetaVideo, sendMetaAudio, sendMetaCtaButton, markMetaRead, baixarMidiaMeta, sendMetaAlertaTemplate } from "@/lib/meta";
+import { sendMetaMessage, sendMetaImage, sendMetaVideo, sendMetaAudio, sendMetaCtaButton, markMetaRead, baixarMidiaMeta, sendMetaAlertaTemplate, sendMetaTemplate } from "@/lib/meta";
 import { alertaTenantPorEmail } from "@/lib/alerta-interno";
 import {
   falaDeFinanciamento, extrairDadosFinanciamento, faltando, textoPedidoInicial,
@@ -2802,7 +2802,20 @@ Responda apenas com o JSON, sem markdown.`;
           await encerrarColeta(tenantUserId, lead.id);
 
           const destinoFin = financeiroPhone || gerentePhone;
-          if (destinoFin) {
+          // Cloud API com o gerente fora da janela de 24h: modelo transacional
+          // próprio ("simulacao_financiamento", UTILITY) — o genérico
+          // alerta_gerente a Meta reclassificou como MARKETING (caro e com
+          // limite de frequência). Falhou → cadeia normal do sendAlertComLink.
+          let finViaTemplate = false;
+          if (destinoFin && !useAvisa && !(await gerenteNaJanela(tenantUserId))) {
+            finViaTemplate = await sendMetaTemplate(destinoFin, "simulacao_financiamento", [
+              garageConfig?.nome_fantasia || garageConfig?.nome_empresa || "loja",
+              phone,
+              veiculoPrincipal ? `${veiculoPrincipal.marca} ${veiculoPrincipal.modelo}${veiculoPrincipal.ano ? ` ${veiculoPrincipal.ano}` : ""}` : "não informado",
+              coleta.entrada!, coleta.cpf!, coleta.nascimento!,
+            ], metaCreds);
+          }
+          if (destinoFin && !finViaTemplate) {
             const veiculoLabelFin = veiculoPrincipal
               ? `\n🚗 Interesse: ${veiculoPrincipal.marca} ${veiculoPrincipal.modelo}${veiculoPrincipal.ano ? ` ${veiculoPrincipal.ano}` : ""}`
               : "";
