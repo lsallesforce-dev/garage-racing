@@ -529,11 +529,17 @@ function extractFields(payload: any): {
 
     const phone      = msg.from ?? "";
     const messageId  = msg.id ?? null;
+    // Botão de resposta rápida de TEMPLATE: o texto é o mesmo em todo card
+    // ("Tenho interesse"), quem diz QUAL carro é o payload. Payload com o
+    // prefixo "msg:" vira a própria mensagem do cliente — ex.
+    // "msg:Tenho interesse no Fiat Strada Ranch 2024" (carrossel de ofertas).
+    const payloadBotao: string = msg.button?.payload ?? "";
     let userMessage =
       msg.text?.body
       ?? msg.interactive?.button_reply?.title
       ?? msg.interactive?.list_reply?.title
-      ?? msg.button?.text          // botão de resposta rápida de TEMPLATE
+      ?? (payloadBotao.startsWith("msg:") ? payloadBotao.slice(4).trim() : null)
+      ?? msg.button?.text
       ?? "";
     // Carimbo do WhatsApp (segundos). A Meta reentrega webhook que falhou por
     // até dias — sem isto a IA responderia mensagem velha como se fosse agora.
