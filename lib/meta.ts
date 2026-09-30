@@ -445,6 +445,13 @@ export async function baixarMidiaMeta(mediaId: string, accessToken: string): Pro
 // 4+ espaços seguidos — o alerta é achatado numa linha só.
 export const ALERTA_TEMPLATE = "alerta_gerente";
 
+// Ordem de tentativa. "atualizacao_atendimento" é o mesmo alerta (loja, texto,
+// telefone) com texto de notificação operacional, criado como UTILITY em 30/09:
+// o "alerta_gerente" a Meta classificou como MARKETING (mais caro e com limite
+// de frequência por destinatário). Tenta o UTILITY primeiro; enquanto ele não
+// estiver aprovado a Meta responde 132001 e cai no próximo.
+export const ALERTA_TEMPLATES = ["atualizacao_atendimento", ALERTA_TEMPLATE] as const;
+
 function paramTemplate(texto: string, max = 900): string {
   return texto
     .replace(/[*_]/g, "")
@@ -494,27 +501,23 @@ export async function sendMetaAlertaTemplate(
 ): Promise<boolean> {
   const c = resolveCreds(creds);
   if (!c) return false;
-  try {
-    await post(`/${c.phoneNumberId}/messages`, {
-      messaging_product: "whatsapp",
-      to: formatPhone(to),
-      type: "template",
-      template: {
-        name: ALERTA_TEMPLATE,
-        language: { code: "pt_BR" },
-        components: [{
-          type: "body",
-          parameters: [
-            { type: "text", text: paramTemplate(loja, 60) },
-            { type: "text", text: paramTemplate(texto) },
-            { type: "text", text: String(clientePhone || "").replace(/\D/g, "") || "-" },
-          ],
-        }],
-      },
-    }, c.accessToken);
-    return true;
-  } catch (e: any) {
-    console.warn(`⚠️ [Alerta template] não enviado pra ${to}: ${e?.message?.slice(0, 160)}`);
-    return false;
+  const parameters = [
+    { type: "text", text: paramTemplate(loja, 60) },
+    { type: "text", text: paramTemplate(texto) },
+    { type: "text", text: String(clientePhone || "").replace(/\D/g, "") || "-" },
+  ];
+  for (const nome of ALERTA_TEMPLATES) {
+    try {
+      await post(`/${c.phoneNumberId}/messages`, {
+        messaging_product: "whatsapp",
+        to: formatPhone(to),
+        type: "template",
+        template: { name: nome, language: { code: "pt_BR" }, components: [{ type: "body", parameters }] },
+      }, c.accessToken);
+      return true;
+    } catch (e: any) {
+      console.warn(`⚠️ [Alerta template ${nome}] não enviado pra ${to}: ${e?.message?.slice(0, 160)}`);
+    }
   }
+  return false;
 }
