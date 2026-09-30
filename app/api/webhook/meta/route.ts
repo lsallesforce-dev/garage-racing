@@ -14,7 +14,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createHmac, timingSafeEqual } from "crypto";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { processWhatsAppMessage } from "@/lib/process-whatsapp";
-import { isDuplicateMessage, rateLimit, debounceClientImages, debounceFirstContact, marcarGerenteNaJanela } from "@/lib/redis";
+import { isDuplicateMessage, rateLimit, debounceClientImages, debounceFirstContact, marcarGerenteNaJanela, retirarAlertasGerente, enfileirarAlertaGerente } from "@/lib/redis";
 import { logWebhookError } from "@/lib/error-log";
 import { buscarDadosLead } from "@/lib/meta-ads";
 import { sendMetaMessage, sendMetaCtaButton } from "@/lib/meta";
@@ -702,6 +702,21 @@ export async function POST(req: NextRequest) {
     const numGerente = soDigitos(garageConfig.whatsapp).replace(/^(?!55)/, "55");
     if (numGerente.length >= 12 && soDigitos(phone) === numGerente) {
       await marcarGerenteNaJanela(tenantUserId);
+      // Janela aberta: entrega os alertas que ficaram presos enquanto ela
+      // estava fechada (ver enfileirarAlertaGerente em lib/redis).
+      const pendentes = await retirarAlertasGerente(tenantUserId);
+      const credsGerente = { phoneNumberId: garageConfig.meta_phone_id, accessToken: garageConfig.meta_access_token };
+      let entregues = 0;
+      for (const p of pendentes) {
+        const quando = new Date(p.em).toLocaleString("pt-BR", {
+          timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+        });
+        const corpo = `⏰ *Alerta atrasado (${quando})*\n\n${p.texto}\n\n🔗 https://wa.me/${String(p.clientePhone).replace(/\D/g, "")}`;
+        const ok = await sendMetaMessage(numGerente, corpo, credsGerente).then(() => true).catch(() => false);
+        if (ok) entregues++;
+        else await enfileirarAlertaGerente(tenantUserId, p.texto, p.clientePhone);
+      }
+      if (pendentes.length) console.log(`📨 [Alerta] gerente abriu a janela — ${entregues}/${pendentes.length} alerta(s) atrasado(s) entregue(s)`);
     }
 
     // Gate de assinatura

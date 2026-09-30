@@ -692,3 +692,37 @@ export async function gerenteNaJanela(tenantUserId: string): Promise<boolean> {
     return true;
   }
 }
+
+// ─── Fila de alertas ao gerente que não entregaram ───────────────────────────
+// Fora da janela de 24h e sem template aprovado, o alerta não tem como chegar
+// no WhatsApp do gerente. Antes caía num e-mail que ninguém lê e o lead ficava
+// esperando (APROVE, 26-30/09: 8 de 9 pendências sem resposta). Agora espera
+// aqui até dar pra entregar: quando o gerente escreve pro número da loja (a
+// janela abre) ou quando um template volta a passar. 7 dias, no máximo 30.
+export type AlertaPendente = { texto: string; clientePhone: string; em: number };
+
+export async function enfileirarAlertaGerente(tenantUserId: string, texto: string, clientePhone: string): Promise<void> {
+  const k = `alertas_pendentes:${tenantUserId}`;
+  try {
+    await getClient().rpush(k, JSON.stringify({ texto, clientePhone, em: Date.now() }));
+    await getClient().ltrim(k, -30, -1);
+    await getClient().expire(k, 7 * 24 * 3600);
+  } catch (e) {
+    console.warn("⚠️ [Redis] enfileirarAlertaGerente falhou — alerta perdido:", e);
+  }
+}
+
+// Lê e esvazia numa transação só: alerta que chegar no meio não se perde.
+export async function retirarAlertasGerente(tenantUserId: string): Promise<AlertaPendente[]> {
+  const k = `alertas_pendentes:${tenantUserId}`;
+  try {
+    const tx = getClient().multi();
+    tx.lrange(k, 0, -1);
+    tx.del(k);
+    const [itens] = (await tx.exec()) as [Array<AlertaPendente | string>, number];
+    return (itens ?? []).map((i) => (typeof i === "string" ? JSON.parse(i) : i));
+  } catch (e) {
+    console.warn("⚠️ [Redis] retirarAlertasGerente falhou:", e);
+    return [];
+  }
+}

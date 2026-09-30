@@ -7,7 +7,6 @@ import { randomUUID } from "crypto";
 import { geminiFlashSales, geminiFlashFallback, parseGeminiJson } from "@/lib/gemini";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendMetaMessage, sendMetaImage, sendMetaVideo, sendMetaAudio, sendMetaCtaButton, markMetaRead, baixarMidiaMeta, sendMetaAlertaTemplate, sendMetaTemplate } from "@/lib/meta";
-import { alertaTenantPorEmail } from "@/lib/alerta-interno";
 import {
   falaDeFinanciamento, extrairDadosFinanciamento, faltando, textoPedidoInicial,
   textoPedidoRestante, TEXTO_COLETA_COMPLETA, lerColeta, salvarColeta, encerrarColeta,
@@ -25,7 +24,7 @@ import { lerImagemDoCliente } from "@/lib/visao-imagem";
 import { urlVitrine } from "@/lib/repasse";
 import { logWebhookError } from "@/lib/error-log";
 import { lerAcoes, compararDecisoes, registrarShadow } from "@/lib/shadow-acoes";
-import { getCachedHistory, cacheHistory, invalidateHistory, appendHistory, circuitIsOpen, circuitRecordFailure, circuitRecordSuccess, acquireLeadLock, releaseLeadLock, setTrocaStandby, isTrocaStandby, clearTrocaStandby, gerenteNaJanela } from "@/lib/redis";
+import { getCachedHistory, cacheHistory, invalidateHistory, appendHistory, circuitIsOpen, circuitRecordFailure, circuitRecordSuccess, acquireLeadLock, releaseLeadLock, setTrocaStandby, isTrocaStandby, clearTrocaStandby, gerenteNaJanela, enfileirarAlertaGerente, retirarAlertasGerente } from "@/lib/redis";
 import { Vehicle } from "@/types/vehicle";
 
 type Temperatura = "FRIO" | "MORNO" | "QUENTE";
@@ -1262,20 +1261,27 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   // — então nem tenta: manda por e-mail pro dono do tenant. Na Avisa não existe
   // janela; lá o alerta sempre chegava.
   //
-  // Fora da janela: 1º o template utility "alerta_gerente" (entrega sempre,
-  // desde que aprovado e com forma de pagamento no WABA); se a Meta recusar,
-  // e-mail. Gerente não conversa com o próprio número da loja — sem template o
-  // alerta nunca chegava no WhatsApp dele (APROVE, 29/09).
+  // Fora da janela: 1º o template "alerta_gerente" (entrega sempre, desde que
+  // aprovado e com forma de pagamento no WABA). Se a Meta recusar, o alerta vai
+  // pra fila (lib/redis) e sai quando o gerente escrever pro número da loja ou
+  // quando um template passar de novo. E-mail não: ninguém lê.
   const alertaForaDaJanela = async (to: string, text: string): Promise<boolean> => {
     if (useAvisa) return false;
     if (await gerenteNaJanela(tenantUserId)) return false;
     const loja = garageConfig?.nome_fantasia || garageConfig?.nome_empresa || "loja";
     if (await sendMetaAlertaTemplate(to, loja, text, phone, metaCreds)) {
       console.log(`📨 [Alerta] ${to} fora da janela de 24h — enviado por template`);
+      // O template voltou a passar: leva junto o que ficou esperando na fila.
+      for (const p of await retirarAlertasGerente(tenantUserId)) {
+        if (!(await sendMetaAlertaTemplate(to, loja, `(atrasado) ${p.texto}`, p.clientePhone, metaCreds))) {
+          await enfileirarAlertaGerente(tenantUserId, p.texto, p.clientePhone);
+        }
+      }
       return true;
     }
-    const primeiraLinha = text.split("\n").find((l) => l.trim())?.replace(/[*_]/g, "").trim() ?? "Alerta do agente";
-    await alertaTenantPorEmail(tenantUserId, primeiraLinha.slice(0, 90), text.replace(/[*_]/g, ""));
+    await enfileirarAlertaGerente(tenantUserId, text, phone);
+    await registrarFalhaEnvio("alerta_gerente", to,
+      "fora da janela de 24h e sem template aprovado — alerta na fila, sai quando o gerente escrever pro número da loja");
     return true;
   };
 
@@ -1289,8 +1295,9 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
     if (useAvisa) return sendAvisaMessage(to, text, avisaCreds, { typing: false });
     try {
       return await sendMetaMessage(to, text, metaCreds);
-    } catch (e) {
-      await alertaTenantPorEmail(tenantUserId, "Alerta do agente", text.replace(/[*_]/g, ""));
+    } catch (e: any) {
+      await enfileirarAlertaGerente(tenantUserId, text, phone);
+      await registrarFalhaEnvio("alerta_gerente", to, `Meta recusou (${String(e?.message ?? e).slice(0, 80)}) — alerta na fila`);
       throw e;
     }
   };
@@ -2760,7 +2767,7 @@ Responda apenas com o JSON, sem markdown.`;
       ).catch(() => {});
     }
 
-    console.log(`📸 [Pré-avaliação] ${phone} — fotos recebidas, gerente notificado, IA em stand-by`);
+    console.log(`📸 [Pré-avaliação] ${phone} — fotos recebidas, alerta disparado (entrega: ver [Alerta]), IA em stand-by`);
     if (lead?.id) await releaseLeadLock(tenantUserId, lead.id).catch(() => {});
     return;
   }
@@ -2826,7 +2833,7 @@ Responda apenas com o JSON, sem markdown.`;
               phone
             ).catch(() => {});
           }
-          console.log(`💳 [Financiamento] ${phone} — coleta completa, gerente notificado, IA em stand-by`);
+          console.log(`💳 [Financiamento] ${phone} — coleta completa, alerta disparado (entrega: ver [Alerta]), IA em stand-by`);
         } else {
           respFin = coletaAtual
             ? textoPedidoRestante(falta, !!ext.cpfInvalido && !coleta.cpf)
