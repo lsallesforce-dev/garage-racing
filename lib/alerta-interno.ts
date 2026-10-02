@@ -31,7 +31,12 @@ export type ResultadoAlerta = {
 
 /** E-mail de destino do alerta interno. */
 function emailDestino(): string | null {
-  return process.env.AUTOZAP_ALERT_EMAIL?.trim() || process.env.RESEND_TO?.trim() || null;
+  return (
+    process.env.AUTOZAP_ALERT_EMAIL?.trim() ||
+    process.env.RESEND_TO?.trim() ||
+    process.env.ADMIN_EMAIL?.trim() ||
+    null
+  );
 }
 
 type CredsAvisa = { baseUrl: string; token: string };
@@ -61,7 +66,7 @@ async function porWhatsApp(corpo: string, erros: string[], override?: CredsAvisa
   }
 }
 
-async function porEmail(assunto: string, corpo: string, erros: string[]): Promise<boolean> {
+async function porEmail(assunto: string, corpo: string, erros: string[], comoReserva = true): Promise<boolean> {
   const para = emailDestino();
   const apiKey = process.env.RESEND_API_KEY;
 
@@ -74,7 +79,9 @@ async function porEmail(assunto: string, corpo: string, erros: string[]): Promis
       from: process.env.RESEND_FROM ?? "AutoZap <autozap@autozap.digital>",
       to: para,
       subject: `[AutoZap] ${assunto}`,
-      text: `${corpo}\n\n—\nEste alerta chegou por e-mail porque o WhatsApp interno falhou.`,
+      text: comoReserva
+        ? `${corpo}\n\n—\nEste alerta chegou por e-mail porque o WhatsApp interno falhou.`
+        : corpo,
     });
     if (error) { erros.push(`email: ${String((error as any).message ?? error).slice(0, 160)}`); return false; }
     return true;
@@ -95,7 +102,7 @@ export async function alertaInterno(
   origem: string,
   assunto: string,
   corpo: string,
-  opts?: { credsWhatsApp?: CredsAvisa | null },
+  opts?: { credsWhatsApp?: CredsAvisa | null; tambemEmail?: boolean },
 ): Promise<ResultadoAlerta> {
   const erros: string[] = [];
   const canais: CanalAlerta[] = [];
@@ -103,7 +110,11 @@ export async function alertaInterno(
   if (await porWhatsApp(corpo, erros, opts?.credsWhatsApp)) canais.push("whatsapp");
 
   // E-mail só como rede — não duplicar alerta quando o WhatsApp funcionou.
-  if (canais.length === 0 && await porEmail(assunto, corpo, erros)) canais.push("email");
+  // `tambemEmail` é pra aviso que o Lucas quer nos dois canais (cadastro novo).
+  const whatsFalhou = canais.length === 0;
+  if ((whatsFalhou || opts?.tambemEmail) && await porEmail(assunto, corpo, erros, whatsFalhou)) {
+    canais.push("email");
+  }
 
   const entregue = canais.length > 0;
 
@@ -130,6 +141,34 @@ export async function alertaInterno(
   }
 
   return { entregue, canais, erros };
+}
+
+/**
+ * Aviso de cadastro novo, nos dois canais. Sem isso a conta ficava parada
+ * esperando liberação sem ninguém saber (Conquista Veículos: 18 dias).
+ */
+export function alertaCadastroNovo(dados: {
+  empresa?: string | null;
+  email: string;
+  whatsapp?: string | null;
+  origem: string;
+}): Promise<ResultadoAlerta> {
+  const linhas = [
+    "🆕 *Novo cadastro no AutoZap*",
+    "",
+    dados.empresa ? `Nome: ${dados.empresa}` : null,
+    `E-mail: ${dados.email}`,
+    dados.whatsapp ? `WhatsApp: ${dados.whatsapp}` : null,
+    `Origem: ${dados.origem}`,
+    "",
+    "Liberar em autozap.digital/admin",
+  ].filter((l) => l !== null);
+  return alertaInterno(
+    "cadastro-novo",
+    `Novo cadastro: ${dados.empresa || dados.email}`,
+    linhas.join("\n"),
+    { tambemEmail: true },
+  );
 }
 
 /**

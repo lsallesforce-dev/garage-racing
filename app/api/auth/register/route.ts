@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { rateLimit } from "@/lib/redis";
+import { alertaCadastroNovo } from "@/lib/alerta-interno";
 import { emailShell, emailCorpo, EMAIL_FROM } from "@/lib/email-template";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -53,6 +54,15 @@ export async function POST(req: NextRequest) {
       { status: jaExiste ? 409 : 500 }
     );
   }
+
+  after(() =>
+    alertaCadastroNovo({
+      empresa: nome_empresa.trim(),
+      email: emailLimpo,
+      whatsapp: (whatsapp ?? "").toString().trim(),
+      origem: "tela de login (falta confirmar o e-mail)",
+    }).catch(() => {}),
+  );
 
   const link = new URL("/api/auth/confirmar-email", req.nextUrl.origin);
   link.searchParams.set("token_hash", linkData.properties.hashed_token);

@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { rateLimit } from "@/lib/redis";
+import { alertaCadastroNovo } from "@/lib/alerta-interno";
 
 // Versão do termo de aceite vigente — bump ao alterar Termos/Privacidade
 const TERMOS_VERSAO = "2026-06-21";
@@ -62,6 +63,14 @@ export async function POST(req: NextRequest) {
       { status: jaExiste ? 409 : 500 },
     );
   }
+
+  after(() =>
+    alertaCadastroNovo({
+      empresa: (nome ?? "").toString().trim(),
+      email: emailLimpo,
+      origem: "onboarding (conta já ativa, em trial)",
+    }).catch(() => {}),
+  );
 
   const supabaseClient = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
