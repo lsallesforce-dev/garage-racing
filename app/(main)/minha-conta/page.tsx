@@ -139,7 +139,7 @@ export default function MinhaContaPage() {
   async function handleSaveSenha() {
     setErroSenha(null);
     if (!novaSenha || !confirmaSenha) { setErroSenha("Preencha todos os campos."); return; }
-    if (novaSenha.length < 6) { setErroSenha("Mínimo 6 caracteres."); return; }
+    if (novaSenha.length < 8) { setErroSenha("Mínimo 8 caracteres."); return; }
     if (novaSenha !== confirmaSenha) { setErroSenha("As senhas não coincidem."); return; }
     setSavingSenha(true);
     try {

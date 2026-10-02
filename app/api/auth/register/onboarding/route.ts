@@ -21,8 +21,8 @@ export async function POST(req: NextRequest) {
   if (!email || !String(email).includes("@")) {
     return NextResponse.json({ error: "E-mail inválido" }, { status: 400 });
   }
-  if (!senha || senha.length < 6) {
-    return NextResponse.json({ error: "A senha deve ter pelo menos 6 caracteres." }, { status: 400 });
+  if (!senha || senha.length < 8) {
+    return NextResponse.json({ error: "A senha deve ter pelo menos 8 caracteres." }, { status: 400 });
   }
   if (aceitou_termos !== true) {
     return NextResponse.json(
@@ -49,6 +49,14 @@ export async function POST(req: NextRequest) {
   if (createErr) {
     const jaExiste = /already|registered|exists/i.test(createErr.message);
     console.error("[register/onboarding] createUser falhou:", createErr.message);
+    // A política de senha vive no Supabase e pode mudar sem deploy: se ela
+    // recusar, o lojista precisa saber que é a senha, não "tente mais tarde".
+    if (!jaExiste && /password/i.test(createErr.message)) {
+      return NextResponse.json(
+        { error: "Senha fraca demais. Use pelo menos 8 caracteres." },
+        { status: 400 },
+      );
+    }
     return NextResponse.json(
       { error: jaExiste ? "Este e-mail já está cadastrado." : "Não foi possível concluir o cadastro agora." },
       { status: jaExiste ? 409 : 500 },

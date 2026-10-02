@@ -51,7 +51,7 @@ function OnboardingInner() {
     e.preventDefault();
     setError("");
     if (account.senha !== account.confirma) { setError("As senhas não coincidem."); return; }
-    if (account.senha.length < 6)           { setError("Senha mínima de 6 caracteres."); return; }
+    if (account.senha.length < 8)           { setError("Senha mínima de 8 caracteres."); return; }
     if (!aceitouTermos)                     { setError("Você precisa aceitar os Termos de Uso e a Política de Privacidade."); return; }
 
     setSaving(true);
@@ -250,7 +250,7 @@ function OnboardingInner() {
                 <div className="relative">
                   <input required type={showPass ? "text" : "password"} value={account.senha}
                     onChange={e => setAcc("senha", e.target.value)}
-                    placeholder="Mínimo 6 caracteres"
+                    placeholder="Mínimo 8 caracteres"
                     className="w-full bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-3 pr-10 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
                   />
                   <button type="button" onClick={() => setShowPass(p => !p)}

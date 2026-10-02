@@ -19,8 +19,8 @@ export default function NovaSenhaPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErro("");
-    if (senha.length < 6) {
-      setErro("A senha deve ter pelo menos 6 caracteres.");
+    if (senha.length < 8) {
+      setErro("A senha deve ter pelo menos 8 caracteres.");
       return;
     }
     if (senha !== confirma) {

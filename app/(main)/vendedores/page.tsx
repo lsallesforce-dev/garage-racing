@@ -186,7 +186,7 @@ export default function VendedoresPage() {
   // 🔑 Reset de Senha
   const handleResetSenha = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!resetSenha || resetSenha.length < 6) { alert("Senha deve ter ao menos 6 caracteres."); return; }
+    if (!resetSenha || resetSenha.length < 8) { alert("Senha deve ter ao menos 8 caracteres."); return; }
     setSavingReset(true);
     try {
       const res = await fetch('/api/vendedores/criar', {
@@ -484,7 +484,7 @@ export default function VendedoresPage() {
                     <input type="password" value={form.senha}
                       onChange={e => setForm({...form, senha: e.target.value})}
                       className="w-full px-4 py-2.5 bg-white rounded-xl border border-gray-200 outline-none focus:border-red-500 text-sm font-mono text-gray-900 placeholder:text-gray-300"
-                      placeholder={editingVendedor ? '••••••••' : 'Mínimo 6 caracteres'}
+                      placeholder={editingVendedor ? '••••••••' : 'Mínimo 8 caracteres'}
                       minLength={form.senha ? 6 : undefined}
                     />
                   </div>
@@ -534,11 +534,11 @@ export default function VendedoresPage() {
                 <div>
                   <label className="text-[10px] font-black uppercase text-gray-400 mb-1 block tracking-widest">Nova Senha</label>
                   <input
-                    type="password" required minLength={6}
+                    type="password" required minLength={8}
                     value={resetSenha} onChange={e => setResetSenha(e.target.value)}
                     autoFocus
                     className="w-full px-4 py-2.5 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:border-amber-500 text-sm font-mono text-gray-900 placeholder:text-gray-300"
-                    placeholder="Mínimo 6 caracteres"
+                    placeholder="Mínimo 8 caracteres"
                   />
                 </div>
                 <p className="text-[9px] text-gray-400 uppercase tracking-widest font-bold">

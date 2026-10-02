@@ -20,8 +20,8 @@ export async function POST(req: NextRequest) {
   if (!email || !email.includes("@")) {
     return NextResponse.json({ error: "E-mail inválido" }, { status: 400 });
   }
-  if (!password || password.length < 6) {
-    return NextResponse.json({ error: "A senha deve ter pelo menos 6 caracteres." }, { status: 400 });
+  if (!password || password.length < 8) {
+    return NextResponse.json({ error: "A senha deve ter pelo menos 8 caracteres." }, { status: 400 });
   }
   if (!nome_empresa?.trim()) {
     return NextResponse.json({ error: "Informe o nome da sua empresa." }, { status: 400 });
