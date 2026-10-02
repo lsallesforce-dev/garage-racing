@@ -35,7 +35,9 @@ function emailDestino(): string | null {
     process.env.AUTOZAP_ALERT_EMAIL?.trim() ||
     process.env.RESEND_TO?.trim() ||
     process.env.ADMIN_EMAIL?.trim() ||
-    null
+    // Sem nenhuma env o alerta morria calado ("AUTOZAP_ALERT_EMAIL ausente",
+    // 25/09 a 02/10). Caixa do operador como último recurso.
+    "autozap@autozap.digital"
   );
 }
 

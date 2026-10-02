@@ -8,7 +8,9 @@ const isProd = process.env.NODE_ENV === "production";
 const scriptSrc = [
   "script-src 'self' 'unsafe-inline'",
   isProd ? "" : "'unsafe-eval'",
-  "https://connect.facebook.net https://www.google-analytics.com https://www.googletagmanager.com https://www.googleadservices.com https://vercel.live",
+  // googleads.g.doubleclick.net: tag de conversão/remarketing do Google Ads
+  // (viewthroughconversion). Sem ela a conversão do cadastro não era medida.
+  "https://connect.facebook.net https://www.google-analytics.com https://www.googletagmanager.com https://www.googleadservices.com https://googleads.g.doubleclick.net https://vercel.live",
 ]
   .filter(Boolean)
   .join(" ");
@@ -37,9 +39,9 @@ const securityHeaders = [
       "font-src 'self' data:",
       // heic-to (conversão de foto HEIC no upload) decodifica num Worker criado de blob:.
       "worker-src 'self' blob:",
-      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.gemini.google.com https://generativelanguage.googleapis.com https://www.avisaapi.com.br https://graph.facebook.com https://connect.facebook.net https://www.facebook.com https://*.facebook.com https://*.r2.dev https://*.r2.cloudflarestorage.com https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com https://*.g.doubleclick.net https://www.googleadservices.com https://vercel.live",
+      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.gemini.google.com https://generativelanguage.googleapis.com https://www.avisaapi.com.br https://graph.facebook.com https://connect.facebook.net https://www.facebook.com https://*.facebook.com https://*.r2.dev https://*.r2.cloudflarestorage.com https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com https://*.g.doubleclick.net https://*.doubleclick.net https://www.googleadservices.com https://www.google.com https://google.com https://pagead2.googlesyndication.com https://vercel.live",
       "media-src 'self' https: blob:",
-      "frame-src 'self' https://www.facebook.com https://vercel.live",
+      "frame-src 'self' https://www.facebook.com https://td.doubleclick.net https://www.googletagmanager.com https://vercel.live",
       "frame-ancestors 'self' https://www.autozap.digital https://autozap.digital",
     ].join("; "),
   },

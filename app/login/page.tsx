@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
 type Mode = "login" | "register" | "forgot";
@@ -65,6 +65,14 @@ export default function LoginPage() {
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // /api/auth/confirmar-email devolve pra cá com ?erro=confirmacao quando o
+  // link do e-mail está vencido ou já foi usado.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("erro") === "confirmacao") {
+      setError("Esse link de confirmação venceu ou já foi usado. Tente entrar; se não conseguir, refaça o cadastro.");
+    }
+  }, []);
+
   function reset() {
     setError("");
     setSuccess("");
@@ -87,7 +95,9 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
-      setError("E-mail ou senha incorretos.");
+      setError(/not confirmed/i.test(error.message)
+        ? "Seu e-mail ainda não foi confirmado. Abra o link que enviamos no cadastro (confira o spam)."
+        : "E-mail ou senha incorretos.");
       setLoading(false);
       return;
     }
@@ -106,41 +116,46 @@ export default function LoginPage() {
       setError("A senha deve ter pelo menos 8 caracteres.");
       return;
     }
-    setLoading(true);
-
     if (!nomeEmpresa.trim()) {
       setError("Informe o nome da sua empresa.");
+      return;
+    }
+    const digitosWhats = whatsapp.replace(/\D/g, "");
+    if (digitosWhats.length < 10 || digitosWhats.length > 13) {
+      setError("Informe um WhatsApp válido, com DDD.");
+      return;
+    }
+    setLoading(true);
+
+    // Rota própria: cria a conta com service role, manda a confirmação pelo
+    // Resend e avisa o operador. O signUp deixava esse e-mail com o mailer do
+    // Supabase.
+    let res: Response;
+    let dados: { error?: string; confirmacao_enviada?: boolean } = {};
+    try {
+      res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: email.trim(),
+          password,
+          nome_empresa: nomeEmpresa.trim(),
+          whatsapp: whatsapp.trim(),
+        }),
+      });
+      dados = await res.json().catch(() => ({}));
+    } catch {
+      // Sem isto, queda de rede deixava o botão preso em "Criando conta...".
+      setError("Erro de conexão. Tente de novo.");
       setLoading(false);
       return;
     }
-
-    // Rota própria: cria a conta com service role e manda a confirmação pelo
-    // Resend. O signUp deixava esse e-mail com o mailer do Supabase.
-    const res = await fetch("/api/auth/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email: email.trim(),
-        password,
-        nome_empresa: nomeEmpresa.trim(),
-        whatsapp: whatsapp.trim(),
-      }),
-    });
-    const dados = await res.json().catch(() => ({}));
 
     setLoading(false);
     if (!res.ok) {
       setError(dados?.error ?? "Não foi possível concluir o cadastro. Tente de novo.");
       return;
     }
-
-    // Aviso ao admin (autozap@autozap.digital) + confirmação de cadastro pra pessoa.
-    // Best-effort: não bloqueia nem falha o cadastro se o email não sair.
-    fetch("/api/email/novo-cadastro", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, nome_empresa: nomeEmpresa.trim(), whatsapp: whatsapp.trim() }),
-    }).catch(() => {});
 
     setSuccess(dados?.confirmacao_enviada === false
       ? "Cadastro recebido! Nossa equipe vai analisar e entrar em contato em breve."
@@ -260,7 +275,7 @@ export default function LoginPage() {
               <div className="flex flex-col gap-1.5">
                 <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">WhatsApp</label>
                 <input
-                  type="tel" value={whatsapp}
+                  type="tel" required value={whatsapp}
                   onChange={(e) => setWhatsapp(e.target.value)}
                   placeholder="(17) 99999-9999"
                   className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"

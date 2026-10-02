@@ -11,12 +11,6 @@ const TERMOS_VERSAO = "2026-06-21";
 // lojista segue direto pros passos de configuração da loja. O cadastro da tela
 // de login é outro contrato (confirmação por e-mail) e fica em ../route.ts.
 export async function POST(req: NextRequest) {
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
-  const rl = await rateLimit(`register-onboarding:${ip}`, 5, 3600);
-  if (!rl.allowed) {
-    return NextResponse.json({ error: "Muitas tentativas. Tente de novo daqui a pouco." }, { status: 429 });
-  }
-
   const { nome, email, senha, aceitou_termos } = await req.json();
 
   if (!email || !String(email).includes("@")) {
@@ -30,6 +24,14 @@ export async function POST(req: NextRequest) {
       { error: "É necessário aceitar os Termos de Uso e a Política de Privacidade." },
       { status: 400 },
     );
+  }
+
+  // Depois da validação: erro de digitação não pode gastar a cota (o limite é
+  // por IP, e uma loja inteira costuma sair pelo mesmo).
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
+  const rl = await rateLimit(`register-onboarding:${ip}`, 10, 3600);
+  if (!rl.allowed) {
+    return NextResponse.json({ error: "Muitas tentativas. Tente de novo em 1 hora." }, { status: 429 });
   }
 
   const emailLimpo = String(email).trim().toLowerCase();
@@ -68,7 +70,7 @@ export async function POST(req: NextRequest) {
     alertaCadastroNovo({
       empresa: (nome ?? "").toString().trim(),
       email: emailLimpo,
-      origem: "onboarding (conta já ativa, em trial)",
+      origem: "onboarding (e-mail já confirmado, falta liberar)",
     }).catch(() => {}),
   );
 
