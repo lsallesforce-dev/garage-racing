@@ -9,6 +9,7 @@ import { resolveGaragem } from "@/lib/vitrine-tenant";
 import { registrarVisitaVitrine } from "@/lib/vitrine-visitas";
 import MetaPixel from "@/components/MetaPixel";
 
+import { temFotoNaVitrine } from "@/lib/veiculo-midia";
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -102,7 +103,8 @@ export default async function VitrineTenantPage({ params }: Props) {
     .eq("status_venda", "DISPONIVEL")
     .order("created_at", { ascending: false });
 
-  const lista = estoque ?? [];
+  // Carro sem foto não sobe pra vitrine (ver temFotoNaVitrine).
+  const lista = ((estoque ?? []) as any[]).filter(temFotoNaVitrine);
   const whatsapp = garagem.whatsapp_agente ?? garagem.whatsapp ?? process.env.NEXT_PUBLIC_ZAPI_PHONE ?? "";
   const dominio = (garagem.dominio_custom as string | undefined)?.trim() || null;
   // Logo da vitrine tem precedência sobre a logo geral da loja.

@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
+import { temFotoNaVitrine } from "@/lib/veiculo-midia";
 import {
   Zap, MessageCircle, Play, Shield, Award,
   X, ChevronDown, SlidersHorizontal,
@@ -180,7 +181,7 @@ function VitrinePublicaInner() {
     if (tenantUserId) query.eq("user_id", tenantUserId);
 
     query.then(({ data }) => {
-      if (data) setEstoque(data);
+      if (data) setEstoque(data.filter(temFotoNaVitrine));
     });
   }, [tenantUserId, tenantToken]);
 

@@ -125,3 +125,14 @@ export function miniatura(url: string | null | undefined, lado: number, alturaCs
   const base = u.split("?")[0].replace(marca, "/storage/v1/render/image/public/");
   return `${base}?width=${w}&height=${h}&resize=cover&quality=70`;
 }
+
+/**
+ * Carro só aparece na vitrine se tiver pelo menos uma foto (capa ou galeria).
+ * Card sem imagem passa cara de site abandonado e o lojista costuma cadastrar
+ * o carro antes de fotografar. Regra única pra listagem, "mais carros", página
+ * do carro, vitrine antiga e sitemap — o feed do catálogo e o portal já exigiam.
+ */
+export function temFotoNaVitrine(v: { fotos?: unknown; capa_marketing_url?: unknown } | null | undefined): boolean {
+  if (limpar(v?.capa_marketing_url)) return true;
+  return Array.isArray(v?.fotos) && v.fotos.some((f) => !!limpar(f));
+}

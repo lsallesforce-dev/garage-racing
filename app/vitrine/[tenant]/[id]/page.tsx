@@ -10,6 +10,7 @@ import { resolveGaragem } from "@/lib/vitrine-tenant";
 import { registrarVisitaVitrine } from "@/lib/vitrine-visitas";
 import MetaPixel from "@/components/MetaPixel";
 
+import { temFotoNaVitrine } from "@/lib/veiculo-midia";
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -89,6 +90,9 @@ export default async function VitrineDetalhePage({ params, searchParams }: Props
   // Carro tem que pertencer ao tenant da URL — senão dá pra renderizar carro de
   // outra loja com a marca/WhatsApp desta (furo herdado da versão antiga).
   if (!garagem || veiculo.user_id !== garagem.user_id) notFound();
+  // Carro sem foto não está na vitrine — nem pelo link direto (mesma regra da
+  // listagem). Volta a aparecer sozinho quando a loja subir a primeira foto.
+  if (!temFotoNaVitrine(veiculo)) notFound();
 
   // Assinatura inativa → vitrine fora do ar (mesmo comportamento da listagem).
   if (!assinaturaAtiva(garagem)) {
@@ -105,7 +109,9 @@ export default async function VitrineDetalhePage({ params, searchParams }: Props
     .eq("status_venda", "DISPONIVEL")
     .neq("id", id)
     .order("created_at", { ascending: false })
-    .limit(4);
+    // Busca com folga e corta em 4 depois de tirar os sem foto.
+    .limit(16);
+  const relacionadosComFoto = ((relacionados ?? []) as any[]).filter(temFotoNaVitrine).slice(0, 4);
 
   const whatsapp = garagem?.whatsapp_agente ?? garagem?.whatsapp ?? process.env.NEXT_PUBLIC_ZAPI_PHONE ?? "";
   const videoUrl = veiculo.video_url ? toVideoUrl(veiculo.video_url) : null;
@@ -158,7 +164,7 @@ export default async function VitrineDetalhePage({ params, searchParams }: Props
         veiculo={veiculo}
         viaAnuncio={viaAnuncio}
         videoUrl={videoUrl}
-        relacionados={relacionados ?? []}
+        relacionados={relacionadosComFoto}
         nomeEmpresa={garagem?.nome_empresa ?? ""}
         whatsapp={whatsapp}
         logoUrl={(garagem?.vitrine_tema?.logo_url as string | undefined)?.trim() || garagem?.logo_url || null}

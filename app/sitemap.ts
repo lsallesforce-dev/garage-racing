@@ -12,6 +12,7 @@ import type { MetadataRoute } from "next";
 import { createClient } from "@supabase/supabase-js";
 import { getPortalEstoque, getPortalLandingPaths } from "@/lib/portal/query";
 
+import { temFotoNaVitrine } from "@/lib/veiculo-midia";
 const BASE = (process.env.NEXT_PUBLIC_APP_URL || "https://www.autozap.digital").replace(/\/+$/, "");
 
 // Cliente service-role (mesma config da vitrine) — ignora RLS para ler o que é público.
@@ -56,11 +57,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // Carros DISPONÍVEIS das garagens com slug (veiculos não tem updated_at → sem lastModified).
     const { data: carros } = await supabaseAdmin
       .from("veiculos")
-      .select("id, user_id")
+      .select("id, user_id, capa_marketing_url, fotos")
       .eq("status_venda", "DISPONIVEL")
       .in("user_id", Array.from(slugByUser.keys()));
 
     const veiculos: MetadataRoute.Sitemap = (carros ?? [])
+      // Sem foto não está na vitrine (a página devolve 404) — fora do sitemap.
+      .filter(temFotoNaVitrine)
       .map((c) => {
         const slug = slugByUser.get(c.user_id);
         if (!slug) return null;
