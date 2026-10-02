@@ -442,6 +442,13 @@ export async function redisPing(): Promise<string> {
 //   const rl = await rateLimit(`analyze:${userId}`, 10, 60);
 //   if (!rl.allowed) return NextResponse.json({ error: "Too many requests" }, { status: 429 });
 //
+const RATE_LIMIT_SCRIPT = `
+local c = redis.call('INCR', KEYS[1])
+if c == 1 or redis.call('TTL', KEYS[1]) == -1 then
+  redis.call('EXPIRE', KEYS[1], ARGV[1])
+end
+return c`;
+
 export async function rateLimit(
   key: string,
   limit: number,
@@ -456,11 +463,11 @@ export async function rateLimit(
     const redisKey = `rl:${key}`;
     let count: number;
     if (increment) {
-      count = await client.incr(redisKey);
-      if (count === 1) {
-        // Primeira requisição da janela — define o TTL
-        await client.expire(redisKey, windowSeconds);
-      }
+      // INCR e EXPIRE num script só. Em duas chamadas, um EXPIRE que falhasse na
+      // 1ª requisição da janela deixava a chave sem TTL: o contador nunca mais
+      // zerava e o tenant ficava em 429 pra sempre. O `TTL == -1` conserta chave
+      // que já esteja presa.
+      count = Number(await client.eval(RATE_LIMIT_SCRIPT, [redisKey], [windowSeconds]));
     } else {
       const current = await client.get<string | number>(redisKey);
       count = current ? Number(current) : 0;
