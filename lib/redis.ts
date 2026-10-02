@@ -511,8 +511,11 @@ export async function circuitIsOpen(key: string): Promise<boolean> {
 export async function circuitRecordFailure(key: string): Promise<void> {
   try {
     const client = getClient();
-    const count = await client.incr(`circuit:${key}:failures`);
-    if (count === 1) await client.expire(`circuit:${key}:failures`, CIRCUIT_FAILURE_TTL);
+    // Mesmo script do rateLimit: INCR + EXPIRE separados deixavam a chave sem
+    // TTL se o EXPIRE falhasse, e o disjuntor passava a abrir a cada falha.
+    const count = Number(
+      await client.eval(RATE_LIMIT_SCRIPT, [`circuit:${key}:failures`], [CIRCUIT_FAILURE_TTL]),
+    );
     if (count >= CIRCUIT_THRESHOLD) {
       await client.set(`circuit:${key}:open`, 1, { ex: CIRCUIT_OPEN_TTL });
       console.warn(`⚡ Circuit breaker ABERTO para "${key}" (${count} falhas em ${CIRCUIT_FAILURE_TTL}s)`);
