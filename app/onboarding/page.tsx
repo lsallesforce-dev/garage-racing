@@ -56,7 +56,7 @@ function OnboardingInner() {
 
     setSaving(true);
     try {
-      const res = await fetch("/api/auth/register", {
+      const res = await fetch("/api/auth/register/onboarding", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ nome: account.nome, email: account.email, senha: account.senha, aceitou_termos: aceitouTermos }),
