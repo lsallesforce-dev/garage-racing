@@ -87,7 +87,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
               <ul className="space-y-2">
                 {[
                   ["Fazer login",   "/login"],
-                  ["Suporte",       "https://wa.me/5511999999999"],
+                  ["Suporte",       "https://wa.me/5517991141010"],
                 ].map(([label, href]) => (
                   <li key={href}>
                     <Link href={href} className="text-sm text-gray-400 hover:text-white transition-colors">{label}</Link>
