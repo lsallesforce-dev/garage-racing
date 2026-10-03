@@ -1,18 +1,6 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 import { ZapWidgetDemo } from "@/components/ZapWidgetDemo";
-
-export const metadata: Metadata = {
-  title: "AutoZap — IA para Revendas de Veículos",
-  description:
-    "Transforme sua revenda com inteligência artificial. Leads qualificados no WhatsApp, vídeos de marketing gerados por IA e gestão completa do pátio.",
-  openGraph: {
-    title: "AutoZap — IA para Revendas de Veículos",
-    description:
-      "Automatize leads, gere vídeos e venda mais. O sistema de IA para revendas que trabalha enquanto você dorme.",
-    siteName: "AutoZap",
-  },
-};
+import { LANDINGS } from "@/lib/portal/landings";
 
 const navLinks = [
   { href: "/#funcionalidades", label: "Funcionalidades" },
@@ -85,6 +73,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
               <ul className="space-y-2">
                 {[
                   ["Funcionalidades", "/#funcionalidades"],
+                  ...LANDINGS.map((l): [string, string] => [l.menu, `/${l.slug}`]),
                   ["Sobre nós",        "/sobre"],
                 ].map(([label, href]) => (
                   <li key={href}>

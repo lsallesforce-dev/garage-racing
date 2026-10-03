@@ -1,4 +1,12 @@
 import Link from "next/link";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Sobre",
+  description:
+    "O AutoZap nasceu no pátio: IA que atende o WhatsApp, gera vídeo e vitrine do estoque e organiza o financeiro da revenda de veículos.",
+  alternates: { canonical: "/sobre" },
+};
 import { Zap, Target, Shield, Cpu, ArrowRight, Heart } from "lucide-react";
 
 const valores = [

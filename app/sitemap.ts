@@ -13,6 +13,7 @@ import { createClient } from "@supabase/supabase-js";
 import { getPortalEstoque, getPortalLandingPaths } from "@/lib/portal/query";
 
 import { temFotoNaVitrine } from "@/lib/veiculo-midia";
+import { LANDINGS } from "@/lib/portal/landings";
 const BASE = (process.env.NEXT_PUBLIC_APP_URL || "https://www.autozap.digital").replace(/\/+$/, "");
 
 // Cliente service-role (mesma config da vitrine) — ignora RLS para ler o que é público.
@@ -25,7 +26,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // Páginas institucionais (sempre presentes).
   const estaticas: MetadataRoute.Sitemap = [
     { url: `${BASE}/`,            changeFrequency: "weekly",  priority: 1.0 },
-    { url: `${BASE}/planos`,      changeFrequency: "monthly", priority: 0.8 },
+    // /planos fica fora: anônimo leva 307 pro /onboarding ("Página com redirecionamento").
+    ...LANDINGS.map((l) => ({ url: `${BASE}/${l.slug}`, changeFrequency: "monthly" as const, priority: 0.9 })),
     { url: `${BASE}/sobre`,       changeFrequency: "monthly", priority: 0.6 },
     { url: `${BASE}/privacidade`, changeFrequency: "yearly",  priority: 0.2 },
     { url: `${BASE}/termos`,      changeFrequency: "yearly",  priority: 0.2 },

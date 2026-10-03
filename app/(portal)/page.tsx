@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import {
   Zap,
@@ -20,6 +21,8 @@ import CarroCard from "@/app/carros/CarroCard";
 
 const SITE_URL = (process.env.NEXT_PUBLIC_APP_URL || "https://www.autozap.digital").replace(/\/+$/, "");
 
+export const metadata: Metadata = { alternates: { canonical: "/" } };
+
 // Estoque dos parceiros muda pouco — ISR 5 min (a faixa /carros espelhada na home).
 export const revalidate = 300;
 
@@ -33,9 +36,21 @@ const jsonLd = {
       "@type": "Organization",
       "@id": `${SITE_URL}/#organization`,
       name: "AutoZap",
+      alternateName: ["Auto Zap", "AutoZap Digital"],
       url: SITE_URL,
+      logo: `${SITE_URL}/favicon.svg`,
       description:
         "Plataforma de IA para revendas de veículos: atendimento no WhatsApp 24/7, vídeos e vitrine do estoque, anúncios em portais e gestão financeira.",
+    },
+    {
+      // Nome do site no resultado da busca de marca ("autozap", "auto zap").
+      "@type": "WebSite",
+      "@id": `${SITE_URL}/#website`,
+      name: "AutoZap",
+      alternateName: ["Auto Zap", "AutoZap Digital"],
+      url: SITE_URL,
+      inLanguage: "pt-BR",
+      publisher: { "@id": `${SITE_URL}/#organization` },
     },
     {
       "@type": "SoftwareApplication",

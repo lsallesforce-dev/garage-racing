@@ -35,7 +35,9 @@ export const metadata: Metadata = {
     'gestão de revenda de veículos',
     'automação de WhatsApp para concessionária',
   ],
-  alternates: { canonical: '/' },
+  // SEM canonical aqui: `alternates` é herdado por toda rota que não declara o
+  // seu, e '/' fazia /sobre, /termos e todas as vitrines apontarem pra home
+  // (o Google rastreava e não indexava). Cada página declara o próprio.
   openGraph: {
     type: 'website',
     locale: 'pt_BR',

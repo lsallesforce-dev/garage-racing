@@ -1,5 +1,6 @@
 export const metadata = {
-  title: "Terms of Service — AutoZap",
+  title: { absolute: "Terms of Service — AutoZap" },
+  alternates: { canonical: "/termos" },
   description: "Terms and conditions for using the AutoZap platform.",
 };
 

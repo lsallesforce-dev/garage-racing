@@ -50,7 +50,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   }
 
   const dominio = (garagem?.dominio_custom as string | undefined)?.trim();
-  const canonical = dominio ? `https://${dominio}` : undefined;
+  const canonical = dominio ? `https://${dominio}` : `/vitrine/${garagem?.vitrine_slug ?? tenant}`;
 
   // `absolute` fura o template "%s | AutoZap" do app/layout.tsx. A vitrine é a
   // loja do lojista — no domínio próprio dele a aba dizendo "AutoZap" soa como

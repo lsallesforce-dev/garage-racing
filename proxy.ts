@@ -14,6 +14,16 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+// Landing pages de SEO do portal (app/(portal)/<slug>). Lista fixa aqui pra não
+// puxar o texto de lib/portal/landings pro bundle do proxy — landing nova entra
+// nos dois lugares.
+const LANDING_PATHS = new Set([
+  "/sistema-para-revenda-de-carros",
+  "/crm-para-revenda-de-veiculos",
+  "/ia-whatsapp-para-revenda-de-carros",
+  "/anunciar-carros-webmotors-olx",
+]);
+
 // ─── Configuração ─────────────────────────────────────────────────────────────
 
 const MAIN_DOMAIN = "autozap.digital";
@@ -454,6 +464,7 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith("/sitemap") ||  // SEO: sitemap.xml (e futuros particionados)
     pathname.startsWith("/planos") ||
     pathname.startsWith("/sobre") ||
+    LANDING_PATHS.has(pathname) ||
     pathname.startsWith("/privacidade") ||
     pathname.startsWith("/termos") ||
     pathname.startsWith("/login") ||

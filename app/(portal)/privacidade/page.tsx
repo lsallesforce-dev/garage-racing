@@ -1,5 +1,6 @@
 export const metadata = {
-  title: "Privacy Policy — AutoZap",
+  title: { absolute: "Privacy Policy — AutoZap" },
+  alternates: { canonical: "/privacidade" },
   description: "How AutoZap collects, uses, and protects your data.",
 };
 

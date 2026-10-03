@@ -51,7 +51,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   const garagem = await resolveGaragem(tenant);
   const dominio = (garagem?.dominio_custom as string | undefined)?.trim();
-  const canonical = dominio ? `https://${dominio}/${id}` : undefined;
+  const canonical = dominio ? `https://${dominio}/${id}` : `/vitrine/${garagem?.vitrine_slug ?? tenant}/${id}`;
   const loja = ((garagem?.nome_empresa as string | undefined) ?? "").trim();
 
   return {
