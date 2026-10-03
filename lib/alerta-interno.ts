@@ -151,26 +151,47 @@ export async function alertaInterno(
  */
 export function alertaCadastroNovo(dados: {
   empresa?: string | null;
+  responsavel?: string | null;
   email: string;
   whatsapp?: string | null;
+  endereco?: string | null;
   origem: string;
+  /** Padrão "Novo cadastro no AutoZap". */
+  titulo?: string;
 }): Promise<ResultadoAlerta> {
+  const titulo = dados.titulo ?? "Novo cadastro no AutoZap";
+  const contato = linkWhatsApp(dados.whatsapp);
   const linhas = [
-    "🆕 *Novo cadastro no AutoZap*",
+    `🆕 *${titulo}*`,
     "",
-    dados.empresa ? `Nome: ${dados.empresa}` : null,
+    dados.empresa ? `Loja: ${dados.empresa}` : null,
+    dados.responsavel ? `Nome: ${dados.responsavel}` : null,
     `E-mail: ${dados.email}`,
-    dados.whatsapp ? `WhatsApp: ${dados.whatsapp}` : null,
+    dados.endereco ? `Endereço: ${dados.endereco}` : null,
     `Origem: ${dados.origem}`,
+    contato ? "" : null,
+    // Link cru: o WhatsApp e o cliente de e-mail tornam clicável sozinhos.
+    contato ? `Clique para conversar com ${contato.exibicao}: ${contato.url}` : null,
     "",
     "Liberar em autozap.digital/admin",
   ].filter((l) => l !== null);
   return alertaInterno(
     "cadastro-novo",
-    `Novo cadastro: ${dados.empresa || dados.email}`,
+    `${titulo}: ${dados.empresa || dados.responsavel || dados.email}`,
     linhas.join("\n"),
     { tambemEmail: true },
   );
+}
+
+/** "5531998730611" ou "(31) 99873-0611" → link wa.me + "31 99873-0611". */
+function linkWhatsApp(numero?: string | null): { url: string; exibicao: string } | null {
+  const digitos = String(numero ?? "").replace(/\D/g, "");
+  if (digitos.length < 10 || digitos.length > 13) return null;
+  const local = digitos.length >= 12 && digitos.startsWith("55") ? digitos.slice(2) : digitos;
+  const ddd = local.slice(0, 2);
+  const resto = local.slice(2);
+  const exibicao = `${ddd} ${resto.slice(0, resto.length - 4)}-${resto.slice(-4)}`;
+  return { url: `https://wa.me/55${local}`, exibicao };
 }
 
 /**

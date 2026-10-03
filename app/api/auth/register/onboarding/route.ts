@@ -68,9 +68,11 @@ export async function POST(req: NextRequest) {
 
   after(() =>
     alertaCadastroNovo({
-      empresa: (nome ?? "").toString().trim(),
+      responsavel: (nome ?? "").toString().trim(),
       email: emailLimpo,
-      origem: "onboarding (e-mail já confirmado, falta liberar)",
+      // O WhatsApp e o nome da loja só existem no passo seguinte; quando ele
+      // conclui, /api/onboarding/iniciar-trial manda o aviso com o contato.
+      origem: "onboarding — conta criada, ainda preenchendo os dados da loja",
     }).catch(() => {}),
   );
 
