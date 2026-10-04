@@ -28,10 +28,9 @@ export async function GET(req: NextRequest) {
     // quem conectou antes precisa reconectar em Configurações.
     // instagram_manage_contents = APAGAR o post do Instagram quando o carro é
     // vendido (app/api/veiculo/vender). No Facebook o pages_manage_posts já
-    // apaga; o Instagram exige essa permissão à parte. Ainda não aprovada em
-    // App Review — mas já vale para quem tem cargo no app (admin/testador),
-    // que é como a APROVE usa hoje. Para os demais a Meta simplesmente não
-    // concede o escopo e o login segue normal.
+    // apaga; o Instagram exige essa permissão à parte.
+    // As 4 de postagem orgânica foram aprovadas em App Review em 03/10/2026
+    // (Advanced): qualquer lojista recebe os escopos, sem cargo no app.
     scope:         "ads_management,pages_manage_ads,business_management,pages_show_list,pages_read_engagement,instagram_basic,pages_manage_posts,instagram_content_publish,instagram_manage_contents",
     response_type: "code",
     state:         userId,

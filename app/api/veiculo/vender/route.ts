@@ -129,8 +129,8 @@ export async function POST(req: NextRequest) {
       notifiedCount: leads.length,
       veiculo: nomeCarro,
       postsRemovidos: postagens.removidos,
-      // O que não deu pra apagar volta com o link — hoje é o Instagram, que
-      // exige `instagram_manage_contents` (App Review pendente).
+      // O que não deu pra apagar volta com o link (token antigo sem
+      // `instagram_manage_contents`, post que virou anúncio, Meta fora do ar).
       postsPendentes: postagens.pendentes,
     });
   } catch (error: any) {
