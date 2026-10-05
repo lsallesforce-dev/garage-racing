@@ -54,6 +54,49 @@ export function falaDeFinanciamento(texto: string): boolean {
   return RE_FINANCIAMENTO.test(texto || "");
 }
 
+// Cliente desistindo do financiamento. Sem isto "Não vamos financiar obrigado"
+// casava o radical "financ" e o agente cobrava a entrada de novo (APROVE,
+// 03/10, 553491426442).
+const RE_RECUSA = new RegExp(
+  [
+    "n[ãa]o (vou|vamos|quero|queremos|preciso|precisamos|pretendo|penso em|tenho interesse em) (mais )?(de )?(fazer )?(o |a |um |uma )?(financ|parcel|simula)",
+    "(vou|vamos|quero|prefiro|pretendo) pagar [àa] vista",
+    "(pago|pagamento|[ée]|ser[áa]|vai ser) [àa] vista",
+    "sem financ",
+  ].join("|"),
+  "i",
+);
+
+export function recusaFinanciamento(texto: string): boolean {
+  return RE_RECUSA.test(texto || "");
+}
+
+// "Sem entrada" do jeito que o cliente fala. Caso real: "100% financiado",
+// duas vezes, e o agente repetiu a pergunta (APROVE, 05/10, 5519987140293).
+const RE_SEM_ENTRADA: RegExp[] = [
+  /\bsem (nada de |nenhuma )?entrada\b/,
+  /\bn[ãa]o (tenho|vou dar|quero dar|pretendo dar|consigo dar|posso dar|dou|darei)( nada de| nenhuma| nenhum valor de)? entrada\b/,
+  /\bentrada zero\b|\bzero (de )?entrada\b|\bnada de entrada\b/,
+  /100\s*%\s*(financ|parcel|do valor|do carro|do ve[íi]culo)/,
+  /\bfinanci\w*\s+(os\s+|em\s+)?100\s*%/,
+  /\bcem por cento\b/,
+  /\bfinanci\w* (tudo|total|integral|inteiro|completo|o valor (total|todo|inteiro)|ele todo|ela toda)\b/,
+  /\b(tudo|todo|toda|total|totalmente|integral|integralmente|inteiro|inteira) financiad[oa]\b/,
+  /\bfinanciamento (total|integral|de 100)\b/,
+];
+
+// Carro na troca como entrada. Caso real: "Não tem como pegar minha
+// caminhonete de entrada" (Carmatti, 04/10, 5517992249254).
+const RE_ENTRADA_VEICULO: RegExp[] = [
+  /\b(carro|moto|caminhonete|camionete|ve[íi]culo|pickup|picape|usad[oa])\b.{0,40}\b(de|como|na|pra|para) entrada\b/,
+  /\b(dar|dou|pegar|pega|pegam|aceita\w*)\b.{0,40}\b(de|como|na) (entrada|troca)\b/,
+  /\b(na|de|como) troca\b/,
+];
+
+// Resposta de uma palavra — só vale quando a entrada é a única coisa que
+// falta, ou seja, quando acabou de ser perguntada sozinha.
+const RE_SEM_ENTRADA_CURTA = /^(nada|zero|0|nenhuma?|n[ãa]o tenho|n[ãa]o tenho nada|sem|sem nada|tudo|100\s*%)$/;
+
 // ─── Extração ─────────────────────────────────────────────────────────────────
 
 function cpfValido(d: string): boolean {
@@ -93,7 +136,10 @@ export type Extraido = {
   cpfInvalido?: boolean; // mandou 11 dígitos que não fecham o dígito verificador
 };
 
-export function extrairDadosFinanciamento(texto: string): Extraido {
+export function extrairDadosFinanciamento(
+  texto: string,
+  opts: { soFaltaEntrada?: boolean } = {},
+): Extraido {
   const out: Extraido = {};
   let resto = ` ${texto || ""} `;
 
@@ -129,8 +175,14 @@ export function extrairDadosFinanciamento(texto: string): Extraido {
 
   // Entrada.
   const baixo = resto.toLowerCase();
-  if (/\b(sem entrada|n[ãa]o tenho( nada de)? entrada|entrada zero|zero de entrada|nada de entrada|sem nada de entrada)\b/.test(baixo)) {
+  const curta = baixo.trim().replace(/[.!?,;]+$/g, "").trim();
+  if (
+    RE_SEM_ENTRADA.some((re) => re.test(baixo)) ||
+    (opts.soFaltaEntrada && RE_SEM_ENTRADA_CURTA.test(curta))
+  ) {
     out.entrada = "sem entrada";
+  } else if (RE_ENTRADA_VEICULO.some((re) => re.test(baixo))) {
+    out.entrada = "veículo na troca";
   } else {
     // "R$ 10.000", "10 mil", "10k", "15.000,00", "5000"
     const mMil = baixo.match(/(?:r\$\s*)?(\d{1,3}(?:[.,]\d{1,3})?)\s*(mil|k)\b/);

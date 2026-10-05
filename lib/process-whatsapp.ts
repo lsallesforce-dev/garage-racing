@@ -8,7 +8,7 @@ import { geminiFlashSales, geminiFlashFallback, parseGeminiJson } from "@/lib/ge
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendMetaMessage, sendMetaImage, sendMetaVideo, sendMetaAudio, sendMetaCtaButton, markMetaRead, baixarMidiaMeta, sendMetaAlertaTemplate, sendMetaTemplate } from "@/lib/meta";
 import {
-  falaDeFinanciamento, extrairDadosFinanciamento, faltando, textoPedidoInicial,
+  falaDeFinanciamento, recusaFinanciamento, extrairDadosFinanciamento, faltando, textoPedidoInicial,
   textoPedidoRestante, TEXTO_COLETA_COMPLETA, lerColeta, salvarColeta, encerrarColeta,
 } from "@/lib/financiamento-coleta";
 import { sendAvisaMessage, sendAvisaImage, sendAvisaVideo, sendAvisaAudio } from "@/lib/avisa";
@@ -2836,14 +2836,31 @@ Responda apenas com o JSON, sem markdown.`;
   // Fora do modo repasse: lá o cliente é lojista e não financia.
   if (lead?.id && !skipSend && !garageConfig?.modo_repasse && mensagemClientePura) {
     const coletaAtual = await lerColeta(tenantUserId, lead.id);
-    const detectou = falaDeFinanciamento(mensagemClientePura);
-    if (coletaAtual || detectou) {
-      const ext = extrairDadosFinanciamento(mensagemClientePura);
+    // Desistiu ("não vamos financiar", "vou pagar à vista"): fecha a coleta e
+    // deixa o Gemini responder. Antes o radical "financ" reabria a cobrança.
+    const desistiu = recusaFinanciamento(mensagemClientePura);
+    if (desistiu && coletaAtual) {
+      await encerrarColeta(tenantUserId, lead.id);
+      console.log(`💳 [Financiamento] ${phone} — cliente desistiu do financiamento, coleta encerrada`);
+    }
+    const detectou = !desistiu && falaDeFinanciamento(mensagemClientePura);
+    if (!desistiu && (coletaAtual || detectou)) {
+      // CPF e nascimento já na mão: a última mensagem do agente pediu SÓ a entrada.
+      const soFaltaEntrada = !!(coletaAtual?.cpf && coletaAtual?.nascimento && !coletaAtual?.entrada);
+      const ext = extrairDadosFinanciamento(mensagemClientePura, { soFaltaEntrada });
       const trouxeDado = !!(ext.entrada || ext.cpf || ext.nascimento || ext.cpfInvalido);
       if (detectou || trouxeDado) {
+        // Nunca pergunta a entrada duas vezes seguidas: se ela já foi pedida
+        // sozinha e a resposta não deu pra ler, vai pro gerente do jeito que o
+        // cliente escreveu. Ele tem CPF e nascimento, que é o que a simulação
+        // exige; a entrada ele acerta na conversa.
+        const entradaNaoLida = soFaltaEntrada && !ext.entrada
+          ? `não informada (cliente respondeu: "${mensagemClientePura.replace(/\s+/g, " ").trim().slice(0, 90)}")`
+          : null;
         const coleta = {
           ...(coletaAtual ?? { iniciadaEm: new Date().toISOString() }),
           ...(ext.entrada ? { entrada: ext.entrada } : {}),
+          ...(entradaNaoLida ? { entrada: entradaNaoLida } : {}),
           ...(ext.cpf ? { cpf: ext.cpf } : {}),
           ...(ext.nascimento ? { nascimento: ext.nascimento } : {}),
         };
