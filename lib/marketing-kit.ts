@@ -76,7 +76,7 @@ function versaoSemRepetir(modelo: unknown, versao: unknown): string {
 
 // Cor e combustível são digitados à mão ("prata", "VERMELHA", "flex"): na
 // legenda saem sempre com a inicial maiúscula.
-function capitalizar(s: unknown): string {
+function inicialMaiuscula(s: unknown): string {
   const t = String(s ?? "").trim();
   return t ? t.charAt(0).toUpperCase() + t.slice(1).toLowerCase() : "";
 }
@@ -124,7 +124,7 @@ export function linhaSpecs(v: any): string {
   const km = v?.quilometragem_estimada
     ? `${Number(v.quilometragem_estimada).toLocaleString("pt-BR")} km`
     : null;
-  return [v?.cambio, capitalizar(v?.cor), capitalizar(v?.combustivel), km].filter(Boolean).join(" | ");
+  return [v?.cambio, inicialMaiuscula(v?.cor), inicialMaiuscula(v?.combustivel), km].filter(Boolean).join(" | ");
 }
 
 export function precoFormatado(v: any): string | null {
@@ -202,7 +202,7 @@ export async function gerarLegenda(v: any, cfg: MarketingCfg): Promise<string> {
   const linhas: string[] = [];
   linhas.push(`🚘 ${tituloVeiculo(v)}`, "");
   const preco = cfg.mostrarPreco ? precoFormatado(v) : null;
-  const specs = [v?.cambio, capitalizar(v?.combustivel), capitalizar(v?.cor)].filter(Boolean).join(" | ");
+  const specs = [v?.cambio, inicialMaiuscula(v?.combustivel), inicialMaiuscula(v?.cor)].filter(Boolean).join(" | ");
   // Ficha e preço na MESMA linha. Sem ficha cadastrada, o preço vai sozinho —
   // "⚙️ 💰 R$ 35.990" ficaria com cara de erro.
   const fichaComPreco = [specs, preco ? `💰 ${preco}` : null].filter(Boolean).join(" | ");
