@@ -682,7 +682,9 @@ export async function criarCampanhaLeadAd(p: CriarCampanhaParams): Promise<Campa
       // multi_share_end_card = card final com a página; desligado porque o
       // último card do kit já é o de contato.
       multi_share_end_card: false,
-      multi_share_optimized: true,
+      // false trava a ordem: o 1º card é a capa escolhida no kit. Com true a
+      // Meta reordena as fotos e a capa pode ir parar no meio (Lucas, 05/10).
+      multi_share_optimized: false,
       // Carrossel clique-pro-WhatsApp exige o CTA também aqui, no nível do
       // link_data — só no child_attachments (como sempre foi) a Meta recusa
       // com "(#1) Unknown error" sem dizer o campo (achado 01/09).

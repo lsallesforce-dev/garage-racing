@@ -64,8 +64,25 @@ export function formatFone(raw: string | null | undefined): string | null {
   return raw;
 }
 
+// Cadastro vindo da FIPE traz a versão dentro do modelo ("CRUZE LT 1.4 16V Turbo
+// Flex 4p Aut." + versão "LT 1.4 Turbo Aut."): somar os dois repetia a versão
+// no título do anúncio. A versão só entra se acrescentar alguma palavra.
+function versaoSemRepetir(modelo: unknown, versao: unknown): string {
+  const tokens = (s: unknown) => String(s ?? "").toLowerCase().split(/\s+/).map((t) => t.replace(/\.+$/, "")).filter(Boolean);
+  const noModelo = new Set(tokens(modelo));
+  const daVersao = tokens(versao);
+  return daVersao.length && daVersao.every((t) => noModelo.has(t)) ? "" : String(versao ?? "").trim();
+}
+
+// Cor e combustível são digitados à mão ("prata", "VERMELHA", "flex"): na
+// legenda saem sempre com a inicial maiúscula.
+function capitalizar(s: unknown): string {
+  const t = String(s ?? "").trim();
+  return t ? t.charAt(0).toUpperCase() + t.slice(1).toLowerCase() : "";
+}
+
 export function tituloVeiculo(v: any): string {
-  const partes = [v?.marca, v?.modelo, v?.versao].filter(Boolean).join(" ").trim();
+  const partes = [v?.marca, v?.modelo, versaoSemRepetir(v?.modelo, v?.versao)].filter(Boolean).join(" ").trim();
   const anos = [v?.ano, v?.ano_modelo].filter(Boolean);
   const anoStr = anos.length === 2 && anos[0] !== anos[1] ? `${anos[0]}/${anos[1]}` : anos[0] ? String(anos[anos.length - 1]) : "";
   return `${partes}${anoStr ? ` - ${anoStr}` : ""}`.toUpperCase();
@@ -107,7 +124,7 @@ export function linhaSpecs(v: any): string {
   const km = v?.quilometragem_estimada
     ? `${Number(v.quilometragem_estimada).toLocaleString("pt-BR")} km`
     : null;
-  return [v?.cambio, v?.cor, v?.combustivel, km].filter(Boolean).join(" | ");
+  return [v?.cambio, capitalizar(v?.cor), capitalizar(v?.combustivel), km].filter(Boolean).join(" | ");
 }
 
 export function precoFormatado(v: any): string | null {
@@ -185,7 +202,7 @@ export async function gerarLegenda(v: any, cfg: MarketingCfg): Promise<string> {
   const linhas: string[] = [];
   linhas.push(`🚘 ${tituloVeiculo(v)}`, "");
   const preco = cfg.mostrarPreco ? precoFormatado(v) : null;
-  const specs = [v?.cambio, v?.combustivel, v?.cor].filter(Boolean).join(" | ");
+  const specs = [v?.cambio, capitalizar(v?.combustivel), capitalizar(v?.cor)].filter(Boolean).join(" | ");
   // Ficha e preço na MESMA linha. Sem ficha cadastrada, o preço vai sozinho —
   // "⚙️ 💰 R$ 35.990" ficaria com cara de erro.
   const fichaComPreco = [specs, preco ? `💰 ${preco}` : null].filter(Boolean).join(" | ");
