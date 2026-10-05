@@ -20,6 +20,8 @@ export interface MarketingCfg {
   site: string | null;
   corPrimaria: string;
   fotoComMarca: boolean; // fotos já têm marca d'água da loja → não sobrepor logo
+  /** Legenda no formato próprio da loja (migration 067). Ver gerarLegendaDoModelo. */
+  legendaModelo: string | null;
 }
 
 // Monta o MarketingCfg a partir da row de config_garage (mais recente do tenant).
@@ -47,6 +49,9 @@ export function cfgFromRow(row: any): MarketingCfg {
     site,
     corPrimaria: row?.vitrine_tema?.cor_primaria || "#DC2626",
     fotoComMarca: row?.marketing_foto_com_marca === true,
+    legendaModelo: typeof row?.marketing_legenda_modelo === "string" && row.marketing_legenda_modelo.trim()
+      ? row.marketing_legenda_modelo
+      : null,
   };
 }
 
@@ -173,6 +178,8 @@ async function gerarHookEHashtags(v: any, cfg: MarketingCfg): Promise<{ hook: st
 // saiu da legenda — quem quer saber pergunta, e a ficha completa está na
 // vitrine. Os opcionais e o rodapé continuam iguais.
 export async function gerarLegenda(v: any, cfg: MarketingCfg): Promise<string> {
+  if (cfg.legendaModelo) return gerarLegendaDoModelo(v, cfg, cfg.legendaModelo);
+
   const { hashtags } = await gerarHookEHashtags(v, cfg);
 
   const linhas: string[] = [];
@@ -207,4 +214,113 @@ export async function gerarLegenda(v: any, cfg: MarketingCfg): Promise<string> {
   if (todas.length) linhas.push("", todas.join(" "));
 
   return linhas.join("\n");
+}
+
+// ─── Legenda no formato da loja (config_garage.marketing_legenda_modelo) ────
+// Loja que já tem um padrão de legenda consolidado no Instagram (LeMotors,
+// 05/10) não quer o layout genérico acima. O modelo é o texto DELA, guardado no
+// banco, com marcadores que o kit preenche por carro:
+//
+//   {titulo}          "Volkswagen Amarok TDI 4x4 – 2011"
+//   {descricao}       5 linhas de venda, sem emoji (Gemini)
+//   {ficha}           "Ano: 2011" + até 4 linhas "Rótulo: valor" (Gemini, só dado real)
+//   {preco}           "R$ 86.900,00" — ou "Sob consulta" sem preço / preço oculto
+//   {hashtag_marca}   "#Volkswagen"
+//   {hashtag_modelo}  "#Amarok"
+//
+// Tudo que não é marcador (cabeçalho, separadores, contatos, slogan, hashtags
+// fixas) sai exatamente como a loja escreveu — trocar é um UPDATE, não deploy.
+
+const semAcento = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "");
+// Sigla (BMW, GM, KIA) fica em maiúsculas e palavra com número (328iA) fica
+// como veio — "Bmw" e "328ia" leem como erro de digitação.
+const capitalizar = (t: string) =>
+  t.split(/(\s+|-)/).map((w) =>
+    /\d/.test(w) ? w : w.length <= 3 ? w.toUpperCase() : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
+  ).join("");
+
+function hashtagDe(t: string): string {
+  const limpo = capitalizar(semAcento(t)).replace(/[^A-Za-z0-9]/g, "");
+  return limpo ? `#${limpo}` : "";
+}
+
+async function textosDoModelo(v: any, tituloBase: string): Promise<{ titulo: string; descricao: string[]; ficha: string[] }> {
+  const ano = v?.ano_modelo ?? v?.ano ?? null;
+  const fichaLocal = [
+    v?.motor ? `Motorização: ${v.motor}` : null,
+    v?.cambio ? `Câmbio: ${v.cambio}` : null,
+    v?.combustivel ? `Combustível: ${capitalizar(String(v.combustivel))}` : null,
+    v?.cor ? `Cor: ${capitalizar(String(v.cor))}` : null,
+  ].filter(Boolean) as string[];
+  const fallback = {
+    titulo: `${tituloBase}${ano ? ` – ${ano}` : ""}`,
+    descricao: ["Veículo selecionado, revisado e pronto para rodar."],
+    ficha: fichaLocal,
+  };
+
+  const dados = {
+    marca: cleanMarca(v?.marca), modelo: v?.modelo, versao: v?.versao, ano,
+    motor: v?.motor, cambio: v?.cambio, combustivel: v?.combustivel, cor: v?.cor,
+    categoria: v?.categoria, opcionais: (v?.opcionais ?? []).slice(0, 12),
+  };
+  const prompt =
+    `Você escreve a legenda de Instagram de uma revenda de carros no Brasil, em tom sóbrio e direto.\n` +
+    `Dados REAIS do carro (não invente nada fora daqui): ${JSON.stringify(dados)}\n\n` +
+    `Responda SOMENTE um JSON: {"titulo": string, "descricao": string[], "ficha": string[]}\n` +
+    `- titulo: marca por extenso + modelo + o que identifica a versão, curto, SEM o ano. Ex.: "Volkswagen Amarok TDI 4x4", "Toyota Hilux SRX 4x4", "Honda Civic EX". Máx 40 caracteres.\n` +
+    `- descricao: EXATAMENTE 5 frases curtas (máx 85 caracteres cada), uma por item, terminando em ponto. SEM emoji, SEM preço, SEM ano, SEM quilometragem. A 1ª define o carro (ex.: "Picape robusta, potente e preparada para qualquer desafio."), as do meio falam de motor/conforto/equipamentos que estão nos dados, a última diz pra quem ele é ideal.\n` +
+    `- ficha: de 2 a 4 itens no formato "Rótulo: valor", curtos, só com o que os dados sustentam. Rótulos possíveis: Motorização, Câmbio, Tração, Cabine, Combustível, Cor. NÃO inclua Ano, preço nem km. Ex.: ["Motorização: 2.0 TDI Turbo Diesel", "Tração: 4x4", "Cabine: Dupla"].`;
+  try {
+    const req = {
+      contents: [{ role: "user" as const, parts: [{ text: prompt }] }],
+      generationConfig: { responseMimeType: "application/json" },
+    };
+    let text: string;
+    try {
+      text = (await geminiFlashSales.generateContent(req)).response.text();
+    } catch {
+      text = (await geminiFlashFallback.generateContent(req)).response.text();
+    }
+    const json = parseGeminiJson(text);
+    const linhas = (x: unknown, max: number): string[] =>
+      Array.isArray(x) ? x.filter((l) => typeof l === "string" && l.trim()).map((l) => (l as string).trim()).slice(0, max) : [];
+    const descricao = linhas(json?.descricao, 5);
+    const ficha = linhas(json?.ficha, 4).filter((l) => l.includes(":") && !/^ano\b/i.test(l));
+    const titulo = typeof json?.titulo === "string" && json.titulo.trim() ? json.titulo.trim().slice(0, 48) : tituloBase;
+    return {
+      titulo: `${titulo}${ano ? ` – ${ano}` : ""}`,
+      descricao: descricao.length ? descricao : fallback.descricao,
+      ficha: ficha.length ? ficha : fallback.ficha,
+    };
+  } catch (e) {
+    console.warn("⚠️ [marketing-kit] Gemini indisponível pra legenda do modelo — usando fallback:", (e as any)?.message);
+    return fallback;
+  }
+}
+
+export async function gerarLegendaDoModelo(v: any, cfg: MarketingCfg, modelo: string): Promise<string> {
+  const marca = capitalizar(cleanMarca(v?.marca));
+  const modeloCurto = capitalizar(cleanModelo(v?.modelo));
+  const { titulo, descricao, ficha } = await textosDoModelo(v, [marca, modeloCurto].filter(Boolean).join(" "));
+
+  const ano = v?.ano_modelo ?? v?.ano ?? null;
+  const valor = Number(v?.preco_sugerido ?? 0);
+  const preco = cfg.mostrarPreco && valor > 0
+    ? `R$ ${valor.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : "Sob consulta";
+
+  const campos: Record<string, string> = {
+    titulo,
+    descricao: descricao.join("\n"),
+    ficha: [ano ? `Ano: ${ano}` : null, ...ficha].filter(Boolean).join("\n"),
+    preco,
+    hashtag_marca: hashtagDe(marca),
+    hashtag_modelo: hashtagDe(modeloCurto.split(" ")[0] ?? ""),
+  };
+  return modelo
+    .replace(/\r\n/g, "\n")
+    .replace(/\{(\w+)\}/g, (m, k) => (k in campos ? campos[k] : m))
+    // marcador vazio (ex.: carro sem marca) não pode deixar espaço duplo na linha de hashtags
+    .replace(/ {2,}/g, " ")
+    .trim();
 }
