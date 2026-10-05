@@ -12,7 +12,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireVehicleOwner } from "@/lib/api-auth";
 import { cfgFromRow, gerarLegenda } from "@/lib/marketing-kit";
-import { fotoParaCapa, loadCapaFont, renderCapa, toDataUri } from "@/lib/marketing-capa";
+import { fotoParaCapa, loadCapaFont, logoParaCapa, renderCapa } from "@/lib/marketing-capa";
 import { completarCapturas } from "@/lib/marketing-classificar";
 import { fotoDoFormato, montarCarrossel, type MarketingCapturas } from "@/lib/marketing-shotlist";
 import { montarSlidesCarrossel } from "@/lib/marketing-slide";
@@ -71,13 +71,14 @@ export async function POST(req: NextRequest) {
       .from("configuracoes")
       .getPublicUrl(`logos/${veiculo.user_id}.png`).data.publicUrl;
 
-    const [foto, fotoStory, logoUri, fontData] = await Promise.all([
+    const [foto, fotoStory, logo, fontData] = await Promise.all([
       fotoParaCapa(fotoUrl),
       // Só baixa duas vezes quando o story usa uma foto diferente.
       fotoStoryUrl && fotoStoryUrl !== fotoUrl ? fotoParaCapa(fotoStoryUrl) : Promise.resolve(null),
-      toDataUri(logoPublic),
+      logoParaCapa(logoPublic),
       loadCapaFont(),
     ]);
+    const logoUri = logo?.uri ?? null;
     if (!foto) {
       return NextResponse.json({ error: "Não consegui baixar a foto do veículo" }, { status: 502 });
     }
@@ -87,7 +88,7 @@ export async function POST(req: NextRequest) {
     async function renderEUpload(formato: "feed" | "story"): Promise<string> {
       const img = renderCapa({
         foto: formato === "story" ? fotoStory ?? foto : foto,
-        logoUri, cfg, veiculo, fontData, formato,
+        logoUri, logoFundo: logo?.fundo, cfg, veiculo, fontData, formato,
       });
       const png = Buffer.from(await img.arrayBuffer());
       const key = `marketing/${veiculoId}/${formato}-${ts}.png`;

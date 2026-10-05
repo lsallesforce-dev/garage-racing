@@ -54,6 +54,58 @@ export async function toDataUri(url: string | null): Promise<string | null> {
   }
 }
 
+// Logo pronta pro chip da capa: além do data URI, devolve a cor de fundo do chip.
+// O chip era sempre branco — logo com fundo PRETO chapado (LeMotors) virava um
+// quadrado preto solto dentro da caixa branca. Regra:
+//   • fundo opaco e uniforme → o chip assume essa cor e a margem sobrando é
+//     aparada, então a logo ocupa o chip inteiro em vez de boiar no meio;
+//   • fundo transparente com arte clara → chip escuro (arte clara no branco some);
+//   • resto → chip branco de sempre.
+export interface LogoCapa { uri: string; fundo: string }
+
+const CHIP_BRANCO = "rgba(255,255,255,0.94)";
+const CHIP_ESCURO = "rgba(11,11,15,0.92)";
+
+export async function logoParaCapa(url: string | null): Promise<LogoCapa | null> {
+  const uri = await toDataUri(url);
+  if (!uri) return null;
+  try {
+    const sharp = (await import("sharp")).default;
+    const buf = Buffer.from(uri.slice(uri.indexOf(",") + 1), "base64");
+    const { data, info } = await sharp(buf)
+      .resize(96, 96, { fit: "inside" })
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const px = (x: number, y: number) => {
+      const i = (y * info.width + x) * 4;
+      return [data[i], data[i + 1], data[i + 2], data[i + 3]];
+    };
+    const cantos = [px(0, 0), px(info.width - 1, 0), px(0, info.height - 1), px(info.width - 1, info.height - 1)];
+    const opaco = cantos.every((c) => c[3] > 240);
+    const uniforme = cantos.every((c) => [0, 1, 2].every((k) => Math.abs(c[k] - cantos[0][k]) < 24));
+
+    if (opaco && uniforme) {
+      const [r, g, b] = cantos[0];
+      const aparada = await sharp(buf).trim({ background: { r, g, b }, threshold: 24 }).png().toBuffer();
+      return { uri: `data:image/png;base64,${aparada.toString("base64")}`, fundo: `rgb(${r},${g},${b})` };
+    }
+    if (cantos.every((c) => c[3] < 16)) {
+      // Luminância média só do que é arte (pixel opaco).
+      let soma = 0, n = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i + 3] < 128) continue;
+        soma += (0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2]) / 255;
+        n++;
+      }
+      if (n && soma / n > 0.5) return { uri, fundo: CHIP_ESCURO };
+    }
+  } catch {
+    // Formato que o sharp não lê (SVG torto etc.) — segue com o chip branco.
+  }
+  return { uri, fundo: CHIP_BRANCO };
+}
+
 export async function loadCapaFont(): Promise<ArrayBuffer> {
   const f = await fs.readFile(path.join(process.cwd(), "public", "fonts", "Montserrat-Black.ttf"));
   return f.buffer.slice(f.byteOffset, f.byteOffset + f.byteLength) as ArrayBuffer;
@@ -83,6 +135,8 @@ export async function fotoParaCapa(url: string | null): Promise<FotoCapa | null>
 function areaFoto(p: {
   foto: FotoCapa | null;
   logoUri: string | null;
+  /** Cor do chip atrás da logo (ver logoParaCapa). Sem isso, branco. */
+  logoFundo?: string;
   cfg: MarketingCfg;
   cor: string;
   mostraBranding: boolean;
@@ -172,7 +226,7 @@ function areaFoto(p: {
             <div
               style={{
                 display: "flex",
-                backgroundColor: "rgba(255,255,255,0.94)",
+                backgroundColor: p.logoFundo ?? CHIP_BRANCO,
                 borderRadius: 20,
                 padding: "12px 20px",
               }}
@@ -235,6 +289,7 @@ function areaFoto(p: {
 export function renderCapa(opts: {
   foto: FotoCapa | null;
   logoUri: string | null;
+  logoFundo?: string;
   cfg: MarketingCfg;
   veiculo: any;
   fontData: ArrayBuffer;
@@ -268,7 +323,7 @@ export function renderCapa(opts: {
           position: "relative",
         }}
       >
-        {areaFoto({ foto, logoUri, cfg, cor, mostraBranding, W, FOTO_H, GRAD_TOPO, GRAD_BASE, fotoY: opts.formato === "quadrado" ? "30%" : undefined })}
+        {areaFoto({ foto, logoUri, logoFundo: opts.logoFundo, cfg, cor, mostraBranding, W, FOTO_H, GRAD_TOPO, GRAD_BASE, fotoY: opts.formato === "quadrado" ? "30%" : undefined })}
 
         {/* ── Painel de informações (base sólida — nunca cobre o carro) ── */}
         <div
