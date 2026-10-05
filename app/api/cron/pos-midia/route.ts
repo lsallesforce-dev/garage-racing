@@ -95,6 +95,7 @@ export async function GET(req: NextRequest) {
     .from("leads")
     .select("id, wa_id, nome, user_id, veiculo_id, status, em_atendimento_humano, instrucao_pendente")
     .in("id", leadIds)
+    .eq("canal", "whatsapp")   // os envios abaixo são de WhatsApp (ver migration 065)
     .in("status", ["FRIO", "MORNO", "QUENTE"])
     .eq("em_atendimento_humano", false)
     .is("instrucao_pendente", null);

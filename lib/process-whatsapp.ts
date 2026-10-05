@@ -15,6 +15,7 @@ import { sendAvisaMessage, sendAvisaImage, sendAvisaVideo, sendAvisaAudio } from
 import { gerarRelatorioPista } from "@/lib/leads";
 import { resolverVendedor } from "@/lib/lead-routing";
 import { classificarLead, liberaAutomatico, origemProvaLead, MAX_MSGS_PARA_CLASSIFICAR } from "@/lib/lead-gate";
+import { sendIgMessage, sendIgImage, sendIgVideo, igsidDoLead, ehLeadInstagram, type IgCreds } from "@/lib/instagram";
 import { transcreverAudioCliente } from "@/lib/transcribe";
 import { decryptWhatsAppAudio } from "@/lib/whatsapp-audio";
 import { decryptWhatsAppImage } from "@/lib/whatsapp-image";
@@ -217,6 +218,11 @@ export interface WhatsAppJobPayload {
   tenantUserId: string;
   garageConfig: GarageConfig | null;
   skipSend?: boolean;     // true quando wa_id é LID não resolvido — salva no DB mas não envia resposta
+  // Instagram (direct): `phone` vem como "ig:<IGSID>" e a resposta ao CLIENTE sai
+  // pelo Instagram. Alerta pro gerente continua no WhatsApp do tenant.
+  canal?: "whatsapp" | "instagram";
+  igCreds?: IgCreds | null;
+  igPerfil?: { nome: string | null; username: string | null } | null;
   adReferral?: {           // Click-to-WhatsApp: contexto do anúncio Meta Ads
     headline:    string | null;
     body:        string | null;
@@ -253,8 +259,28 @@ function buildBriefingVendedor(
 
   return {
     texto,
-    waLink: `https://wa.me/${phone.replace(/\D/g, "")}`,
+    waLink: linkDaConversa(phone),
   };
+}
+
+// Vai junto das instruções do dono quando a conversa é no direct. O resto do
+// prompt foi escrito pensando em WhatsApp; isto corrige só o que muda de fato.
+const INSTRUCAO_CANAL_INSTAGRAM =
+  "CANAL DESTA CONVERSA: Instagram (direct), não WhatsApp. O cliente está falando com a loja pelo Instagram: " +
+  "responda tudo aqui mesmo, com mensagens curtas. Não diga que está no WhatsApp nem peça pra ele chamar no WhatsApp " +
+  "sem motivo. Você não tem o telefone dele: se precisar (agendar visita, simular financiamento), peça o número com " +
+  "naturalidade. Não envie áudio.";
+
+/**
+ * Link que o gerente abre a partir de um alerta. Lead de WhatsApp → wa.me.
+ * Lead do Instagram não tem telefone: abre a conversa no Chat do AutoZap.
+ */
+function linkDaConversa(phone: string): string {
+  if (ehLeadInstagram(phone)) {
+    const base = (process.env.NEXT_PUBLIC_APP_URL || "https://www.autozap.digital").replace(/\/$/, "");
+    return `${base}/chat?wa_id=${encodeURIComponent(phone)}`;
+  }
+  return `https://wa.me/${phone.replace(/\D/g, "")}`;
 }
 
 // ─── Prompt Builder ───────────────────────────────────────────────────────────
@@ -1201,8 +1227,14 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   const useAvisa = !!avisaCreds.baseUrl && !!avisaCreds.token;
   const useMeta  = !useAvisa && !!metaCreds.phoneNumberId && !!metaCreds.accessToken;
 
+  // Instagram: só a conversa com o CLIENTE (to === phone) sai por lá. Qualquer
+  // outro destino — gerente, financeiro, vendedor — segue no WhatsApp do tenant.
+  const igCreds = job.canal === "instagram" ? job.igCreds ?? null : null;
+  const viaInstagram = !!igCreds && ehLeadInstagram(phone);
+  const paraIg = (to: string) => viaInstagram && to === phone;
+
   // Sem canal configurado → aborta imediatamente, sem chamar nada de Meta
-  if (!useAvisa && !useMeta) {
+  if (!useAvisa && !useMeta && !viaInstagram) {
     console.warn(`⚠️ [${phone}] Tenant ${tenantUserId} sem canal WhatsApp configurado (Avisa ou Meta) — mensagem ignorada`);
     return;
   }
@@ -1235,7 +1267,9 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
 
   const sendText = async (to: string, text: string): Promise<boolean> => {
     const errorRef: { message?: string } = {};
-    const r = useAvisa
+    const r = paraIg(to)
+      ? await sendIgMessage(igsidDoLead(to), text, igCreds!, undefined, errorRef)
+      : useAvisa
       ? await sendAvisaMessage(to, text, avisaCreds, undefined, errorRef)
       : await sendMetaMessage(to, text, metaCreds);
     const ok = r != null && r !== false;
@@ -1309,8 +1343,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
       console.log(`🔕 [Alerta suprimido] destino ${gerenteTo} é o próprio número do agente — ver no painel.`);
       return;
     }
-    const clienteClean = clientePhone.replace(/\D/g, "");
-    const waLink = `https://wa.me/${clienteClean}`;
+    const waLink = linkDaConversa(clientePhone);
     if (await alertaForaDaJanela(gerenteTo, body)) return;
     if (!useAvisa && metaCreds.phoneNumberId && metaCreds.accessToken) {
       return sendMetaCtaButton(gerenteTo, body, "Abrir Conversa", waLink, metaCreds)
@@ -1328,7 +1361,9 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   // tinha ficado de fora.)
   const sendImage = async (to: string, url: string, caption?: string): Promise<boolean> => {
     const errorRef: { message?: string } = {};
-    const r = useAvisa
+    const r = paraIg(to)
+      ? await sendIgImage(igsidDoLead(to), url, caption, igCreds!, errorRef)
+      : useAvisa
       ? await sendAvisaImage(to, url, caption, avisaCreds, errorRef)
       : await sendMetaImage(to, url, caption, metaCreds);
     const ok = r != null && r !== false;
@@ -1342,7 +1377,9 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   // o WhatsApp nunca recebeu (relato do Marcos 08/08). Mesma regra do sendAudio.
   const sendVideo = async (to: string, url: string, caption?: string): Promise<boolean> => {
     const errorRef: { message?: string } = {};
-    const r = useAvisa
+    const r = paraIg(to)
+      ? await sendIgVideo(igsidDoLead(to), url, caption, igCreds!, errorRef)
+      : useAvisa
       ? await sendAvisaVideo(to, url, caption, avisaCreds, errorRef)
       : await sendMetaVideo(to, url, caption, metaCreds);
     const ok = r != null && r !== false;
@@ -1352,8 +1389,12 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
 
   // Nota de voz. Os dois canais retornam boolean (false = não entregou) para o
   // chamador poder cair pra texto — voz nunca pode fazer o cliente ficar sem resposta.
+  // Instagram não aceita o ogg/opus do WhatsApp: devolve false e o chamador cai
+  // pra texto, que é o comportamento já previsto pra voz que não entrega.
   const sendAudio = (to: string, ogg: Buffer): Promise<boolean> =>
-    useAvisa
+    paraIg(to)
+      ? Promise.resolve(false)
+      : useAvisa
       ? sendAvisaAudio(to, ogg, avisaCreds)
       : sendMetaAudio(to, ogg, metaCreds);
 
@@ -1620,7 +1661,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   // coexistência) e isso disparava uma chamada perdida POR MENSAGEM, sempre
   // devolvendo "API access blocked" — um round-trip e uma linha vermelha de log
   // em cada atendimento da APROVE.
-  if (!useAvisa && job.messageId && metaCreds.phoneNumberId && metaCreds.accessToken) {
+  if (!useAvisa && !viaInstagram && job.messageId && metaCreds.phoneNumberId && metaCreds.accessToken) {
     markMetaRead(job.messageId, metaCreds).catch(() => {});
   }
 
@@ -1803,7 +1844,13 @@ Responda apenas com o JSON, sem markdown.`;
       }
     }
   }
-  if (adReferral?.headline && adReferral.headline.length > 3) {
+  if (viaInstagram) {
+    // Quem chama a loja no direct veio de um canal de venda: origem rastreada,
+    // não cai na heurística de portal abaixo.
+    upsertData.canal = "instagram";
+    upsertData.origem = "instagram";
+    if (job.igPerfil?.username) upsertData.ig_username = job.igPerfil.username;
+  } else if (adReferral?.headline && adReferral.headline.length > 3) {
     upsertData.origem_mensagem = `Lead do anúncio: ${adReferral.headline}`;
     upsertData.origem = "meta_ads";
     if (adReferral.ad_id) upsertData.origem_anuncio_id = adReferral.ad_id;
@@ -1849,6 +1896,13 @@ Responda apenas com o JSON, sem markdown.`;
     .single();
 
   const veiculoIdAnterior = lead?.veiculo_id ?? null;
+
+  // Instagram entrega o nome do perfil; só preenche quando o lead ainda não tem
+  // (o nome que o cliente disser na conversa vale mais e é gravado adiante).
+  if (viaInstagram && lead && !lead.nome && job.igPerfil?.nome) {
+    await supabaseAdmin.from("leads").update({ nome: job.igPerfil.nome }).eq("id", lead.id);
+    (lead as any).nome = job.igPerfil.nome;
+  }
 
   // ── AUTO STAND-BY removido ──
   // A IA responde todos os leads que não estejam explicitamente em atendimento humano.
@@ -3604,7 +3658,9 @@ Responda apenas com o JSON, sem markdown.`;
       clientePediuVideo: clientePediuVideo && !videoEnviado,
       midiaSendada: midiaSendadaLabel,
       tomVenda: garageConfig?.tom_venda,
-      instrucoesAdicionais: garageConfig?.instrucoes_adicionais,
+      instrucoesAdicionais: viaInstagram
+        ? [garageConfig?.instrucoes_adicionais, INSTRUCAO_CANAL_INSTAGRAM].filter(Boolean).join("\n\n")
+        : garageConfig?.instrucoes_adicionais,
       ofertaEspecial: garageConfig?.oferta_especial,
       horarioFuncionamento: garageConfig?.horario_funcionamento,
       diaSemanaAtual,

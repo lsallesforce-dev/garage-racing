@@ -110,7 +110,9 @@ export async function POST(req: NextRequest) {
 
     // 3. Notificar cada lead pelo canal correto
     const nomeCarro = `${veiculo.marca} ${veiculo.modelo}`;
-    const notificationPromises = leads.map((lead: any) => {
+    // Só WhatsApp: lead do Instagram ("ig:...") não tem telefone e, fora das 24h,
+    // a Meta não deixa a loja escrever pra ele.
+    const notificationPromises = leads.filter((lead: any) => !String(lead.wa_id).startsWith("ig:")).map((lead: any) => {
       const message = `Olá ${lead.nome || "Cliente"}! Passando para avisar que a ${nomeCarro} que você estava de olho acabou de ser vendida. Mas não se preocupe, a IA já está buscando outras opções parecidas para você no nosso estoque!`;
       if (useAvisa) {
         return sendAvisaMessage(lead.wa_id, message, { baseUrl: cfg!.avisa_base_url, token: cfg!.avisa_token });

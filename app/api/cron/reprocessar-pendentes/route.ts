@@ -82,6 +82,8 @@ export async function GET(req: NextRequest) {
         .maybeSingle();
 
       if (!lead || lead.em_atendimento_humano) { ignorados++; continue; }
+      // Lead do Instagram: o reenvio/reprocessamento daqui é de WhatsApp.
+      if (String(lead.wa_id).startsWith("ig:")) { ignorados++; continue; }
 
       const { data: cfg } = await supabaseAdmin
         .from("config_garage")
@@ -166,6 +168,8 @@ export async function GET(req: NextRequest) {
         .maybeSingle();
 
       if (!lead || lead.em_atendimento_humano) { ignorados++; continue; }
+      // Lead do Instagram: o reenvio/reprocessamento daqui é de WhatsApp.
+      if (String(lead.wa_id).startsWith("ig:")) { ignorados++; continue; }
 
       const { data: cfg } = await supabaseAdmin
         .from("config_garage")

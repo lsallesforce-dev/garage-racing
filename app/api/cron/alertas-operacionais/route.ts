@@ -190,7 +190,7 @@ export async function GET(req: NextRequest) {
         const enviado = await avisar(cfg, gerente,
           `⏰ *Lead esperando há ${horas}h*\n\n${quem}\n` +
           `Última mensagem foi dele e ninguém respondeu.\n` +
-          (cfg.handoff_ia_retoma === true ? `\n🤖 A IA reassumiu o atendimento.` : `\n👉 https://wa.me/${lead.wa_id}`),
+          (cfg.handoff_ia_retoma === true ? `\n🤖 A IA reassumiu o atendimento.` : `\n👉 ${String(lead.wa_id).startsWith("ig:") ? `https://www.autozap.digital/chat?wa_id=${encodeURIComponent(lead.wa_id)}` : `https://wa.me/${lead.wa_id}`}`),
         );
         if (enviado) resumo.handoffAvisados++;
       }

@@ -1,4 +1,5 @@
 import { sendMetaMessage } from "@/lib/meta";
+import { getIgCreds, sendIgMessage, igsidDoLead } from "@/lib/instagram";
 import { sendAvisaMessage } from "@/lib/avisa";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireLeadOwner, getEffectiveUserId } from "@/lib/api-auth";
@@ -17,6 +18,43 @@ export async function POST(req: NextRequest) {
     if (authError) return authError;
 
     const effectiveUserId = getEffectiveUserId(user!);
+
+    // Lead do Instagram: responde pelo direct, não pelo WhatsApp do tenant.
+    // Canal e destino vêm do BANCO — o `phone` do corpo não decide nada aqui.
+    const { data: leadRows } = await supabaseAdmin
+      .from("leads").select("wa_id, canal").eq("id", lead_id).limit(1);
+    const leadRow = leadRows?.[0];
+    if (leadRow?.canal === "instagram") {
+      const igCreds = await getIgCreds(effectiveUserId);
+      if (!igCreds) {
+        return NextResponse.json({ success: false, error: "Instagram não conectado. Reconecte o Facebook em Configurações." }, { status: 400 });
+      }
+      // Janela da Meta: 24h livres depois da última mensagem do cliente; até 7
+      // dias só como atendimento humano (HUMAN_AGENT); depois disso, nada.
+      const { data: ult } = await supabaseAdmin
+        .from("mensagens").select("created_at")
+        .eq("lead_id", lead_id).eq("remetente", "usuario")
+        .order("created_at", { ascending: false }).limit(1);
+      const horas = ult?.[0]?.created_at
+        ? (Date.now() - new Date(ult[0].created_at).getTime()) / 3_600_000
+        : Infinity;
+      if (horas > 24 * 7) {
+        return NextResponse.json({
+          success: false,
+          error: "O Instagram só deixa responder até 7 dias depois da última mensagem do cliente. Essa conversa passou do prazo.",
+        }, { status: 400 });
+      }
+      const erro: { message?: string } = {};
+      const ok = await sendIgMessage(igsidDoLead(leadRow.wa_id), message, igCreds, { humanAgent: horas > 24 }, erro);
+      if (!ok) {
+        return NextResponse.json({ success: false, error: `O Instagram recusou o envio: ${erro.message ?? "erro desconhecido"}` }, { status: 502 });
+      }
+      await Promise.all([
+        supabaseAdmin.from("mensagens").insert({ lead_id, content: message, remetente: "agente", enviado_por_humano: true }),
+        supabaseAdmin.from("leads").update({ em_atendimento_humano: true, updated_at: new Date().toISOString() }).eq("id", lead_id),
+      ]);
+      return NextResponse.json({ success: true });
+    }
 
     // Busca credenciais do tenant — Avisa tem prioridade sobre Meta
     const { data: rows } = await supabaseAdmin

@@ -10,6 +10,7 @@
 // Quem grava cada valor:
 //   meta_ads      → app/api/webhook/meta + process-whatsapp (adReferral/CTWA)
 //   coexistencia  → app/api/webhook/meta (contato via coexistência)
+//   instagram     → lib/instagram-atendimento (direct e comentário no post)
 //   olx           → app/api/webhook/olx, olx/[garageId], olx-chat/[garageId]
 //   webmotors     → app/api/webhook/webmotors
 //   mercadolivre  → app/api/webhook/mercadolivre
@@ -51,6 +52,10 @@ export const ORIGENS: Record<string, OrigemCfg> = {
   coexistencia: {
     label: "WhatsApp Meta", emoji: "💬", bar: "bg-lime-500", bg: "bg-lime-50",
     text: "text-lime-600", badge: "bg-lime-50 text-lime-600 border-lime-200", hex: "#84cc16",
+  },
+  instagram: {
+    label: "Instagram", emoji: "📸", bar: "bg-pink-500", bg: "bg-pink-50",
+    text: "text-pink-600", badge: "bg-pink-50 text-pink-600 border-pink-200", hex: "#ec4899",
   },
   olx: {
     label: "OLX", emoji: "🟠", bar: "bg-orange-500", bg: "bg-orange-50",

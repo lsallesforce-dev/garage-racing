@@ -31,7 +31,11 @@ export async function GET(req: NextRequest) {
     // apaga; o Instagram exige essa permissão à parte.
     // As 4 de postagem orgânica foram aprovadas em App Review em 03/10/2026
     // (Advanced): qualquer lojista recebe os escopos, sem cargo no app.
-    scope:         "ads_management,pages_manage_ads,business_management,pages_show_list,pages_read_engagement,instagram_basic,pages_manage_posts,instagram_content_publish,instagram_manage_contents",
+    // Atendimento no Instagram (lib/instagram.ts): instagram_manage_messages =
+    // direct; instagram_manage_comments = comentários; pages_messaging =
+    // resposta privada a comentário; pages_manage_metadata = inscrever a Página
+    // no webhook. Em App Review — até aprovar, só quem tem cargo no app recebe.
+    scope:         "ads_management,pages_manage_ads,business_management,pages_show_list,pages_read_engagement,instagram_basic,pages_manage_posts,instagram_content_publish,instagram_manage_contents,instagram_manage_messages,instagram_manage_comments,pages_manage_metadata,pages_messaging",
     response_type: "code",
     state:         userId,
   });

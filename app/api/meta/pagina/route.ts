@@ -1,6 +1,7 @@
 // app/api/meta/pagina/route.ts
 // Lista páginas Facebook e ad accounts do tenant + salva página selecionada
 
+import { inscreverPaginaNoWebhook } from "@/lib/instagram";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase-admin";
@@ -93,7 +94,15 @@ export async function POST(req: NextRequest) {
     );
 
   if (dbErr) return NextResponse.json({ error: dbErr.message }, { status: 500 });
-  return NextResponse.json({ ok: true });
+
+  // Página com Instagram: inscreve no webhook pra o direct e os comentários
+  // chegarem. Não bloqueia o salvamento — quem conectou sem as permissões de
+  // atendimento continua usando anúncio e postagem normalmente.
+  let instagramWebhook: { ok: boolean; detalhe: string } | null = null;
+  if (instagramActorId) {
+    instagramWebhook = await inscreverPaginaNoWebhook({ pageId, pageToken: pageAccessToken, igId: instagramActorId });
+  }
+  return NextResponse.json({ ok: true, instagramWebhook });
 }
 
 // DELETE — sem ?id: desvincula o Meta Ads inteiro (limpa o token de Ads e

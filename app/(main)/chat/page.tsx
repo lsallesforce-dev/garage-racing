@@ -28,6 +28,9 @@ type Lead = {
   resumo_negociacao: string | null;
   updated_at: string;
   em_atendimento_humano: boolean;
+  // Lead do Instagram: wa_id é "ig:<id>", sem telefone (migration 065).
+  canal?: string | null;
+  ig_username?: string | null;
   // Modo lead-only (agente no celular pessoal do dono): null = aguardando decisão,
   // true = lead liberado, false = contato pessoal. Ver lib/lead-gate.ts.
   ia_liberada: boolean | null;
@@ -52,6 +55,13 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; dot: string 
   MORNO:    { label: "Morno",     color: "text-amber-600 bg-amber-50 border-amber-100",    dot: "bg-amber-400" },
   FRIO:     { label: "Frio",      color: "text-blue-600 bg-blue-50 border-blue-100",       dot: "bg-blue-400"  },
 };
+
+// O que aparece no lugar do telefone. Lead do Instagram não tem número: mostra o
+// @, e nunca o id cru ("ig:1784...").
+function contatoDoLead(l: { wa_id: string; canal?: string | null; ig_username?: string | null }): string {
+  if (l.canal === "instagram") return l.ig_username ? `@${l.ig_username}` : "Instagram";
+  return l.wa_id;
+}
 
 // De onde o lead veio (campo `origem`) — mapa único em lib/origens.ts, o mesmo
 // usado pelo dashboard e pela página /origem-leads.
@@ -396,7 +406,7 @@ function CentralChatInner() {
 
   const excluirConversa = async () => {
     if (!selectedLead) return;
-    if (!confirm(`Excluir conversa com ${selectedLead.nome || selectedLead.wa_id}? Esta ação não pode ser desfeita.`)) return;
+    if (!confirm(`Excluir conversa com ${selectedLead.nome || contatoDoLead(selectedLead)}? Esta ação não pode ser desfeita.`)) return;
     await supabase.from("mensagens").delete().eq("lead_id", selectedLead.id);
     await supabase.from("leads").delete().eq("id", selectedLead.id);
     setLeads(prev => prev.filter(l => l.id !== selectedLead.id));
@@ -417,7 +427,12 @@ function CentralChatInner() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone: selectedLead.wa_id, message: texto, lead_id: selectedLead.id }),
       });
-      if (!res.ok) throw new Error("Falha ao enviar");
+      if (!res.ok) {
+        // O Instagram tem prazo pra responder (24h / 7 dias): o motivo vem do servidor.
+        const corpo = await res.json().catch(() => null);
+        if (corpo?.error) alert(corpo.error);
+        throw new Error(corpo?.error || "Falha ao enviar");
+      }
     } catch (err) {
       console.error(err);
       setInput(texto);
@@ -543,7 +558,7 @@ function CentralChatInner() {
                     <div className={`w-11 h-11 rounded-2xl flex items-center justify-center text-white font-black text-sm ${
                       lead.status === "PROBLEMA" ? "bg-red-600" : "bg-slate-900"
                     }`}>
-                      {(lead.nome || lead.wa_id).substring(0, 2).toUpperCase()}
+                      {(lead.nome || contatoDoLead(lead)).substring(0, 2).toUpperCase()}
                     </div>
                     {/* Dot status */}
                     <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${cfg.dot}`} />
@@ -553,7 +568,7 @@ function CentralChatInner() {
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between items-start gap-1">
                       <p className="text-[11px] font-black uppercase tracking-tight text-gray-900 truncate">
-                        {lead.nome || lead.wa_id}
+                        {lead.nome || contatoDoLead(lead)}
                       </p>
                       <span className="text-[8px] text-gray-400 font-bold flex-shrink-0 mt-0.5">
                         {lead.ultimaMensagem?.created_at
@@ -631,7 +646,7 @@ function CentralChatInner() {
 
               {/* Avatar */}
               <div className="w-11 h-11 rounded-2xl bg-slate-900 flex items-center justify-center text-white font-black text-sm flex-shrink-0">
-                {(selectedLead.nome || selectedLead.wa_id).substring(0, 2).toUpperCase()}
+                {(selectedLead.nome || contatoDoLead(selectedLead)).substring(0, 2).toUpperCase()}
               </div>
 
               {/* Info */}
@@ -640,8 +655,8 @@ function CentralChatInner() {
                   {selectedLead.nome || "Cliente Interessado"}
                 </h3>
                 <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                  <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">
-                    {selectedLead.wa_id}
+                  <p className={`text-[9px] font-bold text-gray-400 tracking-widest ${selectedLead.canal === "instagram" ? "" : "uppercase"}`}>
+                    {contatoDoLead(selectedLead)}
                   </p>
                   {statusCfg && (
                     <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full border ${statusCfg.color}`}>
@@ -764,15 +779,27 @@ function CentralChatInner() {
                 <Trash2 size={13} />
               </button>
 
-              <a
-                href={`https://wa.me/${selectedLead.wa_id}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 px-3 py-2 bg-green-500 text-white text-[9px] font-black uppercase rounded-xl hover:bg-green-600 transition-all shadow-lg shadow-green-500/20 whitespace-nowrap"
-              >
-                <Phone size={13} />
-                <span className="hidden lg:inline">WhatsApp</span>
-              </a>
+              {selectedLead.canal === "instagram" ? (
+                <a
+                  href={selectedLead.ig_username ? `https://www.instagram.com/${selectedLead.ig_username}/` : "https://www.instagram.com/direct/inbox/"}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 px-3 py-2 bg-pink-500 text-white text-[9px] font-black uppercase rounded-xl hover:bg-pink-600 transition-all shadow-lg shadow-pink-500/20 whitespace-nowrap"
+                >
+                  <span className="hidden lg:inline">Instagram</span>
+                  <span className="lg:hidden">IG</span>
+                </a>
+              ) : (
+                <a
+                  href={`https://wa.me/${selectedLead.wa_id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 px-3 py-2 bg-green-500 text-white text-[9px] font-black uppercase rounded-xl hover:bg-green-600 transition-all shadow-lg shadow-green-500/20 whitespace-nowrap"
+                >
+                  <Phone size={13} />
+                  <span className="hidden lg:inline">WhatsApp</span>
+                </a>
+              )}
             </div>
           </div>
 

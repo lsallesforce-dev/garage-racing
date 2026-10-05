@@ -65,6 +65,9 @@ interface GarageConfig {
   nome_usuario?: string;
   cargo_usuario?: string;
   endereco_convite_ativo?: boolean;
+  // Atendimento no Instagram (migration 065). Desligado por padrão.
+  ig_direct_ia?: boolean;
+  ig_comentarios_ia?: boolean;
   tom_venda?: string;
   instrucoes_adicionais?: string;
   horario_funcionamento?: string;
@@ -197,6 +200,19 @@ export default function ConfiguracoesPage() {
   const [metaAdAccounts, setMetaAdAccounts] = useState<any[]>([]);
   const [metaCarregado, setMetaCarregado] = useState(false);
   const [metaPaginaSalva, setMetaPaginaSalva] = useState<any | null>(null);
+
+  // Interruptores do Instagram salvam na hora (não dependem do botão Salvar da
+  // aba): ligar a IA num canal é uma decisão isolada. Se o banco recusar, volta.
+  const alternarInstagram = async (campo: "ig_direct_ia" | "ig_comentarios_ia") => {
+    if (!config.id) return;
+    const novo = !config[campo];
+    setConfig(c => ({ ...c, [campo]: novo }));
+    const { error } = await supabase.from("config_garage").update({ [campo]: novo }).eq("id", config.id);
+    if (error) {
+      setConfig(c => ({ ...c, [campo]: !novo }));
+      alert("Não consegui salvar. Tente de novo.");
+    }
+  };
   const [selectedPageId, setSelectedPageId] = useState("");
   const [selectedAdAccountId, setSelectedAdAccountId] = useState("");
   const [desvinculandoMeta, setDesvinculandoMeta] = useState(false);
@@ -226,6 +242,8 @@ export default function ConfiguracoesPage() {
     nome_usuario: "",
     cargo_usuario: "",
     endereco_convite_ativo: false,
+    ig_direct_ia: false,
+    ig_comentarios_ia: false,
     tom_venda: "",
     instrucoes_adicionais: "",
     horario_funcionamento: "",
@@ -771,6 +789,8 @@ export default function ConfiguracoesPage() {
               nome_usuario: row.nome_usuario ?? "",
               cargo_usuario: row.cargo_usuario ?? "",
               endereco_convite_ativo: row.endereco_convite_ativo ?? false,
+              ig_direct_ia: row.ig_direct_ia ?? false,
+              ig_comentarios_ia: row.ig_comentarios_ia ?? false,
               tom_venda: row.tom_venda ?? "",
               instrucoes_adicionais: row.instrucoes_adicionais ?? "",
               horario_funcionamento: row.horario_funcionamento ?? "",
@@ -2952,6 +2972,43 @@ export default function ConfiguracoesPage() {
                   >
                     {desvinculandoMeta ? "..." : "Desvincular"}
                   </button>
+                </div>
+              )}
+
+              {metaPaginaSalva && (
+                <div className="bg-white border border-gray-200 rounded-2xl p-4 space-y-3">
+                  <div>
+                    <p className="text-[11px] font-black uppercase tracking-widest text-gray-900">Atendimento no Instagram</p>
+                    <p className="text-[11px] text-gray-500 mt-1">
+                      As conversas do direct aparecem no Chat. Ligue a IA para ela responder sozinha.
+                    </p>
+                  </div>
+                  {([
+                    ["ig_direct_ia", "IA responde o direct", "Atende quem chama a loja no Instagram, como já faz no WhatsApp."],
+                    ["ig_comentarios_ia", "IA responde comentários", "Quem perguntar num post de carro recebe os dados no direct."],
+                  ] as const).map(([campo, titulo, ajuda]) => (
+                    <button
+                      key={campo}
+                      type="button"
+                      onClick={() => alternarInstagram(campo)}
+                      className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-2xl border transition text-left ${
+                        config[campo] ? "bg-red-50 border-red-200" : "bg-[#f5f5f3] border-gray-200"
+                      }`}
+                    >
+                      <span>
+                        <span className="block text-sm font-semibold text-gray-900">{titulo}</span>
+                        <span className="block text-[11px] text-gray-500">{ajuda}</span>
+                      </span>
+                      <span className={`shrink-0 w-10 h-6 rounded-full p-0.5 transition ${config[campo] ? "bg-red-500" : "bg-gray-300"}`}>
+                        <span className={`block w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${config[campo] ? "translate-x-4" : ""}`} />
+                      </span>
+                    </button>
+                  ))}
+                  <p className="text-[10px] text-gray-400">
+                    No app do Instagram, ative: Configurações → Mensagens e respostas ao story → Controles de mensagens →
+                    Ferramentas conectadas → Permitir acesso às mensagens. Se você conectou o Facebook antes desta
+                    função existir, clique em Reconectar.
+                  </p>
                 </div>
               )}
 

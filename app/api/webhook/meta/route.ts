@@ -20,6 +20,7 @@ import { buscarDadosLead } from "@/lib/meta-ads";
 import { sendMetaMessage, sendMetaCtaButton } from "@/lib/meta";
 import { sendAvisaMessage } from "@/lib/avisa";
 import { CONFIG_GARAGE_SELECT } from "@/lib/config-garage";
+import { processarWebhookInstagram } from "@/lib/instagram-atendimento";
 
 export const maxDuration = 300;
 
@@ -619,6 +620,14 @@ export async function POST(req: NextRequest) {
       payload = JSON.parse(rawBody);
     } catch {
       return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    }
+
+    // Instagram (direct e comentários) — objeto próprio, sem phone_number_id.
+    // Fica ANTES dos ramos de WhatsApp: o payload não tem `field: "messages"`
+    // dentro de `changes` e cairia no "ignored" lá embaixo.
+    if (payload?.object === "instagram") {
+      after(() => processarWebhookInstagram(payload));
+      return NextResponse.json({ status: "queued_instagram" });
     }
 
     // Leadgen event (Meta Lead Ads) — processa em background e retorna imediatamente

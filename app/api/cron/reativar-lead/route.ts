@@ -49,6 +49,11 @@ export async function POST(req: NextRequest) {
     .eq("user_id", tenantUserId)
     .single();
 
+  // Lead do Instagram não tem telefone e não pode receber mensagem fora das 24h.
+  if (lead && String(lead.wa_id).startsWith("ig:")) {
+    return NextResponse.json({ ok: true, skipped: "lead do Instagram" });
+  }
+
   if (!lead) {
     console.log(`[reativar-lead] Lead ${leadId} não encontrado — skip`);
     return NextResponse.json({ ok: true, skip: "lead_not_found" });

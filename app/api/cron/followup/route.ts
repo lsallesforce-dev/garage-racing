@@ -352,6 +352,9 @@ export async function GET(req: NextRequest) {
       resumo_negociacao, ultimo_followup, followup_count
     `)
     .in("status", ["FRIO", "MORNO", "QUENTE"])
+    // Só WhatsApp: no Instagram a Meta proíbe mensagem fora das 24h, e o wa_id
+    // desses leads ("ig:...") não é telefone.
+    .eq("canal", "whatsapp")
     .eq("em_atendimento_humano", false)
     .is("instrucao_pendente", null)   // não fazer follow-up se o gerente tem pergunta aberta
     .lt("followup_count", MAX_FOLLOWUPS)
