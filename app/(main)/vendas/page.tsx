@@ -9,7 +9,7 @@ import {
   X, Plus, Trash2, DollarSign, TrendingUp, TrendingDown,
   Package, ChevronDown, Check, Loader2, Users, ReceiptText,
   ArrowUpRight, ArrowDownRight, Car, Contact, FileSignature,
-  BarChart3, Lock, LockOpen, Printer, ChevronLeft, ChevronRight,
+  BarChart3, Lock, LockOpen, Printer, ChevronLeft, ChevronRight, Eye, EyeOff,
 } from "lucide-react";
 
 // Recharts carregado sob demanda — não bloqueia o bundle inicial da página
@@ -106,6 +106,9 @@ function fmtCompact(v: number) {
   if (Math.abs(v) >= 1_000) return `R$ ${(v / 1_000).toFixed(0)}k`;
   return fmt(v);
 }
+
+// Valor escondido pelo "olho" do financeiro (ver ModalSenha).
+const OCULTO = "R$ ••••";
 
 function parseNum(s: string): number | null {
   const n = parseFloat(s.replace(",", "."));
@@ -239,14 +242,16 @@ const ListaItens = forwardRef<ListaItensHandle, {
 // ─── SlideOver (detalhe do veículo) ───────────────────────────────────────────
 
 function SlideOver({
-  veiculo, vendedores, onClose, onReload,
+  veiculo, vendedores, oculto, onClose, onReload,
 }: {
   veiculo: Veiculo;
   vendedores: Vendedor[];
+  /** Olho fechado: só Despesas e Venda, sem custo de compra nem lucro. */
+  oculto: boolean;
   onClose: () => void;
   onReload: () => void;
 }) {
-  const [aba, setAba]     = useState<"aquisicao" | "despesas" | "receitas" | "venda" | "relatorio">("aquisicao");
+  const [aba, setAba]     = useState<"aquisicao" | "despesas" | "receitas" | "venda" | "relatorio">(oculto ? "despesas" : "aquisicao");
   const [saving, setSaving] = useState(false);
   const [saved,  setSaved]  = useState(false);
 
@@ -418,13 +423,14 @@ function SlideOver({
 
   const img     = veiculo.capa_marketing_url ?? veiculo.fotos?.[0];
   const vendido = veiculo.status_venda === "VENDIDO";
-  const abas    = [
+  const todasAbas = [
     { key: "aquisicao", label: "Aquisição" },
     { key: "despesas",  label: "Despesas"  },
     { key: "receitas",  label: "Receitas"  },
     { key: "venda",     label: "Venda"     },
     { key: "relatorio", label: "Relatório" },
   ] as const;
+  const abas = oculto ? todasAbas.filter((a) => a.key === "despesas" || a.key === "venda") : todasAbas;
 
   return (
     <>
@@ -473,11 +479,11 @@ function SlideOver({
         {/* Mini KPIs */}
         <div className="grid grid-cols-3 border-b border-gray-100 flex-shrink-0">
           {[
-            { label: "Compra",   value: fmt(parseNum(precoCompra)), color: "text-gray-900" },
+            { label: "Compra",   value: oculto ? OCULTO : fmt(parseNum(precoCompra)), color: "text-gray-900" },
             { label: "Despesas", value: fmt(despesas.reduce((s,d)=>s+d.valor,0) || null), color: "text-red-500" },
-            { label: lucro != null ? "Lucro" : "Venda",
-              value: lucro != null ? fmt(lucro) : fmt(parseNum(precoVenda)),
-              color: lucro != null ? (lucro >= 0 ? "text-green-600" : "text-red-500") : "text-gray-900" },
+            oculto || lucro == null
+              ? { label: "Venda", value: fmt(parseNum(precoVenda)), color: "text-gray-900" }
+              : { label: "Lucro", value: fmt(lucro), color: lucro >= 0 ? "text-green-600" : "text-red-500" },
           ].map((k) => (
             <div key={k.label} className="px-4 py-3 text-center border-r last:border-r-0 border-gray-100">
               <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">{k.label}</p>
@@ -864,13 +870,13 @@ function SlideOver({
                   <div className="space-y-1.5 pt-1 border-t border-gray-200">
                     <div className="flex justify-between text-xs">
                       <span className="text-gray-500">Lucro bruto</span>
-                      <span className={`font-black ${lucro != null ? (lucro >= 0 ? "text-green-600" : "text-red-500") : "text-gray-400"}`}>
-                        {fmt(lucro)}
+                      <span className={`font-black ${oculto ? "text-gray-400" : lucro != null ? (lucro >= 0 ? "text-green-600" : "text-red-500") : "text-gray-400"}`}>
+                        {oculto ? OCULTO : fmt(lucro)}
                       </span>
                     </div>
                     <div className="flex justify-between text-xs">
                       <span className="font-black text-gray-700">Comissão a pagar</span>
-                      <span className="font-black text-gray-900">{fmt(comissaoCalculada)}</span>
+                      <span className="font-black text-gray-900">{oculto ? OCULTO : fmt(comissaoCalculada)}</span>
                     </div>
                   </div>
                 </div>
@@ -1465,6 +1471,64 @@ function ModalRelatorios({
   );
 }
 
+// ─── Modal Senha (olho do financeiro) ─────────────────────────────────────────
+// A tela abre com lucro, custo e comissão escondidos; só despesas e valor de
+// venda ficam à vista. A senha é conferida no servidor (/api/financeiro/pin).
+
+function ModalSenha({ onOk, onClose }: { onOk: () => void; onClose: () => void }) {
+  const [pin, setPin]           = useState("");
+  const [erro, setErro]         = useState(false);
+  const [checando, setChecando] = useState(false);
+
+  async function conferir(e: React.FormEvent) {
+    e.preventDefault();
+    if (!pin || checando) return;
+    setChecando(true);
+    const res = await fetch("/api/financeiro/pin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pin }),
+    }).catch(() => null);
+    setChecando(false);
+    if (res?.ok) { onOk(); return; }
+    setErro(true); setPin("");
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-[2px] flex items-center justify-center p-4" onClick={onClose}>
+      <form onSubmit={conferir} onClick={(e) => e.stopPropagation()}
+        className="bg-white rounded-3xl p-6 w-full max-w-xs shadow-2xl space-y-4">
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 bg-gray-900 rounded-xl flex items-center justify-center">
+            <Lock size={15} className="text-white" />
+          </div>
+          <div>
+            <p className="font-black uppercase italic tracking-tight text-gray-900 leading-tight">Ver valores</p>
+            <p className="text-[10px] text-gray-400">Digite a senha do financeiro</p>
+          </div>
+        </div>
+        <input type="password" inputMode="numeric" autoComplete="off" autoFocus value={pin}
+          onChange={(e) => { setPin(e.target.value); setErro(false); }}
+          className={`w-full text-center tracking-[0.5em] px-4 py-3 border rounded-2xl text-lg font-black text-gray-900 focus:outline-none ${
+            erro ? "border-red-400" : "border-gray-200 focus:border-red-400"
+          }`}
+          placeholder="••••" />
+        {erro && <p className="text-[10px] font-bold text-red-500 text-center">Senha incorreta</p>}
+        <div className="flex gap-2">
+          <button type="button" onClick={onClose}
+            className="flex-1 py-3 border border-gray-200 text-gray-500 rounded-2xl text-[10px] font-black uppercase tracking-widest">
+            Cancelar
+          </button>
+          <button type="submit" disabled={!pin || checando}
+            className="flex-1 py-3 bg-gray-900 hover:bg-red-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-colors disabled:opacity-40 flex items-center justify-center gap-1.5">
+            {checando ? <Loader2 size={12} className="animate-spin" /> : <Eye size={12} />} Ver
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 // ─── Página Principal ─────────────────────────────────────────────────────────
 
 export default function VendasPage() {
@@ -1479,6 +1543,14 @@ export default function VendasPage() {
   const [verRelatorios,  setVerRelatorios]  = useState(false);
   const [verGraficos,    setVerGraficos]    = useState(false);
   const [fechamentoDate, setFechamentoDate] = useState("");
+
+  // Olho do financeiro: a tela SEMPRE abre fechada (some ao recarregar). Fechado,
+  // só despesas e valor de venda aparecem; o resto vira OCULTO e os atalhos pra
+  // relatório/gráfico/comissão pedem a senha antes de abrir.
+  const [aberto, setAberto] = useState(false);
+  const [senhaPara, setSenhaPara] = useState<(() => void) | null>(null);
+  const exigir = (acao: () => void) => (aberto ? acao() : setSenhaPara(() => acao));
+  const sec = (s: string) => (aberto ? s : OCULTO);
 
   // Vendedor não acessa o financeiro da loja — redireciona para a visão dele
   const router = useRouter();
@@ -1573,41 +1645,48 @@ export default function VendasPage() {
                 </h1>
               </div>
               <div className="flex items-center gap-2">
-                <button onClick={() => setVerGraficos(true)}
+                <button onClick={() => exigir(() => setVerGraficos(true))}
                   className="flex items-center gap-1.5 px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-full text-[10px] font-black uppercase tracking-widest transition-all">
                   <BarChart3 size={12} /> Gráficos
                 </button>
-                <button onClick={() => setVerRelatorios(true)}
+                <button onClick={() => exigir(() => setVerRelatorios(true))}
                   className="flex items-center gap-1.5 px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-full text-[10px] font-black uppercase tracking-widest transition-all">
                   <Printer size={12} /> Relatórios
                 </button>
-                <span className={`px-4 py-2 rounded-full text-xs font-black uppercase tracking-widest ${
-                  lucroMes >= 0 ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
-                }`}>
-                  {lucroMes >= 0 ? "▲" : "▼"} {margemMedia != null ? `${margemMedia.toFixed(1)}% margem` : "sem vendas"}
-                </span>
+                {aberto && (
+                  <span className={`px-4 py-2 rounded-full text-xs font-black uppercase tracking-widest ${
+                    lucroMes >= 0 ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
+                  }`}>
+                    {lucroMes >= 0 ? "▲" : "▼"} {margemMedia != null ? `${margemMedia.toFixed(1)}% margem` : "sem vendas"}
+                  </span>
+                )}
+                <button onClick={() => (aberto ? setAberto(false) : setSenhaPara(() => () => {}))}
+                  title={aberto ? "Esconder valores" : "Ver valores"}
+                  className="w-9 h-9 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center transition-all">
+                  {aberto ? <Eye size={15} /> : <EyeOff size={15} />}
+                </button>
               </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 md:gap-10">
               <div>
                 <p className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-2">Lucro Bruto do Mês</p>
-                <p className={`text-3xl md:text-4xl font-black tracking-tighter leading-none ${lucroMes >= 0 ? "text-green-400" : "text-red-400"}`}>
-                  {fmtCompact(lucroMes)}
+                <p className={`text-3xl md:text-4xl font-black tracking-tighter leading-none ${!aberto ? "text-white/40" : lucroMes >= 0 ? "text-green-400" : "text-red-400"}`}>
+                  {sec(fmtCompact(lucroMes))}
                 </p>
                 <p className="text-white/30 text-xs mt-1">veículos + outras receitas</p>
               </div>
               <div>
                 <p className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-2">Faturamento</p>
-                <p className="text-3xl md:text-4xl font-black tracking-tighter leading-none text-white">
-                  {fmtCompact(faturamentoMes)}
+                <p className={`text-3xl md:text-4xl font-black tracking-tighter leading-none ${aberto ? "text-white" : "text-white/40"}`}>
+                  {sec(fmtCompact(faturamentoMes))}
                 </p>
                 <p className="text-white/30 text-xs mt-1">{vendidosMes.length} venda{vendidosMes.length !== 1 ? "s" : ""} no mês</p>
               </div>
               <div>
                 <p className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-2">Acumulado {anoAtual}</p>
-                <p className={`text-3xl md:text-4xl font-black tracking-tighter leading-none ${lucroAnual >= 0 ? "text-white" : "text-red-400"}`}>
-                  {fmtCompact(lucroAnual)}
+                <p className={`text-3xl md:text-4xl font-black tracking-tighter leading-none ${!aberto ? "text-white/40" : lucroAnual >= 0 ? "text-white" : "text-red-400"}`}>
+                  {sec(fmtCompact(lucroAnual))}
                 </p>
                 <p className="text-white/30 text-xs mt-1">{mesesComDados.filter((m) => m.startsWith(anoAtual)).length} mês(es) com dados</p>
               </div>
@@ -1619,7 +1698,7 @@ export default function VendasPage() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {[
             {
-              label: "Estoque em Custo", value: fmt(totalEstoqueCusto),
+              label: "Estoque em Custo", value: sec(fmt(totalEstoqueCusto)),
               sub: `${estoque.length} veículos`, icon: Package, color: "blue" as const,
             },
             {
@@ -1627,9 +1706,9 @@ export default function VendasPage() {
               sub: "estoque + vendas", icon: TrendingDown, color: "red" as const,
             },
             {
-              label: "Comissões a Pagar", value: fmt(totalComissoesMes),
+              label: "Comissões a Pagar", value: sec(fmt(totalComissoesMes)),
               sub: `${vendedores.length} vendedor${vendedores.length !== 1 ? "es" : ""}`,
-              icon: Users, color: "amber" as const, onClick: () => setVerComissoes(true),
+              icon: Users, color: "amber" as const, onClick: () => exigir(() => setVerComissoes(true)),
             },
           ].map((k) => {
             const bg  = { blue: "bg-blue-50 border-blue-100", red: "bg-red-50 border-red-100", amber: "bg-amber-50 border-amber-100" };
@@ -1652,19 +1731,19 @@ export default function VendasPage() {
           {/* Card Outras Rec./Desp. — destaque por cor dinâmica */}
           <div
             className={`rounded-2xl border p-5 cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all ${
-              saldoGeral >= 0 ? "bg-green-50 border-green-200" : "bg-red-50 border-red-200"
+              !aberto ? "bg-gray-50 border-gray-200" : saldoGeral >= 0 ? "bg-green-50 border-green-200" : "bg-red-50 border-red-200"
             }`}
-            onClick={() => setVerGeral(true)}
+            onClick={() => exigir(() => setVerGeral(true))}
           >
             <div className="flex items-center justify-between mb-3">
               <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">Outras Rec./Desp.</p>
-              <button type="button" onClick={(e) => { e.stopPropagation(); setVerGeral(true); }}
+              <button type="button" onClick={(e) => { e.stopPropagation(); exigir(() => setVerGeral(true)); }}
                 className="w-8 h-8 bg-gray-900 hover:bg-red-600 text-white rounded-xl flex items-center justify-center transition-colors">
                 <Plus size={16} />
               </button>
             </div>
-            <p className={`text-xl font-black tracking-tighter ${saldoGeral >= 0 ? "text-green-700" : "text-red-600"}`}>
-              {fmt(saldoGeral)}
+            <p className={`text-xl font-black tracking-tighter ${!aberto ? "text-gray-900" : saldoGeral >= 0 ? "text-green-700" : "text-red-600"}`}>
+              {sec(fmt(saldoGeral))}
             </p>
             <p className="text-[10px] text-gray-400 mt-1">saldo geral</p>
             <p className="text-[8px] font-black uppercase tracking-widest text-gray-300 mt-2">clique para detalhes →</p>
@@ -1692,8 +1771,8 @@ export default function VendasPage() {
                   const ehAtual = m === mes;
                   return (
                     <div key={m} className="flex flex-col items-center gap-1 flex-shrink-0">
-                      <span className={`text-xs font-black whitespace-nowrap ${lucro >= 0 ? "text-green-600" : "text-red-500"}`}>
-                        {fmt(lucro)}
+                      <span className={`text-xs font-black whitespace-nowrap ${!aberto ? "text-gray-400" : lucro >= 0 ? "text-green-600" : "text-red-500"}`}>
+                        {sec(fmt(lucro))}
                       </span>
                       <span className={`text-[10px] font-bold capitalize whitespace-nowrap ${ehAtual ? "text-gray-700 font-black" : "text-gray-400"}`}>
                         {labelMes(m)}{ehAtual ? " ●" : ""}
@@ -1705,8 +1784,8 @@ export default function VendasPage() {
                 {/* Divisor + Total ano — sempre no final */}
                 <div className="w-px h-8 bg-gray-100 flex-shrink-0 ml-auto" />
                 <div className="flex flex-col items-center gap-1 flex-shrink-0">
-                  <span className={`text-xs font-black whitespace-nowrap ${lucroAnual >= 0 ? "text-green-600" : "text-red-500"}`}>
-                    {fmt(lucroAnual)}
+                  <span className={`text-xs font-black whitespace-nowrap ${!aberto ? "text-gray-400" : lucroAnual >= 0 ? "text-green-600" : "text-red-500"}`}>
+                    {sec(fmt(lucroAnual))}
                   </span>
                   <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 whitespace-nowrap">
                     Total {anoAtual}
@@ -1803,7 +1882,7 @@ export default function VendasPage() {
                       </div>
 
                       {/* Números — só desktop */}
-                      <p className="hidden md:block text-xs font-bold text-gray-600 text-right">{v.preco_compra ? fmt(v.preco_compra) : <span className="text-gray-300">—</span>}</p>
+                      <p className="hidden md:block text-xs font-bold text-gray-600 text-right">{v.preco_compra ? sec(fmt(v.preco_compra)) : <span className="text-gray-300">—</span>}</p>
                       <p className="hidden md:block text-xs font-bold text-right">
                         {despTotal > 0 ? <span className="text-red-500">{fmt(despTotal)}</span> : <span className="text-gray-300">—</span>}
                       </p>
@@ -1811,7 +1890,9 @@ export default function VendasPage() {
                         {v.preco_venda_final ? <span className="text-gray-800">{fmt(v.preco_venda_final)}</span> : <span className="text-gray-300">—</span>}
                       </p>
                       <div className="hidden md:flex flex-col items-end">
-                        {lucro != null ? (
+                        {lucro != null && !aberto ? (
+                          <span className="text-xs font-black text-gray-400">{OCULTO}</span>
+                        ) : lucro != null ? (
                           <>
                             <span className={`text-xs font-black ${lucro >= 0 ? "text-green-600" : "text-red-500"}`}>{fmt(lucro)}</span>
                             {margem != null && (
@@ -1838,7 +1919,7 @@ export default function VendasPage() {
             <div className="bg-white rounded-[2rem] border border-gray-100 p-6">
               <div className="flex items-center justify-between mb-3">
                 <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">Histórico</p>
-                <button onClick={() => setVerRelatorios(true)}
+                <button onClick={() => exigir(() => setVerRelatorios(true))}
                   className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-gray-400 hover:text-red-600 transition-colors">
                   <BarChart3 size={11} /> Relatórios
                 </button>
@@ -1855,7 +1936,7 @@ export default function VendasPage() {
                     const label = new Date(parseInt(ano), parseInt(mesNum) - 1, 1)
                       .toLocaleDateString("pt-BR", { month: "short", year: "2-digit" }).replace(".", "");
                     return (
-                      <button key={m} onClick={() => setVerRelatorios(true)}
+                      <button key={m} onClick={() => exigir(() => setVerRelatorios(true))}
                         className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl hover:opacity-80 transition-opacity ${
                           ehAtual ? "bg-blue-50" : "bg-gray-50"
                         }`}>
@@ -1869,12 +1950,12 @@ export default function VendasPage() {
                           </div>
                         </div>
                         <div className="flex items-center gap-1.5">
-                          {lucro >= 0
+                          {aberto && (lucro >= 0
                             ? <ArrowUpRight size={10} className="text-green-500" />
                             : <ArrowDownRight size={10} className="text-red-500" />
-                          }
-                          <p className={`text-xs font-black ${lucro >= 0 ? "text-green-600" : "text-red-500"}`}>
-                            {fmtCompact(lucro)}
+                          )}
+                          <p className={`text-xs font-black ${!aberto ? "text-gray-400" : lucro >= 0 ? "text-green-600" : "text-red-500"}`}>
+                            {sec(fmtCompact(lucro))}
                           </p>
                         </div>
                       </button>
@@ -1889,10 +1970,20 @@ export default function VendasPage() {
       {/* SlideOver */}
       {selecionado && (
         <SlideOver
+          // key: abrir/fechar o olho com o painel aberto remonta nas abas certas
+          key={`${selecionado.id}-${aberto}`}
           veiculo={selecionado}
           vendedores={vendedores}
+          oculto={!aberto}
           onClose={() => { setSelecionado(null); carregar(); }}
           onReload={carregar}
+        />
+      )}
+
+      {senhaPara && (
+        <ModalSenha
+          onOk={() => { const acao = senhaPara; setAberto(true); setSenhaPara(null); acao(); }}
+          onClose={() => setSenhaPara(null)}
         />
       )}
 
