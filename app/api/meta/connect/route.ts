@@ -31,11 +31,13 @@ export async function GET(req: NextRequest) {
     // apaga; o Instagram exige essa permissão à parte.
     // As 4 de postagem orgânica foram aprovadas em App Review em 03/10/2026
     // (Advanced): qualquer lojista recebe os escopos, sem cargo no app.
-    // Atendimento no Instagram (lib/instagram.ts): instagram_manage_messages =
-    // direct; instagram_manage_comments = comentários; pages_messaging =
-    // resposta privada a comentário; pages_manage_metadata = inscrever a Página
-    // no webhook. Em App Review — até aprovar, só quem tem cargo no app recebe.
-    scope:         "ads_management,pages_manage_ads,business_management,pages_show_list,pages_read_engagement,instagram_basic,pages_manage_posts,instagram_content_publish,instagram_manage_contents,instagram_manage_messages,instagram_manage_comments,pages_manage_metadata,pages_messaging",
+    // ⚠️ Escopo que ainda NÃO foi adicionado ao app no painel da Meta (Casos de
+    // uso → Permissões e recursos) derruba o login INTEIRO com "Invalid Scopes"
+    // — não é ignorado. Foi o que desconectou a APROVE em 05/10. As de
+    // atendimento no Instagram (lib/instagram.ts) entram por META_SCOPES_EXTRAS
+    // só depois de adicionadas lá: instagram_manage_messages,
+    // instagram_manage_comments, pages_manage_metadata, pages_messaging.
+    scope:         ["ads_management,pages_manage_ads,business_management,pages_show_list,pages_read_engagement,instagram_basic,pages_manage_posts,instagram_content_publish,instagram_manage_contents", (process.env.META_SCOPES_EXTRAS ?? "").trim()].filter(Boolean).join(","),
     response_type: "code",
     state:         userId,
   });
