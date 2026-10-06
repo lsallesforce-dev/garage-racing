@@ -4,7 +4,7 @@
 // filtra o que é publicável e normaliza os campos free-text para exibição/facets.
 //
 // Regra de inclusão (clientes reais, sem demo/lixo):
-//   config_garage.plano <> 'demo' AND plano_ativo = true
+//   config_garage.plano <> 'demo' AND (plano_ativo = true OU trial ainda válido)
 //   veiculos.status_venda = 'DISPONIVEL' AND preco_sugerido > 0 AND tem foto
 
 import { supabaseAdmin } from "@/lib/supabase-admin";
@@ -39,19 +39,27 @@ export interface PortalCarro {
 
 interface LojaInfo { nome: string | null; slug: string | null; whatsapp: string | null }
 
+// Loja em TRIAL válido também entra: a vitrine dela já está no ar (assinaturaAtiva
+// aceita trial), então sumir só do portal era incoerente — e loja nova ver o
+// próprio estoque em /carros é parte do que ela está testando (LeMotors, 06/10).
+function lojaPublicavel(l: any): boolean {
+  if (l.plano === "demo" || l.bloqueado === true) return false;
+  const trialValido = !!l.trial_ends_at && new Date(l.trial_ends_at) > new Date();
+  return l.plano_ativo === true || trialValido;
+}
+
 // Busca o estoque publicável do portal, já normalizado e com a info da loja.
 export async function getPortalEstoque(): Promise<PortalCarro[]> {
   // 1) Tenants elegíveis (clientes reais, fora do demo). Dedup por user_id —
   //    config_garage pode ter mais de uma linha por user (ver CLAUDE.md).
   const { data: lojas } = await supabaseAdmin
     .from("config_garage")
-    .select("user_id, nome_empresa, vitrine_slug, whatsapp, whatsapp_agente")
-    .neq("plano", "demo")
-    .eq("plano_ativo", true);
+    .select("user_id, nome_empresa, vitrine_slug, whatsapp, whatsapp_agente, plano, plano_ativo, trial_ends_at, bloqueado")
+    .neq("plano", "demo");
 
   const lojaMap = new Map<string, LojaInfo>();
   for (const l of (lojas ?? []) as any[]) {
-    if (!l.user_id || lojaMap.has(l.user_id)) continue;
+    if (!l.user_id || lojaMap.has(l.user_id) || !lojaPublicavel(l)) continue;
     lojaMap.set(l.user_id, {
       nome: l.nome_empresa ?? null,
       slug: l.vitrine_slug ?? null,
@@ -150,9 +158,9 @@ export async function getPortalCarroDetalhe(id: string): Promise<PortalCarroDeta
   // Tenant tem que ser cliente real (não-demo, ativo) — senão não é publicável.
   const { data: lojas } = await supabaseAdmin
     .from("config_garage")
-    .select("nome_empresa, vitrine_slug, whatsapp, whatsapp_agente, plano, plano_ativo")
+    .select("nome_empresa, vitrine_slug, whatsapp, whatsapp_agente, plano, plano_ativo, trial_ends_at, bloqueado")
     .eq("user_id", v.user_id);
-  const lojaRow = (lojas ?? []).find((l: any) => l.plano !== "demo" && l.plano_ativo);
+  const lojaRow = (lojas ?? []).find(lojaPublicavel);
   if (!lojaRow) return null;
 
   const foto: string | null =
