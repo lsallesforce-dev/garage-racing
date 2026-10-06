@@ -8,9 +8,11 @@ import { geminiFlashSales, geminiFlashFallback, parseGeminiJson } from "@/lib/ge
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendMetaMessage, sendMetaImage, sendMetaVideo, sendMetaAudio, sendMetaCtaButton, markMetaRead, baixarMidiaMeta, sendMetaAlertaTemplate, sendMetaTemplate } from "@/lib/meta";
 import {
-  falaDeFinanciamento, recusaFinanciamento, extrairDadosFinanciamento, faltando, textoPedidoInicial,
-  textoPedidoRestante, TEXTO_COLETA_COMPLETA, lerColeta, salvarColeta, encerrarColeta,
+  falaDeFinanciamento, recusaFinanciamento, extrairDadosFinanciamento,
+  TEXTO_COLETA_COMPLETA, TEXTO_COLETA_ESCALADA, lerColeta, salvarColeta, encerrarColeta,
 } from "@/lib/financiamento-coleta";
+import { entenderFinanciamento, decidirTurno } from "@/lib/financiamento-entender";
+import { cidadeNaResposta } from "@/lib/municipios-br";
 import { sendAvisaMessage, sendAvisaImage, sendAvisaVideo, sendAvisaAudio } from "@/lib/avisa";
 import { gerarRelatorioPista } from "@/lib/leads";
 import { resolverVendedor } from "@/lib/lead-routing";
@@ -316,7 +318,7 @@ interface BuildPromptParams {
   agenteAutonomo?: boolean | null;
 }
 
-function buildSystemInstruction(p: BuildPromptParams): string {
+export function buildSystemInstruction(p: BuildPromptParams): string {
   // ── Layer 2: Tone ────────────────────────────────────────────────────────────
   const tomBlock = p.tomVenda
     ? `\n[TOM DE ATENDIMENTO CONFIGURADO PELO DONO DA LOJA]\n${p.tomVenda}\n`
@@ -515,7 +517,7 @@ ${roteiroEstadoCarro}
    a) PERGUNTA SIMPLES sobre se aceita troca ("aceita troca?", "vocês fazem troca?", "tem troca?", "trocam?"): confirme que sim e CONVIDE A ENVIAR FOTOS para uma pré-avaliação. Ex: "Aceitamos sim! A avaliação final é presencial, mas se quiser já adiantar, é só me mandar fotos do seu carro pra uma pré-avaliação." ⚠️ NÃO use precisa_instrucao.
    b) INTENÇÃO REAL de trocar ("tenho um HRV 2020 pra dar", "quero trocar meu carro X", "vou dar meu Y na troca", cliente forneceu o próprio veículo): confirme que aceita e PEÇA FOTOS do carro pra uma pré-avaliação. Ex: "Aceitamos seu [carro] na troca! A avaliação final é presencial. Pode me enviar fotos dele pra uma pré-avaliação?" NÃO precisa de precisa_instrucao — quando o cliente ENVIAR as fotos, o sistema já encaminha automaticamente pro setor de avaliação e avisa o time.
 6. VALOR DA TROCA: Nunca estime o valor do carro do cliente. Oriente que só é possível após avaliação do nosso avaliador presencial.
-7. FINANCIAMENTO: o sistema cuida desse assunto sozinho — ele pede ao cliente o valor de entrada, o CPF e a data de nascimento e manda pro gerente fazer a simulação. Se o assunto aparecer na sua resposta, diga APENAS que pra simulação você precisa desses três dados (entrada, CPF e data de nascimento). ⛔ PROIBIDO falar de: parcelar entrada, entrada no cartão, aprovação, análise de crédito, "nome sujo"/score, bancos, taxas, prazos, valor de parcela, "vir até a loja pra fazer a análise", "fazemos tudo na hora". Você NÃO sabe se o crédito vai passar — prometer isso gera cliente frustrado quando o banco recusa.
+7. FINANCIAMENTO: o sistema cuida desse assunto sozinho — ele pede ao cliente o valor de entrada, o CPF e a data de nascimento e manda pro gerente fazer a simulação. Se o assunto aparecer na sua resposta, diga APENAS que pra simulação você precisa desses três dados (entrada, CPF e data de nascimento). ⛔ PROIBIDO falar de: parcelar entrada, entrada no cartão, aprovação, análise de crédito, "nome sujo"/score, bancos, taxas, prazos, valor de parcela, "vir até a loja pra fazer a análise", "fazemos tudo na hora". Você NÃO sabe se o crédito vai passar — prometer isso gera cliente frustrado quando o banco recusa. Também NÃO invente etapa do processo (CNH, documentos, "etapa de cadastro", prazo de resposta): se o cliente falar disso, diga que o gerente orienta. Caso real: cliente disse "eu não tenho CNH" e a resposta foi "a CNH vemos na etapa de cadastro" — essa etapa não existe.
 7b. ENTREGA, LOGÍSTICA E STATUS DE PREPARO — PROIBIDO INVENTAR: Você NÃO sabe se a loja faz entrega, se o carro "está pronto", quando a documentação/preparação fica pronta, nem horários combinados de retirada — a menos que isso esteja EXPLÍCITO nas instruções da loja ou na conversa. NUNCA afirme "não fazemos entrega", "o carro está pronto", "pode buscar a partir das Xh" por conta própria. Nesses assuntos responda neutro — ex: "Vou confirmar esse detalhe com o pessoal aqui e já te retorno!" — e use precisa_instrucao descrevendo o que o cliente pediu (ex: "Cliente perguntou se entregamos em [cidade]"). Errar isso faz a loja contradizer o cliente minutos depois.
 8. NEGOCIAÇÃO E DESCONTO: Você não tem autorização para dar descontos finais pelo WhatsApp. Jogue para a gerência de forma natural ("Deixa eu ver o que consigo com meu gerente"). Não convide o cliente para a loja em TODAS as respostas — isso cansa e afasta.
    ▶ FUNIL DE AQUECIMENTO (siga esta ordem antes de chamar para visita):
@@ -534,6 +536,7 @@ ${roteiroEstadoCarro}
    ⚠️ CLIENTE DE OUTRA CIDADE — NUNCA DESISTA DO LEAD: Se o cliente disser que é de outra cidade/estado ou que "é longe", NUNCA desista ou se despeça. Muitos clientes viajam porque o preço compensa. Responda com confiança: "Ah, muitos clientes nossos vêm de fora justamente pelo preço — vale a viagem!" ou "A gente recebe gente de várias cidades. O Gol por R$ X compensa o deslocamento." Mantenha a conversa viva e continue vendendo.
    ⚠️ ONDE A LOJA FICA × ONDE O CLIENTE ESTÁ — duas coisas diferentes, não confunda:
    - Se o cliente perguntar "a loja é aqui em [lugar]?", "é em São Paulo?", "fica aqui?", NUNCA responda só "Sim" ou "Não". Diga a cidade E o estado da loja (ver CIDADE DA LOJA) e, se você ainda não sabe a cidade do cliente, pergunte. "São Paulo" pode ser o estado ou a capital. Ex: "Ficamos em ${p.cidadeGaragem || "[cidade da loja]"}. Você está em qual cidade?"
+   - CIDADE COM NOME DE GENTE: muitas cidades têm nome de pessoa (Valentim Gentil, José Bonifácio, Américo de Campos, Paulo de Faria, Bady Bassitt, Santa Adélia, Olímpia, Jales). Se você perguntou nome e cidade e a resposta é o nome de um município, isso é a CIDADE — não use como nome do cliente e não pergunte a cidade de novo; pergunte só o nome. Isso vale quando a resposta é SÓ o nome da cidade: se vier nome e cidade juntos (\"Marcos, de Mirassol\"), grave o nome normalmente em nome_cliente_extraido. Quando houver uma nota [SISTEMA: ...] dizendo que é município, siga a nota.
    - Quando você perguntou "de qual cidade?" e o cliente respondeu só com o nome da cidade da loja, isso é a cidade DELE — não responda "Isso, somos de [cidade]" como se ele tivesse perguntado da loja. Diga algo como "Ótimo, então fica pertinho!" e siga.
    - Se depois aparecer sinal contrário (ele fala de outra cidade, de "aqui em [outro lugar]", de viagem ou distância), pergunte UMA vez, direto: "Você está em qual cidade?". Isso muda tudo pra marcar a visita.
 9. CATEGORIA E ALTERNATIVAS (Cross-sell): SOMENTE ofereça outro carro se o carro pedido NÃO estiver no estoque. Se estiver disponível, mantenha o foco 100% nele até o final da conversa. É TERMINANTEMENTE PROIBIDO mencionar ou sugerir outro veículo enquanto o cliente estiver interessado no carro atual. Cross-sell deve respeitar categoria: cliente buscando Sedan → sugerir Sedan; cliente buscando SUV → sugerir SUV. NUNCA ofereça uma Pickup para quem perguntou sobre Sedan.
@@ -1194,16 +1197,19 @@ async function veiculosCitadosNoTexto(texto: string, tenantUserId: string): Prom
   return cands.filter((c) => c.temP2 || !comVersao.has(norm(c.p1))).map((c) => c.v) as Vehicle[];
 }
 
-/** Tira do começo da mensagem os blocos que o sistema injeta (anúncio, link),
- *  mesmo quando têm várias linhas. O texto do anúncio NÃO é fala do cliente. */
+/** Tira da mensagem os blocos que o sistema injeta (anúncio, link), mesmo com
+ *  várias linhas. O texto do anúncio NÃO é fala do cliente.
+ *
+ *  Em QUALQUER posição, não só no começo: a consolidação de rajada (passo 4c)
+ *  junta as mensagens com "\n", e o bloco do anúncio vai parar no meio
+ *  ("👍\n[Lead veio do anúncio: …facilitamos o financiamento…]\nOlá!"). A regex
+ *  ancorada no início deixava a legenda inteira passar como fala do cliente — o
+ *  lead da Carmatti que só disse "Tenho interesse no TORO!" recebeu de cara o
+ *  pedido de CPF, e o preço do anúncio virou "entrada" (04/10 e 05/10). */
 function semBlocosDeContexto(msg: string): string {
-  let t = msg;
-  for (let i = 0; i < 4; i++) {
-    const antes = t;
-    t = t.replace(/^\s*\[(?:Contexto do link|Lead veio do anúncio|Veículo identificado pelo anúncio)[\s\S]*?\]\s*/, "");
-    if (t === antes) break;
-  }
-  return t;
+  return msg
+    .replace(/\[(?:Contexto do link|Lead veio do anúncio|Veículo identificado pelo anúncio)[\s\S]*?\]\s*/g, "")
+    .trim();
 }
 
 // ─── Processamento Principal ──────────────────────────────────────────────────
@@ -2154,6 +2160,7 @@ Responda apenas com o JSON, sem markdown.`;
   // fallback Supabase (cache Redis frio), essas mensagens já estão na tabela e
   // apareceriam DE NOVO ali, duplicando o turno atual montado aqui.
   let idsConsolidadosNaRajada: Set<string> | null = null;
+  let rajadaSoColeta = false;
   if (lead?.id && mensagemUsuarioId) {
     const { data: ultimoAgente } = await supabaseAdmin
       .from("mensagens")
@@ -2178,11 +2185,29 @@ Responda apenas com o JSON, sem markdown.`;
 
     const minhaMensagemAindaPendente = listaPendentes.some((m) => m.id === mensagemUsuarioId);
     if (!minhaMensagemAindaPendente) {
-      console.log(`⏭️ [Rajada] Mensagem de ${phone} já coberta por outro job em andamento — não processo isoladamente.`);
-      await releaseLeadLock(tenantUserId, lead.id).catch(() => {});
-      return;
+      // Exceção: dado da coleta de financiamento. O 10d responde e SAI antes do
+      // 13d (checagem tardia), então a mensagem que chegou enquanto ele digitava
+      // não era relida por ninguém. Carmatti, 05/10: CPF às 14:30:09 e data às
+      // 14:30:22 — o job do CPF respondeu "só falta a data" às 14:30:27 e o job
+      // da data se achou "já coberto". A coleta mora no Redis e é incremental:
+      // processar esta mensagem sozinha é seguro.
+      const coletaAberta = garageConfig?.modo_repasse ? null : await lerColeta(tenantUserId, lead.id);
+      const dadoColeta = coletaAberta
+        ? extrairDadosFinanciamento(semBlocosDeContexto(userMessage || ""), {
+            temEntrada: !!coletaAberta.entrada,
+            soFaltaEntrada: !!(coletaAberta.cpf && coletaAberta.nascimento && !coletaAberta.entrada),
+          })
+        : null;
+      if (dadoColeta && (dadoColeta.cpf || dadoColeta.nascimento || dadoColeta.entrada)) {
+        rajadaSoColeta = true;
+        console.log(`🧵 [Rajada] Mensagem de ${phone} traz dado da coleta de financiamento — processo só ela.`);
+      } else {
+        console.log(`⏭️ [Rajada] Mensagem de ${phone} já coberta por outro job em andamento — não processo isoladamente.`);
+        await releaseLeadLock(tenantUserId, lead.id).catch(() => {});
+        return;
+      }
     }
-    if (listaPendentes.length > 1) {
+    if (!rajadaSoColeta && listaPendentes.length > 1) {
       userMessage = listaPendentes.map((m) => m.content).filter(Boolean).join("\n");
       idsConsolidadosNaRajada = new Set(listaPendentes.map((m) => m.id));
       console.log(`🧵 [Rajada] ${listaPendentes.length} mensagens consolidadas num turno só para ${phone}`);
@@ -2827,47 +2852,61 @@ Responda apenas com o JSON, sem markdown.`;
   }
 
   // ── 10d. Financiamento → coleta entrada, CPF e data de nascimento ────────────
-  // Sem Gemini: a IA não fala de condição de crédito (ver lib/financiamento-coleta).
-  // Detectou o assunto → pede os três dados. Enquanto a coleta está aberta,
-  // cada mensagem com dado é absorvida e só o que falta é cobrado. Completou →
-  // manda tudo pro gerente/financeiro e o lead vai pra atendimento humano.
-  // Mensagem que não traz dado nem fala de financiamento (pergunta do carro,
-  // "vou ver") segue o fluxo normal com a coleta ainda aberta.
+  // A IA não fala de condição de crédito (ver lib/financiamento-coleta): quem
+  // escreve a resposta são modelos fixos. O Gemini entra só pra LER a mensagem
+  // (lib/financiamento-entender) — classificar e extrair — porque regex sozinha
+  // respondia pergunta com lista de dados e abria coleta em frase que só citava
+  // "financeira".
+  // Detectou o assunto → pede os três dados. Coleta aberta → cada mensagem com
+  // dado é absorvida e só o que falta é cobrado. Completou → vai pro
+  // gerente/financeiro e o lead entra em atendimento humano. Travou (3 turnos
+  // sem dado novo, pergunta que não sabemos responder, ou a resposta sairia
+  // igual à anterior) → também vai pro gerente, com o que já tem.
+  // Mensagem que não é do assunto segue o fluxo normal com a coleta aberta.
   // Fora do modo repasse: lá o cliente é lojista e não financia.
   if (lead?.id && !skipSend && !garageConfig?.modo_repasse && mensagemClientePura) {
+    // Descrição de mídia ("[Cliente enviou uma imagem: Recibo de pagamento de
+    // financiamento…]") é anotação do sistema, não fala do cliente.
+    const textoFin = mensagemClientePura.replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim();
     const coletaAtual = await lerColeta(tenantUserId, lead.id);
-    // Desistiu ("não vamos financiar", "vou pagar à vista"): fecha a coleta e
-    // deixa o Gemini responder. Antes o radical "financ" reabria a cobrança.
-    const desistiu = recusaFinanciamento(mensagemClientePura);
-    if (desistiu && coletaAtual) {
-      await encerrarColeta(tenantUserId, lead.id);
-      console.log(`💳 [Financiamento] ${phone} — cliente desistiu do financiamento, coleta encerrada`);
-    }
-    const detectou = !desistiu && falaDeFinanciamento(mensagemClientePura);
-    if (!desistiu && (coletaAtual || detectou)) {
+    const gatilhoFin = !!textoFin && falaDeFinanciamento(textoFin);
+
+    if (textoFin && (coletaAtual || gatilhoFin)) {
+      const ultimaAgenteFin: string =
+        historico.filter((h: any) => h.role === "model").slice(-1)[0]?.parts?.[0]?.text ?? "";
       // CPF e nascimento já na mão: a última mensagem do agente pediu SÓ a entrada.
       const soFaltaEntrada = !!(coletaAtual?.cpf && coletaAtual?.nascimento && !coletaAtual?.entrada);
-      const ext = extrairDadosFinanciamento(mensagemClientePura, { soFaltaEntrada });
-      const trouxeDado = !!(ext.entrada || ext.cpf || ext.nascimento || ext.cpfInvalido);
-      if (detectou || trouxeDado) {
-        // Nunca pergunta a entrada duas vezes seguidas: se ela já foi pedida
-        // sozinha e a resposta não deu pra ler, vai pro gerente do jeito que o
-        // cliente escreveu. Ele tem CPF e nascimento, que é o que a simulação
-        // exige; a entrada ele acerta na conversa.
-        const entradaNaoLida = soFaltaEntrada && !ext.entrada
-          ? `não informada (cliente respondeu: "${mensagemClientePura.replace(/\s+/g, " ").trim().slice(0, 90)}")`
+      const leituraRegex = extrairDadosFinanciamento(textoFin, {
+        soFaltaEntrada,
+        temEntrada: !!coletaAtual?.entrada,
+      });
+      const entendimento = await entenderFinanciamento({
+        mensagem: textoFin,
+        ultimaMsgAgente: ultimaAgenteFin,
+        coleta: coletaAtual,
+      });
+      const decisao = decidirTurno({
+        textoFin,
+        coletaAtual,
+        ultimaMsgAgente: ultimaAgenteFin,
+        gatilho: gatilhoFin,
+        recusaPorRegex: recusaFinanciamento(textoFin),
+        leituraRegex,
+        entendimento,
+      });
+
+      if (decisao.acao === "desistiu") {
+        if (coletaAtual) await encerrarColeta(tenantUserId, lead.id);
+        console.log(`💳 [Financiamento] ${phone} — cliente não quer financiar${coletaAtual ? ", coleta encerrada" : ""}; segue pro fluxo normal`);
+      } else if (decisao.acao !== "seguir") {
+        const coleta = decisao.coleta;
+        const destinoFin = financeiroPhone || gerentePhone;
+        const veiculoFinTxt = veiculoPrincipal
+          ? `${veiculoPrincipal.marca} ${veiculoPrincipal.modelo}${veiculoPrincipal.ano ? ` ${veiculoPrincipal.ano}` : ""}`
           : null;
-        const coleta = {
-          ...(coletaAtual ?? { iniciadaEm: new Date().toISOString() }),
-          ...(ext.entrada ? { entrada: ext.entrada } : {}),
-          ...(entradaNaoLida ? { entrada: entradaNaoLida } : {}),
-          ...(ext.cpf ? { cpf: ext.cpf } : {}),
-          ...(ext.nascimento ? { nascimento: ext.nascimento } : {}),
-        };
-        const falta = faltando(coleta);
         let respFin: string;
 
-        if (falta.length === 0) {
+        if (decisao.acao === "completa") {
           respFin = TEXTO_COLETA_COMPLETA;
           const resumoFin =
             `Financiamento — fazer simulação. Entrada: ${coleta.entrada} · CPF: ${coleta.cpf} · Nascimento: ${coleta.nascimento}`;
@@ -2879,7 +2918,6 @@ Responda apenas com o JSON, sem markdown.`;
           }).eq("id", lead.id);
           await encerrarColeta(tenantUserId, lead.id);
 
-          const destinoFin = financeiroPhone || gerentePhone;
           // Cloud API com o gerente fora da janela de 24h: modelo transacional
           // próprio ("simulacao_financiamento", UTILITY) — o genérico
           // alerta_gerente a Meta reclassificou como MARKETING (caro e com
@@ -2889,16 +2927,13 @@ Responda apenas com o JSON, sem markdown.`;
             finViaTemplate = await sendMetaTemplate(destinoFin, "simulacao_financiamento", [
               garageConfig?.nome_fantasia || garageConfig?.nome_empresa || "loja",
               phone,
-              veiculoPrincipal ? `${veiculoPrincipal.marca} ${veiculoPrincipal.modelo}${veiculoPrincipal.ano ? ` ${veiculoPrincipal.ano}` : ""}` : "não informado",
+              veiculoFinTxt ?? "não informado",
               coleta.entrada!, coleta.cpf!, coleta.nascimento!,
             ], metaCreds);
           }
           if (destinoFin && !finViaTemplate) {
-            const veiculoLabelFin = veiculoPrincipal
-              ? `\n🚗 Interesse: ${veiculoPrincipal.marca} ${veiculoPrincipal.modelo}${veiculoPrincipal.ano ? ` ${veiculoPrincipal.ano}` : ""}`
-              : "";
             await sendAlertComLink(destinoFin,
-              `💳 *Financiamento — dados pra simulação*\n\n👤 ${lead.nome || "Cliente"}\n📱 +${phone}${veiculoLabelFin}` +
+              `💳 *Financiamento — dados pra simulação*\n\n👤 ${lead.nome || "Cliente"}\n📱 +${phone}${veiculoFinTxt ? `\n🚗 Interesse: ${veiculoFinTxt}` : ""}` +
               `\n\n💰 Entrada: ${coleta.entrada}\n📄 CPF: ${coleta.cpf}\n🎂 Nascimento: ${coleta.nascimento}` +
               `\n\n👉 Faça a simulação e responda o cliente. A IA está em stand-by nesse lead.`,
               phone
@@ -2906,11 +2941,40 @@ Responda apenas com o JSON, sem markdown.`;
           }
           console.log(`💳 [Financiamento] ${phone} — coleta completa, alerta disparado (entrega: ver [Alerta]), IA em stand-by`);
         } else {
-          respFin = coletaAtual
-            ? textoPedidoRestante(falta, !!ext.cpfInvalido && !coleta.cpf)
-            : textoPedidoInicial(falta);
-          await salvarColeta(tenantUserId, lead.id, coleta);
-          console.log(`💳 [Financiamento] ${phone} — coleta ${coletaAtual ? "em andamento" : "iniciada"}, falta: ${falta.join(", ")}`);
+          const { falta, pergunta: perguntaFin } = decisao;
+          if (decisao.acao === "escalar") {
+            respFin = TEXTO_COLETA_ESCALADA;
+            const rotulo: Record<string, string> = { entrada: "entrada", cpf: "CPF", nascimento: "data de nascimento" };
+            const jaTem = [
+              coleta.entrada ? `Entrada: ${coleta.entrada}` : null,
+              coleta.cpf ? `CPF: ${coleta.cpf}` : null,
+              coleta.nascimento ? `Nascimento: ${coleta.nascimento}` : null,
+            ].filter(Boolean).join(" · ") || "nada ainda";
+            const faltaTxt = falta.map((k) => rotulo[k] ?? k).join(", ");
+            const ultimaCli = textoFin.slice(0, 160);
+            await supabaseAdmin.from("leads").update({
+              em_atendimento_humano: true,
+              status: "QUENTE",
+              instrucao_pendente:
+                `Financiamento — a coleta automática não fechou. Já tem: ${jaTem}. Falta: ${faltaTxt}. Última mensagem: "${ultimaCli}"`,
+              instrucao_pendente_desde: new Date().toISOString(),
+            }).eq("id", lead.id);
+            await encerrarColeta(tenantUserId, lead.id);
+            if (destinoFin) {
+              await sendAlertComLink(destinoFin,
+                `💳 *Financiamento — cliente precisa de você*\n\n👤 ${lead.nome || "Cliente"}\n📱 +${phone}${veiculoFinTxt ? `\n🚗 Interesse: ${veiculoFinTxt}` : ""}` +
+                `\n\nEle quer simular, mas a coleta automática não fechou.` +
+                `\n✅ Já informou: ${jaTem}\n⏳ Falta: ${faltaTxt}\n💬 Última mensagem: "${ultimaCli}"` +
+                `\n\n👉 Assuma a conversa. A IA está em stand-by nesse lead.`,
+                phone
+              ).catch(() => {});
+            }
+            console.log(`💳 [Financiamento] ${phone} — coleta travou (semProgresso=${coleta.semProgresso}, pergunta=${perguntaFin ?? "-"}), passou pro gerente`);
+          } else {
+            respFin = decisao.resposta;
+            await salvarColeta(tenantUserId, lead.id, coleta);
+            console.log(`💳 [Financiamento] ${phone} — coleta ${coletaAtual ? "em andamento" : "iniciada"}, falta: ${falta.join(", ")}${perguntaFin ? `, pergunta=${perguntaFin}` : ""}`);
+          }
         }
 
         await sendText(phone, respFin);
@@ -2922,6 +2986,13 @@ Responda apenas com o JSON, sem markdown.`;
         return;
       }
     }
+  }
+
+  // Este job só passou do 4c porque trazia dado pra coleta de financiamento. Se
+  // o 10d não o consumiu, a mensagem já foi respondida por outro job: para aqui.
+  if (rajadaSoColeta && lead?.id) {
+    await releaseLeadLock(tenantUserId, lead.id).catch(() => {});
+    return;
   }
 
   // ── 11. Enviar Foto ─────────────────────────────────────────────────────────
@@ -3643,10 +3714,30 @@ Responda apenas com o JSON, sem markdown.`;
 
   // Determina saudação correta com base na hora de Brasília (timezone explícito — robusto em qualquer runtime)
   const horaBrasilia = parseInt(new Date().toLocaleString("pt-BR", { hour: "numeric", hour12: false, timeZone: "America/Sao_Paulo" }), 10);
+  // Se o cliente cumprimentou, devolve o MESMO cumprimento: às 04:25 ele disse
+  // "Bom dia" e o agente respondeu "Boa noite!" (APROVE, 06/10). O relógio só
+  // decide quando ele não disse nenhum.
+  const saudacaoDoCliente =
+    /\bbom dia\b/i.test(mensagemClientePura) ? "Bom dia" :
+    /\bboa tarde\b/i.test(mensagemClientePura) ? "Boa tarde" :
+    /\bboa noite\b/i.test(mensagemClientePura) ? "Boa noite" :
+    null;
   const saudacaoHoraria =
-    horaBrasilia >= 5 && horaBrasilia < 12 ? "Bom dia" :
+    saudacaoDoCliente ??
+    (horaBrasilia >= 5 && horaBrasilia < 12 ? "Bom dia" :
     horaBrasilia >= 12 && horaBrasilia < 18 ? "Boa tarde" :
-    "Boa noite";
+    "Boa noite");
+
+  // Cidade com nome de gente. O agente pergunta "com quem eu falo e de qual
+  // cidade?", o cliente responde "Valentim gentil" (município de SP) e o modelo
+  // grava "Valentim" como nome e pergunta a cidade de novo. A lista do IBGE
+  // resolve o que o modelo não sabe de cabeça.
+  const perguntouCidade = /\bcidade\b/i.test(ultimaMsgAgenteSozinha);
+  const cidadeDita = perguntouCidade ? cidadeNaResposta(mensagemClientePura, phone) : null;
+  const notaCidade = !cidadeDita ? "" : cidadeDita.forte
+    ? `\n[SISTEMA: "${cidadeDita.nome}" é um MUNICÍPIO de ${cidadeDita.uf}, mesmo estado do telefone do cliente. É a CIDADE dele, não o nome. NÃO pergunte a cidade de novo; se ainda não sabe o nome, pergunte só o nome. Use nome_cliente_extraido = null.]`
+    : `\n[SISTEMA: "${cidadeDita.nome}" também é nome de município (${cidadeDita.uf}). Você perguntou nome e cidade: a menos que seja claramente nome de pessoa, trate como a CIDADE e pergunte só o nome.]`;
+  if (cidadeDita) console.log(`🏙️ [Cidade] "${mensagemClientePura.slice(0, 40)}" bate com o município ${cidadeDita.nome}/${cidadeDita.uf} (forte=${cidadeDita.forte})`);
 
   // HORÁRIO DE FUNCIONAMENTO é uma string composta ("Seg a Sex das 8h às 18h,
   // Sab das 8h às 12h") e sem dizer qual dia é HOJE o modelo tem que adivinhar
@@ -3686,7 +3777,7 @@ Responda apenas com o JSON, sem markdown.`;
       agenteAutonomo: garageConfig?.agente_autonomo,
     });
 
-    const partsToGenerate: any[] = [{ text: userMessage }];
+    const partsToGenerate: any[] = [{ text: userMessage + notaCidade }];
     if (audioData) partsToGenerate.unshift({ inlineData: audioData });
 
     const historicoCorigido = fixHistoryLoops(historico, context);
@@ -3836,7 +3927,12 @@ Responda apenas com o JSON, sem markdown.`;
         }
 
         const nomeRaw = parsed.nome_cliente_extraido;
-        if (nomeRaw && nomeRaw.toLowerCase() !== "null" && lead && !nomeCliente) {
+        const semAcentoMin = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+        // "Valentim" extraído de "Valentim gentil": pedaço do nome da cidade.
+        const nomeEhCidade = !!cidadeDita?.forte && typeof nomeRaw === "string" &&
+          semAcentoMin(cidadeDita.nome).includes(semAcentoMin(nomeRaw));
+        if (nomeEhCidade) console.log(`🏙️ [Cidade] nome "${nomeRaw}" descartado — é parte do município ${cidadeDita!.nome}`);
+        if (nomeRaw && nomeRaw.toLowerCase() !== "null" && lead && !nomeCliente && !nomeEhCidade) {
           await supabaseAdmin.from("leads").update({ nome: nomeRaw }).eq("id", lead.id);
           // Atualiza agenda existente — substitui "Lead 1010" ou "(17) 99114-1010" pelo nome real
           // sem precisar do gerente editar manualmente.
@@ -4109,7 +4205,20 @@ Responda apenas com o JSON, sem markdown.`;
 
         const lista = [...citados];
         // Chute = exatamente 1 carro oferecido, e o cliente NUNCA o pediu
-        if (lista.length === 1 && !ditoPeloCliente.includes(lista[0])) {
+        // "T-Cross" × "t cross" × "tcross": o cliente escreve de qualquer jeito.
+        // Comparando a string crua, quem disse "Tenho interesse no T cross" e
+        // depois "O T Cross" levou "qual carro você tá procurando?" três vezes
+        // seguidas (Carmatti, 05/10, 5517997124735).
+        const ditoSolto = ditoPeloCliente.replace(/[^a-z0-9]+/g, " ");
+        const clientePediu = (tok: string) => {
+          const solto = tok.replace(/[^a-z0-9]+/g, " ").trim();
+          return ditoPeloCliente.includes(tok) || ditoSolto.includes(solto) ||
+            (solto.includes(" ") && ditoSolto.includes(solto.replace(/ /g, "")));
+        };
+        // Já fez essa pergunta na mensagem anterior: repetir não ajuda ninguém.
+        const jaPerguntouQualCarro =
+          /qual carro do nosso estoque voc[êe] t[áa] procurando/i.test(ultimaMsgAgenteSozinha);
+        if (lista.length === 1 && !clientePediu(lista[0]) && !jaPerguntouQualCarro) {
           console.warn(`🥅 [Guarda anti-chute] Lead sem carro definido recebeu oferta NÃO pedida do modelo "${lista[0]}". Resposta trocada por pergunta + vínculo desfeito.`);
           aiResponse = "Pra eu te passar os detalhes certinhos, me conta: qual carro do nosso estoque você tá procurando?";
           if (lead?.id) {

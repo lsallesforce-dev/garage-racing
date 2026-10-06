@@ -23,6 +23,8 @@ export type ColetaFinanciamento = {
   cpf?: string;         // 000.000.000-00
   nascimento?: string;  // dd/mm/aaaa
   iniciadaEm: string;
+  /** Turnos seguidos em que o cliente falou do assunto e não trouxe dado novo. */
+  semProgresso?: number;
 };
 
 // ─── Detecção ─────────────────────────────────────────────────────────────────
@@ -59,7 +61,7 @@ export function falaDeFinanciamento(texto: string): boolean {
 // 03/10, 553491426442).
 const RE_RECUSA = new RegExp(
   [
-    "n[ãa]o (vou|vamos|quero|queremos|preciso|precisamos|pretendo|penso em|tenho interesse em) (mais )?(de )?(fazer )?(o |a |um |uma )?(financ|parcel|simula)",
+    "n[ãa]o (vou|vamos|quero|queremos|quer|querem|preciso|precisamos|precisa|pretendo|pretende|penso em|tenho interesse em|tem interesse em) (mais )?(de )?(fazer )?(o |a |um |uma )?(financ|parcel|simula)",
     "(vou|vamos|quero|prefiro|pretendo) pagar [àa] vista",
     "(pago|pagamento|[ée]|ser[áa]|vai ser) [àa] vista",
     "sem financ",
@@ -99,7 +101,7 @@ const RE_SEM_ENTRADA_CURTA = /^(nada|zero|0|nenhuma?|n[ãa]o tenho|n[ãa]o tenho
 
 // ─── Extração ─────────────────────────────────────────────────────────────────
 
-function cpfValido(d: string): boolean {
+export function cpfValido(d: string): boolean {
   if (!/^\d{11}$/.test(d) || /^(\d)\1{10}$/.test(d)) return false;
   const dig = (n: number) => {
     let soma = 0;
@@ -115,7 +117,7 @@ const MESES: Record<string, number> = {
   jul: 7, ago: 8, set: 9, out: 10, nov: 11, dez: 12,
 };
 
-function dataValida(dia: number, mes: number, ano: number): string | null {
+export function dataValida(dia: number, mes: number, ano: number): string | null {
   if (ano < 100) ano += ano > 30 ? 1900 : 2000;
   const hoje = new Date();
   const idade = hoje.getFullYear() - ano;
@@ -125,7 +127,7 @@ function dataValida(dia: number, mes: number, ano: number): string | null {
   return `${String(dia).padStart(2, "0")}/${String(mes).padStart(2, "0")}/${ano}`;
 }
 
-function formatarReais(v: number): string {
+export function formatarReais(v: number): string {
   return `R$ ${new Intl.NumberFormat("pt-BR").format(Math.round(v))}`;
 }
 
@@ -138,7 +140,7 @@ export type Extraido = {
 
 export function extrairDadosFinanciamento(
   texto: string,
-  opts: { soFaltaEntrada?: boolean } = {},
+  opts: { soFaltaEntrada?: boolean; temEntrada?: boolean } = {},
 ): Extraido {
   const out: Extraido = {};
   let resto = ` ${texto || ""} `;
@@ -173,16 +175,30 @@ export function extrairDadosFinanciamento(
     }
   }
 
+  // Data colada, sem separador: "040465", "23081976" (APROVE, 06/10: o cliente
+  // mandou "040465" duas vezes e o agente repetiu a pergunta). Com 8 dígitos é
+  // data se fechar o calendário. Com 6 pode ser dinheiro ("150000"), então só
+  // vale com um sinal a mais: zero à esquerda, entrada já informada, ou a frase
+  // falar de nascimento.
+  if (!out.nascimento) {
+    const mCol = resto.match(/(?<![\d.,])(\d{2})(\d{2})(\d{4}|\d{2})(?![\d.,])/);
+    if (mCol) {
+      const d = dataValida(Number(mCol[1]), Number(mCol[2]), Number(mCol[3]));
+      const seis = mCol[0].length === 6;
+      const sinal = !seis || mCol[0].startsWith("0") || !!opts.temEntrada || /nasc|anivers|\bdata\b/i.test(resto);
+      if (d && sinal) { out.nascimento = d; resto = resto.replace(mCol[0], " "); }
+    }
+  }
+
   // Entrada.
   const baixo = resto.toLowerCase();
   const curta = baixo.trim().replace(/[.!?,;]+$/g, "").trim();
+  const temVeiculo = RE_ENTRADA_VEICULO.some((re) => re.test(baixo));
   if (
     RE_SEM_ENTRADA.some((re) => re.test(baixo)) ||
     (opts.soFaltaEntrada && RE_SEM_ENTRADA_CURTA.test(curta))
   ) {
     out.entrada = "sem entrada";
-  } else if (RE_ENTRADA_VEICULO.some((re) => re.test(baixo))) {
-    out.entrada = "veículo na troca";
   } else {
     // "R$ 10.000", "10 mil", "10k", "15.000,00", "5000"
     const mMil = baixo.match(/(?:r\$\s*)?(\d{1,3}(?:[.,]\d{1,3})?)\s*(mil|k)\b/);
@@ -195,9 +211,14 @@ export function extrairDadosFinanciamento(
     if (mMil) valor = Number(mMil[1].replace(",", ".")) * 1000;
     else if (mRs) valor = Number(mRs[1].replace(/\./g, ""));
     else if (mNum && (RE_CTX_ENTRADA.test(baixo) || baixo.trim().length <= 14)) {
-      valor = Number(mNum[1].replace(/\./g, ""));
+      const n = Number(mNum[1].replace(/\./g, ""));
+      // "tenho uma S10 2007 pra dar de entrada": 2007 é o ano do carro.
+      const pareceAno = temVeiculo && /^\d{4}$/.test(mNum[1]) && n >= 1950 && n <= 2035;
+      if (!pareceAno) valor = n;
     }
-    if (valor != null && valor >= 500 && valor <= 2_000_000) out.entrada = formatarReais(valor);
+    const emReais = valor != null && valor >= 500 && valor <= 2_000_000 ? formatarReais(valor) : null;
+    if (temVeiculo) out.entrada = emReais ? `veículo na troca + ${emReais}` : "veículo na troca";
+    else if (emReais) out.entrada = emReais;
   }
 
   return out;
@@ -217,23 +238,83 @@ const ROTULO: Record<string, string> = {
   nascimento: "🎂 sua *data de nascimento*",
 };
 
-/** Primeira mensagem da coleta. Não fala de condição, aprovação nem parcela. */
-export function textoPedidoInicial(falta: string[]): string {
-  const itens = falta.map((k) => ROTULO[k]).join("\n");
-  return `Consigo sim te ajudar com isso! Pra eu passar pro nosso gerente fazer a simulação, me manda por favor:\n\n${itens}`;
+// Respostas prontas pras perguntas que o cliente faz no meio da coleta. Nenhuma
+// fala de aprovação, taxa ou banco específico — isso é do gerente. Antes o
+// coletor respondia qualquer pergunta com a mesma lista ("Perfeito! Agora só
+// falta…"): LeMotors, 05/10, "Qual valor que precisa de entrada?".
+export type PerguntaFin =
+  | "entrada_minima" | "banco" | "parcela" | "presencial" | "documentos" | "restricao" | "outra";
+
+const RESPOSTA_PERGUNTA: Record<Exclude<PerguntaFin, "outra">, string> = {
+  entrada_minima:
+    "A entrada é você quem escolhe — dá pra simular com qualquer valor, até sem entrada.",
+  banco: "O banco e as condições o gerente te passa junto com a simulação.",
+  parcela:
+    "O valor da parcela sai na simulação: depende da entrada e do prazo, e o gerente te passa certinho.",
+  presencial:
+    "Não precisa vir até a loja pra simular: com esses dados o gerente faz e te retorna por aqui.",
+  documentos:
+    "Pra simulação eu só preciso desses dados. A documentação o gerente te orienta depois.",
+  restricao:
+    "Isso só dá pra saber na análise do banco, que o gerente faz com o seu CPF e a data de nascimento.",
+};
+
+const NOME_CAMPO: Record<string, string> = {
+  entrada: "a entrada",
+  cpf: "o CPF",
+  nascimento: "a data de nascimento",
+};
+
+function listar(itens: string[]): string {
+  return itens.length <= 1 ? itens.join("") : `${itens.slice(0, -1).join(", ")} e ${itens[itens.length - 1]}`;
 }
 
-/** Cobra só o que ainda falta. */
-export function textoPedidoRestante(falta: string[], cpfInvalido: boolean): string {
-  if (cpfInvalido && falta.includes("cpf")) {
-    const outros = falta.filter((k) => k !== "cpf").map((k) => ROTULO[k]);
-    return `Acho que o CPF veio com algum número trocado, confere pra mim?${outros.length ? `\n\nE também:\n${outros.join("\n")}` : ""}`;
+/**
+ * Monta a resposta do turno. Reconhece o que chegou ("Anotei…"), responde a
+ * pergunta se houve uma, e cobra só o que falta. "Perfeito!" some: ele saía
+ * mesmo quando o cliente não tinha mandado nada.
+ */
+export function montarRespostaColeta(p: {
+  primeira: boolean;
+  novos: Partial<Record<"entrada" | "cpf" | "nascimento", string>>;
+  falta: string[];
+  pergunta?: PerguntaFin | null;
+  cpfInvalido?: boolean;
+}): string {
+  const blocos: string[] = [];
+  // Perguntou da entrada e já disse a entrada na mesma mensagem: só anota.
+  const jaRespondeu = p.pergunta === "entrada_minima" && !!p.novos.entrada;
+  const respPergunta =
+    p.pergunta && p.pergunta !== "outra" && !jaRespondeu ? RESPOSTA_PERGUNTA[p.pergunta] : null;
+  if (respPergunta) blocos.push(respPergunta);
+
+  const chegou = (["entrada", "cpf", "nascimento"] as const).filter((k) => p.novos[k]);
+  const desc = chegou.map((k) => (k === "entrada" ? `a entrada (${p.novos.entrada})` : NOME_CAMPO[k]));
+  // Na primeira mensagem o "anotei" vai dentro da abertura, não antes dela.
+  const abertura = p.primeira && !respPergunta;
+  if (chegou.length && !abertura) blocos.push(`Anotei ${listar(desc)}. ✅`);
+  if (p.cpfInvalido && p.falta.includes("cpf")) {
+    blocos.push("Acho que o CPF veio com algum número trocado, confere pra mim?");
   }
-  const itens = falta.map((k) => ROTULO[k]);
-  return itens.length === 1
-    ? `Perfeito! Só falta ${ROTULO[falta[0]].replace(/^\S+\s/, "")} 🙂`
-    : `Perfeito! Agora só falta:\n\n${itens.join("\n")}`;
+
+  const itens = p.falta.map((k) => ROTULO[k]);
+  let pedido: string;
+  if (abertura) {
+    pedido = `Consigo sim te ajudar com isso!${chegou.length ? ` Já anotei ${listar(desc)}.` : ""} Pra eu passar pro nosso gerente fazer a simulação, me manda por favor:\n\n${itens.join("\n")}`;
+  } else if (itens.length === 1) {
+    pedido = chegou.length
+      ? `Só falta ${ROTULO[p.falta[0]].replace(/^\S+\s/, "")} 🙂`
+      : `Pra simulação só falta ${ROTULO[p.falta[0]].replace(/^\S+\s/, "")} 🙂`;
+  } else {
+    pedido = `${chegou.length ? "Agora só falta:" : "Pra simulação eu preciso de:"}\n\n${itens.join("\n")}`;
+  }
+  blocos.push(pedido);
+  return blocos.join("\n\n");
 }
+
+/** O coletor desistiu de insistir: o gerente assume com o que já tem. */
+export const TEXTO_COLETA_ESCALADA =
+  "Vou pedir pro nosso gerente te chamar por aqui pra fazer a simulação com você, combinado? 😊";
 
 export const TEXTO_COLETA_COMPLETA =
   "Recebi tudo, obrigado! Já passei pro nosso gerente fazer a simulação — ele te retorna por aqui com as condições. 😊";

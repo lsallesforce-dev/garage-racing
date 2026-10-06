@@ -206,6 +206,7 @@ useEffect(() => {
 8. `buildStockContext` (FOCO + ALTERNATIVAS) **+** `buildInventoryIndex` (lista completa de carros DISPONÍVEIS) — concatenados no contexto
 9. Carrega histórico **inteligente**: 2 primeiras msgs (saudação + nome) + 13 mais recentes, sem duplicatas (Redis → Supabase fallback)
 10. Interceptores: pós-venda → stand-by automático
+10d. **Coleta de financiamento** (`lib/financiamento-coleta.ts` + `lib/financiamento-entender.ts`) — pede entrada, CPF e nascimento e manda pro gerente; sai antes do Gemini principal (ver abaixo)
 11. Envio de foto (se pedido) — scoring ponderado por ano/modelo/marca, early return sem chamar Gemini. **Envia TODAS as fotos do veículo de uma vez** (teto de 30 só como sanidade), não repete pacote já enviado ao mesmo lead.
 11b. Envio de vídeo (se pedido) — mesma lógica de seleção de veículo. **Quem pediu foto leva o vídeo junto no mesmo turno automaticamente, se o carro tiver** (do MESMO veículo cujas fotos acabaram de sair) — sem pedido extra do cliente.
 12. **`fixHistoryLoops`** — injeta correção sintética antes do Gemini
@@ -226,6 +227,23 @@ Fix em duas pontas, sem fila nova nem sleep artificial — usa a própria tabela
 - **Passo 13d (tarde, logo antes de salvar/enviar):** relê de novo. Pega o caso que 4c não cobre — o job que SAIU NA FRENTE (ninguém segurando o lock ainda) e passou os ~9s do Gemini enquanto mensagens novas chegavam. Se surgiu mensagem fora do que este turno respondeu, descarta a resposta (não grava, não envia) — o próximo job, ao rodar seu próprio 4c, vê tudo pendente e consolida.
 - **Nunca descarta em 13d se o job já mandou foto/vídeo/ficha** (`fotoEnviada`/`videoEnviado`) — esse envio já é irreversível; descartar só o texto deixaria mídia órfã sem legenda.
 - O histórico (passo 9, fallback Supabase) exclui as mensagens já absorvidas na consolidação (`idsConsolidadosNaRajada`) para não duplicá-las no prompt.
+
+### Coleta de financiamento (passo 10d)
+
+A IA **não escreve** sobre crédito: a resposta vem de modelos fixos (`montarRespostaColeta`). O Gemini entra só pra **ler** a mensagem (`entenderFinanciamento` → JSON com intenção + dados); a decisão é a função pura `decidirTurno`, e o 10d só executa (envia, grava, alerta).
+
+- **Gatilho:** palavra-chave (`falaDeFinanciamento`) OU coleta aberta no Redis (`fin_coleta:<tenant>:<lead>`, 72h). A palavra-chave sozinha não abre coleta: a leitura da IA precisa confirmar (`intencao !== "outro"`). "Leilão de financeira", "não quer financiamento", descrição de imagem e legenda de anúncio não abrem.
+- **Leitura:** regex manda em CPF (dígito verificador) e data; a IA manda na entrada (entende "S10 2007" ≠ R$ 2.007). IA fora do ar → cai na regex + palavra-chave.
+- **Pergunta do cliente** ("qual valor precisa de entrada?", "qual banco?") → resposta pronta por tipo + o que falta. Nunca "Perfeito!" sem ter chegado dado.
+- **Nunca repete:** se a resposta sairia igual à última mensagem do agente, 3 turnos sem dado novo, ou pergunta fora do repertório com a coleta aberta → **escala pro gerente** com o que já tem (lead QUENTE + stand-by + alerta).
+- **Rajada:** mensagem com dado de coleta não é descartada no passo 4c (`rajadaSoColeta`) — o 10d sai antes do 13d, então ninguém relia a mensagem que chegou durante a digitação.
+- Testar mudança aqui com replay das conversas reais (`decidirTurno` é pura); regex nova sem replay já quebrou duas vezes.
+
+`semBlocosDeContexto` tira os blocos `[Lead veio do anúncio…]` em **qualquer posição**: a consolidação de rajada põe o bloco no meio da mensagem, e a legenda do anúncio ("facilitamos o financiamento", "R$ 95.900") virava fala do cliente.
+
+### Cidade com nome de gente
+
+`lib/municipios-br.ts` tem os 5.571 municípios (IBGE). Se o agente perguntou a cidade e a mensagem INTEIRA é um município, o turno do Gemini ganha uma nota `[SISTEMA: …]`; nome composto no mesmo estado do DDD (`forte`) também bloqueia a gravação de `nome_cliente_extraido` quando o nome extraído é pedaço da cidade ("Valentim" de "Valentim Gentil").
 
 ### Verdade do estoque — proteções em camadas
 
