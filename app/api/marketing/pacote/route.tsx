@@ -16,6 +16,7 @@ import { fotoParaCapa, loadCapaFont, logoParaCapa, renderCapa } from "@/lib/mark
 import { completarCapturas } from "@/lib/marketing-classificar";
 import { fotoDoFormato, montarCarrossel, type MarketingCapturas } from "@/lib/marketing-shotlist";
 import { montarSlidesCarrossel } from "@/lib/marketing-slide";
+import { subirMiniatura } from "@/lib/marketing-miniatura";
 import { garantirCallouts } from "@/lib/reel-callouts-ia";
 
 export const dynamic = "force-dynamic";
@@ -96,6 +97,7 @@ export async function POST(req: NextRequest) {
         .from("fotos-veiculos")
         .upload(key, png, { contentType: "image/png", upsert: true });
       if (upErr) throw new Error(`Upload da capa (${formato}) falhou: ${upErr.message}`);
+      await subirMiniatura(key, png);
       return supabaseAdmin.storage.from("fotos-veiculos").getPublicUrl(key).data.publicUrl;
     }
     const [capaUrl, storyUrl] = await Promise.all([renderEUpload("feed"), renderEUpload("story")]);

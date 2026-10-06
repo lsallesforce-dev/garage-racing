@@ -9,7 +9,7 @@
 
 import React, { useState } from "react";
 import { Loader2, Pencil, RotateCcw } from "lucide-react";
-import { miniatura } from "@/lib/veiculo-midia";
+import { miniatura, miniaturaFalhou } from "@/lib/veiculo-midia";
 
 type Slide = { url: string; arte: string; texto: string[]; automatico: string[]; editado: boolean };
 
@@ -122,7 +122,8 @@ export default function SlidesTextoEditor({
                 <div className="relative flex-shrink-0">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={miniatura(s.arte, 96) ?? s.arte}
+                    src={miniatura(s.arte) ?? s.arte}
+                    onError={miniaturaFalhou}
                     alt={`Slide ${i + 2}`}
                     loading="lazy"
                     decoding="async"

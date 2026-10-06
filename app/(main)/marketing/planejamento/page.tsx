@@ -25,7 +25,7 @@ import {
 import { supabase } from "@/lib/supabase";
 import { useUserRole } from "@/components/SidebarWrapper";
 import PublicarMetaButton from "@/components/PublicarMetaButton";
-import { COLUNAS_MIDIA, melhorFormato, midiaDoVeiculo, miniatura, type FormatoAnuncio, type VeiculoMidiaRow } from "@/lib/veiculo-midia";
+import { COLUNAS_MIDIA, melhorFormato, midiaDoVeiculo, miniatura, miniaturaFalhou, type FormatoAnuncio, type VeiculoMidiaRow } from "@/lib/veiculo-midia";
 
 // ─── Contrato do backend (GET /api/meta/planejamento) ────────────────────────
 
@@ -302,13 +302,13 @@ const FILTROS: { id: "todos" | "rascunho" | "agendado" | "ativos" | "encerrados"
 // ─── Miniatura ───────────────────────────────────────────────────────────────
 
 function Thumb({ url, lado = 44 }: { url: string | null | undefined; lado?: number }) {
-  // Artes do kit são PNG de ~1,7 MB — sempre a versão reduzida do Storage.
-  const src = miniatura(url, lado);
+  // Artes do kit são PNG de ~1,7 MB — sempre a miniatura gravada ao lado.
+  const src = miniatura(url);
   return (
     <div className="shrink-0 rounded-xl overflow-hidden bg-gray-100 flex items-center justify-center" style={{ width: lado, height: lado }}>
       {src
         // eslint-disable-next-line @next/next/no-img-element
-        ? <img src={src} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
+        ? <img src={src} onError={miniaturaFalhou} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
         : <Megaphone size={16} className="text-gray-300" />}
     </div>
   );

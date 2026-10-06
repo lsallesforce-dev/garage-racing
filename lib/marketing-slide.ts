@@ -17,6 +17,7 @@
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { distribuirOpcionais, encurtarOpcional, fotoParaCapa, renderSlide, type FotoCapa } from "@/lib/marketing-capa";
 import type { MarketingCfg } from "@/lib/marketing-kit";
+import { subirMiniatura } from "@/lib/marketing-miniatura";
 
 /** { url da foto crua: linhas do painel }. [] = slide sem opcional (recap nome + preço). */
 export type TextosSlides = Record<string, string[]>;
@@ -97,6 +98,7 @@ export async function montarSlidesCarrossel(opts: {
           console.warn("⚠️ [marketing-slide] upload falhou, usando foto crua:", error.message);
           return url;
         }
+        await subirMiniatura(key, png);
         return supabaseAdmin.storage.from("fotos-veiculos").getPublicUrl(key).data.publicUrl;
       } catch (e) {
         console.warn("⚠️ [marketing-slide] slide não renderizado:", String(e).slice(0, 160));

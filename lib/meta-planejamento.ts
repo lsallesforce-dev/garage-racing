@@ -295,9 +295,9 @@ export async function montarPlanejamento(userId: string, mesPedido?: string | nu
 
     const v = c.veiculo_id ? veiculos.get(c.veiculo_id) : null;
     const midia = v ? midiaDoVeiculo(v) : null;
-    const thumbVeiculo = midia ? miniatura(midia.capaKit ?? midia.fotoCrua, 64) : null;
+    const thumbVeiculo = midia ? miniatura(midia.capaKit ?? midia.fotoCrua) : null;
     // Reel: criativo_url é o VÍDEO — miniatura sai da capa do carro.
-    const thumb = (c.formato !== "reel" ? miniatura(c.criativo_url, 64) : null) ?? thumbVeiculo;
+    const thumb = (c.formato !== "reel" ? miniatura(c.criativo_url) : null) ?? thumbVeiculo;
 
     const gasto = n(c.gasto_total) ?? 0;
     const leads = n(c.leads_gerados) ?? 0;
