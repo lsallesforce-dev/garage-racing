@@ -540,7 +540,13 @@ export default function ConfiguracoesPage() {
     return () => window.removeEventListener("message", handleMessage);
   }, []);
 
-  const handleMetaEmbeddedSignup = async () => {
+  // Dois caminhos no MESMO wizard da Meta:
+  //   coexistencia → o número continua no WhatsApp Business do celular;
+  //   numero_novo  → o número vive só na Cloud API (não pode estar em app nenhum).
+  // O segundo existe porque a Meta barra alguns negócios na coexistência antes
+  // mesmo de pedir o número ("Selected business CoEx gate evaluation is
+  // missing", LeMotors 07/10) — e sem featureType essa checagem não roda.
+  const handleMetaEmbeddedSignup = async (modo: "coexistencia" | "numero_novo" = "coexistencia") => {
     loadFacebookSDK();
     // Aguarda até 3s o SDK inicializar antes de prosseguir
     if (!window.FB) {
@@ -637,7 +643,7 @@ export default function ConfiguracoesPage() {
           // Coexistência: conecta o número que JÁ roda no WhatsApp Business App do
           // celular (app + Cloud API juntos, histórico sincronizado). Sem isso, o
           // fluxo pediria um número novo/migração. sessionInfoVersion "3" é exigido.
-          featureType: "whatsapp_business_app_onboarding",
+          ...(modo === "coexistencia" ? { featureType: "whatsapp_business_app_onboarding" } : {}),
           sessionInfoVersion: "3",
         },
       },
@@ -2101,7 +2107,7 @@ export default function ConfiguracoesPage() {
               </div>
               <button
                 type="button"
-                onClick={handleMetaEmbeddedSignup}
+                onClick={() => handleMetaEmbeddedSignup("coexistencia")}
                 disabled={metaConnecting}
                 className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${
                   metaConnected
@@ -2118,6 +2124,19 @@ export default function ConfiguracoesPage() {
                 )}
               </button>
             </div>
+            <p className="text-[10px] text-gray-400 mt-2">
+              O botão acima mantém o WhatsApp Business no celular (coexistência). Se a Meta recusar o negócio, ou se o
+              número for só do agente,{" "}
+              <button
+                type="button"
+                onClick={() => handleMetaEmbeddedSignup("numero_novo")}
+                disabled={metaConnecting}
+                className="underline font-bold text-blue-600 hover:text-blue-800 disabled:opacity-50"
+              >
+                conecte como número novo
+              </button>
+              . Nesse caso o número não pode estar ativo em nenhum app do WhatsApp.
+            </p>
           </div>
         </div>
 
