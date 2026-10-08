@@ -12,6 +12,15 @@ export async function POST(req: NextRequest) {
   const { user_id, acao, valor } = await req.json();
   if (!user_id || !acao) return NextResponse.json({ error: "Parâmetros inválidos" }, { status: 400 });
 
+  // Senha do olho do financeiro: não mora em config_garage e ninguém lê — o
+  // reset só apaga o hash, e o cliente cria outra no próximo clique.
+  if (acao === "resetar_senha_financeiro") {
+    const { error } = await supabaseAdmin.from("financeiro_senha").delete().eq("user_id", user_id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    await logEventoAdmin(user_id, "resetar_senha_financeiro", "Senha do financeiro resetada");
+    return NextResponse.json({ ok: true });
+  }
+
   let update: Record<string, any> = {};
   // Evento pra timeline do tenant (admin_eventos) — logado após o update dar certo.
   let evento: { tipo: string; descricao: string; meta?: Record<string, unknown> } | null = null;

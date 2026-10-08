@@ -1474,15 +1474,32 @@ function ModalRelatorios({
 // ─── Modal Senha (olho do financeiro) ─────────────────────────────────────────
 // A tela abre com lucro, custo e comissão escondidos; só despesas e valor de
 // venda ficam à vista. A senha é conferida no servidor (/api/financeiro/pin).
+// Na primeira vez não existe senha: o dono cria ali mesmo (digita duas vezes).
 
 function ModalSenha({ onOk, onClose }: { onOk: () => void; onClose: () => void }) {
   const [pin, setPin]           = useState("");
   const [erro, setErro]         = useState(false);
   const [checando, setChecando] = useState(false);
+  // null = ainda perguntando ao servidor se a loja já tem senha
+  const [definida, setDefinida] = useState<boolean | null>(null);
+  const [confirma, setConfirma] = useState("");
+  const [msgErro, setMsgErro]   = useState("");
+  const criando = definida === false;
+
+  useEffect(() => {
+    fetch("/api/financeiro/pin")
+      .then((r) => r.json())
+      .then((d) => setDefinida(!!d?.definida))
+      .catch(() => setDefinida(true));
+  }, []);
 
   async function conferir(e: React.FormEvent) {
     e.preventDefault();
-    if (!pin || checando) return;
+    if (!pin || checando || definida === null) return;
+    if (criando) {
+      if (pin.length < 4) { setErro(true); setMsgErro("Use pelo menos 4 caracteres"); return; }
+      if (pin !== confirma) { setErro(true); setMsgErro("As duas senhas não são iguais"); setConfirma(""); return; }
+    }
     setChecando(true);
     const res = await fetch("/api/financeiro/pin", {
       method: "POST",
@@ -1491,7 +1508,11 @@ function ModalSenha({ onOk, onClose }: { onOk: () => void; onClose: () => void }
     }).catch(() => null);
     setChecando(false);
     if (res?.ok) { onOk(); return; }
-    setErro(true); setPin("");
+    const d = await res?.json().catch(() => null);
+    // 409 = outra aba criou a senha antes; passa a pedir a senha normal.
+    if (res?.status === 409) setDefinida(true);
+    setMsgErro(d?.error || (criando ? "Não foi possível salvar" : "Senha incorreta"));
+    setErro(true); setPin(""); setConfirma("");
   }
 
   return (
@@ -1503,25 +1524,40 @@ function ModalSenha({ onOk, onClose }: { onOk: () => void; onClose: () => void }
             <Lock size={15} className="text-white" />
           </div>
           <div>
-            <p className="font-black uppercase italic tracking-tight text-gray-900 leading-tight">Ver valores</p>
-            <p className="text-[10px] text-gray-400">Digite a senha do financeiro</p>
+            <p className="font-black uppercase italic tracking-tight text-gray-900 leading-tight">
+              {criando ? "Criar senha" : "Ver valores"}
+            </p>
+            <p className="text-[10px] text-gray-400">
+              {criando ? "Primeiro acesso: escolha a senha do financeiro" : "Digite a senha do financeiro"}
+            </p>
           </div>
         </div>
-        <input type="password" inputMode="numeric" autoComplete="off" autoFocus value={pin}
+        <input type="password" autoComplete="new-password" autoFocus value={pin}
           onChange={(e) => { setPin(e.target.value); setErro(false); }}
           className={`w-full text-center tracking-[0.5em] px-4 py-3 border rounded-2xl text-lg font-black text-gray-900 focus:outline-none ${
             erro ? "border-red-400" : "border-gray-200 focus:border-red-400"
           }`}
           placeholder="••••" />
-        {erro && <p className="text-[10px] font-bold text-red-500 text-center">Senha incorreta</p>}
+        {criando && (
+          <>
+            <input type="password" autoComplete="new-password" value={confirma}
+              onChange={(e) => { setConfirma(e.target.value); setErro(false); }}
+              className="w-full text-center tracking-[0.5em] px-4 py-3 border border-gray-200 focus:border-red-400 rounded-2xl text-lg font-black text-gray-900 focus:outline-none"
+              placeholder="••••" aria-label="Repita a senha" />
+            <p className="text-[10px] text-gray-400 text-center leading-relaxed">
+              Só você sabe essa senha — nem a AutoZap consegue ver. Se esquecer, peça o reset ao suporte.
+            </p>
+          </>
+        )}
+        {erro && <p className="text-[10px] font-bold text-red-500 text-center">{msgErro || "Senha incorreta"}</p>}
         <div className="flex gap-2">
           <button type="button" onClick={onClose}
             className="flex-1 py-3 border border-gray-200 text-gray-500 rounded-2xl text-[10px] font-black uppercase tracking-widest">
             Cancelar
           </button>
-          <button type="submit" disabled={!pin || checando}
+          <button type="submit" disabled={!pin || checando || definida === null || (criando && !confirma)}
             className="flex-1 py-3 bg-gray-900 hover:bg-red-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-colors disabled:opacity-40 flex items-center justify-center gap-1.5">
-            {checando ? <Loader2 size={12} className="animate-spin" /> : <Eye size={12} />} Ver
+            {checando ? <Loader2 size={12} className="animate-spin" /> : <Eye size={12} />} {criando ? "Criar" : "Ver"}
           </button>
         </div>
       </form>
