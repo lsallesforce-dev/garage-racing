@@ -74,6 +74,8 @@ function AssinarContent() {
   const [boletoResult, setBoletoResult] = useState<BoletoResult | null>(null);
   const [copied,       setCopied]       = useState(false);
   const [pixStatus,    setPixStatus]    = useState<"pendente" | "pago">("pendente");
+  // undefined = ainda checando a sessão; null = ninguém logado
+  const [emailLogado,  setEmailLogado]  = useState<string | null | undefined>(undefined);
 
   const [customer, setCustomer] = useState<Customer>({
     nome: "", email: "", documento: "", tipoDocumento: "cpf", telefone: "",
@@ -83,6 +85,7 @@ function AssinarContent() {
   useEffect(() => {
     import("@/lib/supabase").then(({ supabase }) => {
       supabase.auth.getUser().then(({ data }) => {
+        setEmailLogado(data.user?.email ?? null);
         if (!data.user) return;
         if (data.user.email)               setCustomer(c => ({ ...c, email: data.user!.email! }));
         if (data.user.user_metadata?.nome) setCustomer(c => ({ ...c, nome:  data.user!.user_metadata.nome }));
@@ -193,6 +196,12 @@ function AssinarContent() {
     }
   }
 
+  async function sair() {
+    const { supabase } = await import("@/lib/supabase");
+    await supabase.auth.signOut();
+    window.location.href = "/login";
+  }
+
   function copyText(text: string) {
     navigator.clipboard.writeText(text);
     setCopied(true);
@@ -297,6 +306,22 @@ function AssinarContent() {
   return (
     <div className="min-h-screen bg-[#efefed] py-12 px-4">
       <div className="max-w-xl mx-auto">
+
+        {/* Conta: sem isto, quem cai aqui logado (ou bloqueado) não tem como trocar de conta */}
+        {emailLogado !== undefined && (
+          <div className="flex items-center justify-end gap-3 mb-6 text-[10px] font-bold uppercase tracking-widest text-gray-400">
+            {emailLogado ? (
+              <>
+                <span className="truncate normal-case tracking-normal font-medium">{emailLogado}</span>
+                <button type="button" onClick={sair} className="text-gray-600 hover:text-red-600 transition-colors shrink-0">
+                  Sair
+                </button>
+              </>
+            ) : (
+              <a href="/login" className="text-gray-600 hover:text-red-600 transition-colors">Entrar</a>
+            )}
+          </div>
+        )}
 
         {/* Header */}
         <div className="text-center mb-10">
