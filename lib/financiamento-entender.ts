@@ -191,7 +191,15 @@ export function decidirTurno(p: {
   //    completando a data de nascimento) virava entrada de R$ 1.965 por cima
   //    dos R$ 10.000 já informados.
   const falaDeEntrada = /entrada|na troca|financi|sem nada|\br\$/i.test(p.textoFin);
-  if (entendimento?.intencao === "outro" || (coletaAtual?.entrada && !falaDeEntrada)) {
+  //  · a IA leu RECUSA — "não quero financiar, não quero troca, só compro no
+  //    dinheiro" (APROVE, 07/10, 5517991479554) casava "troca", virava entrada
+  //    "veículo na troca", a recusa deixava de valer por "ter trazido dado" e a
+  //    coleta abria pedindo CPF a quem queria pagar à vista. O cliente desistiu.
+  if (
+    entendimento?.intencao === "outro" ||
+    entendimento?.intencao === "desistiu" ||
+    (coletaAtual?.entrada && !falaDeEntrada)
+  ) {
     ext.entrada = undefined;
   }
 
