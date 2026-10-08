@@ -12,6 +12,7 @@ import {
   TEXTO_COLETA_COMPLETA, TEXTO_COLETA_ESCALADA, lerColeta, salvarColeta, encerrarColeta,
 } from "@/lib/financiamento-coleta";
 import { entenderFinanciamento, decidirTurno } from "@/lib/financiamento-entender";
+import { clienteEncerrouConversa } from "@/lib/conversa-encerrada";
 import { cidadeNaResposta } from "@/lib/municipios-br";
 import { sendAvisaMessage, sendAvisaImage, sendAvisaVideo, sendAvisaAudio } from "@/lib/avisa";
 import { gerarRelatorioPista } from "@/lib/leads";
@@ -2788,8 +2789,9 @@ Responda apenas com o JSON, sem markdown.`;
   // ── 10b. Cliente já comprou/troquei/resolvi → stand-by automático ─────────
   // Detecta frases como "já comprei", "já troquei", "já resolvi", "já fechei",
   // "já peguei outro" e coloca o agente em stand-by para evitar resposta robótica.
-  const CONVERSA_ENCERRADA_REALTIME = /\b(?:j[áa]\s+(?:compr[ei]|fechei|resolvi|troquei|peguei)|comprei\s+(?:outro|um)|n[ãa]o\s+(?:tenho|quero)\s+(?:mais\s+)?interesse|desist[io])\b/i;
-  if (CONVERSA_ENCERRADA_REALTIME.test(textoClientePosvenda) && lead) {
+  // Só frase inequívoca: "comprei um Civic" é o cliente contando do carro dele
+  // (ver lib/conversa-encerrada.ts).
+  if (clienteEncerrouConversa(textoClientePosvenda) && lead) {
     console.log(`⏭️ [real-time] ${phone} — cliente encerrou conversa: "${textoClientePosvenda.slice(0, 80)}"`);
 
     // Mensagem respeitosa de encerramento
