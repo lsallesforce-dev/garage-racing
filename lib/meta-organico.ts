@@ -307,9 +307,12 @@ export async function postarNoInstagram(p: {
       media_type: p.formato === "reels" ? "REELS" : "STORIES",
       video_url: p.videoUrl,
       // Story não leva legenda (o Instagram ignora); Reels leva.
-      ...(p.formato === "reels" ? { caption: p.legenda } : {}),
+      // share_to_feed: o Reels aparece também na grade do perfil, não só na aba Reels.
+      ...(p.formato === "reels" ? { caption: p.legenda, share_to_feed: true } : {}),
     });
-    await esperarContainer(c.id, p.pageToken, 90000);
+    // 90s bastava pro reel do kit (MP4 leve). Vídeo de celular subido no estoque
+    // (MOV de 70 MB+) leva mais pra Meta baixar e transcodificar. A rota tem 300s.
+    await esperarContainer(c.id, p.pageToken, 200000);
     const r = await publicarNoInstagram(p.igUserId, p.pageToken, c.id);
     return { mediaId: r.id, permalink: await linkDaMidia(r.id, p.pageToken) };
   }

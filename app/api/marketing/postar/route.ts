@@ -99,10 +99,12 @@ export async function POST(req: NextRequest) {
         : (midia.carrossel.length ? midia.carrossel : [midia.capaKit ?? midia.fotoCrua].filter(Boolean) as string[]);
 
     // Reels e story em vídeo usam o REEL do kit (midia.reel só vem preenchido
-    // quando o worker terminou: marketing_reel_status = "pronto").
-    const videoUrl = usaVideo(formato) ? midia.reel : null;
+    // quando o worker terminou: marketing_reel_status = "pronto"). Sem reel do
+    // kit, vale o vídeo que o lojista subiu no estoque — caso da loja que edita
+    // o vídeo por fora e só quer postar.
+    const videoUrl = usaVideo(formato) ? (midia.reel ?? midia.videoEstoque) : null;
     if (usaVideo(formato) && !videoUrl) {
-      return NextResponse.json({ error: "Este carro ainda não tem reel pronto — gere o reel antes." }, { status: 400 });
+      return NextResponse.json({ error: "Este carro ainda não tem vídeo — gere o reel ou suba um vídeo no estoque." }, { status: 400 });
     }
     if (!usaVideo(formato) && !imagens.length) {
       return NextResponse.json({ error: "Este carro não tem arte pronta — gere o Kit de Postagem antes." }, { status: 400 });

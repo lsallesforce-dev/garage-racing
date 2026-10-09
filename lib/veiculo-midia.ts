@@ -26,12 +26,13 @@ export type VeiculoMidiaRow = {
   marketing_reel_url?: string | null;
   marketing_reel_status?: string | null;
   marketing_legenda?: string | null;
+  video_url?: string | null;
 };
 
 /** Colunas a pedir no .select() — mantém as queries alinhadas com esta lib. */
 export const COLUNAS_MIDIA =
   "fotos, capa_marketing_url, marketing_capa_url, marketing_story_url, " +
-  "marketing_carrossel, marketing_reel_url, marketing_reel_status, marketing_legenda";
+  "marketing_carrossel, marketing_reel_url, marketing_reel_status, marketing_legenda, video_url";
 
 export type MidiaVeiculo = {
   /** Capa templatada do kit — 4:5, já com a marca da loja. */
@@ -42,6 +43,14 @@ export type MidiaVeiculo = {
   carrossel: string[];
   /** Reel pronto (null enquanto processando ou com erro). */
   reel: string | null;
+  /**
+   * Vídeo que o lojista subiu no estoque (`video_url`). Serve de Reels no post
+   * orgânico quando não há reel do kit: loja que edita o vídeo por fora não
+   * tinha como postar. NÃO entra em `formatosDisponiveis` — o anúncio pago
+   * continua exigindo o reel do kit, senão todo carro com vídeo cru passaria a
+   * pré-selecionar "reel".
+   */
+  videoEstoque: string | null;
   /** Foto sem tratamento — último recurso. */
   fotoCrua: string | null;
   /** Legenda gerada pelo kit — valor inicial do texto do anúncio. */
@@ -73,6 +82,7 @@ export function midiaDoVeiculo(v: VeiculoMidiaRow | null | undefined): MidiaVeic
 
   return {
     capaKit, storyKit, carrossel, reel, fotoCrua,
+    videoEstoque: limpar(v?.video_url),
     legenda: limpar(v?.marketing_legenda),
     imagemPadrao: capaKit ?? fotoCrua,
     formatosDisponiveis,

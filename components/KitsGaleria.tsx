@@ -534,7 +534,7 @@ export default function KitsGaleria() {
     { id: "sem_kit",    label: "Sem kit",      teste: (c) => !c.marketing_capa_url },
     { id: "nao_postado", label: "Não postado", teste: (c) => !!c.marketing_capa_url && noAr(c).length === 0 },
     { id: "no_ar",      label: "No ar",        teste: (c) => noAr(c).length > 0 },
-    { id: "reel",       label: "Com reel",     teste: (c) => c.marketing_reel_status === "pronto" },
+    { id: "reel",       label: "Com reel",     teste: (c) => c.marketing_reel_status === "pronto" || !!c.video_url },
   ];
   const termo = busca.trim().toLowerCase();
   const testeFiltro = FILTROS.find((f) => f.id === filtroKit)!.teste;
@@ -668,6 +668,8 @@ export default function KitsGaleria() {
           {visiveis.map((c) => {
             const temKit = !!c.marketing_capa_url;
             const reelPronto = c.marketing_reel_status === "pronto" && !!c.marketing_reel_url;
+            // Sem reel do kit, o vídeo subido no estoque serve pra postar como Reels.
+            const videoDoEstoque = !reelPronto && c.marketing_reel_status !== "processando" ? c.video_url : null;
             const vivos = noAr(c);
             const feedNoAr = vivos.filter((p) => p.formato === "feed");
             const reelsNoAr = vivos.filter((p) => p.formato === "reels");
@@ -962,10 +964,14 @@ export default function KitsGaleria() {
                 {/* ─── REEL ─── */}
                 {aba === "reel" && (
                   <div className="flex flex-col gap-2">
-                    {reelPronto ? (
+                    {reelPronto || videoDoEstoque ? (
                       <>
                         {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                        <video src={reelToProxy(c.marketing_reel_url!)} controls className="w-full max-h-[420px] rounded-xl border border-gray-100 bg-black" />
+                        <video src={reelToProxy(reelPronto ? c.marketing_reel_url! : videoDoEstoque!)} controls className="w-full max-h-[420px] rounded-xl border border-gray-100 bg-black" />
+                        {videoDoEstoque && (
+                          <p className="px-1 text-[10px] font-bold text-gray-400">Vídeo do estoque — vai pro Insta como está, sem edição do kit.</p>
+                        )}
+                        {reelPronto && (
                         <div className="flex items-center gap-2">
                           <button onClick={() => baixarReel(c)} disabled={!!baixando[c.id]} className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gray-100 py-2.5 text-[9px] font-black uppercase tracking-widest text-gray-600 hover:bg-gray-200 disabled:opacity-40">
                             {baixando[c.id] === "reel" ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} {baixando[c.id] === "reel" ? "Baixando..." : "Baixar reel"}
@@ -974,6 +980,7 @@ export default function KitsGaleria() {
                             {reelBusy[c.id] ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
                           </button>
                         </div>
+                        )}
 
                         {/* Reels fica no perfil pra sempre (anti-duplicado igual ao
                             feed); story some em 24h e pode repetir. */}
@@ -988,7 +995,7 @@ export default function KitsGaleria() {
                               className="flex items-center justify-center gap-1.5 rounded-xl bg-gray-900 py-2.5 text-[9px] font-black uppercase tracking-widest text-white hover:bg-red-600 disabled:opacity-50"
                             >
                               {postando[c.id] ? <Loader2 size={12} className="animate-spin" /> : <Film size={12} />}
-                              {postando[c.id] ? "Postando..." : "Postar como Reels"}
+                              {postando[c.id] ? "Postando..." : "Postar como Reels (aparece no feed)"}
                             </button>
                           ) : (
                             <div className="flex items-center justify-between gap-2 rounded-xl bg-emerald-50 px-3 py-2">
