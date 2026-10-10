@@ -24,6 +24,7 @@ import { decryptWhatsAppAudio } from "@/lib/whatsapp-audio";
 import { decryptWhatsAppImage } from "@/lib/whatsapp-image";
 import { sintetizarVoz, prepararTextoParaVoz } from "@/lib/tts";
 import { hybridVehicleSearch, findVehicleForMedia } from "@/lib/hybrid-search";
+import { calendarioDoAgente } from "@/lib/feriados-br";
 import { lerImagemDoCliente } from "@/lib/visao-imagem";
 import { urlVitrine } from "@/lib/repasse";
 import { logWebhookError } from "@/lib/error-log";
@@ -314,6 +315,8 @@ interface BuildPromptParams {
   ofertaEspecial?: string | null;
   horarioFuncionamento?: string | null;
   diaSemanaAtual?: string;
+  /** Data de hoje + feriados nacionais dos próximos dias (lib/feriados-br). */
+  calendario?: { hoje: string; feriados: string[] };
   modoRepasse?: boolean | null;
   enderecoConviteAtivo?: boolean | null;
   agenteAutonomo?: boolean | null;
@@ -651,6 +654,7 @@ ${p.enderecoGaragem ? `ENDEREÇO DA LOJA: ${p.enderecoGaragem}${p.enderecoComple
 ${p.cidadeGaragem ? `CIDADE DA LOJA: ${p.cidadeGaragem}` : ""}
 ${p.telefoneLojaDisplay ? `TELEFONE DA LOJA: ${p.telefoneLojaDisplay} — quando o cliente pedir para ligar ou perguntar o telefone, informe este número.` : ""}
 ${p.horarioFuncionamento ? `HOJE É ${p.diaSemanaAtual?.toUpperCase()}.\nHORÁRIO DE FUNCIONAMENTO: ${p.horarioFuncionamento}\n⚠️ REGRA DE AGENDAMENTO: o horário acima pode ter partes diferentes por dia (ex: um horário de Seg a Sex, outro no Sábado). Use SEMPRE a parte que corresponde ao dia informado em "HOJE É" quando falar de "hoje" — nunca misture com o horário de outro dia. NUNCA confirme visita em dia ou horário fora do expediente. Se o cliente propuser um horário fora do expediente (ex: domingo quando a loja não abre, ou 20h quando fecha às 18h), informe gentilmente e sugira o horário disponível mais próximo.` : ""}
+${p.calendario ? `DATA DE HOJE: ${p.calendario.hoje}.${p.calendario.feriados.length ? `\nFERIADOS NACIONAIS PRÓXIMOS: ${p.calendario.feriados.join("; ")}.\n⚠️ REGRA DE FERIADO: em feriado a loja NÃO abre, a menos que as instruções da loja digam que abre. Antes de dizer que a loja abre num dia ou de combinar visita, confira se o dia cai num feriado da lista. Se cair, avise que é feriado e sugira o dia útil seguinte. NUNCA confirme visita em feriado.` : ""}` : ""}
 ESTOQUE ESTRUTURADO:
 ${p.context}
 
@@ -2840,32 +2844,40 @@ Responda apenas com o JSON, sem markdown.`;
   // encaminhamos pro setor de avaliação, avisamos o gerente/avaliador e colocamos
   // em stand-by. O debounce de 45s garante 1 resposta + 1 alerta por sessão de fotos.
   if (lead?.id && (job.imageThumbnail || fotoBase64) && !printDeAnuncio) {
-    const respFoto = "Recebi suas fotos! 📸 Já passei para o nosso setor de avaliação — em breve a gente te retorna com a análise. 😊";
+    // A IA NÃO sai mais da conversa aqui. Antes o lead ia pra atendimento humano
+    // e, se o gerente não assumia, o cliente ficava falando sozinho — caso real
+    // (APROVE, 09/10, Ananias): mandou as fotos do Corsa às 22:16, escreveu mais
+    // duas mensagens e no dia seguinte "Viu carrinho? Tá respondendo bem? Fala
+    // comigo." sem resposta nenhuma. Agora o gerente é avisado, a IA diz que
+    // avisa quando tiver a resposta e segue atendendo.
+    const jaAguardaAvaliacao = /pr[ée]-avalia[çc][ãa]o de troca/i.test(String((lead as any).instrucao_pendente ?? ""));
+    const respFoto = jaAguardaAvaliacao
+      ? "Recebi mais essas! 📸 Já juntei com as outras pro nosso avaliador."
+      : "Recebi suas fotos! 📸 Já passei pro nosso avaliador e assim que ele me retornar eu te aviso por aqui. Enquanto isso, se tiver alguma dúvida, é só falar. 😊";
     await sendText(phone, respFoto);
     await supabaseAdmin.from("mensagens").insert({
       lead_id: lead.id, content: respFoto, remetente: "agente",
     });
 
     await supabaseAdmin.from("leads").update({
-      em_atendimento_humano: true,
       instrucao_pendente: carroDaFotoDoCliente
         ? `Cliente enviou fotos de um ${carroDaFotoDoCliente} para pré-avaliação de troca.`
         : "Cliente enviou fotos do veículo para pré-avaliação de troca.",
-      instrucao_pendente_desde: new Date().toISOString(),
+      instrucao_pendente_desde: (lead as any).instrucao_pendente_desde ?? new Date().toISOString(),
     }).eq("id", lead.id);
-    await setTrocaStandby(tenantUserId, lead.id);
 
-    if (gerentePhone) {
+    // Um alerta por avaliação pendente — o segundo lote de fotos não avisa de novo.
+    if (gerentePhone && !jaAguardaAvaliacao) {
       const veiculoLabelFoto = veiculoPrincipal ? `\n🚗 Interesse: ${veiculoPrincipal.marca} ${veiculoPrincipal.modelo}` : "";
       await sendAlertComLink(gerentePhone,
         `📸 *Fotos para avaliação*\n\n👤 ${lead.nome || phone}\n📱 Número: +${phone}${veiculoLabelFoto}` +
         `${carroDaFotoDoCliente ? `\n🔄 Na troca: ${carroDaFotoDoCliente}` : ""}` +
-        `\n\n👉 Cliente enviou fotos do carro para pré-avaliação de troca. Assuma para avaliar.`,
+        `\n\n👉 Cliente enviou fotos do carro para pré-avaliação de troca. Ele está aguardando o retorno — a IA segue atendendo enquanto isso. Assuma a conversa para passar a avaliação.`,
         phone
       ).catch(() => {});
     }
 
-    console.log(`📸 [Pré-avaliação] ${phone} — fotos recebidas, alerta disparado (entrega: ver [Alerta]), IA em stand-by`);
+    console.log(`📸 [Pré-avaliação] ${phone} — fotos recebidas, ${jaAguardaAvaliacao ? "avaliação já pendente (sem novo alerta)" : "alerta disparado (entrega: ver [Alerta])"}, IA segue atendendo`);
     if (lead?.id) await releaseLeadLock(tenantUserId, lead.id).catch(() => {});
     return;
   }
@@ -3818,6 +3830,7 @@ Responda apenas com o JSON, sem markdown.`;
       ofertaEspecial: garageConfig?.oferta_especial,
       horarioFuncionamento: garageConfig?.horario_funcionamento,
       diaSemanaAtual,
+      calendario: calendarioDoAgente(),
       modoRepasse: garageConfig?.modo_repasse,
       enderecoConviteAtivo: garageConfig?.endereco_convite_ativo,
       agenteAutonomo: garageConfig?.agente_autonomo,

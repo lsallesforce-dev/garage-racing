@@ -511,6 +511,7 @@ function extractFields(payload: any): {
   msgTimestamp?: number | null;
   adReferral?: { headline: string | null; body: string | null; source_type: string | null; ad_id: string | null; image_url?: string | null } | null;
   isClientImage?: boolean;
+  isSticker?: boolean;
 } {
   try {
     const entry   = payload?.entry?.[0];
@@ -555,8 +556,16 @@ function extractFields(payload: any): {
     // Foto: o media id vai no job pro process-whatsapp baixar a original (Vision,
     // painel, pré-avaliação de troca). A LEGENDA vira a mensagem — antes era
     // jogada fora e "esse ainda tá disponível?" chegava só como "[foto]".
-    const isClientImage = (msg.type === "image" || msg.type === "sticker") && !userMessage;
+    // Figurinha NÃO é foto. Entrava aqui como "[Cliente enviou foto(s) do
+    // veículo]" sem imagem nenhuma: a IA respondia "Recebi as fotos! A avaliação
+    // do seu carro é presencial...", marcava o lead como QUENTE e alertava o
+    // gerente de uma troca que não existe (APROVE, 10/10, 5517992571001 — um
+    // joinha depois de "qualquer coisa te aviso ok"). Agora é gravada no painel
+    // e a IA não responde: figurinha é acuse de recebimento.
+    const isSticker = msg.type === "sticker" && !userMessage;
+    const isClientImage = msg.type === "image" && !userMessage;
     const imageMediaId: string | null = msg.type === "image" ? (msg.image?.id ?? null) : null;
+    if (isSticker) userMessage = "[Cliente enviou uma figurinha]";
     if (isClientImage) {
       const legenda = String(msg.image?.caption ?? "").trim();
       userMessage = legenda || "[Cliente enviou foto(s) do veículo]";
@@ -596,7 +605,7 @@ function extractFields(payload: any): {
       return { phone: "", userMessage: "", fromMe: true, messageId: null, phoneNumberId, audioMediaId: null, isClientImage: false };
     }
 
-    return { phone, userMessage: userMessage.trim(), fromMe: false, messageId, phoneNumberId, audioMediaId, imageMediaId, msgTimestamp, adReferral, isClientImage };
+    return { phone, userMessage: userMessage.trim(), fromMe: false, messageId, phoneNumberId, audioMediaId, imageMediaId, msgTimestamp, adReferral, isClientImage, isSticker };
   } catch (e) {
     console.error("❌ Erro ao extrair campos do payload Meta:", e);
     return { phone: "", userMessage: "", fromMe: true, messageId: null, phoneNumberId: "", audioMediaId: null, isClientImage: false };
@@ -691,7 +700,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ status: "coexistencia_sync_queued" });
     }
 
-    const { phone, userMessage, fromMe, messageId, phoneNumberId, audioMediaId, imageMediaId, msgTimestamp, adReferral, isClientImage } = extractFields(payload);
+    const { phone, userMessage, fromMe, messageId, phoneNumberId, audioMediaId, imageMediaId, msgTimestamp, adReferral, isClientImage, isSticker } = extractFields(payload);
 
     // Responde 200 imediatamente (Meta requer resposta em < 20s ou vai reenviar)
     if (fromMe || !phone) {
@@ -809,7 +818,7 @@ export async function POST(req: NextRequest) {
         rawMessage: userMessage,
         ...(audioMediaId  ? { audioMediaId }  : {}),
         ...(imageMediaId  ? { imageMediaId }  : {}),
-        ...(atrasada      ? { skipSend: true } : {}),
+        ...(atrasada || isSticker ? { skipSend: true } : {}),
         ...(adReferral    ? { adReferral }     : {}),
         messageId,
         tenantUserId,
