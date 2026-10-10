@@ -3128,6 +3128,27 @@ Responda apenas com o JSON, sem markdown.`;
   const ultimaOfertaFoto  = /\b(foto|fotos|imagem|imagens)\b/i.test(ultimaMsgAgenteSozinha);
   const confirmacaoVideo  = ultimaOfertaVideo && !ultimaOfertaFoto;
 
+  // "Sim" só vira pedido de foto se a ÚLTIMA fala do agente falava de foto.
+  // Olhar as 3 últimas pegava oferta velha: o agente ofereceu fotos do Uno,
+  // depois listou "Palio, Gol e KTM" sem falar em foto, a cliente respondeu
+  // "Sim" e saíram 17 fotos do Gol (APROVE, 09/10). Legenda de mídia ("📷 Gol
+  // (3/17)", "🎥 ...", "Ver na vitrine...") não conta como fala.
+  const ultimaFalaAgente = historico
+    .filter((h: any) => h.role === "model")
+    .map((h: any) => String(h.parts?.[0]?.text ?? ""))
+    .filter((t: string) => t.trim() && !/^\s*(📷|🎥|Ver na vitrine)/.test(t))
+    .slice(-1)[0] ?? "";
+  const ultimaFalaOfereceuFoto = /\b(foto|fotos|imagem|imagens)\b/i.test(ultimaFalaAgente);
+  // Replay de 30 dias (APROVE + Carmatti): de 117 confirmações vagas que
+  // dispararam fotos, 26 respondiam outra coisa — "Ok" pro endereço, "OK
+  // obrigado", "Amanhã falo com vc ok", "Me manda a localização".
+  // Imperativo de envio ("manda do Voyage pra mim") segue valendo com a oferta
+  // em qualquer das 3 últimas falas — desde que não peça outra coisa.
+  const pedeEnvioDeMidia =
+    /\b(mand[ae]|envi[ae]|mostr[ae])\b/i.test(userMessage) &&
+    !/(localiza|endere[çc]|proposta|simula|valor|pre[çc]o|contato|n[úu]mero|telefone|ficha|tabela|parcela)/i.test(userMessage);
+  const confirmouOfertaDeFoto = ultimaFalaOfereceuFoto || (pedeEnvioDeMidia && agenteMencionouFoto);
+
   // Continuação implícita: "e da ranger?", "e o gol?", "e a strada?" após pedido de foto anterior
   // O cliente não repete a palavra "foto" mas está claramente continuando o pedido anterior
   // Exclusão: se a mensagem contém palavra de vídeo ("e tem vídeo?"), NÃO é continuação de foto
@@ -3167,7 +3188,7 @@ Responda apenas com o JSON, sem markdown.`;
     (temIntencaoFoto || mensagemSoFoto || gatilhosFoto.some((g) => mensagemLower.includes(g)) ||
       // Não ativar por confirmação vaga ("Ok/Sim") se há instrucao_pendente: o "Ok" pode
       // ser apenas um acuse de "entendi, vou aguardar" e não consentimento para mídia.
-      (msgConfirmacao && (clientePediuFotoAntes || agenteMencionouFoto) && !lead?.instrucao_pendente && !confirmacaoVideo) || continuacaoFoto ||
+      (msgConfirmacao && (clientePediuFotoAntes || confirmouOfertaDeFoto) && !lead?.instrucao_pendente && !confirmacaoVideo) || continuacaoFoto ||
       // Cliente pediu parte específica E agente mencionou foto recentemente → envia foto
       // (a menos que ele esteja perguntando o ESTADO da peça, não pedindo pra ver)
       (pedindoParteCarro && agenteMencionouFoto && !perguntaSobreEstado)) &&
@@ -3705,8 +3726,14 @@ Responda apenas com o JSON, sem markdown.`;
   let midiaSendadaLabel: string | null = null;
   if (fotoEnviada || videoEnviado) {
     const tipo = fotoEnviada && videoEnviado ? "Fotos e vídeo" : fotoEnviada ? "Fotos" : "Vídeo";
-    const veiculoLabel = veiculoPrincipal
-      ? `${veiculoPrincipal.marca} ${veiculoPrincipal.modelo}`
+    // O rótulo é do carro cujas fotos SAÍRAM, não do carro em foco. Caso real
+    // (APROVE, 09/10): em foco estava o Uno, as fotos enviadas foram do Gol
+    // Trendline (o que o agente tinha acabado de citar) e o texto saiu "Confere
+    // aí as fotos do Uno!". Na pergunta seguinte ("que carro é esse?") a IA
+    // repetiu "Uno 2021, R$ 47.990" pra quem estava olhando um Gol.
+    const veiculoDaMidia = veiculoDaFoto ?? veiculoPrincipal;
+    const veiculoLabel = veiculoDaMidia
+      ? `${veiculoDaMidia.marca} ${veiculoDaMidia.modelo}`
       : null;
     midiaSendadaLabel = veiculoLabel ? `${tipo} do ${veiculoLabel}` : tipo;
     console.log(`✅ Mídia enviada para ${phone} — Gemini vai gerar texto de acompanhamento.`);
