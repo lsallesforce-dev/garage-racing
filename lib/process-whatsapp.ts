@@ -540,7 +540,7 @@ ${roteiroEstadoCarro}
    - CIDADE COM NOME DE GENTE: muitas cidades têm nome de pessoa (Valentim Gentil, José Bonifácio, Américo de Campos, Paulo de Faria, Bady Bassitt, Santa Adélia, Olímpia, Jales). Se você perguntou nome e cidade e a resposta é o nome de um município, isso é a CIDADE — não use como nome do cliente e não pergunte a cidade de novo; pergunte só o nome. Isso vale quando a resposta é SÓ o nome da cidade: se vier nome e cidade juntos (\"Marcos, de Mirassol\"), grave o nome normalmente em nome_cliente_extraido. Quando houver uma nota [SISTEMA: ...] dizendo que é município, siga a nota.
    - Quando você perguntou "de qual cidade?" e o cliente respondeu só com o nome da cidade da loja, isso é a cidade DELE — não responda "Isso, somos de [cidade]" como se ele tivesse perguntado da loja. Diga algo como "Ótimo, então fica pertinho!" e siga.
    - Se depois aparecer sinal contrário (ele fala de outra cidade, de "aqui em [outro lugar]", de viagem ou distância), pergunte UMA vez, direto: "Você está em qual cidade?". Isso muda tudo pra marcar a visita.
-9. CATEGORIA E ALTERNATIVAS (Cross-sell): SOMENTE ofereça outro carro se o carro pedido NÃO estiver no estoque. Se estiver disponível, mantenha o foco 100% nele até o final da conversa. É TERMINANTEMENTE PROIBIDO mencionar ou sugerir outro veículo enquanto o cliente estiver interessado no carro atual. Cross-sell deve respeitar categoria: cliente buscando Sedan → sugerir Sedan; cliente buscando SUV → sugerir SUV. NUNCA ofereça uma Pickup para quem perguntou sobre Sedan.
+9. CATEGORIA E ALTERNATIVAS (Cross-sell): SOMENTE ofereça outro carro se o carro pedido NÃO estiver no estoque. Se estiver disponível, mantenha o foco 100% nele até o final da conversa. É TERMINANTEMENTE PROIBIDO mencionar ou sugerir outro veículo enquanto o cliente estiver interessado no carro atual. Cross-sell deve respeitar categoria: cliente buscando Sedan → sugerir Sedan; cliente buscando SUV → sugerir SUV. NUNCA ofereça uma Pickup para quem perguntou sobre Sedan. MOTO não é alternativa de carro: NUNCA ofereça moto para quem busca carro (nem como opção "mais em conta"), e NUNCA ofereça carro para quem busca moto.
    ⚠️ EXCEÇÃO DE PREÇO: Se o cliente perguntar o preço de um veículo que está na seção ALTERNATIVAS, responda o preço imediatamente — preço nunca é "dado faltante". Informe com naturalidade, ex: "O XEI 2016 está por R$ 85.000."
 10. PÓS-VENDA E PROBLEMAS (Triagem de Emergência): Se o cliente relatar defeito, problema mecânico ou usar palavras como "quebrou", "garantia" ou "oficina", mude o tom imediatamente para acolhedor e resolutivo. Nunca tente vender. Peça desculpas, identifique o veículo e avise que a gerência vai assumir o caso.
 11c. PRINT DE ANÚNCIO: Se a mensagem começa com "[Cliente mandou um PRINT de anuncio...]", o cliente capturou a tela de um anúncio NOSSO e está perguntando sobre ESSE carro — normalmente se ainda está disponível. Trate exatamente como se ele tivesse digitado o nome do carro: confirme que está disponível (se estiver no estoque), diga preço e km, e siga a conversa. ⛔ PROIBIDO tratar como avaliação de troca ou dizer que vai encaminhar para avaliação — o carro da imagem é NOSSO, não dele.
@@ -832,7 +832,7 @@ async function buildInventoryIndex(tenantUserId: string): Promise<string> {
   // existe. Por isso o `error` agora é lido e logado alto (ver abaixo).
   const { data, error } = await supabaseAdmin
     .from("veiculos")
-    .select("id, marca, modelo, ano, ano_modelo, cor, preco_sugerido")
+    .select("id, marca, modelo, ano, ano_modelo, cor, preco_sugerido, categoria")
     .eq("status_venda", "DISPONIVEL")
     .eq("user_id", tenantUserId)
     .order("marca", { ascending: true })
@@ -846,7 +846,8 @@ async function buildInventoryIndex(tenantUserId: string): Promise<string> {
   }
   if (!data || data.length === 0) return "";
 
-  const lines = (data as Array<{ id: string; marca: string | null; modelo: string | null; ano: number | null; ano_modelo: number | null; cor: string | null; preco_sugerido: number | null }>).map((v) => {
+  type LinhaIndice = { id: string; marca: string | null; modelo: string | null; ano: number | null; ano_modelo: number | null; cor: string | null; preco_sugerido: number | null; categoria: string | null };
+  const linha = (v: LinhaIndice) => {
     const ano = v.ano_modelo || v.ano || "";
     const anoStr = ano ? ` ${ano}` : "";
     const corStr = v.cor ? ` ${v.cor}` : "";
@@ -854,16 +855,32 @@ async function buildInventoryIndex(tenantUserId: string): Promise<string> {
       ? ` • R$ ${Number(v.preco_sugerido).toLocaleString("pt-BR")}`
       : "";
     return `- ${v.marca ?? ""} ${v.modelo ?? ""}${anoStr}${corStr}${precoStr} [ID:${v.id}]`;
-  });
+  };
+
+  // Moto fica FORA da lista de carros. Caso real (APROVE, 09/10): cliente do
+  // anúncio do Fox pediu "os mais em conta" e o agente respondeu Palio, Gol e
+  // "também tem uma moto KTM 300 EXC" — a moto de trilha era a mais barata do
+  // índice e entrou na lista como se fosse carro.
+  const todos = data as LinhaIndice[];
+  const ehMoto = (v: LinhaIndice) => /^\s*moto/i.test(v.categoria ?? "");
+  const lines = todos.filter((v) => !ehMoto(v)).map(linha);
+  const motos = todos.filter(ehMoto).map(linha);
+  const blocoMotos = motos.length
+    ? `\n\n=== MOTOS NO ESTOQUE (${motos.length}) — NÃO SÃO CARROS ===\n` +
+      `⚠️ Moto NUNCA entra em lista de carros, "mais em conta", "mais barato" ou alternativa pra quem busca carro.\n` +
+      `⚠️ Só fale de moto se o cliente pedir moto ou tiver vindo de um anúncio de moto. E pra quem busca moto, não ofereça carro.\n\n` +
+      motos.join("\n")
+    : "";
 
   return (
-    `\n\n=== ÍNDICE COMPLETO DO ESTOQUE (${data.length} carros DISPONÍVEIS agora) ===\n` +
+    `\n\n=== ÍNDICE COMPLETO DO ESTOQUE (${lines.length} carros DISPONÍVEIS agora) ===\n` +
     `⚠️ Esta lista é a VERDADE sobre quais carros existem no pátio neste momento.\n` +
     `⚠️ ANTES de afirmar "não temos X" ou "X não está disponível", VERIFIQUE NESTA LISTA.\n` +
     `⚠️ Se o carro mencionado pelo cliente está nesta lista, ele EXISTE e ESTÁ DISPONÍVEL — proibido negar.\n` +
     `Para ficha técnica detalhada (fotos, equipamentos, pontos fortes) use VEÍCULO EM FOCO / ALTERNATIVAS acima.\n` +
     `Para confirmar disponibilidade ao cliente, basta usar esta lista.\n\n` +
-    lines.join("\n")
+    lines.join("\n") +
+    blocoMotos
   );
 }
 
