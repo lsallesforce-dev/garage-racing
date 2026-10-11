@@ -327,6 +327,13 @@ export async function tratarComentario(t: TenantIg, c: IgComentario & { parentId
 export async function processarWebhookInstagram(payload: any): Promise<void> {
   for (const entry of payload?.entry ?? []) {
     try {
+      // Uma linha por entrega: sem isto não dá pra separar "a Meta não mandou"
+      // de "chegou e foi descartado" — o caminho feliz do direct não loga nada.
+      const evs: any[] = entry?.messaging ?? [];
+      console.log(
+        `📥 [Instagram] conta ${entry?.id}: ${evs.length} msg(s), ${(entry?.changes ?? []).length} mudança(s)` +
+        evs.map((e) => ` | de=${e?.sender?.id} eco=${e?.message?.is_echo === true} texto=${!!e?.message?.text} anexos=${(e?.message?.attachments ?? []).length} tipo=${e?.message ? "message" : Object.keys(e ?? {}).filter((k) => !["sender", "recipient", "timestamp"].includes(k)).join(",")}`).join(""),
+      );
       const t = await tenantDoInstagram(String(entry?.id ?? ""));
       if (!t) {
         console.warn(`⚠️ [Instagram] nenhum tenant para a conta ${entry?.id}`);
