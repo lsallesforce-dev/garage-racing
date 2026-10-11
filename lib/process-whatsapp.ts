@@ -2566,8 +2566,20 @@ Responda apenas com o JSON, sem markdown.`;
     clientePediuCarroDiferente,
   });
 
+  // Cliente descrevendo o carro DELE (troca) não está pedindo outro carro da loja.
+  // Caso real (APROVE, 09/10, Rafael): vendo o Compass, perguntou "Vcs pegam cruze
+  // 2013 LTZ na troca" — "LTZ" casou com a S10 LTZ do pátio, o foco migrou pra
+  // S10 e as fotos que saíram depois foram dela. Com carro já em foco, mensagem
+  // de troca não muda o foco.
+  const descreveCarroDeTroca =
+    /\b(na|pra|para|de|em|como)\s+troca\b|\bno\s+neg[oó]cio\b|\bmeu\s+(carro|ve[ií]culo)\b|\bminha\s+(moto|caminhonete|camionete|picape)\b|\b(eu\s+)?tenho\s+uma?\s+(?!interesse|d[úu]vida|pergunta)\S|\bdou\s+(o\s+meu|a\s+minha|meu|minha|uma?)\b/i
+      .test(userMessageForSearch);
+  if (descreveCarroDeTroca && veiculoPrincipal && clientePediuCarroDiferente) {
+    console.log(`🔄 [Troca] "${userMessageForSearch.slice(0, 50)}" descreve o carro do cliente — foco mantido em ${veiculoPrincipal.marca} ${veiculoPrincipal.modelo}`);
+  }
+
   // Atualiza veiculo_id do lead se mudou + sincroniza veiculoPrincipal local
-  if (lead && clientePediuCarroDiferente && topVeiculos[0]) {
+  if (lead && clientePediuCarroDiferente && topVeiculos[0] && !(descreveCarroDeTroca && veiculoPrincipal)) {
     // Só troca veiculoPrincipal se o MODELO do novo carro está explicitamente na mensagem.
     // Evita que "tem foto do Honda?" troque Honda City por Honda HR-V só porque HR-V
     // apareceu primeiro na busca textual por marca.
@@ -3151,7 +3163,18 @@ Responda apenas com o JSON, sem markdown.`;
     .map((h: any) => String(h.parts?.[0]?.text ?? ""))
     .filter((t: string) => t.trim() && !/^\s*(📷|🎥|Ver na vitrine)/.test(t))
     .slice(-1)[0] ?? "";
-  const ultimaFalaOfereceuFoto = /\b(foto|fotos|imagem|imagens)\b/i.test(ultimaFalaAgente);
+  // Agente PEDINDO as fotos do carro do cliente não é oferta de foto do estoque.
+  // "Pode me enviar fotos dele para uma pré-avaliação?" → "Sim" despejou 13
+  // fotos + vídeo de uma S10 em quem só ia mandar as fotos do Cruze dele
+  // (APROVE, 09/10, Rafael). "me envia/manda" = pra mim; oferta é "te envio",
+  // "quer ver as fotos?".
+  const agentePediuFotoDoCliente =
+    /\bme\s+(envi|mand|pass)\w*\s+(as\s+|umas\s+|algumas\s+)?fotos?\b/i.test(ultimaFalaAgente) ||
+    /\bfotos?\s+d[oa]\s+(seu|sua|teu|tua)\b/i.test(ultimaFalaAgente) ||
+    /\baguard\w*\s+(as\s+)?fotos?\b/i.test(ultimaFalaAgente) ||
+    /pr[ée]-avalia[çc][ãa]o/i.test(ultimaFalaAgente);
+  const ultimaFalaOfereceuFoto =
+    /\b(foto|fotos|imagem|imagens)\b/i.test(ultimaFalaAgente) && !agentePediuFotoDoCliente;
   // Replay de 30 dias (APROVE + Carmatti): de 117 confirmações vagas que
   // dispararam fotos, 26 respondiam outra coisa — "Ok" pro endereço, "OK
   // obrigado", "Amanhã falo com vc ok", "Me manda a localização".
