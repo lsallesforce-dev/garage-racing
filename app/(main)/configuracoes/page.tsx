@@ -3025,8 +3025,19 @@ export default function ConfiguracoesPage() {
                   ))}
                   <p className="text-[10px] text-gray-400">
                     No app do Instagram, ative: Configurações → Mensagens e respostas ao story → Controles de mensagens →
-                    Ferramentas conectadas → Permitir acesso às mensagens. Se você conectou o Facebook antes desta
-                    função existir, clique em Reconectar.
+                    Ferramentas conectadas → Permitir acesso às mensagens.
+                  </p>
+                  {/* Quem conectou antes de 05/10 tem um acesso sem as permissões de
+                      direct e comentário. Sem este link não havia como refazer o login
+                      sem Desvincular — e desvincular apaga a Página e solta as campanhas. */}
+                  <a
+                    href="/api/meta/connect"
+                    className="flex items-center justify-center w-full py-2 rounded-xl border border-blue-200 text-blue-700 hover:bg-blue-50 text-[11px] font-bold transition-colors"
+                  >
+                    Reconectar o Facebook para liberar o Instagram
+                  </a>
+                  <p className="text-[10px] text-gray-400">
+                    Depois do login, escolha a Página e clique em Salvar configuração. Não precisa desvincular.
                   </p>
                 </div>
               )}
