@@ -2572,7 +2572,7 @@ Responda apenas com o JSON, sem markdown.`;
   // S10 e as fotos que saíram depois foram dela. Com carro já em foco, mensagem
   // de troca não muda o foco.
   const descreveCarroDeTroca =
-    /\b(na|pra|para|de|em|como)\s+troca\b|\bno\s+neg[oó]cio\b|\bmeu\s+(carro|ve[ií]culo)\b|\bminha\s+(moto|caminhonete|camionete|picape)\b|\b(eu\s+)?tenho\s+uma?\s+(?!interesse|d[úu]vida|pergunta)\S|\bdou\s+(o\s+meu|a\s+minha|meu|minha|uma?)\b/i
+    /\b(na|pra|para|de|em|como)\s+troca\b|\bno\s+neg[oó]cio\b|\bmeu\s+(carro|ve[ií]culo)\b|\bminha\s+(moto|caminhonete|camionete|picape)\b|\b(eu\s+)?tenho\s+uma?\s+(?!interesse|d[úu]vida|pergunta)\S|\bdou\s+(o\s+meu|a\s+minha|meu|minha)\b/i
       .test(userMessageForSearch);
   if (descreveCarroDeTroca && veiculoPrincipal && clientePediuCarroDiferente) {
     console.log(`🔄 [Troca] "${userMessageForSearch.slice(0, 50)}" descreve o carro do cliente — foco mantido em ${veiculoPrincipal.marca} ${veiculoPrincipal.modelo}`);
