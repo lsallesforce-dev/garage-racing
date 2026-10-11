@@ -17,6 +17,7 @@ import { isDuplicateMessage, rateLimit } from "@/lib/redis";
 import { logWebhookError } from "@/lib/error-log";
 import { CONFIG_GARAGE_SELECT } from "@/lib/config-garage";
 import { assinaturaAtiva } from "@/lib/assinatura";
+import { cleanModelo } from "@/lib/marketing-kit";
 import { geminiFlashSales, geminiFlashFallback, parseGeminiJson } from "@/lib/gemini";
 import {
   type IgCreds, type IgComentario,
@@ -259,7 +260,9 @@ function textoDaRespostaPrivada(config: any, v: any | null): string {
   if (!v) {
     return `Oi! Aqui é da ${loja} 😊 Vi seu comentário no nosso post. Qual carro te interessou? Me conta aqui que já te passo os detalhes.`;
   }
-  const nome = [v.marca, v.modelo, v.ano_modelo || v.ano].filter(Boolean).join(" ");
+  // cleanModelo: o cadastro traz a versão inteira ("COMPASS SPORT 2.0 4x2 Flex
+  // 16V Aut."); na mensagem vai só o nome do carro, como na capa do kit.
+  const nome = [v.marca, cleanModelo(String(v.modelo ?? "")) || v.modelo, v.ano_modelo || v.ano].filter(Boolean).join(" ");
   const preco = brl(v.preco_sugerido);
   const km = Number(v.quilometragem_estimada) > 0 ? `${Number(v.quilometragem_estimada).toLocaleString("pt-BR")} km` : null;
   const dados = [preco, km].filter(Boolean).join(", ");
@@ -300,12 +303,17 @@ export async function tratarComentario(t: TenantIg, c: IgComentario & { parentId
   if (!(await comentarioDeComprador(c.texto))) return fechar("ignorado");
 
   // Carro do post: a postagem orgânica grava o id da mídia em marketing_posts.
-  const { data: vs } = await supabaseAdmin
+  // ⚠️ O filtro vai como STRING de JSON. Passando o array direto, o supabase-js
+  // monta um literal de array do Postgres ("{[object Object]}"), a consulta
+  // falha calada e a resposta saía genérica mesmo com o post cadastrado
+  // (APROVE, 11/10: "Qual a quilometragem?" no post do Compass).
+  const { data: vs, error: erroVeiculo } = await supabaseAdmin
     .from("veiculos")
     .select("id, marca, modelo, ano, ano_modelo, preco_sugerido, quilometragem_estimada, status_venda")
     .eq("user_id", t.userId)
-    .contains("marketing_posts", [{ post_id: c.mediaId }])
+    .contains("marketing_posts", JSON.stringify([{ post_id: c.mediaId }]))
     .limit(1);
+  if (erroVeiculo) console.error(`❌ [Instagram] carro do post ${c.mediaId}: ${erroVeiculo.message}`);
   const v = vs?.[0] && vs[0].status_venda !== "VENDIDO" ? vs[0] : null;
 
   const texto = textoDaRespostaPrivada(t.config, v);
