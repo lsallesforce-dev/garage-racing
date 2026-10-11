@@ -251,24 +251,48 @@ async function comentarioDeComprador(texto: string): Promise<boolean> {
 const brl = (v: unknown) =>
   Number(v) > 0 ? Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }) : null;
 
+// Até a Meta aprovar `instagram_manage_messages` (App Review), ela só entrega
+// direct de quem tem cargo no app: o cliente comum responde a mensagem e a
+// resposta nunca chega aqui (APROVE, 11/10 — erro 2534084 ao ler as conversas).
+// Enquanto for assim, a resposta ao comentário leva o cliente pro WhatsApp da
+// loja, onde o agente atende de verdade. Trocar pra `true` no dia da aprovação.
+const DIRECT_LIBERADO_PELA_META = false;
+
+/** Link do WhatsApp do agente já com a mensagem pronta (que carrega o carro). */
+function linkWhatsApp(config: any, carro: string | null): string | null {
+  const num = String(config?.whatsapp_agente || config?.whatsapp || "").replace(/\D/g, "").replace(/^(?!55)/, "55");
+  if (num.length < 12) return null;
+  const msg = carro ? `Oi! Vi o ${carro} no Instagram e quero saber mais.` : "Oi! Vim pelo Instagram e quero saber mais.";
+  return `https://wa.me/${num}?text=${encodeURIComponent(msg)}`;
+}
+
 /**
  * Texto da resposta privada. Montado com dado do banco, sem IA: é UMA mensagem
  * só e não pode sair com preço inventado.
  */
 function textoDaRespostaPrivada(config: any, v: any | null): string {
   const loja = config?.nome_fantasia || config?.nome_empresa || "nossa loja";
-  if (!v) {
-    return `Oi! Aqui é da ${loja} 😊 Vi seu comentário no nosso post. Qual carro te interessou? Me conta aqui que já te passo os detalhes.`;
-  }
   // cleanModelo: o cadastro traz a versão inteira ("COMPASS SPORT 2.0 4x2 Flex
   // 16V Aut."); na mensagem vai só o nome do carro, como na capa do kit.
-  const nome = [v.marca, cleanModelo(String(v.modelo ?? "")) || v.modelo, v.ano_modelo || v.ano].filter(Boolean).join(" ");
+  const nome = v
+    ? [v.marca, cleanModelo(String(v.modelo ?? "")) || v.modelo, v.ano_modelo || v.ano].filter(Boolean).join(" ")
+    : null;
+  const wa = DIRECT_LIBERADO_PELA_META && config?.ig_direct_ia === true ? null : linkWhatsApp(config, nome);
+
+  if (!v) {
+    return `Oi! Aqui é da ${loja} 😊 Vi seu comentário no nosso post. ` +
+      (wa
+        ? `Me chama no WhatsApp e conta qual carro te interessou, que já te passo valor, fotos e detalhes: ${wa}`
+        : `Qual carro te interessou? Me conta aqui que já te passo os detalhes.`);
+  }
   const preco = brl(v.preco_sugerido);
   const km = Number(v.quilometragem_estimada) > 0 ? `${Number(v.quilometragem_estimada).toLocaleString("pt-BR")} km` : null;
   const dados = [preco, km].filter(Boolean).join(", ");
   return `Oi! Aqui é da ${loja} 😊 Vi seu comentário no post do ${nome}.` +
     (dados ? ` Ele está disponível: ${dados}.` : " Ele está disponível.") +
-    ` Quer mais fotos ou uma simulação de financiamento? É só responder aqui.`;
+    (wa
+      ? ` Quer mais fotos ou uma simulação de financiamento? Me chama no WhatsApp: ${wa}`
+      : ` Quer mais fotos ou uma simulação de financiamento? É só responder aqui.`);
 }
 
 /** Processa UM comentário. Idempotente: a chave primária de ig_comentarios barra a repetição. */
