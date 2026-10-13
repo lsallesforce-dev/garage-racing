@@ -21,6 +21,8 @@ import { processWhatsAppMessage } from "@/lib/process-whatsapp";
 import { sendAvisaMessage } from "@/lib/avisa";
 import { sendMetaMessage } from "@/lib/meta";
 import { CONFIG_GARAGE_SELECT } from "@/lib/config-garage";
+import { rateLimit } from "@/lib/redis";
+import { logWebhookError } from "@/lib/error-log";
 
 export const maxDuration = 300;
 
@@ -179,11 +181,30 @@ export async function GET(req: NextRequest) {
 
       if (!cfg || !assinaturaValida(cfg)) { ignorados++; continue; }
 
+      // No máximo 2 tentativas por lead a cada 6h. Sem teto, um lead cujo
+      // processamento morre sempre no mesmo ponto era reprocessado a cada 15 min
+      // pra sempre — e cada tentativa podia mandar mensagem pro cliente (APROVE,
+      // 12-13/10: 24 "Um momento..." pra mesma pessoa).
+      const { allowed } = await rateLimit(`reproc:${lead.id}`, 2, 6 * 3600);
+      if (!allowed) {
+        const { allowed: avisar } = await rateLimit(`reproc_aviso:${lead.id}`, 1, 6 * 3600);
+        if (avisar) {
+          console.error(`🚨 [reprocessar] lead ${lead.id} (${lead.wa_id}) segue sem resposta após 2 tentativas — parei de tentar.`);
+          await logWebhookError({
+            tenantUserId: lead.user_id, phone: lead.wa_id, etapa: "reprocessar_pendentes",
+            erro: `Cliente sem resposta após 2 reprocessamentos: "${item.content.slice(0, 120)}"`,
+          }).catch(() => {});
+        }
+        ignorados++;
+        continue;
+      }
+
       console.log(`🔁 [reprocessar] lead ${lead.id} (${lead.wa_id}) — "${item.content.slice(0, 60)}"`);
 
       await processWhatsAppMessage({
         phone: lead.wa_id,
         rawMessage: item.content,
+        reprocesso: true,
         messageId: null,
         tenantUserId: lead.user_id,
         garageConfig: cfg,

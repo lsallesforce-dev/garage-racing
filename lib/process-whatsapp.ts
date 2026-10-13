@@ -62,7 +62,20 @@ function nomeCarroLimpo(v: { marca?: string | null; modelo?: string | null }): s
 
 // ─── Compressão de vídeo com cache no R2 ──────────────────────────────────────
 // Na primeira vez: comprime, salva no R2 e atualiza o DB. Próximas chamadas: instantâneo.
-async function ensureCompressedVideo(videoUrl: string | null, veiculoId: string): Promise<string | null> {
+//
+// ⚠️ Vídeo grande demais NÃO é comprimido aqui: devolve null e o chamador manda o
+// link da vitrine. Caso real (APROVE, 12-13/10, Sandra): o .MOV de 72 MB do
+// Compass (1080x1920 HEVC, direto do celular) derrubava a função no meio do
+// ffmpeg, sem log nem exceção. Nada era gravado, o cron de resgate via "cliente
+// sem resposta" e tentava de novo a cada 15 min: 24 "Um momento..." pra cliente
+// e nenhum vídeo. O teto abaixo fica acima do maior vídeo que já passou por aqui.
+const VIDEO_MAX_COMPRESSAO_INLINE = 45 * 1024 * 1024;
+
+async function ensureCompressedVideo(
+  videoUrl: string | null,
+  veiculoId: string,
+  aoComprimir?: () => Promise<unknown>,
+): Promise<string | null> {
   if (!videoUrl) return null;
 
   // Verifica tamanho sem baixar tudo — HEAD request
@@ -84,10 +97,17 @@ async function ensureCompressedVideo(videoUrl: string | null, veiculoId: string)
   const existingWppUrl = `${process.env.R2_PUBLIC_URL}/${r2KeyPrecheck}`;
   const existingHead = await fetch(existingWppUrl, { method: "HEAD" }).catch(() => null);
   if (existingHead?.ok) {
+    // NÃO troca o video_url do carro pela versão de WhatsApp (480p): o original
+    // é o que vai pro Reels e pro anúncio. Um HEAD a mais por envio é barato.
     console.log(`✅ Vídeo comprimido já existe no R2: ${existingWppUrl}`);
-    await supabaseAdmin.from("veiculos").update({ video_url: existingWppUrl }).eq("id", veiculoId);
     return existingWppUrl;
   }
+
+  if (size > VIDEO_MAX_COMPRESSAO_INLINE) {
+    console.error(`🚨 [vídeo] ${(size / 1024 / 1024).toFixed(1)}MB é grande demais pra comprimir na hora (veículo ${veiculoId}) — sem versão de WhatsApp. Vai o link da vitrine.`);
+    return null;
+  }
+  await aoComprimir?.().catch(() => {});
 
   // Precisa comprimir
   console.log(`🗜️ Comprimindo vídeo ${(size / 1024 / 1024).toFixed(1)}MB para envio WhatsApp...`);
@@ -112,7 +132,7 @@ const execFileAsync = promisify(execFile);
         "-c:a", "aac", "-b:a", "64k",
         "-movflags", "+faststart",
         "-y", tmpOut,
-      ], { maxBuffer: 100 * 1024 * 1024 });
+      ], { maxBuffer: 100 * 1024 * 1024, timeout: 150_000 });
 
       const compressed = await fs.readFile(tmpOut);
       console.log(`🗜️ ${(size/1024/1024).toFixed(1)}MB → ${(compressed.length/1024/1024).toFixed(1)}MB`);
@@ -130,8 +150,7 @@ const execFileAsync = promisify(execFile);
       await r2.send(new PutObjectCommand({ Bucket: "videos-estoque", Key: r2Key, Body: compressed, ContentType: "video/mp4" }));
       const compressedUrl = `${process.env.R2_PUBLIC_URL}/${r2Key}`;
 
-      // Atualiza o banco para usar o vídeo comprimido na próxima vez
-      await supabaseAdmin.from("veiculos").update({ video_url: compressedUrl }).eq("id", veiculoId);
+      // O video_url do carro continua sendo o original (ver precheck acima).
       console.log(`✅ Vídeo comprimido salvo: ${compressedUrl}`);
       return compressedUrl;
     } finally {
@@ -222,6 +241,10 @@ export interface WhatsAppJobPayload {
   tenantUserId: string;
   garageConfig: GarageConfig | null;
   skipSend?: boolean;     // true quando wa_id é LID não resolvido — salva no DB mas não envia resposta
+  /** Reprocessamento (cron de resgate / "Devolver à IA"): a mensagem do cliente JÁ
+   *  está em `mensagens` — não grava de novo. Gravar duplicava a fala no painel e
+   *  renovava a janela do cron, que reprocessava pra sempre. */
+  reprocesso?: boolean;
   // Instagram (direct): `phone` vem como "ig:<IGSID>" e a resposta ao CLIENTE sai
   // pelo Instagram. Alerta pro gerente continua no WhatsApp do tenant.
   canal?: "whatsapp" | "instagram";
@@ -2014,7 +2037,16 @@ Responda apenas com o JSON, sem markdown.`;
       }
     }
 
-    const { data: msgUsuarioInserida } = await supabaseAdmin.from("mensagens").insert({
+    // Reprocessamento: reaproveita a linha que já existe em vez de duplicar.
+    let msgJaGravadaId: string | null = null;
+    if (job.reprocesso) {
+      const { data: ultimaDoCliente } = await supabaseAdmin
+        .from("mensagens").select("id, content")
+        .eq("lead_id", lead.id).eq("remetente", "usuario")
+        .order("created_at", { ascending: false }).limit(1).maybeSingle();
+      if (ultimaDoCliente && (ultimaDoCliente.content === rawMessage || ultimaDoCliente.content === userMessage)) msgJaGravadaId = ultimaDoCliente.id;
+    }
+    const { data: msgUsuarioInserida } = msgJaGravadaId ? { data: { id: msgJaGravadaId } } : await supabaseAdmin.from("mensagens").insert({
       lead_id: lead.id,
       content: userMessage,
       remetente: "usuario",
@@ -3632,15 +3664,18 @@ Responda apenas com o JSON, sem markdown.`;
       // Prioridade: reel de marketing (já otimizado) → vídeo bruto
       const videoUrlRaw = (veiculoParaVideo as any).video_marketing_url ?? (veiculoParaVideo as any).video_url ?? null;
 
-      // "Um momento..." só quando precisa comprimir (vídeo > 15MB)
-      if (videoUrlRaw) {
-        const headCheck = await fetch(videoUrlRaw, { method: "HEAD" }).catch(() => null);
-        const rawSize = parseInt(headCheck?.headers.get("content-length") ?? "0", 10);
-        if (rawSize > 15 * 1024 * 1024) await sendText(phone, "Um momento...");
-      }
-
-      const videoUrl = await ensureCompressedVideo(videoUrlRaw, veiculoParaVideo.id);
+      // "Um momento..." só quando a compressão vai mesmo rodar agora.
+      const videoUrl = await ensureCompressedVideo(videoUrlRaw, veiculoParaVideo.id, () => sendText(phone, "Um momento..."));
       console.log(`🎥 vídeo enviado ao Meta: ${videoUrl} (marketing=${!!(veiculoParaVideo as any).video_marketing_url})`);
+      if (videoUrlRaw && !videoUrl) {
+        // Vídeo grande demais pra mandar aqui: link da vitrine + aviso ao gerente.
+        const carUrlPesado = vitrineUrl ? `${vitrineUrl}/${veiculoParaVideo.id}` : null;
+        if (carUrlPesado) await sendText(phone, `O vídeo é pesado pra mandar aqui. Dá pra ver nesse link: ${carUrlPesado}`);
+        await sendAlert(
+          gerentePhone ?? "",
+          `⚠️ O vídeo do ${nomeCarroLimpo(veiculoParaVideo)} é grande demais pra enviar no WhatsApp. O cliente +${phone} recebeu o link da vitrine. Suba uma versão menor do vídeo.`,
+        ).catch(() => {});
+      }
       if (videoUrl) {
         try {
           const entregue = await sendVideo(phone, videoUrl, undefined);

@@ -90,6 +90,7 @@ async function reprocessarPendenteAgora(leadId: string) {
   await processWhatsAppMessage({
     phone: lead.wa_id,
     rawMessage: ultimaMsg.content,
+    reprocesso: true,
     tenantUserId: lead.user_id,
     garageConfig,
     messageId: null,
