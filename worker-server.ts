@@ -8,6 +8,7 @@ import { executarPipelineMarketing } from "./lib/marketing-pipeline";
 import { renderReel } from "./lib/reel-render";
 import { decuparVideoEmTakes } from "./lib/take-decupagem";
 import { supabaseAdmin } from "./lib/supabase-admin";
+import { gerarVideoWhatsApp } from "./lib/video-whatsapp";
 
 const app = express();
 app.use(express.json());
@@ -85,6 +86,24 @@ app.post("/decupar", async (req, res) => {
     .then((segs) => console.log(`✅ [decupar ${veiculoId}] ${segs.length} take(s)`))
     // decuparVideoEmTakes já grava status "erro" no banco antes de propagar.
     .catch((e: any) => console.error(`❌ [decupar ${veiculoId}] erro:`, e?.message ?? e));
+});
+
+// Versão de WhatsApp (< 16 MB) do vídeo que o lojista subiu no estoque. Roda
+// aqui porque o ffmpeg num .MOV de 70 MB derruba a função da Vercel.
+app.post("/video-wpp", async (req, res) => {
+  if (!(await verificaQStash(req))) return res.status(401).json({ error: "Assinatura inválida" });
+
+  const { veiculoId, videoUrl } = req.body;
+  if (!videoUrl) return res.status(400).json({ error: "videoUrl obrigatório" });
+
+  res.json({ ok: true, status: "processing" });
+
+  gerarVideoWhatsApp(videoUrl)
+    .then((r) => {
+      if (r.status === "erro") console.error(`❌ [vídeo wpp ${veiculoId ?? "-"}] ${r.motivo} (${videoUrl})`);
+      else console.log(`✅ [vídeo wpp ${veiculoId ?? "-"}] ${r.status}${"mb" in r && r.mb ? ` ${r.mb}MB` : ""}`);
+    })
+    .catch((e: any) => console.error(`❌ [vídeo wpp ${veiculoId ?? "-"}] erro:`, e?.message ?? e));
 });
 
 app.post("/worker", async (req, res) => {

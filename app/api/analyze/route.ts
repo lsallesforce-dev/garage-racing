@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { rateLimit } from "@/lib/redis";
 import { NextRequest, NextResponse } from "next/server";
+import { agendarVideoWhatsApp } from "@/lib/video-whatsapp";
 
 // Vercel Pro: 300s | Hobby: 60s
 // Análise de vídeo com Gemini Vision pode levar 2-5 min para vídeos grandes
@@ -199,6 +200,9 @@ export async function POST(req: NextRequest) {
       }
 
       console.log(`[analyze] Enriqueceu veículo ${veiculoId} com ${Object.keys(updates).length} campos`);
+      // Versão de WhatsApp do vídeo, gerada já no upload (worker) — não no
+      // primeiro pedido de um cliente.
+      await agendarVideoWhatsApp(veiculoId, videoUrl);
       return NextResponse.json({ success: true, data, enriched: true, updatedFields: Object.keys(updates) });
     }
 
@@ -220,6 +224,8 @@ export async function POST(req: NextRequest) {
       console.error("Supabase Error:", error);
       throw error;
     }
+
+    await agendarVideoWhatsApp(data?.[0]?.id, videoUrl);
 
     // video_url já é a URL pública do R2 — retorna direto sem signed URL do Supabase
     return NextResponse.json({ success: true, data });

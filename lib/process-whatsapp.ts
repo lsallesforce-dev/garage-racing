@@ -25,6 +25,7 @@ import { decryptWhatsAppImage } from "@/lib/whatsapp-image";
 import { sintetizarVoz, prepararTextoParaVoz } from "@/lib/tts";
 import { hybridVehicleSearch, findVehicleForMedia } from "@/lib/hybrid-search";
 import { calendarioDoAgente } from "@/lib/feriados-br";
+import { chaveVideoWhatsApp, agendarVideoWhatsApp } from "@/lib/video-whatsapp";
 import { lerImagemDoCliente } from "@/lib/visao-imagem";
 import { urlVitrine } from "@/lib/repasse";
 import { logWebhookError } from "@/lib/error-log";
@@ -91,8 +92,9 @@ async function ensureCompressedVideo(
   // 27MB indo pro WhatsApp (limite 16MB), a Avisa respondendo 200 e o vídeo
   // nunca chegando. Compressão de .mov/.webm/.avi simplesmente nunca rodou.
   const nomeArquivo = videoUrl.split("/").pop()!;
-  const chaveWpp = (n: string) =>
-    /\.[a-z0-9]{2,5}$/i.test(n) ? n.replace(/\.[a-z0-9]{2,5}$/i, "_wpp.mp4") : `${n}_wpp.mp4`;
+  // Regra da chave mora em lib/video-whatsapp — é a mesma que o worker usa ao
+  // gerar a versão de WhatsApp no upload.
+  const chaveWpp = chaveVideoWhatsApp;
   const r2KeyPrecheck = chaveWpp(nomeArquivo);
   const existingWppUrl = `${process.env.R2_PUBLIC_URL}/${r2KeyPrecheck}`;
   const existingHead = await fetch(existingWppUrl, { method: "HEAD" }).catch(() => null);
@@ -105,6 +107,9 @@ async function ensureCompressedVideo(
 
   if (size > VIDEO_MAX_COMPRESSAO_INLINE) {
     console.error(`🚨 [vídeo] ${(size / 1024 / 1024).toFixed(1)}MB é grande demais pra comprimir na hora (veículo ${veiculoId}) — sem versão de WhatsApp. Vai o link da vitrine.`);
+    // Vídeo antigo (subido antes da compressão no upload) ou job que falhou:
+    // pede de novo ao worker pra o próximo cliente já receber o vídeo.
+    await agendarVideoWhatsApp(veiculoId, videoUrl);
     return null;
   }
   await aoComprimir?.().catch(() => {});
