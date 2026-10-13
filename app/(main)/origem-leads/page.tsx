@@ -341,7 +341,16 @@ function OrigemLeadsInner() {
               <CardKpi icone={<Globe size={16} />} cor="text-teal-500"
                 label={
                   data.resumo.acessos > 0
-                    ? `Acessos ao site · ${Math.round((leadsDoSite / data.resumo.acessos) * 100)}% viram lead`
+                    ? (() => {
+                        // Mostra a QUANTIDADE e uma casa decimal: 4 leads em 1.557
+                        // acessos arredondava pra "0% viram lead" e parecia contador
+                        // quebrado. A base tira a navegação interna — a mesma pessoa
+                        // abrindo 6 carros não são 6 chances de virar lead.
+                        const chegadas = data.resumo.acessos - (data.resumo.acessosPorOrigem?.navegacao ?? 0);
+                        const pct = chegadas > 0 ? (leadsDoSite / chegadas) * 100 : 0;
+                        const pctTxt = pct > 0 && pct < 10 ? pct.toFixed(1).replace(".", ",") : String(Math.round(pct));
+                        return `Acessos ao site · ${leadsDoSite} ${leadsDoSite === 1 ? "virou lead" : "viraram lead"} (${pctTxt}%)`;
+                      })()
                     : "Acessos ao site"
                 }
                 valor={data.resumo.acessos.toLocaleString("pt-BR")} delta={data.resumo.delta.acessos} />
