@@ -1,6 +1,18 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { SidebarWrapper } from "@/components/SidebarWrapper";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+
+// App instalável (PWA) só no painel: o manifest NÃO vai no layout raiz porque
+// as vitrines dos tenants (domínio próprio) também passam por ele, e o cliente
+// final que "instalasse" a vitrine da loja ganharia um ícone do AutoZap.
+export const metadata: Metadata = {
+  manifest: "/manifest.webmanifest",
+  // iOS não lê `display: standalone` do manifest nem aceita ícone SVG.
+  appleWebApp: { capable: true, statusBarStyle: "default", title: "AutoZap" },
+  // `icons` aqui substitui o do layout raiz inteiro — o favicon vai junto.
+  icons: { icon: [{ url: "/favicon.svg", type: "image/svg+xml" }], shortcut: "/favicon.svg", apple: "/app/apple-icon.png" },
+};
 
 export default async function MainLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createSupabaseServerClient();

@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import type { GarageConfig } from "./SidebarWrapper";
+import { InstallAppButton } from "./InstallAppButton";
 
 const adminMenuItems = [
   { icon: LayoutDashboard, label: "Pátio Digital",       href: "/dashboard" },
@@ -183,6 +184,8 @@ export const Sidebar = ({
           </a>
         )}
       </nav>
+
+      <InstallAppButton onDone={onClose} />
 
       {!isVendedor && (
         <Link
