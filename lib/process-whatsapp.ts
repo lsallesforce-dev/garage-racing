@@ -4110,9 +4110,20 @@ Responda apenas com o JSON, sem markdown.`;
         const precisaInstrucao = parsed.precisa_instrucao;
         if (precisaInstrucao && typeof precisaInstrucao === "string" && precisaInstrucao.toLowerCase() !== "null" && lead) {
           console.log(`❓ Agente precisa de instrução: ${precisaInstrucao}`);
+          // Pedido de financiamento ainda aberto: a dúvida nova NÃO pode apagar
+          // os dados do pedido nem tirá-lo da cobrança (o cron só olha instrução
+          // que começa com "Financiamento"). Caso real (APROVE, 16/10, Anderson):
+          // perguntado se recebeu a simulação, disse "Não"; a IA gravou "Cliente
+          // não recebeu a simulação" por cima da entrada e a cobrança parou ali.
+          // Mantém o prefixo e os dados, e o relógio recomeça: em 30 min o
+          // gerente é cobrado de novo, já com a entrada do cliente.
+          const instrAnterior = String((lead as any).instrucao_pendente ?? "");
+          const instrucaoNova = /^Financiamento/i.test(instrAnterior)
+            ? `Financiamento — cliente cobrou: ${precisaInstrucao} · ${instrAnterior.replace(/^Financiamento\s*—\s*(cliente cobrou:[^·]*·\s*)?/i, "").replace(/\s*·\s*\[Cobrança[\s\S]*$/, "")}`.slice(0, 1500)
+            : precisaInstrucao;
           await supabaseAdmin
             .from("leads")
-            .update({ instrucao_pendente: precisaInstrucao, instrucao_pendente_desde: new Date().toISOString() })
+            .update({ instrucao_pendente: instrucaoNova, instrucao_pendente_desde: new Date().toISOString() })
             .eq("id", lead.id);
 
           if (gerentePhone) {
