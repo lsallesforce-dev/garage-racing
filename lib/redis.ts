@@ -736,3 +736,26 @@ export async function retirarAlertasGerente(tenantUserId: string): Promise<Alert
     return [];
   }
 }
+
+// ─── Cliente "em foco" na conversa com o gerente ─────────────────────────────
+// Toda vez que o gerente recebe um alerta sobre um cliente (financiamento,
+// troca, dúvida da IA), guarda QUAL cliente foi. Quando o gerente responde pro
+// número da loja ("já passei", "ficha ruim", "faço à tarde"), é por aqui que a
+// Júlia sabe de quem ele está falando (lib/gerente-dialogo). 24h.
+export async function setGerenteFoco(tenantUserId: string, clientePhone: string): Promise<void> {
+  if (!clientePhone) return;
+  try {
+    await getClient().set(`gerente_foco:${tenantUserId}`, String(clientePhone).replace(/\D/g, ""), { ex: 24 * 3600 });
+  } catch (e) {
+    console.warn("⚠️ [Redis] setGerenteFoco falhou (non-fatal):", e);
+  }
+}
+
+export async function getGerenteFoco(tenantUserId: string): Promise<string | null> {
+  try {
+    const v = await getClient().get(`gerente_foco:${tenantUserId}`);
+    return v == null ? null : String(v);
+  } catch {
+    return null;
+  }
+}

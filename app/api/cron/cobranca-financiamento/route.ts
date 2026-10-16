@@ -33,7 +33,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { CONFIG_GARAGE_SELECT } from "@/lib/config-garage";
 import { sendMetaMessage, sendMetaAlertaTemplate, dentroJanela24h } from "@/lib/meta";
-import { gerenteNaJanela, enfileirarAlertaGerente, invalidateHistory, rateLimit } from "@/lib/redis";
+import { gerenteNaJanela, enfileirarAlertaGerente, invalidateHistory, rateLimit, setGerenteFoco } from "@/lib/redis";
 import { alertaInterno } from "@/lib/alerta-interno";
 import { feriadoNacional } from "@/lib/feriados-br";
 
@@ -222,7 +222,11 @@ export async function GET(req: NextRequest) {
         const texto =
           `⏰ *Passou o financiamento do cliente?*\n\n👤 ${quem}` +
           (carro ? `\n🚗 ${carro}` : "") + (entrada ? `\n💰 Entrada: ${entrada}` : "") +
-          `\n\nEle mandou os dados em ${horaBRT(desde)} e está esperando a simulação.\n👉 https://wa.me/${l.wa_id}`;
+          `\n\nEle mandou os dados em ${horaBRT(desde)} e está esperando a simulação.\n👉 https://wa.me/${l.wa_id}` +
+          `\n\nPode me responder aqui mesmo (ex.: "já passei", "ficha não aprovou", "faço à tarde") que eu aviso o cliente.`;
+        // O gerente responde direto pro número da loja — lib/gerente-dialogo usa
+        // isto pra saber de qual cliente ele está falando.
+        await setGerenteFoco(tenant, l.wa_id);
         let ok = false;
         if (await gerenteNaJanela(tenant)) {
           ok = !!(await sendMetaMessage(gerente, texto, creds).catch(() => null));

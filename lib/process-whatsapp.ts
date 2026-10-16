@@ -25,6 +25,8 @@ import { decryptWhatsAppImage } from "@/lib/whatsapp-image";
 import { sintetizarVoz, prepararTextoParaVoz } from "@/lib/tts";
 import { hybridVehicleSearch, findVehicleForMedia } from "@/lib/hybrid-search";
 import { calendarioDoAgente } from "@/lib/feriados-br";
+import { tratarMensagemDoGerente } from "@/lib/gerente-dialogo";
+import { setGerenteFoco } from "@/lib/redis";
 import { chaveVideoWhatsApp, agendarVideoWhatsApp } from "@/lib/video-whatsapp";
 import { lerImagemDoCliente } from "@/lib/visao-imagem";
 import { urlVitrine } from "@/lib/repasse";
@@ -1401,6 +1403,12 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
       return;
     }
     const waLink = linkDaConversa(clientePhone);
+    // Guarda de qual cliente é o último aviso: quando o gerente responder pro
+    // número da loja, é assim que a Júlia sabe de quem ele fala (lib/gerente-dialogo).
+    const soDigitos = (n: string) => String(n ?? "").replace(/\D/g, "").replace(/^(?!55)/, "55");
+    if (soDigitos(gerenteTo) === soDigitos(garageConfig?.whatsapp ?? "")) {
+      await setGerenteFoco(tenantUserId, clientePhone).catch(() => {});
+    }
     if (await alertaForaDaJanela(gerenteTo, body)) return;
     if (!useAvisa && metaCreds.phoneNumberId && metaCreds.accessToken) {
       return sendMetaCtaButton(gerenteTo, body, "Abrir Conversa", waLink, metaCreds)
@@ -1846,6 +1854,24 @@ Responda apenas com o JSON, sem markdown.`;
       } catch (e) {
         console.warn("⚠️ Falha ao parsear agenda via Gemini:", e);
       }
+    }
+
+    // ── 2c. Gerente respondendo sobre um cliente ─────────────────────────────
+    // "Já passei", "ficha ruim", "faço à tarde", "pode dar 2 mil de desconto":
+    // a Júlia entende de qual cliente é, avisa o cliente quando faz sentido e
+    // confirma pro gerente. Mensagem que não é sobre cliente nenhum segue o
+    // caminho antigo. Ver lib/gerente-dialogo.
+    try {
+      const tratou = await tratarMensagemDoGerente({
+        tenantUserId,
+        texto: userMessage,
+        useAvisa,
+        enviar: (to, text) => sendText(to, text),
+        gerentePhone: String(garageConfig?.whatsapp ?? "").replace(/\D/g, "").replace(/^(?!55)/, "55"),
+      });
+      if (tratou) return;
+    } catch (e: any) {
+      console.warn("⚠️ [gerente-dialogo] falhou — segue o fluxo normal:", e?.message ?? e);
     }
   }
 
@@ -3004,6 +3030,7 @@ Responda apenas com o JSON, sem markdown.`;
           // alerta_gerente a Meta reclassificou como MARKETING (caro e com
           // limite de frequência). Falhou → cadeia normal do sendAlertComLink.
           let finViaTemplate = false;
+          if (destinoFin) await setGerenteFoco(tenantUserId, phone).catch(() => {});
           if (destinoFin && !useAvisa && !(await gerenteNaJanela(tenantUserId))) {
             finViaTemplate = await sendMetaTemplate(destinoFin, "simulacao_financiamento", [
               garageConfig?.nome_fantasia || garageConfig?.nome_empresa || "loja",
