@@ -17,6 +17,10 @@
       "schedule": "*/15 10-23 * * *"
     },
     {
+      "path": "/api/cron/cobranca-financiamento",
+      "schedule": "*/15 11-21 * * 1-6"
+    },
+    {
       "path": "/api/cron/alertas-operacionais",
       "schedule": "0 11-23 * * *"
     },
