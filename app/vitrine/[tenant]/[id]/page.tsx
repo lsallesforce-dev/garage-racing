@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { toVideoUrl } from "@/lib/r2-url";
 import VitrineDetalheClient from "./VitrineDetalheClient";
@@ -84,15 +84,23 @@ export default async function VitrineDetalhePage({ params, searchParams }: Props
     .maybeSingle();
 
   if (error) console.error("❌ vitrine/[tenant]/[id] error:", error);
-  if (!veiculo) notFound();
 
   const garagem = await resolveGaragem(tenant);
+  // Carro que saiu do estoque (apagado) ou ainda sem foto: manda pra vitrine da
+  // loja em vez de 404. Link velho continua circulando — catálogo da Meta que
+  // não atualizou, post antigo, link que a IA mandou semana passada — e a
+  // página de erro perdia o cliente ali mesmo (APROVE, 17/10: o "Ver na loja"
+  // do anúncio abria 404 em todos os carros antigos do catálogo).
+  if (!veiculo) {
+    if (garagem) redirect(`/vitrine/${tenant}`);
+    notFound();
+  }
   // Carro tem que pertencer ao tenant da URL — senão dá pra renderizar carro de
   // outra loja com a marca/WhatsApp desta (furo herdado da versão antiga).
   if (!garagem || veiculo.user_id !== garagem.user_id) notFound();
   // Carro sem foto não está na vitrine — nem pelo link direto (mesma regra da
   // listagem). Volta a aparecer sozinho quando a loja subir a primeira foto.
-  if (!temFotoNaVitrine(veiculo)) notFound();
+  if (!temFotoNaVitrine(veiculo)) redirect(`/vitrine/${tenant}`);
 
   // Assinatura inativa → vitrine fora do ar (mesmo comportamento da listagem).
   if (!assinaturaAtiva(garagem)) {
