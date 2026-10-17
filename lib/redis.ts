@@ -759,3 +759,34 @@ export async function getGerenteFoco(tenantUserId: string): Promise<string | nul
     return null;
   }
 }
+
+// ─── Mensagens do cliente que chegaram DURANTE um envio de mídia ─────────────
+// O job que manda fotos não descarta o texto (a mídia já saiu), então a mensagem
+// que chegou no meio do envio ficava "coberta" aos olhos do job dela (já existe
+// fala do agente depois) e ninguém respondia. Cliente perguntou "vcs fazem troca
+// também" entre a 7ª e a 8ª foto e ficou sem resposta (APROVE 17/10). 10 min.
+export async function marcarNaoRespondidas(tenantUserId: string, leadId: string, ids: string[]): Promise<void> {
+  if (!ids.length) return;
+  try {
+    const k = `nao_respondida:${tenantUserId}:${leadId}`;
+    await getClient().sadd(k, ids[0], ...ids.slice(1));
+    await getClient().expire(k, 600);
+  } catch (e) {
+    console.warn("⚠️ [Redis] marcarNaoRespondidas falhou (non-fatal):", e);
+  }
+}
+
+export async function lerNaoRespondidas(tenantUserId: string, leadId: string): Promise<string[]> {
+  try {
+    const v = await getClient().smembers(`nao_respondida:${tenantUserId}:${leadId}`);
+    return (v ?? []).map(String);
+  } catch {
+    return [];
+  }
+}
+
+export async function limparNaoRespondidas(tenantUserId: string, leadId: string): Promise<void> {
+  try {
+    await getClient().del(`nao_respondida:${tenantUserId}:${leadId}`);
+  } catch { /* non-fatal */ }
+}

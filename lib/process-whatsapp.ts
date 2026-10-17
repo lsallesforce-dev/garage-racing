@@ -32,7 +32,7 @@ import { lerImagemDoCliente } from "@/lib/visao-imagem";
 import { urlVitrine } from "@/lib/repasse";
 import { logWebhookError } from "@/lib/error-log";
 import { lerAcoes, compararDecisoes, registrarShadow } from "@/lib/shadow-acoes";
-import { getCachedHistory, cacheHistory, invalidateHistory, appendHistory, circuitIsOpen, circuitRecordFailure, circuitRecordSuccess, acquireLeadLock, releaseLeadLock, setTrocaStandby, isTrocaStandby, clearTrocaStandby, gerenteNaJanela, enfileirarAlertaGerente, retirarAlertasGerente } from "@/lib/redis";
+import { getCachedHistory, cacheHistory, invalidateHistory, appendHistory, circuitIsOpen, circuitRecordFailure, circuitRecordSuccess, acquireLeadLock, releaseLeadLock, setTrocaStandby, isTrocaStandby, clearTrocaStandby, gerenteNaJanela, enfileirarAlertaGerente, retirarAlertasGerente, marcarNaoRespondidas, lerNaoRespondidas, limparNaoRespondidas } from "@/lib/redis";
 import { Vehicle } from "@/types/vehicle";
 
 type Temperatura = "FRIO" | "MORNO" | "QUENTE";
@@ -702,6 +702,8 @@ PROIBIDO TERMINANTE:
 - "As fotos foram enviadas" / "Te mandei" / "Já te mandei" (cliente ESTÁ vendo)
 - Frases > 1 linha
 - "vou enviar" / "já te mando" (mídia já chegou)
+- "Deixa eu checar/confirmar as fotos com a equipe" (as fotos JÁ saíram — não há nada pra checar)
+EXCEÇÃO: se o carro das fotos (veja o ano acima) NÃO é o que o cliente pediu na conversa, diga isso em uma frase curta ("Essas são da Master 2017; as da 2022 eu peço pro pessoal do pátio") e use precisa_instrucao.
 ` : ""}
 ${!p.midiaSendada ? `⛔ VOCÊ NÃO TEM MÍDIA ANEXADA NESTA RESPOSTA. Quem envia foto e vídeo é o sistema, não você — e neste turno ele não enviou nada. Portanto NUNCA escreva "estou te enviando", "vou mandar", "já te mando", "segue aí", "aqui estão". Se o cliente pediu material, diga que vai confirmar com o pátio e use precisa_instrucao.` : ""}
 ${(!p.midiaSendada && (p.clientePediuFoto || p.clientePediuVideo)) ? `⛔ ATENÇÃO CRÍTICA: O cliente pediu mídia mas o sistema NÃO ENVIOU NADA neste turno. NÃO escreva "Aqui estão", "Te mandei", "Acabei de enviar", "Já te mando", "Vou enviar", "Tá indo" — seria mentira. Em vez disso, peça desculpa e diga que vai verificar com a equipe. Ex: "Deixa eu confirmar essas fotos com o pessoal do pátio." E use precisa_instrucao para alertar o gerente.` : ""}
@@ -2267,9 +2269,60 @@ Responda apenas com o JSON, sem markdown.`;
       pendentesQuery = pendentesQuery.gt("created_at", ultimoAgente.created_at);
     }
     const { data: pendentes } = await pendentesQuery;
-    const listaPendentes = pendentes ?? [];
+    let listaPendentes = pendentes ?? [];
 
-    const minhaMensagemAindaPendente = listaPendentes.some((m) => m.id === mensagemUsuarioId);
+    let minhaMensagemAindaPendente = listaPendentes.some((m) => m.id === mensagemUsuarioId);
+    // Fala do agente depois da minha mensagem nem sempre a respondeu: se ela chegou
+    // enquanto outro job mandava fotos, aquele job não a viu (ver passo 12d) e a
+    // deixou marcada no Redis. Nesse caso continua pendente — junto com as demais.
+    if (!minhaMensagemAindaPendente) {
+      const naoRespondidas = await lerNaoRespondidas(tenantUserId, lead.id);
+      if (naoRespondidas.includes(mensagemUsuarioId)) {
+        const { data: forcadas } = await supabaseAdmin
+          .from("mensagens")
+          .select("id, content, created_at")
+          .in("id", naoRespondidas)
+          .order("created_at", { ascending: true });
+        const jaNaLista = new Set(listaPendentes.map((m) => m.id));
+        listaPendentes = [...(forcadas ?? []).filter((m) => !jaNaLista.has(m.id)), ...listaPendentes];
+        minhaMensagemAindaPendente = true;
+        await limparNaoRespondidas(tenantUserId, lead.id);
+        console.log(`🧵 [Rajada] Mensagem de ${phone} chegou durante envio de mídia e ficou sem resposta — respondo agora (${listaPendentes.length} msg).`);
+      }
+    }
+    // O outro job AINDA está mandando as fotos (o lock de 30s expirou no meio): depois
+    // da minha mensagem só tem mídia, nenhum texto. Ele não vai responder a minha —
+    // o turno dele foi fechado antes dela chegar. Espera ele terminar o texto de
+    // acompanhamento e responde a minha depois. Caso real (APROVE 17/10, 10:12:22
+    // UTC): "vcs fazem troca também" desistiu como "coberta" e nunca foi respondida.
+    if (!minhaMensagemAindaPendente) {
+      const { data: minha } = await supabaseAdmin
+        .from("mensagens").select("created_at").eq("id", mensagemUsuarioId).maybeSingle();
+      const agenteDepois = async () => {
+        const { data } = await supabaseAdmin
+          .from("mensagens").select("media_url")
+          .eq("lead_id", lead.id).eq("remetente", "agente")
+          .gt("created_at", minha!.created_at);
+        return data ?? [];
+      };
+      let depois = minha ? await agenteDepois() : [];
+      if (depois.length > 0 && depois.every((m) => m.media_url)) {
+        console.log(`⏳ [Rajada] Mensagem de ${phone} chegou no meio de um envio de mídia — espero o envio terminar pra responder.`);
+        for (let i = 0; i < 12 && depois.every((m) => m.media_url); i++) {
+          await new Promise((r) => setTimeout(r, 5000));
+          depois = await agenteDepois();
+        }
+        const { data: aPartirDaMinha } = await supabaseAdmin
+          .from("mensagens").select("id, content, created_at")
+          .eq("lead_id", lead.id).eq("remetente", "usuario")
+          .gte("created_at", minha!.created_at)
+          .order("created_at", { ascending: true });
+        listaPendentes = aPartirDaMinha ?? [];
+        minhaMensagemAindaPendente = listaPendentes.some((m) => m.id === mensagemUsuarioId);
+        // o job das fotos marca esta mensagem como não respondida no passo 12d; já está sendo tratada aqui
+        if (minhaMensagemAindaPendente) await limparNaoRespondidas(tenantUserId, lead.id);
+      }
+    }
     if (!minhaMensagemAindaPendente) {
       // Exceção: dado da coleta de financiamento. O 10d responde e SAI antes do
       // 13d (checagem tardia), então a mensagem que chegou enquanto ele digitava
@@ -3497,7 +3550,31 @@ Responda apenas com o JSON, sem markdown.`;
         // achado, fica o carro em foco. Oferta de carro diferente (Renegade com
         // KWID em foco, 03/09) ou mais específica ("Strada Ranch" com Strada
         // Freedom em foco, 16/09) segue ganhando.
-        const veiculoOfertaAgente = veiculoPorCor ??
+        // PREÇO e ANO também desempatam irmãos do mesmo modelo. Duas Master 2.3 dCi
+        // Furgão (2017 e 2022), agente: "A Master 2022 está por R$ 149.990… Quer
+        // fotos?", cliente: "me manda foto" — empate de nome, ganhou o carro em foco
+        // (a 2017 do anúncio) e saíram 9 fotos da van de 500 mil km (APROVE 17/10).
+        let veiculoPorAnoPreco: Vehicle | null = null;
+        if (!veiculoPorCor && ofertaAgenteTexto.trim()) {
+          const citados = await veiculosCitadosNoTexto(ofertaAgenteTexto, tenantUserId);
+          if (citados.length >= 2) {
+            const anosNoTexto = new Set(ofertaAgenteTexto.match(/\b(?:19|20)\d{2}\b/g) ?? []);
+            const precoNoTexto = (v: any) => {
+              const p = Number(v.preco_sugerido);
+              return p > 0 && ofertaAgenteTexto.includes(p.toLocaleString("pt-BR", { maximumFractionDigits: 0 }));
+            };
+            const anoNoTexto = (v: any) =>
+              anosNoTexto.has(String(v.ano_modelo ?? "")) || anosNoTexto.has(String(v.ano ?? ""));
+            const porPreco = citados.filter(precoNoTexto);
+            const porAno = citados.filter(anoNoTexto);
+            veiculoPorAnoPreco = porPreco.length === 1 ? porPreco[0] : porAno.length === 1 ? porAno[0] : null;
+            if (veiculoPorAnoPreco) {
+              const v = veiculoPorAnoPreco as any;
+              console.log(`📸 [Foto] ${porPreco.length === 1 ? "Preço" : "Ano"} citado pelo agente separa ${citados.length} ${v.modelo} — usando o ${v.ano_modelo ?? v.ano} (id: ${v.id})`);
+            }
+          }
+        }
+        const veiculoOfertaAgente = veiculoPorCor ?? veiculoPorAnoPreco ??
           (ofertaValida && veiculoPrincipal && ofertaValida.id !== veiculoPrincipal.id &&
           palavrasDoModeloNoTexto(veiculoPrincipal.modelo, ofertaAgenteTexto) >=
             palavrasDoModeloNoTexto(ofertaValida.modelo, ofertaAgenteTexto)
@@ -3835,8 +3912,12 @@ Responda apenas com o JSON, sem markdown.`;
     // aí as fotos do Uno!". Na pergunta seguinte ("que carro é esse?") a IA
     // repetiu "Uno 2021, R$ 47.990" pra quem estava olhando um Gol.
     const veiculoDaMidia = veiculoDaFoto ?? veiculoPrincipal;
+    // Com o ANO: sem ele, com duas Master no pátio, o modelo não sabia se as
+    // fotos eram da que o cliente pediu e respondeu "deixa eu checar as fotos da
+    // Master 2022 com a equipe" logo depois de mandar 9 fotos (APROVE 17/10).
+    const anoDaMidia = (veiculoDaMidia as any)?.ano_modelo ?? veiculoDaMidia?.ano;
     const veiculoLabel = veiculoDaMidia
-      ? `${veiculoDaMidia.marca} ${veiculoDaMidia.modelo}`
+      ? `${veiculoDaMidia.marca} ${veiculoDaMidia.modelo}${anoDaMidia ? ` ${anoDaMidia}` : ""}`
       : null;
     midiaSendadaLabel = veiculoLabel ? `${tipo} do ${veiculoLabel}` : tipo;
     console.log(`✅ Mídia enviada para ${phone} — Gemini vai gerar texto de acompanhamento.`);
@@ -4054,7 +4135,20 @@ Responda apenas com o JSON, sem markdown.`;
         // Isso cobre tanto hits textuais quanto semânticos ("mas vi um prata", "e aquele?")
         // sem risco de alucinação — carro que não estava no contexto continua bloqueado.
         const novoCarroEmContexto = topVeiculos.some((v) => v.id === veiculoIdFoco);
-        const permiteTraca = novoCarroEmContexto || !veiculoIdAnterior;
+        // ...ou se a própria resposta cita o PREÇO desse carro: ele só estava no
+        // ÍNDICE do estoque, mas o agente está falando dele com dado real. Duas
+        // Master Furgão (2017 do anúncio, 2022 pedida): a busca do "2022" trouxe só a
+        // 2017, o modelo respondeu "a 2022 está por R$ 149.990" e trocou o foco —
+        // bloqueado; no "me manda foto" seguinte saíram as fotos da 2017 (APROVE 17/10).
+        let precoDoNovoNaResposta = false;
+        if (!novoCarroEmContexto && isValidUuidFormat && veiculoIdAnterior && veiculoIdFoco !== veiculoIdAnterior) {
+          const { data: novo } = await supabaseAdmin
+            .from("veiculos").select("preco_sugerido")
+            .eq("id", veiculoIdFoco).eq("user_id", tenantUserId).maybeSingle();
+          const p = Number(novo?.preco_sugerido);
+          precoDoNovoNaResposta = p > 0 && aiResponse.includes(p.toLocaleString("pt-BR", { maximumFractionDigits: 0 }));
+        }
+        const permiteTraca = novoCarroEmContexto || !veiculoIdAnterior || precoDoNovoNaResposta;
         if (isValidUuidFormat && lead && veiculoIdFoco !== veiculoIdAnterior && permiteTraca) {
           const { data: veiculoFocoValidado } = await supabaseAdmin
             .from("veiculos")
@@ -4544,6 +4638,27 @@ Responda apenas com o JSON, sem markdown.`;
   // nesse caso (raríssimo: insert do passo 3 falhou) segue o padrão fail-open
   // do resto do arquivo e envia, em vez de arriscar descartar uma resposta boa.
   const idsRespondidasNesteTurno = idsConsolidadosNaRajada ?? new Set(mensagemUsuarioId ? [mensagemUsuarioId] : []);
+  // Com mídia já enviada este texto sai de qualquer jeito — mas ele NÃO responde
+  // o que chegou durante o envio. Marca essas mensagens pro job delas não se
+  // achar "coberto" no passo 4c (a foto e este texto ficam depois delas).
+  if (lead?.id && idsRespondidasNesteTurno.size > 0 && (fotoEnviada || videoEnviado)) {
+    const { data: recentesUsuario } = await supabaseAdmin
+      .from("mensagens")
+      .select("id, created_at")
+      .eq("lead_id", lead.id)
+      .eq("remetente", "usuario")
+      .order("created_at", { ascending: false })
+      .limit(10);
+    const lista = recentesUsuario ?? [];
+    const ultimaDoTurno = lista.find((m) => idsRespondidasNesteTurno.has(m.id))?.created_at;
+    const chegaramDurante = ultimaDoTurno
+      ? lista.filter((m) => m.created_at > ultimaDoTurno && !idsRespondidasNesteTurno.has(m.id)).map((m) => m.id)
+      : [];
+    if (chegaramDurante.length) {
+      await marcarNaoRespondidas(tenantUserId, lead.id, chegaramDurante);
+      console.log(`🧵 [Rajada] ${chegaramDurante.length} mensagem(ns) de ${phone} chegaram durante o envio de mídia — o job delas responde.`);
+    }
+  }
   if (lead?.id && idsRespondidasNesteTurno.size > 0 && !fotoEnviada && !videoEnviado) {
     const { data: ultimoAgenteCheck } = await supabaseAdmin
       .from("mensagens")
