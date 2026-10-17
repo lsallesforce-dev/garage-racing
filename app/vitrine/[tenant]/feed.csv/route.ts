@@ -41,6 +41,17 @@ const CABECALHO = [
   "image[0].url", "address",
 ];
 
+// ?formato=produto — o mesmo estoque no formato de CATÁLOGO DE PRODUTOS (o da
+// loja da Página / botão "Ver na loja"), que não aceita as colunas de veículo.
+// Caso real (APROVE, 17/10): o catálogo "Estoque Aprove Multimarcas", ligado à
+// loja da Página, puxava o feed do site antigo em OpenCart
+// (index.php?route=extension/feed/facebook_ecommerce). O site saiu do ar na
+// troca de domínio em setembro, o feed falha desde 20/09 e a loja ficou
+// congelada com carros vendidos e links que davam 404.
+const CABECALHO_PRODUTO = [
+  "id", "title", "description", "availability", "condition", "price", "link", "image_link", "brand",
+];
+
 // Alguns cadastros trazem a marca dentro do modelo e deixam `marca` vazia
 // (Strada, Argo, Toro, S10...). `make` é obrigatório no feed, então derivamos
 // pela primeira palavra do modelo antes de descartar o carro.
@@ -148,14 +159,16 @@ const tituloCaso = (s: unknown): string => {
 
 
 export async function GET(
-  _req: Request,
+  req: Request,
   ctx: { params: Promise<{ tenant: string }> }
 ) {
   const { tenant } = await ctx.params;
   const garagem = await resolveGaragem(tenant);
+  const formatoProduto = new URL(req.url).searchParams.get("formato") === "produto";
+  const cabecalho = formatoProduto ? CABECALHO_PRODUTO : CABECALHO;
 
   const vazio = () =>
-    new NextResponse(CABECALHO.join(",") + "\n", {
+    new NextResponse(cabecalho.join(",") + "\n", {
       headers: {
         "Content-Type": "text/csv; charset=utf-8",
         "Cache-Control": "public, max-age=600, s-maxage=600",
@@ -185,7 +198,7 @@ export async function GET(
     country: "BR",
   });
 
-  const linhas: string[] = [CABECALHO.join(",")];
+  const linhas: string[] = [cabecalho.join(",")];
   const pulados: string[] = [];
 
   // `as any[]`: o select é montado por concatenação, então o cliente tipado do
@@ -220,6 +233,18 @@ export async function GET(
       tituloCaso(v?.cambio), tituloCaso(v?.combustivel), tituloCaso(v?.cor),
       v?.quilometragem_estimada ? `${Number(v.quilometragem_estimada).toLocaleString("pt-BR")} km` : null,
     ].filter(Boolean).join(" | ");
+
+    if (formatoProduto) {
+      const descricao = `${titulo}${specs ? ` — ${specs}` : ""}. Disponível na ${loja}.`.slice(0, 5000);
+      linhas.push(csvLinha([
+        v.id, titulo.slice(0, 150), descricao, "in stock", "used",
+        `${preco.toFixed(2)} BRL`,
+        `${base}/${v.id}?o=cat`,
+        `${base}/feed-img/${v.id}?v=${encodeURIComponent(imagem.split("/").pop() ?? "")}`,
+        marca,
+      ]));
+      continue;
+    }
 
     linhas.push(csvLinha([
       v.id,
