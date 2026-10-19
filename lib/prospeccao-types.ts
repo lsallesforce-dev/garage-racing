@@ -63,7 +63,8 @@ export interface Prospect {
   /** 0-100. Abaixo de CONFIANCA_MINIMA_DONO a abertura não cita o nome. */
   dono_confianca?: number | null;
 
-  fonte: "apify" | "manual" | "planilha_lojistas";
+  /** "anuncio" = chegou sozinho pelo anúncio (CTWA) do AutoZap; ninguém abriu a conversa. */
+  fonte: "apify" | "manual" | "planilha_lojistas" | "anuncio";
   raw?: Record<string, unknown> | null;
 
   score: number;

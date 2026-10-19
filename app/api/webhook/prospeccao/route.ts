@@ -17,7 +17,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { timingSafeEqual } from "crypto";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { bolhasParaLinhas } from "@/lib/prospeccao-historico";
-import { sendAvisaMessage, sendAvisaImage, sendAvisaVideo, extractWebhookToken } from "@/lib/avisa";
+import { sendAvisaMessage, sendAvisaImage, sendAvisaVideo, extractWebhookToken, resolveAvisaLid } from "@/lib/avisa";
 import {
   extrairContatoDireto,
   PEDIDO_DE_ROTEAMENTO,
@@ -281,6 +281,15 @@ function extractFields(payload: any): {
   messageId: string | null;
   audioUrl?: string;
   audioMediaKey?: string;
+  /** Mensagem de grupo: nunca vira prospect. */
+  isGroup?: boolean;
+  /** `phone` é um LID (@lid), não o número: precisa de /user/parselid. */
+  isLid?: boolean;
+  /** Nome do perfil do WhatsApp de quem mandou. */
+  pushName?: string;
+  /** Click-to-WhatsApp: título/texto do anúncio que trouxe a pessoa. */
+  adTitle?: string;
+  adBody?: string;
 } {
   let parsedData: any = payload;
   if (payload?.jsonData) {
@@ -306,7 +315,16 @@ function extractFields(payload: any): {
     // Áudio: o lojista responde por voz o tempo todo. Sem isso a Mari ficava muda.
     const audioUrl = msg?.audioMessage?.URL ?? msg?.audioMessage?.url;
     const audioMediaKey = msg?.audioMessage?.mediaKey ?? msg?.audioMessage?.MediaKey;
-    return { phone, text: (text || "").trim(), fromMe, messageId: info.ID ?? null, audioUrl, audioMediaKey };
+    const isGroup = info.IsGroup === true || String(info.Chat || "").endsWith("@g.us");
+    const isLid = !realJid && String(info.Sender || "").includes("@lid");
+    const adReply = msg?.extendedTextMessage?.contextInfo?.externalAdReply;
+    return {
+      phone, text: (text || "").trim(), fromMe, messageId: info.ID ?? null, audioUrl, audioMediaKey,
+      isGroup, isLid,
+      pushName: typeof info.PushName === "string" ? info.PushName.trim() : undefined,
+      adTitle: adReply?.title ?? undefined,
+      adBody: adReply?.body ?? undefined,
+    };
   }
 
   // Formato Avisa/Z-API simplificado (number/phone + message/text)
@@ -337,7 +355,8 @@ function extractFields(payload: any): {
 // ─── Alerta de handoff para o dono (via Avisa, se configurado) ────────────────
 async function alertarHandoff(prospect: Prospect, motivo: string | null) {
   const alvo = process.env.AUTOZAP_ALERT_WHATSAPP;
-  const corpo = `🔔 Handoff de prospecção\n\nRevenda: ${prospect.nome_empresa}\nTelefone: ${prospect.telefone ?? prospect.wa_id ?? "-"}\nMotivo: ${motivo ?? "esquentou"}\n\nAssuma a conversa pelo Inbox da aba Vendas.`;
+  const origem = prospect.fonte === "anuncio" ? " (veio do anúncio)" : "";
+  const corpo = `🔔 Handoff de prospecção${origem}\n\nRevenda: ${prospect.nome_empresa}\nTelefone: ${prospect.telefone ?? prospect.wa_id ?? "-"}\nMotivo: ${motivo ?? "esquentou"}\n\nAssuma a conversa pelo Inbox da aba Vendas.`;
   if (!alvo) {
     console.log(`🔔 [prospeccao] Handoff (sem AUTOZAP_ALERT_WHATSAPP): ${prospect.nome_empresa} — ${motivo ?? ""}`);
     return;
@@ -352,6 +371,57 @@ async function alertarHandoff(prospect: Prospect, motivo: string | null) {
   } catch (err) {
     console.warn("⚠️ [prospeccao] Falha ao enviar alerta de handoff:", err);
   }
+}
+
+// ─── Lead novo do anúncio ─────────────────────────────────────────────────────
+// Cria o prospect de quem mandou mensagem sem ter sido abordado. Status
+// "respondeu" (já falou) e rodada 1: fica fora do cron, que só pega "novo" e
+// "enviado". O Lucas é avisado na hora, porque lead de anúncio é pago e esfria.
+async function criarProspectDoAnuncio(d: {
+  waId: string;
+  pushName?: string;
+  adTitle?: string;
+  adBody?: string;
+  primeiraMensagem: string;
+}): Promise<Prospect | null> {
+  const agora = new Date().toISOString();
+  const nome = (d.pushName || "").slice(0, 80) || `Lead do anúncio ${d.waId.slice(-4)}`;
+  const { data, error } = await supabaseAdmin
+    .from("prospects")
+    .insert({
+      nome_empresa: nome,
+      telefone: d.waId,
+      wa_id: d.waId,
+      fonte: "anuncio",
+      status: "respondeu",
+      rodada: 1,
+      enviado_em: agora,
+      ultima_msg_at: agora,
+      raw: {
+        anuncio_titulo: d.adTitle ?? null,
+        anuncio_texto: d.adBody ?? null,
+        push_name: d.pushName ?? null,
+      },
+    })
+    .select("*")
+    .maybeSingle();
+
+  if (error || !data) {
+    console.error(`❌ [prospeccao] Não consegui criar o lead do anúncio ${d.waId}:`, error);
+    return null;
+  }
+
+  console.log(`📣 [prospeccao] Lead novo do anúncio: ${nome} (${d.waId})${d.adTitle ? ` — "${d.adTitle}"` : ""}`);
+  const alvo = process.env.AUTOZAP_ALERT_WHATSAPP;
+  const creds = autozapAvisaCreds();
+  if (alvo && creds) {
+    const corpo =
+      `📣 Lead novo do anúncio\n\nNome: ${nome}\nTelefone: ${d.waId}` +
+      (d.adTitle ? `\nAnúncio: ${d.adTitle}` : "") +
+      `\nMensagem: ${d.primeiraMensagem.slice(0, 200)}\n\nA Mari já está atendendo. Acompanhe pelo Inbox da aba Vendas.`;
+    await sendAvisaMessage(alvo, corpo, creds, { typing: false }).catch(() => {});
+  }
+  return data as Prospect;
 }
 
 // ─── Handler principal ────────────────────────────────────────────────────────
@@ -446,7 +516,8 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Extração + filtros básicos ──────────────────────────────────────────────
-  const { phone, text: textoRecebido, fromMe, messageId, audioUrl, audioMediaKey } = extractFields(payload);
+  const { phone, text: textoRecebido, fromMe, messageId, audioUrl, audioMediaKey, isGroup, isLid, pushName, adTitle, adBody } =
+    extractFields(payload);
   let text = textoRecebido;
 
   // Eco (fromMe): pode ser a própria Mari pela API — ou um humano digitando no
@@ -472,7 +543,17 @@ export async function POST(req: NextRequest) {
 
   if (!text) return NextResponse.json({ status: "empty_content" });
 
-  const waId = normalizePhone(phone);
+  let waId = normalizePhone(phone);
+
+  // Lead de anúncio (CTWA) costuma chegar só com o LID, sem o número. Resolve
+  // ANTES de procurar o prospect: senão um lojista já cadastrado que respondeu
+  // pelo LID virava prospect novo duplicado. Sem resolução, segue com o LID
+  // (o envio da Avisa aceita) e o Lucas vê o contato sem número no Inbox.
+  if (isLid) {
+    const creds = autozapAvisaCreds();
+    const real = creds ? await resolveAvisaLid(phone, creds) : null;
+    if (real) waId = normalizePhone(real);
+  }
 
   // ── Acha o prospect por wa_id OU telefone (normalizados) ────────────────────
   // Busca tolerante: a coluna pode guardar o número com ou sem o "55", então
@@ -484,11 +565,21 @@ export async function POST(req: NextRequest) {
     .or(`wa_id.eq.${waId},telefone.eq.${waId},wa_id.ilike.%${ultimos},telefone.ilike.%${ultimos}`)
     .limit(1);
 
-  const prospect = (candidatos?.[0] as Prospect | undefined) ?? null;
+  let prospect = (candidatos?.[0] as Prospect | undefined) ?? null;
 
+  // ── Número que ninguém abordou = lead do anúncio ────────────────────────────
+  // Desde 19/10/2026 o chip da Mari é o WhatsApp da Página do AutoZap: quem
+  // clica no anúncio cai aqui sem estar na lista. Antes isso era descartado
+  // ("prospect_not_found") e o lead ficava no vácuo. Grupo e o próprio número
+  // do Lucas (testes, comandos) continuam fora.
   if (!prospect) {
-    console.warn(`⚠️ [prospeccao webhook] Sem prospect para ${waId} — mensagem ignorada.`);
-    return NextResponse.json({ status: "prospect_not_found" });
+    const dono = normalizePhone(process.env.AUTOZAP_ALERT_WHATSAPP || "");
+    if (isGroup || (dono && waId === dono)) {
+      console.warn(`⚠️ [prospeccao webhook] Sem prospect para ${waId} (${isGroup ? "grupo" : "número do admin"}) — ignorada.`);
+      return NextResponse.json({ status: "prospect_not_found" });
+    }
+    prospect = await criarProspectDoAnuncio({ waId, pushName, adTitle, adBody, primeiraMensagem: text });
+    if (!prospect) return NextResponse.json({ status: "prospect_not_found" });
   }
 
   // ── Comando !reset (só do número do Lucas) ──────────────────────────────────
@@ -833,7 +924,9 @@ export async function POST(req: NextRequest) {
     .ilike("content", `%${MARCA_DO_PITCH}%`)
     .then((res) => (res.count ?? 0) > 0);
 
-  if (!jaMandeiOPitch && !ehRecusaForte(text)) {
+  // Lead de anúncio não recebe o pitch: ele responde à abertura "falo com o
+  // dono?" da prospecção ativa, que esse lead nunca viu. Quem conduz é a Mari.
+  if (!jaMandeiOPitch && !ehRecusaForte(text) && prospect.fonte !== "anuncio") {
     const creds = autozapAvisaCreds();
     if (creds) {
       const enviadas: string[] = [];
@@ -888,7 +981,12 @@ export async function POST(req: NextRequest) {
     console.log(`🔀 [prospeccao] "${text.slice(0, 40)}" reclassificado como ${destino}.`);
   }
 
-  if (destino === "opt_out") {
+  if (r.nao_e_lojista && prospect.fonte === "anuncio") {
+    // Consumidor que clicou no anúncio querendo comprar carro. A Mari já
+    // explicou e se despediu; sai do funil sem virar opt_out (não recusou nada).
+    patchBase.status = "perdido";
+    patchBase.notas = [prospect.notas, "Consumidor (não é lojista) — veio do anúncio."].filter(Boolean).join(" • ");
+  } else if (destino === "opt_out") {
     // Recusa DEFINITIVA: sai da base pra sempre (cron e rodada nova filtram opt_out).
     patchBase.status = "opt_out";
     patchBase.opt_out = true;

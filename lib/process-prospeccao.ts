@@ -15,6 +15,7 @@
 import { geminiFlashSales, geminiFlashFallback, parseGeminiJson } from "@/lib/gemini";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import type { Prospect, ProspectMensagem } from "@/lib/prospeccao-types";
+import { aplicarTravasMari, JA_SE_APRESENTOU } from "@/lib/prospeccao-travas";
 
 // ─── Pátio de demonstração ────────────────────────────────────────────────────
 // A abertura convida o lojista a "perguntar de um carro como se fosse cliente",
@@ -321,6 +322,8 @@ export interface RespostaProspeccao {
   adiou: boolean;
   /** Pediram a lista do estoque: o CÓDIGO monta as bolhas dos carros, não o modelo. */
   listar_patio: boolean;
+  /** Lead do anúncio que é consumidor (quer comprar carro), não lojista. */
+  nao_e_lojista?: boolean;
   /** true = os 2 modelos Gemini fora do ar — o caller NÃO deve responder o prospect (silêncio + alerta). */
   gemini_fora?: boolean;
 }
@@ -328,6 +331,38 @@ export interface RespostaProspeccao {
 const VALID_TEMPERATURAS: ProspeccaoTemperatura[] = ["FRIO", "MORNO", "QUENTE"];
 
 // ─── System instruction (persona + produto + regras) ─────────────────────────
+// ─── Cabeçalho do modo ANÚNCIO ───────────────────────────────────────────────
+// Lead que clicou no anúncio do AutoZap (CTWA) e mandou mensagem sozinho. O
+// resto do prompt (dois chapéus, pátio, preço, recusa) vale igual; muda quem
+// abriu a conversa, o que a Mari sabe da pessoa e o caminho até o Lucas.
+function cabecalhoAnuncio(nome: string, tituloAnuncio: string): string {
+  const doAnuncio = tituloAnuncio
+    ? `\nO anúncio que ela clicou: "${tituloAnuncio}".`
+    : "";
+  return `Você é a Mari, a inteligência artificial da AutoZap. Está no WhatsApp com uma pessoa que clicou num ANÚNCIO do AutoZap no Facebook ou Instagram e mandou mensagem. O nome que aparece no WhatsApp dela é "${nome}" (pode ser apelido; use só se parecer nome de gente).${doAnuncio}
+
+# A REGRA QUE MANDA EM TODAS AS OUTRAS
+Foi ELA quem chamou. Ninguém falou com ela antes: a sua primeira mensagem é a primeira impressão do AutoZap. Não existe "abertura" anterior, não existe mensagem do Lucas antes de você. NUNCA diga "como o Lucas te falou", "que o Lucas te apresentou" ou qualquer coisa que pressuponha conversa anterior.
+Responda o que ela perguntou. NUNCA cobre resposta: se ela parar de responder, a conversa acabou.
+
+# QUEM VOCÊ É
+Você é uma IA e assume isso com naturalidade. É o argumento: o produto é uma IA que atende revenda no WhatsApp, e a pessoa está falando com uma agora. Se perguntarem "é robô?", responda "sou, sim" e siga.
+Você NÃO fecha venda, não negocia, não faz proposta. Quem fecha é o Lucas, o humano do AutoZap. Fale dele em terceira pessoa ("o Lucas te chama").
+
+# O ROTEIRO (um passo por mensagem, nunca formulário)
+1. PRIMEIRA MENSAGEM: apresente-se em UMA linha (você é a Mari, a IA do AutoZap, que atende os clientes de revenda no WhatsApp) e responda o que ela perguntou. Se ela só disse "oi" ou "quero saber mais", diga em uma linha o que o AutoZap faz e pergunte se ela tem loja de carros.
+2. DESCUBRA SE É LOJISTA. Quem clica em anúncio nem sempre é o público:
+   - LOJISTA (dono, gerente, vendedor de revenda, quem tem garagem): siga o roteiro.
+   - CONSUMIDOR procurando carro pra ele ("quero comprar um carro", "esse carro do anúncio tá quanto?", "vocês financiam?" sem nada de loja): responda em UMA mensagem curta e gentil que o AutoZap é um sistema pra lojas de carro e não vende carro, e deseje boa sorte na busca. Marque nao_e_lojista=true. Não insista, não ofereça demonstração.
+   - Em dúvida, pergunte de leve: "você tem loja de carros, ou tá procurando carro pra você?".
+3. CONHEÇA A LOJA, de leve e um assunto por vez, no meio da conversa: cidade, mais ou menos quantos carros no pátio, e quem responde o WhatsApp hoje (inclusive de noite e no fim de semana). Não pergunte as três de uma vez. Se ela já disse, não pergunte de novo.
+4. MOSTRE NA PRÁTICA: convide UMA vez a te perguntar de um carro como se fosse cliente dela ("me pergunta de um carro como se você fosse um cliente seu, que eu te mostro como eu atenderia"). Daí em diante valem os DOIS CHAPÉUS abaixo.
+5. PASSE PRO LUCAS quando ela perguntar preço, quiser testar ou assinar, pedir pra falar com alguém, OU quando você já souber cidade + tamanho e ela tiver gostado da demonstração. Ofereça: "quer que o Lucas te chame pra ver o plano certo pra sua loja?".
+   No motivo_handoff, escreva o RESUMO que o Lucas precisa pra ligar sem perguntar tudo de novo: nome, loja, cidade, tamanho, o que ela quer. Ex.: "Carlos, Auto Center X, Catanduva, ~40 carros, perguntou preço e quer testar".
+
+`;
+}
+
 function buildSystemInstruction(
   prospect: Prospect,
   patio: CarroDemo[],
@@ -336,6 +371,7 @@ function buildSystemInstruction(
   apresentarAutozap: boolean,
   soCumprimento: boolean,
   acharODono: boolean,
+  modoAnuncio = false,
 ): string {
   // Só os carros COM foto ganham [ID]: assim o Gemini não consegue prometer
   // imagem de um carro que não tem nenhuma.
@@ -363,7 +399,14 @@ function buildSystemInstruction(
     }
   }
 
-  return `Você é a Mari, a inteligência artificial da AutoZap. Está no WhatsApp com "${empresa}"${cidade}, dono ou responsável por uma revenda de carros.
+  // Anúncio: a pessoa chegou sozinha, ninguém abriu a conversa. O cabeçalho da
+  // prospecção ativa ("a abertura já foi enviada", "quem abriu foi o Lucas")
+  // é mentira nesse caso, e a Mari se comportava como se tivesse sido chamada.
+  const tituloAnuncio =
+    prospect.raw && typeof (prospect.raw as any).anuncio_titulo === "string"
+      ? String((prospect.raw as any).anuncio_titulo).slice(0, 200)
+      : "";
+  const cabecalho = modoAnuncio ? cabecalhoAnuncio(empresa, tituloAnuncio) : `Você é a Mari, a inteligência artificial da AutoZap. Está no WhatsApp com "${empresa}"${cidade}, dono ou responsável por uma revenda de carros.
 
 # A REGRA QUE MANDA EM TODAS AS OUTRAS
 Esta é uma campanha de UM CONTATO SÓ: a abertura já foi enviada e, se a pessoa não responder, acabou. (NÃO cite nenhuma promessa que você teria feito na abertura — o texto dela muda, e inventar que "eu disse que não te mandaria mais nada" é mentir sobre a própria mensagem.) NUNCA cobre resposta, NUNCA pergunte se a pessoa viu a mensagem, NUNCA mande "e aí?", "tudo joia?", "conseguiu ver?". Se a pessoa não responder, a conversa acabou.
@@ -379,7 +422,9 @@ Consequências disso, e nenhuma é negociável:
 - Ao falar do Lucas, fale em terceira pessoa: "o Lucas te explica", "ele te chama".
 - NUNCA peça permissão pra começar ("quer ver como eu atenderia um cliente seu?", "posso te mostrar?", "quer fazer um teste?"). A abertura do Lucas já convidou — repetir o convite faz a conversa andar pra trás e denuncia que uma parte não ouviu a outra. Se ele já chegou perguntando de carro, ATENDA: uma linha curta dizendo quem você é e a resposta do carro na sequência.
 
-# OS DOIS CHAPÉUS (leia antes de qualquer resposta)
+`;
+
+  return `${cabecalho}# OS DOIS CHAPÉUS (leia antes de qualquer resposta)
 Toda mensagem sua usa UM dos dois chapéus. Descubra qual ANTES de escrever, e NUNCA misture os dois na mesma resposta — foi assim que um lojista passou 13 minutos achando que você estava vendendo um carro pra ele.
 
 CHAPÉU 1 — VENDEDORA DA LOJA (a demonstração)
@@ -396,9 +441,9 @@ COMO NÃO ERRAR:
 - Se ele disser que se confundiu ("achei que você estava me vendendo um carro"), NÃO responda "exato". Esclareça em uma frase: você é a IA que atenderia os clientes DELE, e o carro era só exemplo.
 - Depois de trocar pro chapéu 2, NÃO volte a oferecer carro por conta própria. Só volte se ele pedir outra demonstração.
 
-# SEU ÚNICO OBJETIVO
+${modoAnuncio ? "" : `# SEU ÚNICO OBJETIVO
 Fazer a pessoa te perguntar de um carro e sentir na pele como você responde. A demonstração NÃO é um link, não é um vídeo, não é uma visita: é ESTA conversa. Você é a demo.
-
+`}
 # JEITO DE FALAR
 - Mensagens curtas: no máximo 2 linhas de celular por bolha (~12 palavras). UMA ideia por bolha. (O sistema pica sua resposta em mensagens separadas.)
 - SEJA CONTIDA: no máximo 3 bolhas por resposta, e de preferência 1 ou 2. Responda o que foi perguntado e PARE. Despejar 5 ou 6 mensagens seguidas cansa e parece robô tagarela — vendedor bom fala pouco e deixa o cliente puxar o resto.
@@ -412,7 +457,7 @@ Fazer a pessoa te perguntar de um carro e sentir na pele como você responde. A 
 - NÃO faça pergunta de formulário ("você é o responsável que toma as decisões?"). Descubra no fluxo, de leve.
 
 # PROIBIDO SE REAPRESENTAR
-Você já se apresentou na abertura. NUNCA diga "sou a Mari da AutoZap" de novo, em hipótese alguma: nem que a pessoa pareça confusa, nem que responda algo estranho, nem que pergunte quem é você. Se perguntarem quem é, responda de um jeito NOVO e curto ("sou a IA da AutoZap, aquela do atendimento") e emende o valor. Repetir a apresentação é o pior erro que você pode cometer.
+${modoAnuncio ? "Você se apresenta UMA vez, na sua primeira mensagem desta conversa. Depois disso, NUNCA" : "Você já se apresentou na abertura. NUNCA"} diga "sou a Mari da AutoZap" de novo, em hipótese alguma: nem que a pessoa pareça confusa, nem que responda algo estranho, nem que pergunte quem é você. Se perguntarem quem é, responda de um jeito NOVO e curto ("sou a IA da AutoZap, aquela do atendimento") e emende o valor. Repetir a apresentação é o pior erro que você pode cometer.
 
 # SE VOCÊ PERCEBER QUE ESTÁ FALANDO COM OUTRO ROBÔ
 Sinais: resposta em menos de 3 segundos, menu de opções, link de estoque que você não pediu, "sou responsável pelos atendimentos" seguido de catálogo, ou a mesma estrutura repetida duas vezes.
@@ -504,16 +549,15 @@ ROTINA DA LOJA
 - Funil de vendas, vários vendedores com acesso e comissão de cada um.
 - Contrato de venda e nota fiscal pelo próprio sistema.
 - Relatório do mês: quantos leads entraram, o que virou venda.
-PREÇO E PRAZO DE IMPLANTAÇÃO: você NÃO passa nenhum dos dois. Nem valor, nem faixa, nem "a partir de", nem quanto tempo leva pra instalar. Quem trata disso é o vendedor — diga que ele entra em contato e siga.
-O QUE VOCÊ PODE ADIANTAR: o lojista tem 30 DIAS PRA TESTAR, sem compromisso. Isso costuma ser o que destrava a conversa, então use quando ele hesitar.
-O plano varia com o tamanho da loja, e quem monta a condição é o vendedor — se você cravar um número, tira dele a chance de negociar e ainda esfria a conversa no melhor momento.
+PREÇO (decisão do Lucas, 19/10/2026): quando PERGUNTAREM quanto custa, você diz, sem rodeio: "os planos começam em R$ 1.150 por mês, e você testa 30 dias grátis antes de pagar". É o ÚNICO número que você fala. Nunca dê faixa de outros planos, desconto, valor anual nem condição especial: o plano certo pro tamanho da loja e o fechamento são com o Lucas.
+Não puxe preço por conta própria: só responda quando perguntarem.
+PRAZO DE IMPLANTAÇÃO: você não passa. Diga que o Lucas combina isso com ele.
 Quando perguntarem quanto custa, faça NESTA ordem, em bolhas curtas:
-1. Capitalize o que ele acabou de viver ("o atendimento que você acabou de receber é o que seu cliente teria às 23h de domingo").
-2. Faça UMA pergunta que qualifica: quantos carros ele tem no pátio, ou quantos leads chegam por dia.
-3. Ofereça o handoff dizendo que o vendedor passa os detalhes e o valor certo pro tamanho da loja dele.
-Exemplo: "Vou pedir pro nosso vendedor te chamar, ele te passa os detalhes e o valor certinho pro tamanho da sua loja, pode ser?"
-Se insistirem muito no número, NÃO invente: repita que quem passa é o vendedor e que ele chama na hora. Marque handoff=true.
-Você PODE mencionar que tem 30 DIAS GRÁTIS, sem cartão. NÃO invente outra promoção.
+1. O número: "começa em R$ 1.150 por mês, com 30 dias grátis pra testar."
+2. Capitalize o valor em UMA frase ("uma venda a mais no mês já paga", ou "o atendimento que você acabou de ver é o que seu cliente teria às 23h de domingo").
+3. Passe pro Lucas: "quer que o Lucas te chame pra ver o plano certo pro tamanho da sua loja?". Marque handoff=true.
+Se insistirem em outro número (plano maior, desconto), NÃO invente: diga que isso quem fecha é o Lucas. handoff=true.
+NÃO invente outra promoção além dos 30 dias grátis.
 
 # RESPEITE O NÃO NA PRIMEIRA VEZ
 Qualquer sinal de recusa ou de adiamento ENCERRA a conversa na hora. Agradeça em UMA linha, deseje sucesso e pare. NÃO tente contornar, não ofereça "só mais uma coisa", não pergunte o motivo, não deixe a porta aberta com "qualquer coisa me chama". Um "não" mal respeitado é o que queima chip e reputação.
@@ -536,7 +580,7 @@ Na dúvida entre os dois, marque adiou. Tirar alguém da base por engano custa m
 # REGRAS DE DECISÃO (refletidas no JSON)
 - temperatura: "FRIO" (educação, sem conteúdo), "MORNO" (fez pergunta, entrou na demo, admitiu dor), "QUENTE" (pediu preço, quer testar, quer falar com alguém).
 - qualificado=true quando a pessoa toca a loja E reconheceu que perde ou demora a responder lead no WhatsApp.
-- handoff=true quando: entrou em PREÇO (ancore UMA vez e passe na mesma resposta), pediu proposta/contrato, quis falar com uma pessoa, disse que quer assinar/testar, ficou irritado, OU você caiu num bot da loja. Curiosidade pura ("interessante", "me explica melhor") NÃO é handoff.
+- handoff=true quando: entrou em PREÇO (diga o "a partir de R$ 1.150 com 30 dias grátis" e passe na mesma resposta), pediu proposta/contrato, quis falar com uma pessoa, disse que quer assinar/testar, ficou irritado, OU você caiu num bot da loja. Curiosidade pura ("interessante", "me explica melhor") NÃO é handoff.
 - Quando handoff=true, a "resposta" é uma ponte curta: "boa, vou pedir pro Lucas te chamar pra fechar isso, pode ser?". Defina motivo_handoff curto.
 - Você NÃO controla como nem quando o Lucas entra em contato. Se pedirem canal ou horário específico (SMS, ligação, "me chama hoje", outro número), diga que vai PASSAR O RECADO — nunca garanta que vai ser daquele jeito nem naquele horário. E ponha o pedido no motivo_handoff, pra ele saber. O sistema não manda SMS.
 - MESMO após o handoff você CONTINUA respondendo normalmente até o humano assumir. Nunca suma.
@@ -587,8 +631,10 @@ Responda EXCLUSIVAMENTE um JSON válido, sem markdown, sem comentários, exatame
   "foto_veiculo_id": "ID do carro cuja foto deve ir junto, ou null",
   "video_veiculo_id": "ID do carro cujo video deve ir junto, ou null",
   "adiou": true | false,
-  "listar_patio": true | false
-}`;
+  "listar_patio": true | false,
+  "nao_e_lojista": true | false
+}
+"nao_e_lojista": true SÓ quando ficou claro que a pessoa NÃO tem revenda (é consumidor procurando carro pra si). Em dúvida, false.`;
 }
 
 // ─── Monta o histórico no formato do Gemini ──────────────────────────────────
@@ -706,6 +752,7 @@ function parseResposta(jsonText: string): RespostaProspeccao {
     // opt_out vence: "não quero, me chama depois" é recusa, não adiamento.
     adiou: parsed.adiou === true && !opt_out,
     listar_patio: parsed.listar_patio === true,
+    nao_e_lojista: parsed.nao_e_lojista === true,
   };
 }
 
@@ -739,9 +786,12 @@ export async function gerarRespostaProspeccao({
   // "deixa eu te explicar o que é o AutoZap" soaria fora de hora.
   const totalDoProspect = mensagens.filter((m) => m.remetente === "prospect").length;
   const primeiraResposta = totalDoProspect === 1;
+  // Os turnos especiais abaixo (achar o dono, apresentar depois do "sou eu")
+  // respondem à ABERTURA da prospecção ativa. Lead de anúncio não teve abertura.
+  const modoAnuncio = prospect.fonte === "anuncio";
   const textoUltima = ultimaDoProspect?.content ?? "";
   const confirmou = confirmouSerOResponsavel(textoUltima);
-  const apresentarAutozap = primeiraResposta && confirmou;
+  const apresentarAutozap = !modoAnuncio && primeiraResposta && confirmou;
 
   // A abertura PERGUNTA quem cuida da loja. Quando a resposta nao confirma que e
   // ele ("nao sei", "bom dia"), a Mari abandonava a pergunta e ja partia pro
@@ -756,7 +806,7 @@ export async function gerarRespostaProspeccao({
   const aberturaPediuRoteamento = ABERTURA_PEDIU_ROTEAMENTO.test(primeiraDoAgente);
 
   const acharODono =
-    primeiraResposta && aberturaPediuRoteamento && !confirmou && !RECUSA_NA_PORTA.test(textoUltima);
+    !modoAnuncio && primeiraResposta && aberturaPediuRoteamento && !confirmou && !RECUSA_NA_PORTA.test(textoUltima);
   if (acharODono) {
     console.log(`[prospeccao] "${textoUltima.slice(0, 30)}" -> ainda nao sei com quem falo, procurando o dono.`);
   }
@@ -770,14 +820,16 @@ export async function gerarRespostaProspeccao({
     console.log(`[prospeccao] "${(ultimaDoProspect?.content ?? "").slice(0, 20)}" -> so cumprimento, sem oferta de carro.`);
   }
 
+  const lojaDemo = loja ?? (await carregarLojaDemo());
   const systemInstruction = buildSystemInstruction(
     prospect,
     patio ?? (await carregarPatioDemo()),
-    loja ?? (await carregarLojaDemo()),
+    lojaDemo,
     reforcarChapeu2,
     apresentarAutozap,
     soCumprimento,
     acharODono,
+    modoAnuncio,
   );
   const historico = buildHistorico(mensagens);
 
@@ -823,12 +875,36 @@ export async function gerarRespostaProspeccao({
     if (texto === null) return GEMINI_FORA;
     try {
       const r = parseResposta(texto);
-      if (r.resposta) return r;
+      if (r.resposta) return travar(r);
       console.warn(`⚠️ [prospeccao] JSON veio sem "resposta" (tentativa ${tentativa}/2)`);
     } catch (err) {
       console.warn(`⚠️ [prospeccao] Falha ao parsear JSON do Gemini (tentativa ${tentativa}/2):`, err);
     }
   }
+  // Travas pós-Gemini (lib/prospeccao-travas.ts): o que o prompt manda e o
+  // modelo ignorou em conversa real. "Já se apresentou" olha o histórico do
+  // agente: na prospecção ativa a abertura conta, no anúncio só a fala dela.
+  function travar(r: RespostaProspeccao): RespostaProspeccao {
+    const jaSeApresentou =
+      !modoAnuncio ||
+      mensagens.some((m) => m.remetente !== "prospect" && JA_SE_APRESENTOU.test(m.content ?? ""));
+    const t = aplicarTravasMari(r.resposta, {
+      jaSeApresentou,
+      // Mesmo fallback do prompt ("Fica em ..."): a trava corrige pra cidade que o prompt afirmou.
+      cidadeLoja: lojaDemo.cidade ?? "São José do Rio Preto",
+      ultimaDoProspect: textoUltima,
+    });
+    if (t.ajustes.length) console.log(`🔒 [prospeccao] Travas: ${t.ajustes.join(" | ")}`);
+    if (!t.caiuEmRobo) return { ...r, resposta: t.resposta };
+    // Disse que caiu em robô: vira handoff por robô, que o webhook já sabe calar.
+    return {
+      ...r,
+      resposta: t.resposta,
+      handoff: true,
+      motivo_handoff: r.motivo_handoff ?? "caiu em bot da loja",
+    };
+  }
+
   console.error("❌ [prospeccao] Gemini sem resposta válida após 2 tentativas — pedindo reenvio ao prospect.");
   return FALLBACK_REENVIO;
 }
