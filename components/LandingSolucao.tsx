@@ -69,7 +69,7 @@ export function LandingSolucao({ landing: l }: { landing: Landing }) {
               href="/onboarding"
               className="inline-flex items-center gap-3 px-8 py-4 bg-red-600 text-white rounded-2xl font-black uppercase tracking-widest text-sm hover:bg-red-500 transition-all hover:gap-4 group"
             >
-              Testar 30 dias grátis
+              Testar 15 dias grátis
               <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
             </Link>
             <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500">
@@ -147,7 +147,7 @@ export function LandingSolucao({ landing: l }: { landing: Landing }) {
             Veja rodando na sua revenda.
           </h2>
           <p className="text-gray-400 mb-8 text-lg">
-            30 dias grátis, com a nossa equipe fazendo a implantação junto com você.
+            15 dias grátis, com a nossa equipe fazendo a implantação junto com você.
           </p>
           <Link
             href="/onboarding"

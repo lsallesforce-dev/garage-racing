@@ -36,7 +36,7 @@ export const LANDINGS: Landing[] = [
     menu: "Sistema para revenda",
     title: "Sistema para revenda de carros com IA no WhatsApp",
     description:
-      "Sistema completo para revenda de carros: estoque, atendimento automático no WhatsApp, vitrine, anúncios em portais, financeiro e comissões. 30 dias grátis.",
+      "Sistema completo para revenda de carros: estoque, atendimento automático no WhatsApp, vitrine, anúncios em portais, financeiro e comissões. 15 dias grátis.",
     chamada: "Sistema para revenda de carros",
     h1: "O sistema para revenda de carros",
     h1Destaque: "que atende o cliente por você.",
@@ -79,7 +79,7 @@ export const LANDINGS: Landing[] = [
     faq: [
       {
         q: "Quanto custa um sistema para revenda de carros?",
-        a: "No AutoZap os planos começam em R$ 1.150 por mês, com 30 dias de teste grátis e sem fidelidade.",
+        a: "No AutoZap os planos começam em R$ 1.150 por mês, com 15 dias de teste grátis e sem fidelidade.",
       },
       {
         q: "Preciso trocar o número de WhatsApp da loja?",
@@ -100,7 +100,7 @@ export const LANDINGS: Landing[] = [
     menu: "CRM para revenda",
     title: "CRM para revenda de veículos: leads do WhatsApp no funil",
     description:
-      "CRM para revenda de veículos que captura o lead do WhatsApp sozinho, qualifica com IA, organiza o funil por vendedor e faz o follow-up. 30 dias grátis.",
+      "CRM para revenda de veículos que captura o lead do WhatsApp sozinho, qualifica com IA, organiza o funil por vendedor e faz o follow-up. 15 dias grátis.",
     chamada: "CRM para revenda de veículos",
     h1: "CRM para revenda de veículos",
     h1Destaque: "que se preenche sozinho.",

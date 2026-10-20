@@ -48,7 +48,7 @@ export default function TermosPage() {
 
       <Section title="5. Free trial">
         <p>
-          New accounts include a <strong className="text-gray-900">30-day free trial</strong> with
+          New accounts include a <strong className="text-gray-900">15-day free trial</strong> with
           full access to the platform, with no charge and no payment method required. At the end of
           the trial period, access is automatically suspended until a paid subscription is activated.
         </p>

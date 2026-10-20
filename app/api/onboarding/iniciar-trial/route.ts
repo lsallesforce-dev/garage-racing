@@ -1,5 +1,5 @@
 // app/api/onboarding/iniciar-trial/route.ts
-// Inicia o trial de 30 dias do tenant na criação da garage. Idempotente:
+// Inicia o trial de 15 dias do tenant na criação da garage. Idempotente:
 // só define trial_ends_at se ainda estiver null (não estende em re-onboarding).
 //
 // É também o ponto em que o onboarding TERMINA: a loja acabou de gravar nome,
@@ -11,7 +11,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { alertaCadastroNovo } from "@/lib/alerta-interno";
 import { cronGuard } from "@/lib/redis";
 
-const TRIAL_DIAS = 30;
+const TRIAL_DIAS = 15;
 
 export async function POST() {
   const { user, error } = await requireAuth();

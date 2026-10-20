@@ -16,7 +16,7 @@ const planos = [
       { ok: true,  text: "IA de atendimento no WhatsApp"   },
       { ok: true,  text: "Vitrine digital por veículo"     },
       { ok: true,  text: "15 vídeos de marketing IA/mês"   },
-      { ok: true,  text: "Trial de 30 dias grátis"         },
+      { ok: true,  text: "Trial de 15 dias grátis"         },
       { ok: false, text: "Multi-vendedor"                  },
       { ok: false, text: "Financeiro completo + comissões" },
       { ok: false, text: "Emissão de NF-e"                 },
@@ -39,7 +39,7 @@ const planos = [
       { ok: true,  text: "Financeiro completo + comissões"        },
       { ok: true,  text: "Relatório mensal em PDF"                },
       { ok: true,  text: "Multi-vendedor com controle de acesso"  },
-      { ok: true,  text: "Trial de 30 dias grátis"                },
+      { ok: true,  text: "Trial de 15 dias grátis"                },
       { ok: false, text: "Emissão de NF-e"                        },
     ],
     cta: "Começar trial grátis",
@@ -62,7 +62,7 @@ const planos = [
       { ok: true, text: "Financeiro completo + comissões + contrato"  },
       { ok: true, text: "Relatório mensal em PDF"                      },
       { ok: true, text: "Multi-vendedor com controle de acesso"        },
-      { ok: true, text: "Trial de 30 dias grátis"                      },
+      { ok: true, text: "Trial de 15 dias grátis"                      },
       { ok: true, text: "Emissão de NF-e (50/mês)"                    },
     ],
     cta: "Começar trial grátis",
@@ -72,8 +72,8 @@ const planos = [
 
 const faq = [
   {
-    q: "Como funciona o trial de 30 dias?",
-    a: "Um de nossos consultores agenda uma visita para configurar o sistema na sua revenda. Você usa por 30 dias sem pagar nada. Se gostar, assina. Se não gostar, não tem custo.",
+    q: "Como funciona o trial de 15 dias?",
+    a: "Um de nossos consultores agenda uma visita para configurar o sistema na sua revenda. Você usa por 15 dias sem pagar nada. Se gostar, assina. Se não gostar, não tem custo.",
   },
   {
     q: "Como funciona a IA no WhatsApp?",
@@ -111,7 +111,7 @@ export default async function PlanosPage() {
         <div className="relative max-w-3xl mx-auto px-6">
           <p className="text-[10px] font-black uppercase tracking-[0.3em] text-red-500 mb-4">Planos e Preços</p>
           <h1 className="text-4xl md:text-6xl font-black italic uppercase tracking-tighter mb-6 leading-none">
-            30 dias grátis.<br />
+            15 dias grátis.<br />
             <span className="text-red-500">Sem cartão.</span>
           </h1>
           <p className="text-gray-400 text-lg max-w-xl mx-auto">
@@ -210,7 +210,7 @@ export default async function PlanosPage() {
             </div>
             <div>
               <p className="font-black text-white uppercase italic tracking-tight">Um consultor vai até você</p>
-              <p className="text-gray-400 text-sm mt-0.5">Configuramos tudo na sua revenda. 30 dias para testar. Zero custo.</p>
+              <p className="text-gray-400 text-sm mt-0.5">Configuramos tudo na sua revenda. 15 dias para testar. Zero custo.</p>
             </div>
           </div>
           <Link href="/onboarding"
@@ -247,7 +247,7 @@ export default async function PlanosPage() {
                 ["Multi-vendedor",            "—",          "✓",           "✓"            ],
                 ["Emissão de NF-e",           "—",          "—",           "50/mês"       ],
                 ["Suporte",                   "Email",      "Email",       "WhatsApp"     ],
-                ["Trial",                     "30 dias",    "30 dias",     "30 dias"      ],
+                ["Trial",                     "15 dias",    "15 dias",     "15 dias"      ],
               ].map(([recurso, starter, pro, premium]) => (
                 <tr key={recurso} className="hover:bg-gray-50/50 transition-colors">
                   <td className="py-4 px-6 font-bold text-gray-700">{recurso}</td>
@@ -274,7 +274,7 @@ export default async function PlanosPage() {
           </p>
           <Link href="/onboarding"
             className="inline-flex items-center gap-2 px-8 py-4 bg-red-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-red-500 transition-colors">
-            Testar 30 dias grátis <ArrowRight size={14} />
+            Testar 15 dias grátis <ArrowRight size={14} />
           </Link>
         </div>
       </section>

@@ -158,7 +158,7 @@ export default function SobrePage() {
             Faça parte da revolução.
           </h2>
           <p className="text-gray-400 mb-8 text-lg">
-            Junte-se às revendas que já trabalham com IA. 14 dias grátis, sem compromisso.
+            Junte-se às revendas que já trabalham com IA. 15 dias grátis, sem compromisso.
           </p>
           <Link href="/planos"
             className="inline-flex items-center gap-3 px-8 py-4 bg-red-600 text-white rounded-2xl font-black uppercase tracking-widest text-sm hover:bg-red-500 transition-all hover:gap-4 group">

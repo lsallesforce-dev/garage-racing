@@ -112,7 +112,7 @@ function OnboardingInner() {
         { onConflict: "user_id" }
       );
 
-      // Inicia o trial de 30 dias (idempotente — só na primeira vez)
+      // Inicia o trial de 15 dias (idempotente — só na primeira vez)
       await fetch("/api/onboarding/iniciar-trial", { method: "POST" }).catch(() => {});
 
       // Indicação: vincula o indicador se veio por link ?ref=CODIGO
@@ -177,7 +177,7 @@ function OnboardingInner() {
                 de carros do Brasil.
               </p>
               <p className="text-sm text-gray-500 mt-2 leading-relaxed">
-                30 dias grátis. Sem cartão. Um consultor configura tudo com você.
+                15 dias grátis. Sem cartão. Um consultor configura tudo com você.
               </p>
               {planoInfo && (
                 <div className="mt-4 inline-flex flex-col items-center gap-0.5 px-6 py-3 bg-gray-50 border border-gray-200 rounded-2xl">
@@ -286,7 +286,7 @@ function OnboardingInner() {
                   {" "}e a{" "}
                   <a href="/privacidade" target="_blank" rel="noopener noreferrer" className="text-red-600 font-bold hover:underline">Política de Privacidade</a>.
                   <br />
-                  <span className="text-gray-400">Teste grátis por 30 dias. Após esse período, o acesso é interrompido até a assinatura.</span>
+                  <span className="text-gray-400">Teste grátis por 15 dias. Após esse período, o acesso é interrompido até a assinatura.</span>
                 </span>
               </label>
 
@@ -398,7 +398,7 @@ function OnboardingInner() {
         </div>
 
         <p className="text-center text-[10px] text-gray-400 mt-6 uppercase tracking-widest">
-          AutoZap © {new Date().getFullYear()} · Trial de 30 dias sem cartão
+          AutoZap © {new Date().getFullYear()} · Trial de 15 dias sem cartão
         </p>
       </div>
     </div>

@@ -336,7 +336,7 @@ function AssinarContent() {
           <p className="text-gray-400 text-sm mt-2">
             {modoTravado
               ? `Renovação da ${empresaCobranca ? `assinatura da ${empresaCobranca}` : "sua assinatura"} · cancele quando quiser`
-              : "Trial grátis de 30 dias · Cancele quando quiser"}
+              : "Trial grátis de 15 dias · Cancele quando quiser"}
           </p>
         </div>
 
@@ -595,7 +595,7 @@ function AssinarContent() {
             <span>·</span>
             <span className="flex items-center gap-1"><Zap size={10} /> PagarMe</span>
             <span>·</span>
-            <span className="flex items-center gap-1"><CheckCircle2 size={10} /> Trial 30 dias</span>
+            <span className="flex items-center gap-1"><CheckCircle2 size={10} /> Trial 15 dias</span>
           </div>
 
         </form>

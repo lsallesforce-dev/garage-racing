@@ -208,7 +208,7 @@ function Hero() {
                 Já tenho conta
               </Link>
               <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-white/40 ml-2">
-                30 dias grátis · sem cartão
+                15 dias grátis · sem cartão
               </span>
             </div>
           </div>
@@ -1064,7 +1064,7 @@ function Offer() {
             </p>
 
             <div className="mt-8 grid grid-cols-2 gap-4 max-w-[520px]">
-              <OfferCard big="30 dias" sub="teste grátis" />
+              <OfferCard big="15 dias" sub="teste grátis" />
               <OfferCard big="0 fidelidade" sub="cancele quando quiser" />
               <OfferCard big="in-loco" sub="implantação no pátio" />
               <OfferCard big="whatsapp" sub="suporte humano" />
@@ -1164,7 +1164,7 @@ function FinalCTA() {
           <em className="italic font-semibold">zap.</em>
         </h2>
         <p className="mt-7 text-white/70 text-lg max-w-[560px] mx-auto">
-          30 dias grátis. Implantação no seu pátio. Sem cartão, sem fidelidade — cancele
+          15 dias grátis. Implantação no seu pátio. Sem cartão, sem fidelidade — cancele
           com uma mensagem.
         </p>
         <div className="mt-10 flex flex-wrap items-center justify-center gap-3">

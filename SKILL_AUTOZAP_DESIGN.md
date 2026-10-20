@@ -111,7 +111,7 @@ Passo 05 — Você só fecha
 3. **Paulo Ferreira** (PF Motors) — "O relatório de fechamento do mês mostrou que eu estava perdendo dinheiro em comissões. Ajustei na hora. Valeu cada centavo."
 
 ### Oferta comercial
-- Teste grátis por 30 dias
+- Teste grátis por 15 dias
 - Consultor vai até a revenda e configura tudo
 - Suporte via WhatsApp
 - Cancele quando quiser
@@ -401,7 +401,7 @@ export default function PortalHome() {
             Pronto para vender mais<br />sem trabalhar mais?
           </h2>
           <p className="text-red-100 text-lg mb-10 max-w-xl mx-auto">
-            Um consultor visita sua revenda, configura tudo e você testa por 30 dias sem pagar nada.
+            Um consultor visita sua revenda, configura tudo e você testa por 15 dias sem pagar nada.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link href="/onboarding" className="inline-flex items-center justify-center gap-3 px-8 py-4 bg-white text-red-600 rounded-2xl font-black uppercase tracking-widest text-sm hover:bg-gray-100 transition-colors">
@@ -412,7 +412,7 @@ export default function PortalHome() {
             </Link>
           </div>
           <div className="mt-8 flex items-center justify-center gap-6 flex-wrap">
-            {["Teste grátis por 30 dias","Consultor vai até você","Suporte via WhatsApp","Cancele quando quiser"].map(i => (
+            {["Teste grátis por 15 dias","Consultor vai até você","Suporte via WhatsApp","Cancele quando quiser"].map(i => (
               <div key={i} className="flex items-center gap-2 text-red-100 text-[11px] font-bold uppercase tracking-widest">
                 <CheckCircle2 size={12} />{i}
               </div>
