@@ -462,9 +462,43 @@ async function registrarMensagemDoCelular(
     .or(`wa_id.eq.${waId},telefone.eq.${waId},wa_id.ilike.%${ultimos},telefone.ilike.%${ultimos}`)
     .limit(1);
 
-  const prospect = candidatos?.[0] as { id: string; nome_empresa: string | null } | undefined;
-  // O chip conversa com gente que não é prospect (o próprio Lucas, testes).
-  if (!prospect) return NextResponse.json({ status: "ignored_from_me" });
+  let prospect = candidatos?.[0] as { id: string; nome_empresa: string | null } | undefined;
+
+  // Número fora da base = o Lucas abriu a conversa pelo celular do chip (ex.:
+  // chamar um tenant em trial pra reativar). Sem prospect, a resposta da pessoa
+  // caía no fluxo de "lead do anúncio" e a Mari entrava falando por cima dele.
+  // Cria o contato JÁ em modo humano; o próprio Lucas (testes) e os ecos da
+  // Mari (alertas) continuam fora.
+  if (!prospect) {
+    const dono = normalizePhone(process.env.AUTOZAP_ALERT_WHATSAPP || "");
+    if ((dono && waId === dono) || (await isAgentEcho(waId, alvo))) {
+      return NextResponse.json({ status: "ignored_from_me" });
+    }
+    // Se for um tenant, o nome da loja vem da config dele.
+    const { data: tenant } = await supabaseAdmin
+      .from("config_garage")
+      .select("nome_empresa")
+      .ilike("whatsapp", `%${ultimos.slice(-8)}`)
+      .limit(1);
+    const nome = (tenant?.[0]?.nome_empresa as string | undefined)?.trim() || `Contato do Lucas ${waId.slice(-4)}`;
+    const { data: novo } = await supabaseAdmin
+      .from("prospects")
+      .insert({
+        nome_empresa: nome,
+        telefone: waId,
+        wa_id: waId,
+        fonte: "manual",
+        status: "handoff",
+        rodada: 1,
+        em_atendimento_humano: true,
+        notas: "Conversa aberta pelo Lucas no celular do chip da Mari.",
+      })
+      .select("id, nome_empresa")
+      .maybeSingle();
+    if (!novo) return NextResponse.json({ status: "ignored_from_me" });
+    prospect = novo as { id: string; nome_empresa: string | null };
+    console.log(`✍️ [prospeccao] Lucas abriu conversa com ${nome} (${waId}) pelo celular — criado em modo humano.`);
+  }
 
   // Eco da própria Mari: o sendAvisaMessage marca cada texto no Redis ANTES de
   // enviar. Sem isto, o eco da 1ª bolha chegava antes de as bolhas serem
