@@ -4,7 +4,7 @@
 // Comportamento movido intacto do page.tsx na reforma de UX.
 
 import { useState } from "react";
-import { Loader2, RefreshCw, CheckCircle } from "lucide-react";
+import { Loader2, RefreshCw, CheckCircle, Trash2 } from "lucide-react";
 import { Pendente } from "./types";
 
 export default function PendentesTab({ pendentes, secret, onReload }: {
@@ -13,6 +13,32 @@ export default function PendentesTab({ pendentes, secret, onReload }: {
   onReload: () => void;
 }) {
   const [aprovando, setAprovando] = useState<string | null>(null);
+  const [excluindo, setExcluindo] = useState<string | null>(null);
+
+  // Cadastro de teste ou lixo: apaga o login e tudo do tenant (rota
+  // delete-tenant, a mesma do menu de clientes). Irreversível, por isso confirma.
+  async function excluir(p: Pendente) {
+    const nome = p.nome_empresa || p.email || "este cadastro";
+    if (!confirm(`Excluir "${nome}" (${p.email})?
+
+Apaga o login e todos os dados. Não dá pra desfazer.`)) return;
+    setExcluindo(p.user_id);
+    try {
+      const res = await fetch("/api/admin/delete-tenant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-secret": secret },
+        body: JSON.stringify({ user_id: p.user_id }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) alert(`Erro ao excluir: ${body.error ?? res.status}`);
+      else if (body.aviso) alert(body.aviso);
+    } catch {
+      alert("Erro de rede ao excluir");
+    } finally {
+      setExcluindo(null);
+      onReload();
+    }
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -49,8 +75,17 @@ export default function PendentesTab({ pendentes, secret, onReload }: {
                     Cadastrado em {new Date(p.created_at).toLocaleDateString("pt-BR")}
                   </p>
                 </div>
+                <div className="flex items-center gap-2 shrink-0">
                 <button
-                  disabled={aprovando === p.user_id}
+                  disabled={excluindo === p.user_id || aprovando === p.user_id}
+                  onClick={() => excluir(p)}
+                  title="Excluir cadastro"
+                  className="flex items-center gap-1.5 px-3 py-2 text-red-600 hover:bg-red-50 disabled:opacity-40 text-[10px] font-black uppercase tracking-widest rounded-xl border border-red-200 transition-colors">
+                  {excluindo === p.user_id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                  Excluir
+                </button>
+                <button
+                  disabled={aprovando === p.user_id || excluindo === p.user_id}
                   onClick={async () => {
                     setAprovando(p.user_id);
                     try {
@@ -74,6 +109,7 @@ export default function PendentesTab({ pendentes, secret, onReload }: {
                   {aprovando === p.user_id ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle size={12} />}
                   Aprovar
                 </button>
+                </div>
               </div>
             ))}
           </div>
