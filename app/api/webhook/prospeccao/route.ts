@@ -29,6 +29,7 @@ import { gerarRespostaProspeccao, carregarPatioDemo, carregarLojaDemo, aceitouOT
 import { montarAbertura } from "@/lib/prospeccao-abertura";
 import { bumpStats } from "@/lib/prospeccao-stats";
 import { baixarAudioWhatsApp } from "@/lib/whatsapp-audio";
+import { isAgentEcho } from "@/lib/redis";
 import { transcreverAudioCliente } from "@/lib/transcribe";
 import type { Prospect, ProspectMensagem } from "@/lib/prospeccao-types";
 
@@ -290,6 +291,10 @@ function extractFields(payload: any): {
   /** Click-to-WhatsApp: título/texto do anúncio que trouxe a pessoa. */
   adTitle?: string;
   adBody?: string;
+  /** Contraparte da conversa (o LOJISTA), inclusive no eco fromMe, em que
+   *  `phone` é o próprio chip da Mari. Pode vir como LID (`chatIsLid`). */
+  chatPhone?: string;
+  chatIsLid?: boolean;
 } {
   let parsedData: any = payload;
   if (payload?.jsonData) {
@@ -318,9 +323,15 @@ function extractFields(payload: any): {
     const isGroup = info.IsGroup === true || String(info.Chat || "").endsWith("@g.us");
     const isLid = !realJid && String(info.Sender || "").includes("@lid");
     const adReply = msg?.extendedTextMessage?.contextInfo?.externalAdReply;
+    // Mesma regra do webhook dos tenants (app/api/webhook/avisa): no eco o
+    // número real do lojista vem em RecipientAlt; o Chat pode ser LID.
+    const contraparte = [info.RecipientAlt, info.SenderAlt].find((j: string) => (j || "").endsWith("@s.whatsapp.net"));
+    const chatJid = String(contraparte || info.Chat || "");
     return {
       phone, text: (text || "").trim(), fromMe, messageId: info.ID ?? null, audioUrl, audioMediaKey,
       isGroup, isLid,
+      chatPhone: chatJid.replace(/@.*$/, "") || undefined,
+      chatIsLid: chatJid.includes("@lid"),
       pushName: typeof info.PushName === "string" ? info.PushName.trim() : undefined,
       adTitle: adReply?.title ?? undefined,
       adBody: adReply?.body ?? undefined,
@@ -455,6 +466,12 @@ async function registrarMensagemDoCelular(
   // O chip conversa com gente que não é prospect (o próprio Lucas, testes).
   if (!prospect) return NextResponse.json({ status: "ignored_from_me" });
 
+  // Eco da própria Mari: o sendAvisaMessage marca cada texto no Redis ANTES de
+  // enviar. Sem isto, o eco da 1ª bolha chegava antes de as bolhas serem
+  // gravadas no banco (o insert é depois do envio de todas) e virava "o Lucas
+  // assumiu": a Mari se travaria sozinha no meio da própria resposta.
+  if (await isAgentEcho(waId, alvo)) return NextResponse.json({ status: "eco_da_api" });
+
   // Dedupe do eco da própria API: compara com o que saiu nos últimos 15 min.
   const desde = new Date(Date.now() - 15 * 60 * 1000).toISOString();
   const { data: recentes } = await supabaseAdmin
@@ -516,13 +533,28 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Extração + filtros básicos ──────────────────────────────────────────────
-  const { phone, text: textoRecebido, fromMe, messageId, audioUrl, audioMediaKey, isGroup, isLid, pushName, adTitle, adBody } =
-    extractFields(payload);
+  const {
+    phone, text: textoRecebido, fromMe, messageId, audioUrl, audioMediaKey,
+    isGroup, isLid, pushName, adTitle, adBody, chatPhone, chatIsLid,
+  } = extractFields(payload);
   let text = textoRecebido;
 
   // Eco (fromMe): pode ser a própria Mari pela API — ou um humano digitando no
   // celular, que é o caso que NÃO pode se perder. Ver a função.
-  if (fromMe) return registrarMensagemDoCelular(normalizePhone(phone), textoRecebido, messageId);
+  //
+  // No eco, `phone` (Sender) é o PRÓPRIO chip: procurar o prospect por ele não
+  // achava ninguém, o eco caía em "ignored_from_me" e a Mari seguia falando por
+  // cima do Lucas (Wanderson, 20/10). Quem identifica a conversa é o Chat.
+  if (fromMe) {
+    if (isGroup) return NextResponse.json({ status: "ignored_from_me" });
+    let alvo = chatPhone || phone;
+    if (chatIsLid && chatPhone) {
+      const creds = autozapAvisaCreds();
+      const real = creds ? await resolveAvisaLid(chatPhone, creds) : null;
+      if (real) alvo = real;
+    }
+    return registrarMensagemDoCelular(normalizePhone(alvo), textoRecebido, messageId);
+  }
   if (!phone) return NextResponse.json({ status: "empty_content" });
 
   // ── Áudio → texto ───────────────────────────────────────────────────────────
@@ -1069,6 +1101,34 @@ export async function POST(req: NextRequest) {
     mensagensEnviar.length = MAX_MENSAGENS_TURNO;
   }
 
+  // ── Chegou mensagem nova enquanto o Gemini pensava? ───────────────────────────
+  // A coalescência de 8s só olha ANTES do Gemini. O lojista manda "Sou de Matão"
+  // e 13s depois "15 carros": a 1ª execução já estava gerando e perguntou
+  // "quantos carros?" pra quem tinha acabado de dizer (Wanderson, 20/10). Se
+  // esta não é mais a última mensagem dele, descarta: a execução da mensagem
+  // nova responde com tudo no contexto. Também cala se o humano assumiu.
+  {
+    const [{ data: maisNova }, { data: estado }] = await Promise.all([
+      supabaseAdmin
+        .from("prospect_mensagens")
+        .select("id")
+        .eq("prospect_id", prospect.id)
+        .eq("remetente", "prospect")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabaseAdmin.from("prospects").select("em_atendimento_humano").eq("id", prospect.id).maybeSingle(),
+    ]);
+    if (maisNova?.id && msgSalvaId && maisNova.id !== msgSalvaId) {
+      console.log(`⏭️ [prospeccao] ${prospect.nome_empresa} mandou mensagem durante a geração — resposta descartada, a próxima responde.`);
+      return NextResponse.json({ status: "superseded_in_flight" });
+    }
+    if (estado?.em_atendimento_humano) {
+      console.log(`🙋 [prospeccao] ${prospect.nome_empresa}: humano assumiu durante a geração — resposta descartada.`);
+      return NextResponse.json({ status: "humano_assumiu_in_flight" });
+    }
+  }
+
   // ── Corrida in-flight: a conversa acabou enquanto esta execução pensava? ────
   // O Gemini leva ~10-20s. Nesse intervalo OUTRA execução (mensagem seguinte do
   // lojista) pode ter encerrado a rodada. Foi o que o André Moi viu: às 18:53:04
@@ -1092,21 +1152,34 @@ export async function POST(req: NextRequest) {
 
   const creds = autozapAvisaCreds();
   let enviada = false;
+  let humanoAssumiu = false;
   if (!creds) {
     console.warn("⚠️ [prospeccao webhook] AUTOZAP_AVISA_* ausentes — resposta gerada mas NÃO enviada (graceful).");
   } else {
     try {
       enviada = true;
-      for (const bolha of mensagensEnviar) {
+      for (let i = 0; i < mensagensEnviar.length; i++) {
+        // Entre uma bolha e outra (com a pausa de digitação) o Lucas pode ter
+        // assumido pelo celular: para aí, sem mandar o resto por cima dele.
+        if (i > 0) {
+          const { data: agoraHumano } = await supabaseAdmin
+            .from("prospects").select("em_atendimento_humano").eq("id", prospect.id).maybeSingle();
+          if (agoraHumano?.em_atendimento_humano) {
+            console.log(`🙋 [prospeccao] ${prospect.nome_empresa}: humano assumiu no meio do envio — parando.`);
+            mensagensEnviar.length = i;
+            humanoAssumiu = true;
+            break;
+          }
+        }
         // sendAvisaMessage agora retorna boolean: false = 463/erro (não saiu).
-        const ok = await sendAvisaMessage(waId, bolha, creds);
+        const ok = await sendAvisaMessage(waId, mensagensEnviar[i], creds);
         if (!ok) { enviada = false; break; } // não insiste nas próximas bolhas
       }
 
       // Foto do carro pedido. Vai DEPOIS do texto (o WhatsApp mostra a imagem
       // como resposta ao que ela acabou de dizer) e só se o Gemini apontou um ID
       // que existe no pátio E tem foto — ele não decide a URL, só qual carro.
-      if (enviada && r.foto_veiculo_id && !OFERTA_DE_MIDIA.test(r.resposta)) {
+      if (enviada && !humanoAssumiu && r.foto_veiculo_id && !OFERTA_DE_MIDIA.test(r.resposta)) {
         const carro = patio.find((c) => c.id === r.foto_veiculo_id);
         if (carro?.fotos.length) {
           // Manda TODAS (até o teto), não só a primeira: quando ia só a [0], o
@@ -1131,7 +1204,7 @@ export async function POST(req: NextRequest) {
       // Vídeo do carro. Mesma lógica da foto: o Gemini escolhe o carro, nunca a
       // URL. Antes disso ela oferecia vídeo e depois voltava atrás com "aqui na
       // demonstração não consigo" — promessa quebrada no pico do interesse.
-      if (enviada && r.video_veiculo_id && !OFERTA_DE_MIDIA.test(r.resposta)) {
+      if (enviada && !humanoAssumiu && r.video_veiculo_id && !OFERTA_DE_MIDIA.test(r.resposta)) {
         const carro = patio.find((c) => c.id === r.video_veiculo_id);
         if (carro?.video) {
           try {
