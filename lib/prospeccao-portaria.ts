@@ -26,7 +26,7 @@
 // Não se apresenta como IA aqui de propósito — o atendente não precisa saber, e
 // a frase tem que soar como qualquer fornecedor ligando pra loja.
 export const PEDIDO_DE_ROTEAMENTO =
-  "Oi! Não sou cliente, é sobre o sistema de atendimento da loja.\n\n" +
+  "Oi! Não sou cliente, é sobre um sistema de marketing e vendas pra loja.\n\n" +
   "Consegue me passar o contato de quem cuida disso, o dono ou o gerente?";
 
 // Trecho usado pra achar o pedido no histórico e não repetir (o webhook faz
@@ -34,7 +34,7 @@ export const PEDIDO_DE_ROTEAMENTO =
 // pode conter % nem _, que são curinga no LIKE do Postgres.
 export const MARCA_DO_PEDIDO = "o dono ou o gerente";
 
-// ─── O pitch, em duas bolhas ──────────────────────────────────────────────────
+// ─── O pitch, em três bolhas ──────────────────────────────────────────────────
 // A abertura virou UMA pergunta só ("nesse Whats falo com o dono ou com o
 // gerente?") e para ali. O pitch só sai depois que uma PESSOA responde — antes
 // disso a gente não sabe se está falando com quem decide, e gastar o pitch no
@@ -51,9 +51,18 @@ export const MARCA_DO_PEDIDO = "o dono ou o gerente";
 // Sem travessão em nenhuma das frases. Lojista escreve com ponto e vírgula,
 // não com travessão: o travessão é a pontuação que mais denuncia texto pronto
 // numa conversa de WhatsApp.
+//
+// 20/10/2026: o pitch vendia só a IA do WhatsApp, e o AutoZap é vendido nos
+// vídeos como sistema de marketing e vendas (cadastro → artes/reels/post →
+// portais → anúncio no Meta → vitrine → IA). A 1ª bolha agora abre pelo
+// marketing; a IA vira a 2ª. A frase da MARCA_DO_PITCH ficou de propósito:
+// é ela que diz ao webhook que o pitch já saiu, inclusive o pitch antigo.
 export const PITCH_BOLHAS: string[] = [
-  "A gente instala uma IA que responde seus clientes no WhatsApp na hora, 24h por dia. " +
-    "Cliente que chama 22h ou no domingo não esfria esperando resposta. É venda que hoje tá indo embora sem você ver.",
+  "O AutoZap cuida do marketing e das vendas da revenda numa tela só. " +
+    "Cadastrou o carro pela placa ou por um vídeo, ele já gera as artes e o reels, posta no Face e no Insta, " +
+    "publica na OLX e na Webmotors e vira anúncio no Meta.",
+  "E quem chama no WhatsApp é respondido na hora por uma IA, 24h por dia. " +
+    "Cliente que chama 22h ou no domingo não esfria esperando resposta.",
   "Se quiser ver antes de me responder, fala com a Mari aqui mesmo neste número, " +
     'como se fosse um cliente seu. Manda "Mari, tem algum Renegade?" e vê o que ela responde. ' +
     "Ela atende igual atenderia os seus, e chama o vendedor só quando o cliente já tá pronto pra fechar.",

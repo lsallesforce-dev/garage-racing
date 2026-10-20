@@ -46,12 +46,14 @@ export interface ResultadoTravas {
 export const JA_SE_APRESENTOU =
   /\bsou\s+a\s+(?:mari\b|(?:ia|intelig[êe]ncia\s+artificial)\s+d[oa]\s+(?:autozap|lucas)\b)/iu;
 
-// Prazo ou canal que a Mari não controla. Só conta quando a frase fala de
-// alguém entrando em contato (Lucas, ele, vendedor): "respondo rapidinho" sobre
-// o produto não é promessa de retorno.
+// Prazo ou canal que a Mari não controla, numa frase sobre alguém entrar em
+// contato: "respondo rapidinho" sobre o produto não é promessa de retorno.
 const PROMESSA_PRAZO =
-  /\b(?:hoje\s+ainda|ainda\s+hoje|daqui\s+a\s+pouco|j[áa]\s+j[áa]|rapidinho|em\s+(?:poucos\s+|alguns\s+)?minutos|agora\s+mesmo|amanh[ãa]\s+cedo|por\s+sms|(?:um\s+)?sms|(?:te|vai\s+te|vou\s+te)\s+ligar|te\s+liga|liga\s+pra\s+(?:voc[êe]|te))(?!\p{L})/iu;
-const SUJEITO_DO_CONTATO = /\b(?:lucas|ele|vendedor|consultor|algu[ée]m|te\s+chama|entra(?:r)?\s+em\s+contato)(?!\p{L})/iu;
+  /\b(?:hoje\s+ainda|ainda\s+hoje|daqui\s+a\s+pouco|j[áa]\s+j[áa]|rapidinho|amanh[ãa]\s+cedo|(?:um\s+)?sms|(?:te|vai\s+te|vou\s+te)\s+ligar|te\s+liga|liga\s+pra\s+(?:voc[êe]|te))(?!\p{L})/iu;
+// Só promessa de CONTATO: "em minutos" e "ele" soltos pegavam a descrição do
+// produto ("ele cadastra o carro em minutos") e trocavam por recado (20/10).
+const SUJEITO_DO_CONTATO =
+  /\b(?:lucas|vendedor|consultor|te\s+chama|te\s+ligar?|entra(?:r)?\s+em\s+contato|te\s+retorna|sms)(?!\p{L})/iu;
 export const RECADO_NEUTRO = "Vou passar o recado pro Lucas, ele te chama assim que puder.";
 
 // Cidades que o modelo costuma inventar como "onde fica a loja".
@@ -89,8 +91,11 @@ export function aplicarTravasMari(resposta: string, ctx: ContextoTravas): Result
   // 1. Reapresentação.
   if (ctx.jaSeApresentou) {
     bolhas = bolhas.map((b) => {
-      const sobra = frases(b).filter((f) => !JA_SE_APRESENTOU.test(f));
-      if (sobra.length !== frases(b).length) ajustes.push("cortou reapresentação");
+      const sobra = frases(b).filter((f) => {
+        if (!JA_SE_APRESENTOU.test(f)) return true;
+        ajustes.push(`cortou reapresentação: "${f.slice(0, 60)}"`);
+        return false;
+      });
       return sobra.join(" ");
     });
   }
