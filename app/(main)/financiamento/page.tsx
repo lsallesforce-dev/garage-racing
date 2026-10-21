@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Landmark, Loader2, CheckCircle2, XCircle, Clock, Copy, Bot, User, AlertTriangle, Coins, RotateCcw } from "lucide-react";
-import { ofertasAprovadas, type Oferta } from "@/lib/financiamento-parcelas";
+import { ofertasAprovadas, valorDigitado, type Oferta } from "@/lib/financiamento-parcelas";
 
 type Veiculo = { id: string; marca: string | null; modelo: string | null; ano: number | null; ano_modelo: number | null; placa: string | null; preco_sugerido: number | string | null };
 type ResultadoBanco = { banco: string; status: string | null; dados?: { parcelas?: string | null; valor_entrada?: string | null; valor_solicitado?: string | null; mensagem_recusa?: string | null } | null };
@@ -230,7 +230,7 @@ export default function FinanciamentoPage() {
           {outro && (
             <div className="grid grid-cols-2 gap-3">
               <Campo label="Placa"><input className={inp} value={f.placa} onChange={set("placa")} placeholder="ABC1D23" /></Campo>
-              <Campo label="Valor do veículo"><input className={inp} value={f.valorVeiculo} onChange={set("valorVeiculo")} placeholder="85.000" inputMode="decimal" required /></Campo>
+              <Campo label="Valor do veículo"><input className={inp} value={f.valorVeiculo} onChange={set("valorVeiculo")} placeholder="85.000" inputMode="decimal" required /><Entendido valor={f.valorVeiculo} /></Campo>
               <Campo label="Marca (sem placa)"><input className={inp} value={f.marca} onChange={set("marca")} placeholder="Chevrolet" /></Campo>
               <Campo label="Modelo (sem placa)"><input className={inp} value={f.modelo} onChange={set("modelo")} placeholder="Onix LT 1.0" /></Campo>
               <Campo label="Ano modelo (sem placa)"><input className={inp} value={f.ano} onChange={set("ano")} placeholder="2022" inputMode="numeric" /></Campo>
@@ -239,6 +239,7 @@ export default function FinanciamentoPage() {
 
           <Campo label="Entrada (deixe vazio se não souber)">
             <input className={inp} value={f.entrada} onChange={set("entrada")} placeholder="10.000 ou 0" inputMode="decimal" />
+            <Entendido valor={f.entrada} />
           </Campo>
 
           {bancosAtivos.length > 0 && (
@@ -424,6 +425,15 @@ export default function FinanciamentoPage() {
       </div>
     </div>
   );
+}
+
+/** Mostra como o valor digitado foi entendido ("57.000,00" → R$ 57.000,00). */
+function Entendido({ valor }: { valor: string }) {
+  if (!valor.trim()) return null;
+  const n = valorDigitado(valor);
+  return n == null || Number.isNaN(n)
+    ? <span className="text-[10px] text-red-600">Não entendi esse valor — use só números, ex.: 57.000</span>
+    : <span className="text-[10px] text-gray-400">= {brl(n)}</span>;
 }
 
 const inp = "w-full border border-gray-200 rounded-xl px-3 py-2 text-[13px] bg-white";

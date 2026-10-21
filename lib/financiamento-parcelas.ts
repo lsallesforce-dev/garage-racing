@@ -89,3 +89,30 @@ export function ofertasAprovadas(
 export function melhoresParaCliente(ofertas: Oferta[]): Oferta[] {
   return [...ofertas].sort((a, b) => a.parcela - b.parcela).slice(0, 3);
 }
+
+/**
+ * Valor digitado por gente na página: "57.000", "57.000,00", "R$ 57.000,00",
+ * "57000", "57,000.00", "57,5 mil" não (null). Vazio → null; ilegível → NaN.
+ * Antes "R$ 57.000,00" virava NaN e a entrada ia como ZERO sem aviso.
+ */
+export function valorDigitado(x: unknown): number | null {
+  if (typeof x === "number") return Number.isFinite(x) ? x : NaN;
+  const s = String(x ?? "").replace(/r\$|\s/gi, "");
+  if (!s) return null;
+  if (!/^[\d.,]+$/.test(s)) return NaN;
+  const ultPonto = s.lastIndexOf(".");
+  const ultVirg = s.lastIndexOf(",");
+  let norm: string;
+  if (ultPonto >= 0 && ultVirg >= 0) {
+    // os dois: o que vem por último é o decimal
+    norm = ultVirg > ultPonto ? s.replace(/\./g, "").replace(",", ".") : s.replace(/,/g, "");
+  } else if (ultVirg >= 0) {
+    norm = /^\d{1,3}(,\d{3})+$/.test(s) ? s.replace(/,/g, "") : s.replace(",", ".");
+  } else if (ultPonto >= 0) {
+    norm = /^\d{1,3}(\.\d{3})+$/.test(s) ? s.replace(/\./g, "") : s;
+  } else {
+    norm = s;
+  }
+  const n = Number(norm);
+  return Number.isFinite(n) && n >= 0 ? n : NaN;
+}

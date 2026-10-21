@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
 import { dispararSimulacao, type VeiculoPedido } from "@/lib/financiamento-simulacao";
 import { rateLimit } from "@/lib/redis";
+import { valorDigitado } from "@/lib/financiamento-parcelas";
 
 export async function POST(req: NextRequest) {
   const { user, error } = await requireAuth();
@@ -26,9 +27,14 @@ export async function POST(req: NextRequest) {
   }
 
   const num = (x: unknown) => {
-    const n = typeof x === "number" ? x : Number(String(x ?? "").replace(/\./g, "").replace(",", "."));
-    return Number.isFinite(n) && n > 0 ? n : null;
+    const n = valorDigitado(x);
+    return n != null && Number.isFinite(n) && n > 0 ? n : null;
   };
+  // Entrada: vazio = não informada; "0" = sem entrada; ilegível = erro (antes virava 0 calado).
+  const entrada = valorDigitado(b.entrada);
+  if (entrada != null && Number.isNaN(entrada)) {
+    return NextResponse.json({ error: "Não entendi o valor da entrada — use só números, ex.: 57.000" }, { status: 400 });
+  }
 
   let veiculo: VeiculoPedido;
   if (b.veiculoId) {
@@ -52,7 +58,7 @@ export async function POST(req: NextRequest) {
     cpf: String(b.cpf ?? ""),
     nascimento: String(b.nascimento ?? ""),
     celular: String(b.celular ?? ""),
-    entrada: b.entrada === "" || b.entrada == null ? null : num(b.entrada) ?? 0,
+    entrada,
     veiculo,
     bancosEscolhidos: Array.isArray(b.bancos) ? b.bancos.map(String) : undefined,
     clienteNome: b.nome ? String(b.nome).slice(0, 120) : null,
