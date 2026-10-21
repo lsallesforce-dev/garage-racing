@@ -16,6 +16,7 @@ type SimResumo = {
   id: string; origem: string | null; cliente_nome: string | null; veiculo_desc: string | null; cpf: string | null;
   valor_veiculo: number | null; entrada: number | null; status: string; melhores: Oferta[] | null; created_at: string;
   algum_respondeu?: boolean;
+  cpf_invalido?: boolean;
 };
 type SimDetalhe = SimResumo & {
   erro: string | null; resultado: { resultados?: ResultadoBanco[] } | null; custo_brl: number | null; sandbox: boolean; bancos: string[];
@@ -100,6 +101,10 @@ export default function FinanciamentoPage() {
 
   async function simular(e: React.FormEvent) {
     e.preventDefault();
+    if (cpfRuim) {
+      setErro("CPF inválido: algum número está trocado. Confira com o documento do cliente antes de simular — com CPF errado todos os bancos dão erro.");
+      return;
+    }
     setErro(""); setEnviando(true); setCopiado(false);
     const r = await fetch("/api/financiamento/simular", {
       method: "POST",
@@ -219,7 +224,11 @@ export default function FinanciamentoPage() {
           <div className="grid sm:grid-cols-2 gap-3">
             <Campo label="CPF">
               <input className={`${inp} ${cpfRuim ? "border-red-400" : ""}`} value={f.cpf} onChange={set("cpf")} placeholder="000.000.000-00" inputMode="numeric" required />
-              {cpfRuim && <span className="text-[10px] text-red-600">CPF inválido — confira os números</span>}
+              {cpfRuim && (
+                <span className="flex items-center gap-1.5 text-[11px] font-bold text-red-700 bg-red-50 border border-red-100 rounded-lg px-2.5 py-1.5">
+                  <AlertTriangle size={13} /> CPF inválido: algum número está trocado. Confira com o documento do cliente.
+                </span>
+              )}
             </Campo>
             <Campo label="Data de nascimento">
               <input className={inp} type="date" value={f.nascimento} onChange={set("nascimento")} required />
@@ -284,7 +293,7 @@ export default function FinanciamentoPage() {
           {erro && <p className="text-[11px] text-red-600">{erro}</p>}
           <button
             type="submit"
-            disabled={!pode || enviando || !consentimento || !escolhidos.length || !!rodando || cpfRuim}
+            disabled={!pode || enviando || !consentimento || !escolhidos.length || !!rodando}
             className="bg-gray-900 text-white rounded-xl py-3 text-[11px] font-black uppercase tracking-wider disabled:opacity-40 flex items-center justify-center gap-2"
           >
             {enviando ? <Loader2 size={14} className="animate-spin" /> : <Landmark size={14} />}
@@ -314,6 +323,12 @@ export default function FinanciamentoPage() {
                       <RotateCcw size={12} /> Só os {falhas} com erro
                     </button>
                   )}
+                </div>
+              )}
+              {atual.cpf && !cpfValido(atual.cpf) && (
+                <div className="flex items-start gap-2 text-[12px] text-red-800 bg-red-50 border border-red-100 rounded-xl p-3 mb-3">
+                  <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+                  <span><b>CPF inválido nesta simulação.</b> Algum número foi digitado trocado — por isso os bancos deram erro. Peça o CPF de novo ao cliente e use “Reenviar / editar”.</span>
                 </div>
               )}
               <p className="text-[12px] text-gray-700 mb-4">
@@ -424,6 +439,8 @@ export default function FinanciamentoPage() {
                       {s.status === "concluida" ? (
                         melhor
                           ? <span className="flex items-center gap-1 text-[11px] text-green-700 font-bold"><CheckCircle2 size={12} /> {melhor.prazo}x {brl(melhor.parcela)}</span>
+                          : s.cpf_invalido
+                            ? <span className="flex items-center gap-1 text-[11px] font-bold text-red-700"><AlertTriangle size={12} /> CPF inválido</span>
                           : s.algum_respondeu === false
                             ? <span className="flex items-center gap-1 text-[11px] text-amber-700"><AlertTriangle size={12} /> erro nos bancos</span>
                             : <span className="flex items-center gap-1 text-[11px] text-red-600"><XCircle size={12} /> sem aprovação</span>

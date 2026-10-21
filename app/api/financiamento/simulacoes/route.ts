@@ -8,6 +8,7 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
 import { credproConfigurada } from "@/lib/credpro";
+import { cpfValido } from "@/lib/cpf";
 
 export async function GET() {
   const { user, error } = await requireAuth();
@@ -37,6 +38,7 @@ export async function GET() {
     simulacoes: (sims ?? []).map((s: any) => ({
       ...s,
       cpf: s.cpf ? `***.${s.cpf.slice(3, 6)}.***-${s.cpf.slice(9)}` : null,
+      cpf_invalido: !!s.cpf && !cpfValido(s.cpf),
       cliente_nome: s.cliente_nome ?? s.leads?.nome ?? null,
       // Sem aprovação ≠ ninguém conseguiu consultar: a lista distingue
       // "recusado" de "erro técnico em todos os bancos".
