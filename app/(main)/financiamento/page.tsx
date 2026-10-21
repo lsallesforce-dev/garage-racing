@@ -147,6 +147,15 @@ export default function FinanciamentoPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  // Botão de cada linha do histórico: busca o detalhe e joga no formulário.
+  async function carregarNoFormulario(id: string) {
+    const r = await fetch(`/api/financiamento/simulacoes/${id}`, { cache: "no-store" });
+    if (!r.ok) { setErro("Não foi possível carregar essa simulação"); return; }
+    const s: SimDetalhe = await r.json();
+    setAtual(s);
+    reenviar(s, false);
+  }
+
   function copiarParaCliente() {
     if (!atual?.melhores?.length) return;
     const linhas = atual.melhores.map((o) =>
@@ -389,8 +398,9 @@ export default function FinanciamentoPage() {
                 {historico.map((s) => {
                   const melhor = s.melhores?.[0];
                   return (
-                    <button key={s.id} onClick={() => abrir(s.id)}
-                      className={`py-2.5 flex items-center gap-3 text-left hover:bg-gray-50 rounded-lg px-2 -mx-2 ${atual?.id === s.id ? "bg-gray-50" : ""}`}>
+                    <div key={s.id} className={`flex items-center gap-1 rounded-lg -mx-2 ${atual?.id === s.id ? "bg-gray-50" : ""}`}>
+                    <button onClick={() => abrir(s.id)}
+                      className="flex-1 min-w-0 py-2.5 flex items-center gap-3 text-left hover:bg-gray-50 rounded-lg px-2">
                       {s.origem === "painel" ? <User size={14} className="text-gray-400 shrink-0" /> : <Bot size={14} className="text-red-400 shrink-0" />}
                       <span className="flex-1 min-w-0">
                         <span className="block text-[12px] font-bold text-gray-800 truncate">{s.cliente_nome || s.cpf || "Cliente"} · {s.veiculo_desc ?? "—"}</span>
@@ -411,6 +421,15 @@ export default function FinanciamentoPage() {
                         <Loader2 size={12} className="animate-spin text-blue-500" />
                       )}
                     </button>
+                    <button
+                      onClick={() => carregarNoFormulario(s.id)}
+                      disabled={s.status === "pendente" || s.status === "processando"}
+                      title="Recarregar estes dados no formulário"
+                      aria-label="Recarregar dados no formulário"
+                      className="shrink-0 p-2 rounded-lg text-gray-400 hover:text-gray-900 hover:bg-gray-100 disabled:opacity-30">
+                      <RotateCcw size={14} />
+                    </button>
+                    </div>
                   );
                 })}
               </div>
