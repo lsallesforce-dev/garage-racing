@@ -138,6 +138,21 @@ function isYearToken(t: string): boolean {
 }
 
 // ─── Normalização ─────────────────────────────────────────────────────────────
+/** Palavra do nome do carro que serve pra dizer QUAL carro é ("fiorino", "msi",
+ *  "ranch") — não ficha técnica nem cor. "Flex", "manual", "branca", "1.4" estão
+ *  no nome de metade do estoque e na fala de quem descreve o PRÓPRIO carro:
+ *  "S10 LT completa, branca, flex, manual" virou "pediu a Fiorino" (cujo nome tem
+ *  "Flex") e o lead do Gol MSI recebeu fotos da Fiorino (APROVE 20/10). */
+const PALAVRAS_DE_FICHA = new Set([
+  "flex", "gasolina", "etanol", "alcool", "diesel", "gnv", "hibrido", "eletrico",
+  "manual", "mec", "automatico", "automatica", "aut", "cvt", "turbo", "tsi", "tdi",
+  "completo", "completa", "cabine", "dupla", "simples", "branca", "branco", "prata",
+  "preto", "preta", "cinza", "vermelho", "vermelha", "azul", "flexpower", "fire", "evo",
+]);
+export function palavraDistintivaDoModelo(w: string): boolean {
+  return w.length >= 3 && !/\d/.test(w) && !PALAVRAS_DE_FICHA.has(w);
+}
+
 function normalizeStr(s: string): string {
   return s
     .normalize("NFD")
@@ -667,7 +682,7 @@ export async function hybridVehicleSearch(
     mencionouCarroDiferente = variantesOutros.some((h) => {
       const hTokens = normalizeStr(`${h.marca ?? ""} ${h.modelo ?? ""}`)
         .split(/\s+/)
-        .filter((w) => w.length >= 3);
+        .filter(palavraDistintivaDoModelo);
       // Palavra EXCLUSIVA do hit (não compartilhada com o principal) presente na msg
       return hTokens.some((w) => !principalTokens.has(w) && msgNormUser.includes(w));
     });

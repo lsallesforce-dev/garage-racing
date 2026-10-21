@@ -24,7 +24,7 @@ import { transcreverAudioCliente } from "@/lib/transcribe";
 import { decryptWhatsAppAudio } from "@/lib/whatsapp-audio";
 import { decryptWhatsAppImage } from "@/lib/whatsapp-image";
 import { sintetizarVoz, prepararTextoParaVoz } from "@/lib/tts";
-import { hybridVehicleSearch, findVehicleForMedia } from "@/lib/hybrid-search";
+import { hybridVehicleSearch, findVehicleForMedia, palavraDistintivaDoModelo } from "@/lib/hybrid-search";
 import { calendarioDoAgente } from "@/lib/feriados-br";
 import { tratarMensagemDoGerente } from "@/lib/gerente-dialogo";
 import { setGerenteFoco } from "@/lib/redis";
@@ -2702,9 +2702,11 @@ Responda apenas com o JSON, sem markdown.`;
     // apareceu primeiro na busca textual por marca.
     const novoVeiculo = topVeiculos[0];
     const msgNormSwitch = userMessage.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+    // Só palavra que identifica o carro: "flex" do nome da Fiorino batia com o
+    // cliente descrevendo a S10 DELE ("branca, flex, manual") — APROVE 20/10.
     const modeloWordsNovo = (novoVeiculo.modelo ?? "")
       .normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase()
-      .split(/\s+/).filter(w => w.length >= 3);
+      .split(/\s+/).filter(palavraDistintivaDoModelo);
     const novoModeloMencionado = modeloWordsNovo.some(w => msgNormSwitch.includes(w));
     const marcaDiferente = !veiculoPrincipal || novoVeiculo.marca?.toLowerCase() !== veiculoPrincipal.marca?.toLowerCase();
 
@@ -3503,7 +3505,16 @@ Responda apenas com o JSON, sem markdown.`;
         // Sem esta trava, mensagem que não cita carro nenhum ainda voltava com um:
         // "Tá bom" -> Fox e "Só preciso da estrada pra trabalho" -> Tucson (17/09),
         // 18 fotos do carro errado em cada uma.
-        const veiculoMidia = midiaBruta && modeloBateNoTexto(midiaBruta.modelo, msgSemContexto) ? midiaBruta : null;
+        const midiaNomeada = midiaBruta && modeloBateNoTexto(midiaBruta.modelo, msgSemContexto) ? midiaBruta : null;
+        // Dois do mesmo modelo: "manda as fotos do gol" com o Gol MSI do anúncio em
+        // foco devolvia o Gol Trendline 2015 (o primeiro que a busca acha) — APROVE
+        // 20/10. Se o carro em foco bate no texto tão bem quanto, fica o carro em foco.
+        const veiculoMidia =
+          midiaNomeada && veiculoPrincipal && midiaNomeada.id !== veiculoPrincipal.id &&
+          palavrasDoModeloNoTexto(veiculoPrincipal.modelo, msgSemContexto) >=
+            palavrasDoModeloNoTexto(midiaNomeada.modelo, msgSemContexto)
+            ? veiculoPrincipal
+            : midiaNomeada;
 
         // 3. Pedido de foto que não nomeia carro ("sim", "tem fotos?") — a pista de
         // qual carro está viva só no que o PRÓPRIO AGENTE ofereceu por último, não
