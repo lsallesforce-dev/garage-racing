@@ -17,6 +17,10 @@
 // Estado no Redis (sem migration): o que já foi coletado, por lead, 72h.
 
 import { getClient as redis } from "@/lib/redis";
+import { cpfValido } from "@/lib/cpf";
+
+// Mantém o import antigo (financiamento-entender) funcionando.
+export { cpfValido };
 
 export type ColetaFinanciamento = {
   entrada?: string;     // texto pronto pra exibir: "R$ 10.000" | "sem entrada"
@@ -100,17 +104,6 @@ const RE_ENTRADA_VEICULO: RegExp[] = [
 const RE_SEM_ENTRADA_CURTA = /^(nada|zero|0|nenhuma?|n[ãa]o tenho|n[ãa]o tenho nada|sem|sem nada|tudo|100\s*%)$/;
 
 // ─── Extração ─────────────────────────────────────────────────────────────────
-
-export function cpfValido(d: string): boolean {
-  if (!/^\d{11}$/.test(d) || /^(\d)\1{10}$/.test(d)) return false;
-  const dig = (n: number) => {
-    let soma = 0;
-    for (let i = 0; i < n; i++) soma += Number(d[i]) * (n + 1 - i);
-    const r = (soma * 10) % 11;
-    return r === 10 ? 0 : r;
-  };
-  return dig(9) === Number(d[9]) && dig(10) === Number(d[10]);
-}
 
 const MESES: Record<string, number> = {
   jan: 1, fev: 2, mar: 3, abr: 4, mai: 5, jun: 6,

@@ -30,6 +30,7 @@ import { gerenteNaJanela, enfileirarAlertaGerente, invalidateHistory } from "@/l
 import { alertaInterno } from "@/lib/alerta-interno";
 import type { ColetaFinanciamento } from "@/lib/financiamento-coleta";
 import { ofertasAprovadas, melhoresParaCliente, type Oferta } from "@/lib/financiamento-parcelas";
+import { cpfValido } from "@/lib/cpf";
 
 const POLL_DELAY_S = 5;
 const POLL_MAX_TENTATIVAS = 48; // ~6 min (cada volta leva ~7 s): banco que não respondeu até aí não entra
@@ -144,6 +145,10 @@ export async function dispararSimulacao(p: {
   const cpf = soDigitos(p.cpf);
   const celular = soDigitos(p.celular);
   if (cpf.length !== 11) return { ok: false, motivo: "CPF precisa ter 11 dígitos" };
+  // A CredPro não confere o dígito: CPF digitado errado ia pros portais e o
+  // robô travava em tela de erro ("element not interactable") — APROVE 21/10,
+  // 6 tentativas perdidas antes de alguém desconfiar do número.
+  if (!cpfValido(cpf)) return { ok: false, motivo: "CPF inválido — confira os números (algum dígito está trocado)" };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(p.nascimento)) return { ok: false, motivo: "Data de nascimento inválida" };
   if (celular.length < 10 || celular.length > 11) return { ok: false, motivo: "Celular precisa ter DDD + número" };
 

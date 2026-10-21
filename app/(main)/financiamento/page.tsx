@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Landmark, Loader2, CheckCircle2, XCircle, Clock, Copy, Bot, User, AlertTriangle, Coins, RotateCcw, Trash2 } from "lucide-react";
 import { ofertasAprovadas, valorDigitado, type Oferta } from "@/lib/financiamento-parcelas";
+import { cpfValido } from "@/lib/cpf";
 
 type Veiculo = { id: string; marca: string | null; modelo: string | null; ano: number | null; ano_modelo: number | null; placa: string | null; preco_sugerido: number | string | null };
 type ResultadoBanco = { banco: string; status: string | null; dados?: { parcelas?: string | null; valor_entrada?: string | null; valor_solicitado?: string | null; mensagem_recusa?: string | null } | null };
@@ -184,6 +185,7 @@ export default function FinanciamentoPage() {
   const porBanco = new Map(aprovadas.map((o) => [o.banco, o]));
   const maiorRetorno = aprovadas.reduce<Oferta | null>((m, o) => (o.retorno != null && (!m || o.retorno > (m.retorno ?? 0)) ? o : m), null);
   const pode = servico && bancosAtivos.length > 0;
+  const cpfRuim = f.cpf.replace(/\D/g, "").length === 11 && !cpfValido(f.cpf);
 
   return (
     <div className="p-6 md:p-10 max-w-7xl mx-auto">
@@ -216,7 +218,8 @@ export default function FinanciamentoPage() {
           </Campo>
           <div className="grid sm:grid-cols-2 gap-3">
             <Campo label="CPF">
-              <input className={inp} value={f.cpf} onChange={set("cpf")} placeholder="000.000.000-00" inputMode="numeric" required />
+              <input className={`${inp} ${cpfRuim ? "border-red-400" : ""}`} value={f.cpf} onChange={set("cpf")} placeholder="000.000.000-00" inputMode="numeric" required />
+              {cpfRuim && <span className="text-[10px] text-red-600">CPF inválido — confira os números</span>}
             </Campo>
             <Campo label="Data de nascimento">
               <input className={inp} type="date" value={f.nascimento} onChange={set("nascimento")} required />
@@ -281,7 +284,7 @@ export default function FinanciamentoPage() {
           {erro && <p className="text-[11px] text-red-600">{erro}</p>}
           <button
             type="submit"
-            disabled={!pode || enviando || !consentimento || !escolhidos.length || !!rodando}
+            disabled={!pode || enviando || !consentimento || !escolhidos.length || !!rodando || cpfRuim}
             className="bg-gray-900 text-white rounded-xl py-3 text-[11px] font-black uppercase tracking-wider disabled:opacity-40 flex items-center justify-center gap-2"
           >
             {enviando ? <Loader2 size={14} className="animate-spin" /> : <Landmark size={14} />}
