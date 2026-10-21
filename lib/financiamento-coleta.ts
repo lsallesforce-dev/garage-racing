@@ -300,7 +300,7 @@ export function montarRespostaColeta(p: {
   const itens = p.falta.map((k) => ROTULO[k]);
   let pedido: string;
   if (abertura) {
-    pedido = `Consigo sim te ajudar com isso!${chegou.length ? ` Já anotei ${listar(desc)}.` : ""} Pra eu passar pro nosso gerente fazer a simulação, me manda por favor:\n\n${itens.join("\n")}`;
+    pedido = `Consigo sim te ajudar com isso!${chegou.length ? ` Já anotei ${listar(desc)}.` : ""} Pra simular com os bancos parceiros (seus dados vão só pra essa consulta), me manda por favor:\n\n${itens.join("\n")}`;
   } else if (itens.length === 1) {
     pedido = chegou.length
       ? `Só falta ${ROTULO[p.falta[0]].replace(/^\S+\s/, "")} 🙂`

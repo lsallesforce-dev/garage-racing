@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Upload, CheckCircle2, Loader2, ImageIcon, Trash2, Sparkles, FileImage, Save, Copy, Eye, EyeOff, FileText, ShieldCheck, PauseCircle, PlayCircle, Palette, Globe, ExternalLink, Mic, Play, QrCode } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { FinanciamentoConfig } from "@/components/FinanciamentoConfig";
 
 declare global {
   interface Window {
@@ -445,11 +446,11 @@ export default function ConfiguracoesPage() {
   const [savedNF, setSavedNF] = useState(false);
   const [showNFSenha, setShowNFSenha] = useState(false);
 
-  type Tab = "loja" | "whatsapp" | "portais" | "fiscal";
+  type Tab = "loja" | "whatsapp" | "portais" | "financiamento" | "fiscal";
   // ?tab=portais abre direto na aba (links "Conectar" da página de Marketing).
   const [activeTab, setActiveTab] = useState<Tab>(() => {
     const t = searchParams.get("tab");
-    return t === "whatsapp" || t === "portais" || t === "fiscal" ? t : "loja";
+    return t === "whatsapp" || t === "portais" || t === "financiamento" || t === "fiscal" ? t : "loja";
   });
 
   // Carrega o Facebook SDK para Embedded Signup
@@ -1299,7 +1300,7 @@ export default function ConfiguracoesPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 bg-white rounded-2xl p-1 border border-gray-100 shadow-sm mb-8 max-w-2xl overflow-x-auto">
-        {(["loja","whatsapp","portais","fiscal"] as const).map((tab) => (
+        {(["loja","whatsapp","portais","financiamento","fiscal"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -1309,7 +1310,7 @@ export default function ConfiguracoesPage() {
                 : "text-gray-400 hover:text-gray-700"
             }`}
           >
-            {{ loja: "Minha Loja", whatsapp: "WhatsApp", portais: "Portais de Anúncio", fiscal: "Fiscal" }[tab]}
+            {{ loja: "Minha Loja", whatsapp: "WhatsApp", portais: "Portais de Anúncio", financiamento: "Financiamento", fiscal: "Fiscal" }[tab]}
           </button>
         ))}
       </div>
@@ -1693,6 +1694,9 @@ export default function ConfiguracoesPage() {
         </> /* fim aba loja */}
 
         {/* ══ ABA: FISCAL ══════════════════════════════════════════════════════ */}
+        {/* ══ ABA: FINANCIAMENTO ══════════════════════════════════════════════ */}
+        {activeTab === "financiamento" && <FinanciamentoConfig />}
+
         {activeTab === "fiscal" && <>
 
         {/* ── Nota Fiscal Eletrônica (Premium) ── */}

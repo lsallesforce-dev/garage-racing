@@ -12,6 +12,7 @@ import {
   TEXTO_COLETA_COMPLETA, TEXTO_COLETA_ESCALADA, lerColeta, salvarColeta, encerrarColeta,
 } from "@/lib/financiamento-coleta";
 import { entenderFinanciamento, decidirTurno } from "@/lib/financiamento-entender";
+import { iniciarSimulacao, TEXTO_SIMULANDO } from "@/lib/financiamento-simulacao";
 import { clienteEncerrouConversa } from "@/lib/conversa-encerrada";
 import { cidadeNaResposta } from "@/lib/municipios-br";
 import { sendAvisaMessage, sendAvisaImage, sendAvisaVideo, sendAvisaAudio } from "@/lib/avisa";
@@ -3067,9 +3068,21 @@ Responda apenas com o JSON, sem markdown.`;
         let respFin: string;
 
         if (decisao.acao === "completa") {
-          respFin = TEXTO_COLETA_COMPLETA;
-          const resumoFin =
-            `Financiamento — fazer simulação. Entrada: ${coleta.entrada} · CPF: ${coleta.cpf} · Nascimento: ${coleta.nascimento}`;
+          // Tenant com simulação automática (CredPro) → o próprio AutoZap
+          // consulta os bancos e manda as condições pro cliente
+          // (lib/financiamento-simulacao). Qualquer coisa fora do lugar
+          // (desligado, sem banco, sem preço, saldo) → fluxo antigo: gerente.
+          const simFin = await iniciarSimulacao({
+            tenant: tenantUserId,
+            leadId: lead.id,
+            phone,
+            veiculoId: veiculoPrincipal?.id,
+            coleta,
+          }).catch((e) => ({ ok: false as const, motivo: String(e?.message ?? e) }));
+          respFin = simFin.ok ? TEXTO_SIMULANDO : TEXTO_COLETA_COMPLETA;
+          const resumoFin = simFin.ok
+            ? `Financiamento — simulação automática em andamento. Entrada: ${coleta.entrada} · CPF: ${coleta.cpf} · Nascimento: ${coleta.nascimento}`
+            : `Financiamento — fazer simulação. Entrada: ${coleta.entrada} · CPF: ${coleta.cpf} · Nascimento: ${coleta.nascimento}`;
           await supabaseAdmin.from("leads").update({
             em_atendimento_humano: true,
             status: "QUENTE",
@@ -3082,9 +3095,13 @@ Responda apenas com o JSON, sem markdown.`;
           // próprio ("simulacao_financiamento", UTILITY) — o genérico
           // alerta_gerente a Meta reclassificou como MARKETING (caro e com
           // limite de frequência). Falhou → cadeia normal do sendAlertComLink.
+          // Simulação rodando: o gerente recebe o resultado quando sair
+          // (processarPoll em lib/financiamento-simulacao), não os dados crus agora.
           let finViaTemplate = false;
           if (destinoFin) await setGerenteFoco(tenantUserId, phone).catch(() => {});
-          if (destinoFin && !useAvisa && !(await gerenteNaJanela(tenantUserId))) {
+          if (simFin.ok) {
+            console.log(`💳 [Financiamento] ${phone} — coleta completa, simulação automática ${simFin.simId} disparada`);
+          } else if (destinoFin && !useAvisa && !(await gerenteNaJanela(tenantUserId))) {
             finViaTemplate = await sendMetaTemplate(destinoFin, "simulacao_financiamento", [
               garageConfig?.nome_fantasia || garageConfig?.nome_empresa || "loja",
               phone,
@@ -3092,7 +3109,7 @@ Responda apenas com o JSON, sem markdown.`;
               coleta.entrada!, coleta.cpf!, coleta.nascimento!,
             ], metaCreds);
           }
-          if (destinoFin && !finViaTemplate) {
+          if (!simFin.ok && destinoFin && !finViaTemplate) {
             await sendAlertComLink(destinoFin,
               `💳 *Financiamento — dados pra simulação*\n\n👤 ${lead.nome || "Cliente"}\n📱 +${phone}${veiculoFinTxt ? `\n🚗 Interesse: ${veiculoFinTxt}` : ""}` +
               `\n\n💰 Entrada: ${coleta.entrada}\n📄 CPF: ${coleta.cpf}\n🎂 Nascimento: ${coleta.nascimento}` +
@@ -3100,7 +3117,7 @@ Responda apenas com o JSON, sem markdown.`;
               phone
             ).catch(() => {});
           }
-          console.log(`💳 [Financiamento] ${phone} — coleta completa, alerta disparado (entrega: ver [Alerta]), IA em stand-by`);
+          if (!simFin.ok) console.log(`💳 [Financiamento] ${phone} — coleta completa (sem simulação automática: ${simFin.motivo}), alerta disparado (entrega: ver [Alerta]), IA em stand-by`);
         } else {
           const { falta, pergunta: perguntaFin } = decisao;
           if (decisao.acao === "escalar") {
