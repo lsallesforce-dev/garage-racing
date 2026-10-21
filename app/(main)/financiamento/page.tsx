@@ -36,6 +36,8 @@ const STATUS_BANCO: Record<string, { txt: string; cor: string }> = {
   indisponivel: { txt: "Fora do horário", cor: "text-gray-600 bg-gray-100" },
 };
 
+const FALHA = new Set<string | null>([null, "erro", "manutencao", "indisponivel"]);
+
 const vazio = { nome: "", cpf: "", nascimento: "", celular: "", veiculoId: "", placa: "", marca: "", modelo: "", ano: "", valorVeiculo: "", entrada: "" };
 
 function mascaraCpf(v: string) {
@@ -116,38 +118,32 @@ export default function FinanciamentoPage() {
     carregar();
   }
 
-  // Reenviar: mesma simulação (cliente, carro, entrada). `somenteFalhas` repete
-  // só os bancos que deram erro / não responderam — os que responderam já foram cobrados.
-  const [reenviando, setReenviando] = useState(false);
-  async function reenviar(somenteFalhas: boolean) {
-    if (!atual) return;
-    setReenviando(true); setErro(""); setCopiado(false);
-    const r = await fetch(`/api/financiamento/simulacoes/${atual.id}/reenviar`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ somenteFalhas }),
-    });
-    const j = await r.json().catch(() => ({}));
-    setReenviando(false);
-    if (r.ok) { abrir(j.id); carregar(); return; }
-    if (j.formulario) { preencherFormulario(atual); setErro("Confira o carro no formulário e clique em Simular."); return; }
-    setErro(j.error ?? "Não foi possível reenviar");
-  }
-
-  // Carro digitado na mão não fica salvo inteiro: volta pro formulário pra conferir.
-  function preencherFormulario(s: SimDetalhe) {
+  // Reenviar = carregar os dados desta simulação no formulário (cliente,
+  // carro, entrada, bancos) pra conferir, trocar o que precisar e simular.
+  // Bancos: se só uma parte deu erro, já vêm marcados só os que falharam
+  // (os que responderam foram cobrados).
+  function reenviar(s: SimDetalhe, soFalhas: boolean) {
     const d = (s.celular ?? "").replace(/\D/g, "");
+    const noEstoque = !!s.veiculo_id && veiculos.some((v) => v.id === s.veiculo_id);
+    const reais = (n: number | null) => (n == null ? "" : Number(n).toLocaleString("pt-BR", { maximumFractionDigits: 2 }));
     setF({
       ...vazio,
       nome: s.cliente_nome ?? "",
       cpf: mascaraCpf(s.cpf ?? ""),
       nascimento: s.nascimento ?? "",
       celular: mascaraCel(d),
-      veiculoId: s.veiculo_id ?? "outro",
-      valorVeiculo: s.veiculo_id ? "" : String(s.valor_veiculo ?? ""),
-      entrada: s.entrada == null ? "" : String(s.entrada),
+      // Carro vendido/fora do estoque ou digitado à mão: escolhe de novo.
+      veiculoId: noEstoque ? s.veiculo_id! : "",
+      entrada: reais(s.entrada),
     });
-    setConsentimento(false);
+    const res = s.resultado?.resultados ?? [];
+    const falharam = res.filter((r) => FALHA.has(r.status as any)).map((r) => r.banco);
+    const base = soFalhas && falharam.length ? falharam : (s.bancos ?? []);
+    const marcados = base.filter((b) => bancosAtivos.includes(b));
+    setEscolhidos(marcados.length ? marcados : bancosAtivos);
+    // Mesmo cliente que já autorizou; se trocar o CPF, desmarque.
+    setConsentimento(true);
+    setErro(noEstoque ? "" : "Escolha o veículo de novo.");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -163,7 +159,6 @@ export default function FinanciamentoPage() {
 
   const rodando = atual && (atual.status === "pendente" || atual.status === "processando");
   const resultados = atual?.resultado?.resultados ?? [];
-  const FALHA = new Set([null, "erro", "manutencao", "indisponivel"]);
   const falhas = resultados.filter((r) => FALHA.has(r.status as any)).length;
   const podeReenviar = !!atual && !rodando;
   // Todos os prazos e o retorno estimado (financiado × % cadastrado pela loja) por banco aprovado.
@@ -286,15 +281,15 @@ export default function FinanciamentoPage() {
                 {atual.status === "falhou" && <span className="text-[10px] text-red-600">falhou: {atual.erro}</span>}
                 {atual.sandbox && <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">teste</span>}
               </div>
-              {podeReenviar && (atual.status === "falhou" || falhas > 0 || !atual.melhores?.length) && (
+              {podeReenviar && (
                 <div className="flex flex-wrap gap-2 mb-3">
-                  <button onClick={() => reenviar(false)} disabled={reenviando}
-                    className="flex items-center gap-1.5 bg-gray-900 text-white rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-wider disabled:opacity-40">
-                    {reenviando ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />} Reenviar
+                  <button onClick={() => reenviar(atual, false)}
+                    className="flex items-center gap-1.5 bg-gray-900 text-white rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-wider">
+                    <RotateCcw size={12} /> Reenviar / editar
                   </button>
                   {falhas > 0 && falhas < resultados.length && (
-                    <button onClick={() => reenviar(true)} disabled={reenviando}
-                      className="flex items-center gap-1.5 bg-white border border-gray-200 text-gray-700 rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-wider disabled:opacity-40">
+                    <button onClick={() => reenviar(atual, true)}
+                      className="flex items-center gap-1.5 bg-white border border-gray-200 text-gray-700 rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-wider">
                       <RotateCcw size={12} /> Só os {falhas} com erro
                     </button>
                   )}
