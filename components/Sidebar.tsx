@@ -1,6 +1,6 @@
 "use client";
 
-import { LayoutDashboard, MessageSquare, DollarSign, Users, ShieldCheck, Car, Store, Settings, LogOut, X, UserCircle, Contact, FileSignature, AlertCircle, Megaphone, CalendarDays, Send, Lock, Radio, Radar } from "lucide-react";
+import { LayoutDashboard, MessageSquare, DollarSign, Users, ShieldCheck, Car, Store, Settings, LogOut, X, UserCircle, Contact, FileSignature, AlertCircle, Megaphone, CalendarDays, Send, Lock, Radio, Radar, Landmark } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
@@ -13,6 +13,7 @@ const adminMenuItems = [
   { icon: Car,             label: "Estoque Inteligente",  href: "/estoque" },
   { icon: MessageSquare,   label: "Central de Chat",      href: "/chat" },
   { icon: DollarSign,      label: "Vendas / Financeiro",  href: "/vendas" },
+  { icon: Landmark,        label: "Financiamento",        href: "/financiamento" },
   { icon: Contact,         label: "Clientes",             href: "/clientes" },
   { icon: FileSignature,   label: "Contratos",            href: "/contratos" },
   { icon: CalendarDays,    label: "Agenda",               href: "/agenda" },
@@ -30,6 +31,7 @@ const todasPaginas = [
   { id: "chat",          icon: MessageSquare,   label: "Central de Chat",     href: "/chat" },
   { id: "minhas-vendas", icon: DollarSign,      label: "Minhas Vendas",       href: "/minhas-vendas" },
   { id: "financeiro",    icon: DollarSign,      label: "Vendas / Financeiro", href: "/vendas" },
+  { id: "financiamento", icon: Landmark,        label: "Financiamento",       href: "/financiamento" },
   { id: "clientes",      icon: Contact,         label: "Clientes",            href: "/clientes" },
   { id: "contratos",     icon: FileSignature,   label: "Contratos",           href: "/contratos" },
   { id: "agenda",        icon: CalendarDays,    label: "Agenda",              href: "/agenda" },
@@ -37,7 +39,7 @@ const todasPaginas = [
   { id: "configuracoes", icon: Settings,        label: "Configurações",       href: "/configuracoes" },
 ];
 
-const DEFAULT_VENDEDOR_PAGINAS = ["estoque", "chat", "minhas-vendas", "agenda", "clientes", "contratos"];
+const DEFAULT_VENDEDOR_PAGINAS = ["estoque", "chat", "minhas-vendas", "financiamento", "agenda", "clientes", "contratos"];
 
 interface SidebarProps {
   onClose?: () => void;

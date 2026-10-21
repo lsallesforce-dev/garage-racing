@@ -88,6 +88,7 @@ export async function financiamentoAutoLigado(tenant: string): Promise<boolean> 
 
 export type InicioSimulacao = { ok: true; simId: string } | { ok: false; motivo: string };
 
+/** Pedido vindo da IA (passo 10d): dados da coleta + carro em foco do lead. */
 export async function iniciarSimulacao(p: {
   tenant: string;
   leadId: string;
@@ -100,23 +101,75 @@ export async function iniciarSimulacao(p: {
   if (p.phone.startsWith("ig:")) return { ok: false, motivo: "lead do Instagram sem celular" };
   if (!p.veiculoId) return { ok: false, motivo: "sem veículo em foco" };
 
-  const cpf = soDigitos(p.coleta.cpf ?? "");
   const nascimento = nascimentoISO(p.coleta.nascimento);
-  const entrada = entradaEmReais(p.coleta.entrada);
-  if (cpf.length !== 11 || !nascimento) return { ok: false, motivo: "CPF ou nascimento ilegível" };
+  if (!nascimento) return { ok: false, motivo: "nascimento ilegível" };
+  return dispararSimulacao({
+    tenant: p.tenant,
+    leadId: p.leadId,
+    origem: "ia",
+    cpf: p.coleta.cpf ?? "",
+    nascimento,
+    // wa_id é 55 + DDD + número; a CredPro quer só DDD + número.
+    celular: soDigitos(p.phone).replace(/^55(?=\d{10,11}$)/, ""),
+    entrada: entradaEmReais(p.coleta.entrada),
+    veiculo: { id: p.veiculoId },
+  });
+}
 
-  const { data: v } = await supabaseAdmin
-    .from("veiculos")
-    .select("id, marca, modelo, versao, ano, ano_modelo, placa, preco_sugerido, valor_fipe, categoria, combustivel")
-    .eq("id", p.veiculoId)
-    .eq("user_id", p.tenant)
-    .maybeSingle<VeiculoSim>();
+/** Carro da simulação: do estoque (`id`) ou digitado na página (placa e/ou marca/modelo/ano + valor). */
+export type VeiculoPedido =
+  | { id: string }
+  | { id?: undefined; placa?: string; marca?: string; modelo?: string; ano?: number; valor: number; categoria?: string };
+
+/**
+ * Núcleo comum da IA e da página /financiamento: monta o corpo, grava a
+ * simulação, chama a CredPro e agenda o polling. Lead nulo = consulta do
+ * painel (o resultado só aparece na página; ninguém recebe WhatsApp).
+ */
+export async function dispararSimulacao(p: {
+  tenant: string;
+  leadId?: string | null;
+  origem: "ia" | "painel";
+  cpf: string;
+  nascimento: string;          // AAAA-MM-DD
+  celular: string;             // DDD + número
+  entrada: number | null;
+  veiculo: VeiculoPedido;
+  bancosEscolhidos?: string[]; // vazio/ausente = todos os ativos
+  clienteNome?: string | null;
+  criadoPor?: string | null;
+}): Promise<InicioSimulacao> {
+  if (!credproConfigurada()) return { ok: false, motivo: "Serviço de simulação não configurado" };
+  const cpf = soDigitos(p.cpf);
+  const celular = soDigitos(p.celular);
+  if (cpf.length !== 11) return { ok: false, motivo: "CPF precisa ter 11 dígitos" };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(p.nascimento)) return { ok: false, motivo: "Data de nascimento inválida" };
+  if (celular.length < 10 || celular.length > 11) return { ok: false, motivo: "Celular precisa ter DDD + número" };
+
+  let v: VeiculoSim | null = null;
+  if (!("valor" in p.veiculo)) {
+    const { data } = await supabaseAdmin
+      .from("veiculos")
+      .select("id, marca, modelo, versao, ano, ano_modelo, placa, preco_sugerido, valor_fipe, categoria, combustivel")
+      .eq("id", p.veiculo.id)
+      .eq("user_id", p.tenant)
+      .maybeSingle<VeiculoSim>();
+    v = data ?? null;
+  } else {
+    const m = p.veiculo;
+    v = {
+      id: "", marca: m.marca ?? null, modelo: m.modelo ?? null, ano: m.ano ?? null, ano_modelo: m.ano ?? null,
+      placa: m.placa ?? null, preco_sugerido: m.valor, categoria: m.categoria ?? null,
+    };
+  }
   const preco = Number(v?.preco_sugerido ?? 0);
-  if (!v || !preco) return { ok: false, motivo: "veículo sem preço" };
+  if (!v || !preco) return { ok: false, motivo: "Veículo sem preço" };
 
   const linhas = await bancosAtivos(p.tenant);
+  const filtro = p.bancosEscolhidos?.length ? new Set(p.bancosEscolhidos) : null;
   const bancos: NovaSimulacao["bancos"] = {};
   for (const l of linhas) {
+    if (filtro && !filtro.has(l.banco)) continue;
     try {
       const c = JSON.parse(decifrar(l.credencial_cifrada));
       if (c?.usuario && c?.senha) bancos[l.banco] = { usuario: c.usuario, senha: c.senha };
@@ -124,14 +177,14 @@ export async function iniciarSimulacao(p: {
       console.error(`🚨 [Simulação] credencial do ${l.banco} (tenant ${p.tenant}) não decifra:`, (e as Error).message);
     }
   }
-  if (!Object.keys(bancos).length) return { ok: false, motivo: "nenhum banco ativo" };
+  if (!Object.keys(bancos).length) return { ok: false, motivo: "Nenhum banco ativo com acesso cadastrado" };
 
-  // Celular: wa_id é 55 + DDD + número; a CredPro quer só DDD + número.
-  const celular = soDigitos(p.phone).replace(/^55(?=\d{10,11}$)/, "");
   const placaLimpa = String(v.placa ?? "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
   const placa = /^[A-Z]{3}\d[A-Z0-9]\d{2}$/.test(placaLimpa) ? placaLimpa : "";
   const fipe = Number(v.valor_fipe ?? 0) || undefined;
   const ano = v.ano_modelo ?? v.ano ?? undefined;
+  if (!placa && !(v.marca && v.modelo && ano)) return { ok: false, motivo: "Informe a placa ou marca, modelo e ano" };
+  const entrada = p.entrada;
 
   // Com placa, a CredPro resolve marca/modelo/FIPE pela placa — e o nome que a
   // loja digitou ("S10 LS CABINE SIMPLES") teria prioridade e quebraria quem
@@ -139,7 +192,7 @@ export async function iniciarSimulacao(p: {
   const corpo: NovaSimulacao = {
     cpf,
     celular,
-    data_nascimento: nascimento,
+    data_nascimento: p.nascimento,
     tipo_veiculo: tipoVeiculo(v.categoria),
     ...(placa
       ? { placa }
@@ -155,20 +208,26 @@ export async function iniciarSimulacao(p: {
     bancos,
   };
 
+  const veiculoDesc = [v.marca, v.modelo, ano].filter(Boolean).join(" ") || placa || null;
   const { data: sim, error } = await supabaseAdmin
     .from("financiamento_simulacoes")
     .insert({
       user_id: p.tenant,
-      lead_id: p.leadId,
-      veiculo_id: v.id,
+      lead_id: p.leadId ?? null,
+      veiculo_id: v.id || null,
+      origem: p.origem,
+      cliente_nome: p.clienteNome ?? null,
+      celular,
+      veiculo_desc: veiculoDesc,
+      criado_por: p.criadoPor ?? null,
       cpf,
-      nascimento,
+      nascimento: p.nascimento,
       valor_veiculo: preco,
       entrada,
       bancos: Object.keys(bancos),
       status: "pendente",
-      // O pedido de CPF avisa que os dados vão pros bancos parceiros; mandar
-      // os dados depois disso é o aceite.
+      // IA: o pedido de CPF avisa que os dados vão pros bancos parceiros; mandar
+      // os dados depois disso é o aceite. Painel: o vendedor confirma na tela.
       consentimento_em: new Date().toISOString(),
     })
     .select("id")
@@ -181,7 +240,7 @@ export async function iniciarSimulacao(p: {
       .update({ consulta_id: r.consulta_id, status: "processando", sandbox: !!r.sandbox })
       .eq("id", sim.id);
     await agendarPoll(sim.id);
-    console.log(`💳 [Simulação] ${p.phone} — consulta ${r.consulta_id} em ${r.bancos_solicitados?.length ?? "?"} banco(s), custo máx R$ ${r.custo_maximo}${r.sandbox ? " (sandbox)" : ""}`);
+    console.log(`💳 [Simulação/${p.origem}] consulta ${r.consulta_id} em ${r.bancos_solicitados?.length ?? "?"} banco(s), custo máx R$ ${r.custo_maximo}${r.sandbox ? " (sandbox)" : ""}`);
     return { ok: true, simId: sim.id };
   } catch (e) {
     const err = e as CredProErro;
@@ -191,11 +250,11 @@ export async function iniciarSimulacao(p: {
       .eq("id", sim.id);
     if (err.codigo === "saldo_insuficiente" || err.codigo === "chave_invalida") {
       await alertaInterno("financiamento", `CredPro: ${err.codigo}`,
-        `Simulação automática não saiu (tenant ${p.tenant}): ${motivo}. O pedido foi pro gerente no fluxo antigo.`,
+        `Simulação (${p.origem}) não saiu (tenant ${p.tenant}): ${motivo}.${p.origem === "ia" ? " O pedido foi pro gerente no fluxo antigo." : ""}`,
       ).catch(() => {});
     }
-    console.error(`🚨 [Simulação] ${p.phone} — CredPro recusou: ${motivo}`);
-    return { ok: false, motivo };
+    console.error(`🚨 [Simulação/${p.origem}] CredPro recusou: ${motivo}`);
+    return { ok: false, motivo: err.codigo === "saldo_insuficiente" ? "Saldo da consulta insuficiente — avise o suporte do AutoZap" : motivo };
   }
 }
 

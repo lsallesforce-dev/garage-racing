@@ -37,7 +37,7 @@ export default async function MainLayout({ children }: { children: React.ReactNo
     const headersList = await headers();
     const pathname    = headersList.get("x-pathname") ?? "";
 
-    const rotasPermitidas = ["/estoque", "/chat", "/veiculo", "/upload", "/clientes", "/contratos", "/minha-conta"];
+    const rotasPermitidas = ["/estoque", "/chat", "/veiculo", "/upload", "/clientes", "/contratos", "/financiamento", "/minha-conta"];
     if (!rotasPermitidas.some(r => pathname === r || pathname.startsWith(r + "/"))) redirect("/estoque");
 
     // Busca dados do vendedor + config do dono em paralelo — server-side, zero roundtrip no cliente
