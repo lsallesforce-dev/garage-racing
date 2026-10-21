@@ -3185,9 +3185,13 @@ Responda apenas com o JSON, sem markdown.`;
   // não tem word boundary. Cliente pedia "Consegue me enviar fotos" 4× e o sistema
   // ignorava. Agora aceita radicais com sufixo opcional (`envi[aoui]r?`).
   const temIntencaoFoto =
-    /\b(mand[aoui]r?|envi[aoui]r?|pass[aoui]r?|most[rt][aoui]r?|consegu[ei]|consigo|pod[ei]r?[ia]?|poderia|posso|prec[ei]s[aoi]|quer[oei]a?|queri[ae]|gostari[ae]|t[êe]m?|tem como|d[áa]\s+pra|d[áa]\s+para|posso ver|quero ver|ver as|cad[eê]|onde\s+est[aá]|me\s+v[eê])\b/i
+    (/\b(mand[aoui]r?|envi[aoui]r?|pass[aoui]r?|most[rt][aoui]r?|consegu[ei]|consigo|pod[ei]r?[ia]?|poderia|posso|prec[ei]s[aoi]|quer[oei]a?|queri[ae]|gostari[ae]|t[êe]m?|tem como|d[áa]\s+pra|d[áa]\s+para|posso ver|quero ver|ver as|cad[eê]|onde\s+est[aá]|me\s+v[eê])\b/i
       .test(mensagemLower) &&
-    /\b(foto|fotos|imagem|imagens)\b/i.test(mensagemLower);
+    /\b(foto|fotos|imagem|imagens)\b/i.test(mensagemLower)) ||
+    // "vê umas fotos dessa van pra mim?" — "vê" acentuado não fecha \b (o \b do
+    // JS é ASCII) e o pedido passava batido; a IA só perguntou "quer ver as
+    // fotos?" e no dia seguinte o follow-up perguntou de novo (APROVE 20/10).
+    /(^|[\s,])v[eê]\s+(umas?|as|algumas?|a)\s+(foto|fotos|imagem|imagens)\b/i.test(mensagemLower);
   const mensagemSoFoto = /^(foto|fotos|imagem|imagens)[.!?]?$/.test(mensagemLower.trim());
   const gatilhosFoto = [
     "manda foto", "tem foto", "tem imagem",
@@ -3342,7 +3346,15 @@ Responda apenas com o JSON, sem markdown.`;
   // "internos", "intern", "fotos de dentro", etc.
   // Caso real: Gabriel (5517991046403) — agente perguntou "Quer ver alguma parte
   // específica?" → cliente: "Interna dele vcs tem ?" → sistema não enviou.
-  const pedindoParteCarro = /\b(intern[ao]s?|interior|por\s+dentro|de\s+dentro|painel|bancos?|porta-malas?|bagageiro|porta\s+malas?|motor|de\s+lado|por\s+tr[aá]s|tras[ei]ra|de\s+frente|frente|farol|far[oó]is|rod[ao]s?|pneus?|c[aâ]mbio|cambio|volante|teto|capo|cap[oô])\b/i.test(mensagemLower);
+  // ...mas cliente DESCREVENDO o carro dele pra troca cita as mesmas partes:
+  // "Pega Strada hard working 2019, interna preta, banco no couro, pneus novos"
+  // virou pedido de foto (interna/banco/pneus) e saíram 16 fotos da Fiorino da
+  // loja (APROVE 20/10, Luiz). Pedido de parte é curto ou pergunta; descrição de
+  // troca fala "pega/aceita/meu/minha/tenho" ou é um parágrafo afirmativo.
+  const descrevendoCarroDele =
+    /\b(pega|pegam|pegaria|aceita|aceitam|aceitaria|troca|trocam|meu|minha|tenho|possuo|dou\s+(o|a|meu|minha))\b/i.test(mensagemLower) ||
+    (mensagemLower.split(/\s+/).length > 15 && !mensagemLower.includes("?"));
+  const pedindoParteCarro = !descrevendoCarroDele && /\b(intern[ao]s?|interior|por\s+dentro|de\s+dentro|painel|bancos?|porta-malas?|bagageiro|porta\s+malas?|motor|de\s+lado|por\s+tr[aá]s|tras[ei]ra|de\s+frente|frente|farol|far[oó]is|rod[ao]s?|pneus?|c[aâ]mbio|cambio|volante|teto|capo|cap[oô])\b/i.test(mensagemLower);
 
   // Pergunta sobre o ESTADO de uma peça ≠ pedido de foto dela. "Como está o
   // motor? Tem mto retoque?" casava em pedindoParteCarro (por "motor") e, com o
