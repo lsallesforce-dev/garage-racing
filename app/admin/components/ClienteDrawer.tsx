@@ -278,16 +278,16 @@ export default function ClienteDrawer({
                 </div>
               </div>
 
-              {/* Senha do olho do financeiro */}
+              {/* Senha da loja: Configurações + olho do financeiro (lib/senha-loja) */}
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <p className={lblCls}>Senha do financeiro (olho)</p>
+                  <p className={lblCls}>Senha da loja (Configurações + Financeiro)</p>
                   <p className="text-[11px] text-gray-500 mt-0.5 max-w-sm">
-                    Criada pelo cliente; ninguém consegue ver. Resetar apaga a senha e ele cria outra no próximo clique no olho.
+                    Ninguém consegue ver. Resetar apaga a senha: quem abrir Configurações ou o olho do Financeiro primeiro cria outra.
                   </p>
                 </div>
                 <button
-                  onClick={() => { if (confirm(`Resetar a senha do financeiro de "${t.nome_empresa}"?`)) acao(t.user_id, "resetar_senha_financeiro"); }}
+                  onClick={() => { if (confirm(`Resetar a senha da loja de "${t.nome_empresa}"? Vale pras Configurações e pro olho do Financeiro.`)) acao(t.user_id, "resetar_senha_financeiro"); }}
                   disabled={acaoLoading === `${t.user_id}-resetar_senha_financeiro`}
                   className="shrink-0 px-4 py-2 bg-white border border-gray-200 text-gray-600 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-gray-50 disabled:opacity-50 transition">
                   Resetar
