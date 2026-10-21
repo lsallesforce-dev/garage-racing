@@ -122,7 +122,7 @@ export function FinanciamentoConfig() {
                 {d && !d.disponivel_agora && <span className="text-[9px] text-gray-400">fora do horário ({d.horario})</span>}
                 <span className="ml-auto flex items-center gap-2">
                   {s && (
-                    <label className="flex items-center gap-1 text-[10px] text-gray-500" title="% de retorno da sua tabela nesse banco — só pra estimar a comissão, o cliente não vê">
+                    <label className="flex items-center gap-1 text-[10px] text-gray-500" title="% da tabela de maior retorno do seu login nesse banco — só pra estimar a comissão, o cliente não vê">
                       retorno
                       <input
                         key={`${banco}-${s.retorno_pct ?? ""}`}
@@ -202,8 +202,9 @@ export function FinanciamentoConfig() {
         aqui.
       </p>
       <p className="text-[10px] text-gray-400 mt-2">
-        <b>Retorno:</b> o % que o banco paga à loja na tabela do seu login (ex.: 4 na R4). Os bancos não informam isso na
-        simulação: o AutoZap estima valor financiado × %, mostra pra você e pro gerente, e nunca pro cliente.
+        <b>Retorno:</b> toda simulação já sai na tabela de <b>maior retorno</b> liberada no seu login de cada banco. O banco
+        não informa quanto é esse retorno, então coloque aqui o % dessa tabela (ex.: 5 se o seu máximo é R5). O AutoZap estima
+        valor financiado × % e mostra pra você e pro gerente — nunca pro cliente.
       </p>
     </div>
   );
