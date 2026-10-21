@@ -7,7 +7,7 @@
 import { useEffect, useState } from "react";
 import { Landmark, Loader2, CheckCircle2, Trash2, Eye, EyeOff, AlertTriangle } from "lucide-react";
 
-type BancoSalvo = { banco: string; usuario_dica: string | null; ativo: boolean; ultimo_status: string | null };
+type BancoSalvo = { banco: string; usuario_dica: string | null; ativo: boolean; ultimo_status: string | null; retorno_pct: number | null };
 type Disp = { banco: string; disponivel_agora: boolean; motivo: string | null; horario: string };
 type Estado = { ligado: boolean; servico: boolean; bancos: BancoSalvo[]; lista: string[]; disponibilidade: Disp[] };
 
@@ -122,6 +122,24 @@ export function FinanciamentoConfig() {
                 {d && !d.disponivel_agora && <span className="text-[9px] text-gray-400">fora do horário ({d.horario})</span>}
                 <span className="ml-auto flex items-center gap-2">
                   {s && (
+                    <label className="flex items-center gap-1 text-[10px] text-gray-500" title="% de retorno da sua tabela nesse banco — só pra estimar a comissão, o cliente não vê">
+                      retorno
+                      <input
+                        key={`${banco}-${s.retorno_pct ?? ""}`}
+                        className="w-14 border border-gray-200 rounded-lg px-2 py-1 text-[11px] text-right"
+                        defaultValue={s.retorno_pct ?? ""}
+                        placeholder="—"
+                        inputMode="decimal"
+                        disabled={salvando}
+                        onBlur={(e) => {
+                          const v = e.target.value.trim();
+                          if (v !== String(s.retorno_pct ?? "")) enviar({ banco, retorno_pct: v === "" ? null : v });
+                        }}
+                      />
+                      %
+                    </label>
+                  )}
+                  {s && (
                     <label className="flex items-center gap-1 text-[10px] text-gray-500">
                       <input type="checkbox" className="accent-emerald-600" checked={s.ativo} disabled={salvando}
                         onChange={(e) => enviar({ banco, ativo: e.target.checked })} />
@@ -182,6 +200,10 @@ export function FinanciamentoConfig() {
       <p className="text-[10px] text-gray-400 mt-6">
         Use o mesmo usuário e senha que você usa pra entrar no portal de cada banco. A senha fica cifrada e não aparece de novo
         aqui.
+      </p>
+      <p className="text-[10px] text-gray-400 mt-2">
+        <b>Retorno:</b> o % que o banco paga à loja na tabela do seu login (ex.: 4 na R4). Os bancos não informam isso na
+        simulação: o AutoZap estima valor financiado × %, mostra pra você e pro gerente, e nunca pro cliente.
       </p>
     </div>
   );

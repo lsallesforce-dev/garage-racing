@@ -25,7 +25,7 @@ export async function GET() {
 
   const [{ data: bancos }, { data: cfg }, agora] = await Promise.all([
     supabaseAdmin.from("financiamento_bancos")
-      .select("banco, usuario_dica, ativo, ultimo_status, ultimo_status_em")
+      .select("banco, usuario_dica, ativo, ultimo_status, ultimo_status_em, retorno_pct")
       .eq("user_id", a.userId),
     supabaseAdmin.from("config_garage").select("financiamento_auto")
       .eq("user_id", a.userId).order("created_at", { ascending: false }).limit(1),
@@ -57,6 +57,21 @@ export async function POST(req: NextRequest) {
   const banco = String(body.banco ?? "");
   if (!(BANCOS_CREDPRO as readonly string[]).includes(banco)) {
     return NextResponse.json({ error: "Banco não suportado" }, { status: 400 });
+  }
+
+  // % de retorno da tabela da loja nesse banco (estimativa de comissão).
+  // null/"" limpa.
+  if ("retorno_pct" in body && !body.senha) {
+    const bruto = body.retorno_pct;
+    const pct = bruto === null || bruto === "" ? null : Number(String(bruto).replace(",", "."));
+    if (pct !== null && (!Number.isFinite(pct) || pct < 0 || pct > 30)) {
+      return NextResponse.json({ error: "Retorno precisa ser um % entre 0 e 30" }, { status: 400 });
+    }
+    const { error } = await supabaseAdmin.from("financiamento_bancos")
+      .update({ retorno_pct: pct, updated_at: new Date().toISOString() })
+      .eq("user_id", a.userId).eq("banco", banco);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
   }
 
   // Só pausar/reativar um banco já salvo.

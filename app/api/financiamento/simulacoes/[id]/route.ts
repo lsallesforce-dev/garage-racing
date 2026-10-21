@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
+import { retornosDoTenant } from "@/lib/financiamento-simulacao";
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -20,5 +21,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     .eq("user_id", tenant)
     .maybeSingle();
   if (!data) return NextResponse.json({ error: "Simulação não encontrada" }, { status: 404 });
-  return NextResponse.json(data);
+  // % de retorno atual da loja por banco: a página estima a comissão de cada aprovado.
+  const retornos = await retornosDoTenant(tenant).catch(() => ({}));
+  return NextResponse.json({ ...data, retornos });
 }

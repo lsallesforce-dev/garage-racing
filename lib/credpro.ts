@@ -118,20 +118,5 @@ export function consultarSimulacao(consultaId: number) {
   return chamar<ConsultaCredPro>("GET", `/simulacoes/${consultaId}`);
 }
 
-/** "R$ 1.120,00" | "1.120,00" → 1120. */
-export function reaisBR(v: string | null | undefined): number | null {
-  if (!v) return null;
-  const m = String(v).match(/[\d.]+,\d{2}|\d+(?:\.\d{3})*/);
-  if (!m) return null;
-  const n = Number(m[0].replace(/\./g, "").replace(",", "."));
-  return Number.isFinite(n) ? n : null;
-}
-
-/** "48x de R$ 1.120,00" → { prazo: 48, parcela: 1120 }. */
-export function lerParcelas(p: string | null | undefined): { prazo: number; parcela: number } | null {
-  if (!p) return null;
-  const m = String(p).match(/(\d{1,3})\s*x\s*(?:de\s*)?(?:R\$\s*)?([\d.]+,\d{2})/i);
-  if (!m) return null;
-  const parcela = reaisBR(m[2]);
-  return parcela ? { prazo: Number(m[1]), parcela } : null;
-}
+// Leitura de valores e parcelas: lib/financiamento-parcelas (pura, usada também no front).
+export { reaisBR, lerTodasParcelas } from "@/lib/financiamento-parcelas";

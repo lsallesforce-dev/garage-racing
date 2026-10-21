@@ -21,7 +21,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { qstash } from "@/lib/qstash";
 import { decifrar } from "@/lib/segredo";
 import {
-  credproConfigurada, criarSimulacao, consultarSimulacao, lerParcelas, reaisBR,
+  credproConfigurada, criarSimulacao, consultarSimulacao, reaisBR,
   CredProErro, type ConsultaCredPro, type NovaSimulacao,
 } from "@/lib/credpro";
 import { sendAvisaMessage } from "@/lib/avisa";
@@ -29,6 +29,7 @@ import { sendMetaMessage, sendMetaAlertaTemplate, dentroJanela24h } from "@/lib/
 import { gerenteNaJanela, enfileirarAlertaGerente, invalidateHistory } from "@/lib/redis";
 import { alertaInterno } from "@/lib/alerta-interno";
 import type { ColetaFinanciamento } from "@/lib/financiamento-coleta";
+import { ofertasAprovadas, melhoresParaCliente, type Oferta } from "@/lib/financiamento-parcelas";
 
 const POLL_DELAY_S = 5;
 const POLL_MAX_TENTATIVAS = 36; // ~3 min: banco que não respondeu até aí não entra
@@ -268,24 +269,13 @@ async function agendarPoll(simId: string) {
   });
 }
 
-export type Oferta = { banco: string; prazo: number; parcela: number; entrada: number | null; financiado: number | null };
-
-/** Aprovados com parcela legível, menor parcela primeiro, um por banco, até 3. */
-export function melhoresOfertas(resultados: ConsultaCredPro["resultados"]): Oferta[] {
-  const ofertas: Oferta[] = [];
-  for (const r of resultados ?? []) {
-    if (r.status !== "aprovado") continue;
-    const p = lerParcelas(r.dados?.parcelas);
-    if (!p) continue;
-    ofertas.push({
-      banco: r.banco,
-      prazo: p.prazo,
-      parcela: p.parcela,
-      entrada: reaisBR(r.dados?.valor_entrada),
-      financiado: reaisBR(r.dados?.valor_solicitado),
-    });
-  }
-  return ofertas.sort((a, b) => a.parcela - b.parcela).slice(0, 3);
+/** % de retorno que a loja cadastrou por banco (estimativa, nunca vai pro cliente). */
+export async function retornosDoTenant(tenant: string): Promise<Record<string, number | null>> {
+  const { data } = await supabaseAdmin
+    .from("financiamento_bancos")
+    .select("banco, retorno_pct")
+    .eq("user_id", tenant);
+  return Object.fromEntries((data ?? []).map((b: any) => [b.banco, b.retorno_pct == null ? null : Number(b.retorno_pct)]));
 }
 
 export function textoOfertasCliente(ofertas: Oferta[], carro: string | null): string {
@@ -353,10 +343,11 @@ export async function processarPoll(simId: string): Promise<string> {
   if (!travou?.length) return "outro job já finalizou";
 
   await registrarStatusBancos(sim.user_id, consulta.resultados ?? []);
-  const ofertas = melhoresOfertas(consulta.resultados);
+  const aprovadas = ofertasAprovadas(consulta.resultados, await retornosDoTenant(sim.user_id).catch(() => ({})));
+  const ofertas = melhoresParaCliente(aprovadas);
   await supabaseAdmin.from("financiamento_simulacoes").update({ melhores: ofertas }).eq("id", sim.id);
-  await entregarResultado(sim, consulta, ofertas);
-  return `concluída: ${ofertas.length} oferta(s)`;
+  await entregarResultado(sim, consulta, ofertas, aprovadas);
+  return `concluída: ${aprovadas.length} aprovada(s)`;
 }
 
 async function registrarStatusBancos(tenant: string, resultados: NonNullable<ConsultaCredPro["resultados"]>) {
@@ -419,6 +410,7 @@ async function entregarResultado(
   sim: { id: string; user_id: string; lead_id: string | null; veiculo_id: string | null; entrada: number | null; cpf: string; nascimento: string },
   consulta: ConsultaCredPro,
   ofertas: Oferta[],
+  aprovadas: Oferta[],
 ) {
   if (!sim.lead_id) return;
   const tenant = sim.user_id;
@@ -441,9 +433,17 @@ async function entregarResultado(
   }
 
   // Resumo pro gerente: todas as respostas, não só as 3 melhores — recusa e
-  // credencial inválida ele precisa ver pra agir.
+  // credencial inválida ele precisa ver pra agir. Aprovado leva todos os
+  // prazos e o retorno estimado da loja (o cliente não vê isso).
+  const porBanco = new Map(aprovadas.map((o) => [o.banco, o]));
   const linhas = (consulta.resultados ?? []).map((r) => {
     const st = r.status ?? "sem resposta";
+    const o = porBanco.get(r.banco);
+    if (o) {
+      return `✅ ${o.banco}: ${o.opcoes.map((x) => `${x.prazo}x ${brl(x.parcela)}`).join(" · ")}` +
+        `${o.entrada != null ? ` · entrada ${brl(o.entrada)}` : ""}` +
+        `${o.retorno != null ? `\n   💰 retorno estimado ${brl(o.retorno)} (${o.retornoPct}%)` : ""}`;
+    }
     if (r.status === "aprovado") return `✅ ${r.banco}: ${r.dados?.parcelas ?? "aprovado"}${r.dados?.valor_entrada ? ` · entrada R$ ${r.dados.valor_entrada}` : ""}`;
     if (r.status === "recusado") return `❌ ${r.banco}: recusado${r.dados?.mensagem_recusa ? ` (${r.dados.mensagem_recusa})` : ""}`;
     if (r.status === "credencial_invalida" || r.status === "credencial_restricao") return `🔑 ${r.banco}: ${st.replace("_", " ")} — conferir o acesso em Configurações › Financiamento`;

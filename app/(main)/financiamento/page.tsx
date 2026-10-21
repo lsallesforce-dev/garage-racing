@@ -6,10 +6,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Landmark, Loader2, CheckCircle2, XCircle, Clock, Copy, Bot, User, AlertTriangle } from "lucide-react";
+import { Landmark, Loader2, CheckCircle2, XCircle, Clock, Copy, Bot, User, AlertTriangle, Coins } from "lucide-react";
+import { ofertasAprovadas, type Oferta } from "@/lib/financiamento-parcelas";
 
 type Veiculo = { id: string; marca: string | null; modelo: string | null; ano: number | null; ano_modelo: number | null; placa: string | null; preco_sugerido: number | string | null };
-type Oferta = { banco: string; prazo: number; parcela: number; entrada: number | null; financiado: number | null };
 type ResultadoBanco = { banco: string; status: string | null; dados?: { parcelas?: string | null; valor_entrada?: string | null; valor_solicitado?: string | null; mensagem_recusa?: string | null } | null };
 type SimResumo = {
   id: string; origem: string | null; cliente_nome: string | null; veiculo_desc: string | null; cpf: string | null;
@@ -17,6 +17,7 @@ type SimResumo = {
 };
 type SimDetalhe = SimResumo & {
   erro: string | null; resultado: { resultados?: ResultadoBanco[] } | null; custo_brl: number | null; sandbox: boolean; bancos: string[];
+  retornos?: Record<string, number | null>;
 };
 
 const brl = (n: number | string | null | undefined) =>
@@ -125,6 +126,10 @@ export default function FinanciamentoPage() {
 
   const rodando = atual && (atual.status === "pendente" || atual.status === "processando");
   const resultados = atual?.resultado?.resultados ?? [];
+  // Todos os prazos e o retorno estimado (financiado × % cadastrado pela loja) por banco aprovado.
+  const aprovadas = ofertasAprovadas(resultados, atual?.retornos ?? {});
+  const porBanco = new Map(aprovadas.map((o) => [o.banco, o]));
+  const maiorRetorno = aprovadas.reduce<Oferta | null>((m, o) => (o.retorno != null && (!m || o.retorno > (m.retorno ?? 0)) ? o : m), null);
   const pode = servico && bancosAtivos.length > 0;
 
   return (
@@ -253,29 +258,60 @@ export default function FinanciamentoPage() {
                       <Copy size={12} /> {copiado ? "Copiado!" : "Copiar pro cliente"}
                     </button>
                   </div>
-                  {atual.melhores.map((o) => (
-                    <p key={o.banco} className="text-[13px] text-green-900">
-                      <b>{o.banco}</b> — {o.prazo}x de {brl(o.parcela)}{o.entrada != null ? ` · entrada ${brl(o.entrada)}` : ""}
-                    </p>
-                  ))}
+                  {atual.melhores.map((o) => {
+                    const ret = porBanco.get(o.banco)?.retorno;
+                    return (
+                      <p key={o.banco} className="text-[13px] text-green-900">
+                        <b>{o.banco}</b> — {o.prazo}x de {brl(o.parcela)}{o.entrada != null ? ` · entrada ${brl(o.entrada)}` : ""}
+                        {ret != null && <span className="text-[11px] text-amber-700"> · retorno ~{brl(ret)}</span>}
+                      </p>
+                    );
+                  })}
+                  <p className="text-[10px] text-green-800/70 mt-2">Menor parcela primeiro. O retorno não vai no texto do cliente.</p>
                 </div>
               )}
 
               <div className="flex flex-col divide-y divide-gray-100">
                 {(resultados.length ? resultados : (atual.bancos ?? []).map((b) => ({ banco: b, status: null }) as ResultadoBanco)).map((r) => {
                   const st = r.status ? STATUS_BANCO[r.status] ?? { txt: r.status, cor: "text-gray-600 bg-gray-100" } : null;
+                  const o = porBanco.get(r.banco);
                   return (
                     <div key={r.banco} className="py-2.5 flex items-start gap-3 flex-wrap">
                       <span className="text-[12px] font-black text-gray-800 min-w-[100px]">{r.banco}</span>
                       {st
                         ? <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${st.cor}`}>{st.txt}</span>
                         : <span className="flex items-center gap-1 text-[10px] text-gray-400"><Clock size={11} /> aguardando</span>}
-                      <span className="text-[11px] text-gray-600 flex-1 min-w-[160px]">
-                        {r.dados?.parcelas ?? ""}
-                        {r.dados?.valor_entrada ? ` · entrada R$ ${r.dados.valor_entrada}` : ""}
-                        {r.dados?.valor_solicitado ? ` · financiado R$ ${r.dados.valor_solicitado}` : ""}
-                        {r.dados?.mensagem_recusa ?? ""}
-                      </span>
+                      {o ? (
+                        <span className="text-[11px] text-gray-600 flex-1 min-w-[160px]">
+                          <span className="flex flex-wrap gap-x-3 gap-y-0.5">
+                            {o.opcoes.map((x) => (
+                              <span key={x.prazo} className={x.prazo === o.prazo ? "font-bold text-gray-900" : ""}>{x.prazo}x {brl(x.parcela)}</span>
+                            ))}
+                          </span>
+                          <span className="block text-[10px] text-gray-400 mt-0.5">
+                            {o.entrada != null ? `entrada ${brl(o.entrada)}` : ""}{o.financiado != null ? ` · financiado ${brl(o.financiado)}` : ""}
+                          </span>
+                          {o.retorno != null ? (
+                            <span className="flex items-center gap-1 text-[11px] font-bold text-amber-700 mt-0.5">
+                              <Coins size={12} /> retorno estimado {brl(o.retorno)} ({o.retornoPct}%)
+                              {maiorRetorno?.banco === o.banco && aprovadas.length > 1 && (
+                                <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full bg-amber-100">maior retorno</span>
+                              )}
+                            </span>
+                          ) : (
+                            <span className="block text-[10px] text-gray-400 mt-0.5">
+                              sem % de retorno — <Link href="/configuracoes?tab=financiamento" className="underline">cadastrar</Link>
+                            </span>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-gray-600 flex-1 min-w-[160px]">
+                          {r.dados?.parcelas ?? ""}
+                          {r.dados?.valor_entrada ? ` · entrada R$ ${r.dados.valor_entrada}` : ""}
+                          {r.dados?.valor_solicitado ? ` · financiado R$ ${r.dados.valor_solicitado}` : ""}
+                          {r.dados?.mensagem_recusa ?? ""}
+                        </span>
+                      )}
                     </div>
                   );
                 })}
