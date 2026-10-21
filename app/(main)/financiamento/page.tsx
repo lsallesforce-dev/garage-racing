@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Landmark, Loader2, CheckCircle2, XCircle, Clock, Copy, Bot, User, AlertTriangle, Coins } from "lucide-react";
+import { Landmark, Loader2, CheckCircle2, XCircle, Clock, Copy, Bot, User, AlertTriangle, Coins, RotateCcw } from "lucide-react";
 import { ofertasAprovadas, type Oferta } from "@/lib/financiamento-parcelas";
 
 type Veiculo = { id: string; marca: string | null; modelo: string | null; ano: number | null; ano_modelo: number | null; placa: string | null; preco_sugerido: number | string | null };
@@ -14,9 +14,11 @@ type ResultadoBanco = { banco: string; status: string | null; dados?: { parcelas
 type SimResumo = {
   id: string; origem: string | null; cliente_nome: string | null; veiculo_desc: string | null; cpf: string | null;
   valor_veiculo: number | null; entrada: number | null; status: string; melhores: Oferta[] | null; created_at: string;
+  algum_respondeu?: boolean;
 };
 type SimDetalhe = SimResumo & {
   erro: string | null; resultado: { resultados?: ResultadoBanco[] } | null; custo_brl: number | null; sandbox: boolean; bancos: string[];
+  veiculo_id: string | null; celular: string | null; nascimento: string | null;
   retornos?: Record<string, number | null>;
 };
 
@@ -114,6 +116,41 @@ export default function FinanciamentoPage() {
     carregar();
   }
 
+  // Reenviar: mesma simulação (cliente, carro, entrada). `somenteFalhas` repete
+  // só os bancos que deram erro / não responderam — os que responderam já foram cobrados.
+  const [reenviando, setReenviando] = useState(false);
+  async function reenviar(somenteFalhas: boolean) {
+    if (!atual) return;
+    setReenviando(true); setErro(""); setCopiado(false);
+    const r = await fetch(`/api/financiamento/simulacoes/${atual.id}/reenviar`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ somenteFalhas }),
+    });
+    const j = await r.json().catch(() => ({}));
+    setReenviando(false);
+    if (r.ok) { abrir(j.id); carregar(); return; }
+    if (j.formulario) { preencherFormulario(atual); setErro("Confira o carro no formulário e clique em Simular."); return; }
+    setErro(j.error ?? "Não foi possível reenviar");
+  }
+
+  // Carro digitado na mão não fica salvo inteiro: volta pro formulário pra conferir.
+  function preencherFormulario(s: SimDetalhe) {
+    const d = (s.celular ?? "").replace(/\D/g, "");
+    setF({
+      ...vazio,
+      nome: s.cliente_nome ?? "",
+      cpf: mascaraCpf(s.cpf ?? ""),
+      nascimento: s.nascimento ?? "",
+      celular: mascaraCel(d),
+      veiculoId: s.veiculo_id ?? "outro",
+      valorVeiculo: s.veiculo_id ? "" : String(s.valor_veiculo ?? ""),
+      entrada: s.entrada == null ? "" : String(s.entrada),
+    });
+    setConsentimento(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   function copiarParaCliente() {
     if (!atual?.melhores?.length) return;
     const linhas = atual.melhores.map((o) =>
@@ -126,6 +163,9 @@ export default function FinanciamentoPage() {
 
   const rodando = atual && (atual.status === "pendente" || atual.status === "processando");
   const resultados = atual?.resultado?.resultados ?? [];
+  const FALHA = new Set([null, "erro", "manutencao", "indisponivel"]);
+  const falhas = resultados.filter((r) => FALHA.has(r.status as any)).length;
+  const podeReenviar = !!atual && !rodando;
   // Todos os prazos e o retorno estimado (financiado × % cadastrado pela loja) por banco aprovado.
   const aprovadas = ofertasAprovadas(resultados, atual?.retornos ?? {});
   const porBanco = new Map(aprovadas.map((o) => [o.banco, o]));
@@ -245,6 +285,20 @@ export default function FinanciamentoPage() {
                 {atual.status === "falhou" && <span className="text-[10px] text-red-600">falhou: {atual.erro}</span>}
                 {atual.sandbox && <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">teste</span>}
               </div>
+              {podeReenviar && (atual.status === "falhou" || falhas > 0 || !atual.melhores?.length) && (
+                <div className="flex flex-wrap gap-2 mb-3">
+                  <button onClick={() => reenviar(false)} disabled={reenviando}
+                    className="flex items-center gap-1.5 bg-gray-900 text-white rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-wider disabled:opacity-40">
+                    {reenviando ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />} Reenviar
+                  </button>
+                  {falhas > 0 && falhas < resultados.length && (
+                    <button onClick={() => reenviar(true)} disabled={reenviando}
+                      className="flex items-center gap-1.5 bg-white border border-gray-200 text-gray-700 rounded-xl px-3 py-2 text-[10px] font-black uppercase tracking-wider disabled:opacity-40">
+                      <RotateCcw size={12} /> Só os {falhas} com erro
+                    </button>
+                  )}
+                </div>
+              )}
               <p className="text-[12px] text-gray-700 mb-4">
                 {atual.cliente_nome ? <b>{atual.cliente_nome} · </b> : null}
                 {atual.veiculo_desc ?? "Veículo"} · {brl(atual.valor_veiculo)} · entrada {atual.entrada == null ? "não informada" : brl(atual.entrada)}
@@ -280,7 +334,9 @@ export default function FinanciamentoPage() {
                       <span className="text-[12px] font-black text-gray-800 min-w-[100px]">{r.banco}</span>
                       {st
                         ? <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${st.cor}`}>{st.txt}</span>
-                        : <span className="flex items-center gap-1 text-[10px] text-gray-400"><Clock size={11} /> aguardando</span>}
+                        : atual.status === "falhou" || atual.status === "concluida"
+                          ? <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full text-gray-600 bg-gray-100">{atual.status === "falhou" ? "não enviado" : "sem resposta"}</span>
+                          : <span className="flex items-center gap-1 text-[10px] text-gray-400"><Clock size={11} /> aguardando</span>}
                       {o ? (
                         <span className="text-[11px] text-gray-600 flex-1 min-w-[160px]">
                           <span className="flex flex-wrap gap-x-3 gap-y-0.5">
@@ -350,7 +406,9 @@ export default function FinanciamentoPage() {
                       {s.status === "concluida" ? (
                         melhor
                           ? <span className="flex items-center gap-1 text-[11px] text-green-700 font-bold"><CheckCircle2 size={12} /> {melhor.prazo}x {brl(melhor.parcela)}</span>
-                          : <span className="flex items-center gap-1 text-[11px] text-red-600"><XCircle size={12} /> sem aprovação</span>
+                          : s.algum_respondeu === false
+                            ? <span className="flex items-center gap-1 text-[11px] text-amber-700"><AlertTriangle size={12} /> erro nos bancos</span>
+                            : <span className="flex items-center gap-1 text-[11px] text-red-600"><XCircle size={12} /> sem aprovação</span>
                       ) : s.status === "falhou" ? (
                         <span className="text-[11px] text-red-600">falhou</span>
                       ) : (

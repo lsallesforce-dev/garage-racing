@@ -16,7 +16,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const tenant = getEffectiveUserId(user!);
 
   const { data } = await supabaseAdmin.from("financiamento_simulacoes")
-    .select("id, origem, cliente_nome, celular, veiculo_desc, cpf, nascimento, valor_veiculo, entrada, status, erro, resultado, melhores, bancos, custo_brl, sandbox, created_at, concluida_em, lead_id")
+    .select("id, origem, cliente_nome, celular, veiculo_desc, veiculo_id, cpf, nascimento, valor_veiculo, entrada, status, erro, resultado, melhores, bancos, custo_brl, sandbox, created_at, concluida_em, lead_id")
     .eq("id", id)
     .eq("user_id", tenant)
     .maybeSingle();

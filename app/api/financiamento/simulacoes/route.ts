@@ -16,7 +16,7 @@ export async function GET() {
 
   const [{ data: sims }, { data: veiculos }, { data: bancos }] = await Promise.all([
     supabaseAdmin.from("financiamento_simulacoes")
-      .select("id, origem, cliente_nome, celular, veiculo_desc, cpf, valor_veiculo, entrada, status, melhores, bancos, created_at, lead_id, leads(nome, wa_id)")
+      .select("id, origem, cliente_nome, celular, veiculo_desc, cpf, valor_veiculo, entrada, status, melhores, bancos, created_at, lead_id, leads(nome, wa_id), resultado")
       .eq("user_id", tenant)
       .order("created_at", { ascending: false })
       .limit(50),
@@ -38,7 +38,12 @@ export async function GET() {
       ...s,
       cpf: s.cpf ? `***.${s.cpf.slice(3, 6)}.***-${s.cpf.slice(9)}` : null,
       cliente_nome: s.cliente_nome ?? s.leads?.nome ?? null,
+      // Sem aprovação ≠ ninguém conseguiu consultar: a lista distingue
+      // "recusado" de "erro técnico em todos os bancos".
+      algum_respondeu: (s.resultado?.resultados ?? []).some((r: any) =>
+        ["aprovado", "recusado", "simulacao", "credencial_invalida", "credencial_restricao"].includes(r?.status)),
       leads: undefined,
+      resultado: undefined,
     })),
   });
 }
