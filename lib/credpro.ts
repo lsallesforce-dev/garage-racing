@@ -78,7 +78,7 @@ export function credproConfigurada(): boolean {
   return !!process.env.CREDPRO_API_KEY;
 }
 
-async function chamar<T>(metodo: "GET" | "POST", path: string, body?: unknown): Promise<T> {
+async function chamar<T>(metodo: "GET" | "POST", path: string, body?: unknown, timeoutMs = 20_000): Promise<T> {
   const key = process.env.CREDPRO_API_KEY;
   if (!key) throw new CredProErro(0, "sem_chave", "CREDPRO_API_KEY ausente");
   const r = await fetch(`${BASE}${path}`, {
@@ -88,7 +88,7 @@ async function chamar<T>(metodo: "GET" | "POST", path: string, body?: unknown): 
       ...(body ? { "Content-Type": "application/json" } : {}),
     },
     body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(20_000),
+    signal: AbortSignal.timeout(timeoutMs),
     cache: "no-store",
   });
   const txt = await r.text();
@@ -111,6 +111,9 @@ export function listarBancos() {
 export function criarSimulacao(s: NovaSimulacao) {
   return chamar<{ consulta_id: number; status: string; bancos_solicitados: string[]; custo_maximo: number; saldo_reais: number; sandbox?: boolean }>(
     "POST", "/simulacoes", s,
+    // Já vimos o POST passar de 20 s (APROVE, 21/10 17:12): a CredPro pode ter
+    // aberto a consulta e nós perdíamos o consulta_id.
+    45_000,
   );
 }
 

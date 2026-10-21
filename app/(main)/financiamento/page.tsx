@@ -309,7 +309,9 @@ export default function FinanciamentoPage() {
                           {r.dados?.parcelas ?? ""}
                           {r.dados?.valor_entrada ? ` · entrada R$ ${r.dados.valor_entrada}` : ""}
                           {r.dados?.valor_solicitado ? ` · financiado R$ ${r.dados.valor_solicitado}` : ""}
-                          {r.dados?.mensagem_recusa ?? ""}
+                          {r.status === "erro"
+                            ? <span title={r.dados?.mensagem_recusa ?? ""}>falha técnica na consulta deste banco — não foi cobrado</span>
+                            : r.dados?.mensagem_recusa ?? ""}
                         </span>
                       )}
                     </div>

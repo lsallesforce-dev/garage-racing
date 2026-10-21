@@ -32,7 +32,7 @@ import type { ColetaFinanciamento } from "@/lib/financiamento-coleta";
 import { ofertasAprovadas, melhoresParaCliente, type Oferta } from "@/lib/financiamento-parcelas";
 
 const POLL_DELAY_S = 5;
-const POLL_MAX_TENTATIVAS = 36; // ~3 min: banco que não respondeu até aí não entra
+const POLL_MAX_TENTATIVAS = 48; // ~6 min (cada volta leva ~7 s): banco que não respondeu até aí não entra
 
 export const TEXTO_SIMULANDO =
   "Recebi tudo, obrigado! Já estou consultando os bancos com os seus dados — em instantes te mando as condições por aqui. 😊";
