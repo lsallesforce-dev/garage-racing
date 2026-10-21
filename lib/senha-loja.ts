@@ -90,15 +90,28 @@ function assinar(userId: string, exp: number): string {
   return createHmac("sha256", chaveHmac()).update(`${userId}.${exp}`).digest("base64url");
 }
 
+/** Cookie pronto pra pôr numa resposta (redirect do acesso de admin). */
+export function cookieDesbloqueio(userId: string, validadeS = VALIDADE_S) {
+  const exp = Math.floor(Date.now() / 1000) + validadeS;
+  return {
+    name: COOKIE,
+    value: `${userId}.${exp}.${assinar(userId, exp)}`,
+    options: {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict" as const,
+      path: "/",
+      maxAge: validadeS,
+    },
+  };
+}
+
+/** Acesso de admin (Lucas configurando cliente): entra destravado, sem saber a senha da loja. */
+export const VALIDADE_ADMIN_S = 3 * 60 * 60;
+
 export async function gravarDesbloqueio(userId: string): Promise<void> {
-  const exp = Math.floor(Date.now() / 1000) + VALIDADE_S;
-  (await cookies()).set(COOKIE, `${userId}.${exp}.${assinar(userId, exp)}`, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
-    path: "/",
-    maxAge: VALIDADE_S,
-  });
+  const c = cookieDesbloqueio(userId);
+  (await cookies()).set(c.name, c.value, c.options);
 }
 
 export async function apagarDesbloqueio(): Promise<void> {
