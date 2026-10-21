@@ -6,17 +6,21 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
+import { requireOwner, getEffectiveUserId } from "@/lib/api-auth";
 import { cifrar } from "@/lib/segredo";
+import { configDesbloqueada } from "@/lib/senha-loja";
 import { BANCOS_CREDPRO, credproConfigurada, listarBancos } from "@/lib/credpro";
 
+// Só o dono (requireOwner lê o papel de app_metadata, que o usuário não edita)
+// e só com as Configurações destravadas pela senha da loja (cookie de 30 min).
 async function dono() {
-  const { user, error } = await requireAuth();
+  const { user, error } = await requireOwner();
   if (error) return { error };
-  if (user!.user_metadata?.role === "vendedor") {
-    return { error: NextResponse.json({ error: "Só o dono da loja configura o financiamento" }, { status: 403 }) };
+  const userId = getEffectiveUserId(user!);
+  if (!(await configDesbloqueada(userId))) {
+    return { error: NextResponse.json({ error: "Configurações trancadas — digite a senha da loja", bloqueado: true }, { status: 423 }) };
   }
-  return { userId: getEffectiveUserId(user!) };
+  return { userId };
 }
 
 export async function GET() {

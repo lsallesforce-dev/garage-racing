@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { Upload, CheckCircle2, Loader2, ImageIcon, Trash2, Sparkles, FileImage, Save, Copy, Eye, EyeOff, FileText, ShieldCheck, PauseCircle, PlayCircle, Palette, Globe, ExternalLink, Mic, Play, QrCode } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { FinanciamentoConfig } from "@/components/FinanciamentoConfig";
+import { TravaConfiguracoes } from "@/components/TravaConfiguracoes";
 
 declare global {
   interface Window {
@@ -146,7 +147,17 @@ function limpo(v?: string | null): string | null {
   return (v ?? "").trim() || null;
 }
 
+// A página inteira fica atrás da senha da loja (components/TravaConfiguracoes):
+// aqui moram token do WhatsApp/Meta e o acesso aos portais dos bancos.
 export default function ConfiguracoesPage() {
+  return (
+    <TravaConfiguracoes>
+      <ConfiguracoesConteudo />
+    </TravaConfiguracoes>
+  );
+}
+
+function ConfiguracoesConteudo() {
   const [mode, setMode] = useState<Mode>("manual");
   const [originalFile, setOriginalFile] = useState<File | null>(null);
   const [originalPreview, setOriginalPreview] = useState<string | null>(null);
