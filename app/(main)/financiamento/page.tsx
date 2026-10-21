@@ -135,7 +135,7 @@ export default function FinanciamentoPage() {
           Financiamento
         </h1>
         <p className="text-xs text-gray-400 font-bold uppercase tracking-widest mt-1">
-          Simule nos bancos da loja ao mesmo tempo
+          Simule em todos os seus bancos de uma vez
         </p>
       </div>
 
@@ -226,7 +226,7 @@ export default function FinanciamentoPage() {
             className="bg-gray-900 text-white rounded-xl py-3 text-[11px] font-black uppercase tracking-wider disabled:opacity-40 flex items-center justify-center gap-2"
           >
             {enviando ? <Loader2 size={14} className="animate-spin" /> : <Landmark size={14} />}
-            Simular em {escolhidos.length} {escolhidos.length === 1 ? "banco" : "bancos"}
+            {escolhidos.length ? `Simular em ${escolhidos.length} ${escolhidos.length === 1 ? "banco" : "bancos"}` : "Simular"}
           </button>
         </form>
 
