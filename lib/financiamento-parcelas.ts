@@ -11,7 +11,7 @@
 // Retorno do lojista: a API não devolve tabela (R0…R10) nem comissão. A loja
 // cadastra por banco o % de retorno da tabela do login dela
 // (financiamento_bancos.retorno_pct) e o AutoZap ESTIMA: financiado × %.
-// Suporte CredPro (22/10/2026): a simulação sempre sai na tabela de MAIOR
+// Suporte CredPro (21/10/2026): a simulação sempre sai na tabela de MAIOR
 // retorno liberada no login da loja — o % cadastrado é o dessa tabela.
 // Nunca vai pro cliente.
 
