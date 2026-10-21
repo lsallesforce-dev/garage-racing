@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Landmark, Loader2, CheckCircle2, XCircle, Clock, Copy, Bot, User, AlertTriangle, Coins, RotateCcw } from "lucide-react";
+import { Landmark, Loader2, CheckCircle2, XCircle, Clock, Copy, Bot, User, AlertTriangle, Coins, RotateCcw, Trash2 } from "lucide-react";
 import { ofertasAprovadas, valorDigitado, type Oferta } from "@/lib/financiamento-parcelas";
 
 type Veiculo = { id: string; marca: string | null; modelo: string | null; ano: number | null; ano_modelo: number | null; placa: string | null; preco_sugerido: number | string | null };
@@ -145,6 +145,15 @@ export default function FinanciamentoPage() {
     setConsentimento(true);
     setErro(noEstoque ? "" : "Escolha o veículo de novo.");
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function apagar(s: SimResumo) {
+    if (!confirm(`Apagar a simulação de ${s.cliente_nome || s.cpf || "cliente"} (${s.veiculo_desc ?? "veículo"})?`)) return;
+    const r = await fetch(`/api/financiamento/simulacoes/${s.id}`, { method: "DELETE" });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { setErro(j.error ?? "Não foi possível apagar"); return; }
+    if (atual?.id === s.id) { if (timer.current) clearTimeout(timer.current); setAtual(null); }
+    setHistorico((h) => h.filter((x) => x.id !== s.id));
   }
 
   // Botão de cada linha do histórico: busca o detalhe e joga no formulário.
@@ -428,6 +437,13 @@ export default function FinanciamentoPage() {
                       aria-label="Recarregar dados no formulário"
                       className="shrink-0 p-2 rounded-lg text-gray-400 hover:text-gray-900 hover:bg-gray-100 disabled:opacity-30">
                       <RotateCcw size={14} />
+                    </button>
+                    <button
+                      onClick={() => apagar(s)}
+                      title="Apagar esta simulação"
+                      aria-label="Apagar simulação"
+                      className="shrink-0 p-2 rounded-lg text-gray-300 hover:text-red-600 hover:bg-red-50">
+                      <Trash2 size={14} />
                     </button>
                     </div>
                   );
