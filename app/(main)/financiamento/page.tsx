@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Landmark, Loader2, CheckCircle2, XCircle, Clock, Copy, Bot, User, AlertTriangle, Coins, RotateCcw, Trash2 } from "lucide-react";
-import { ofertasAprovadas, valorDigitado, type Oferta } from "@/lib/financiamento-parcelas";
+import { ofertasAprovadas, valorDigitado, entradaDiferente, type Oferta } from "@/lib/financiamento-parcelas";
 import { cpfValido } from "@/lib/cpf";
 
 type Veiculo = { id: string; marca: string | null; modelo: string | null; ano: number | null; ano_modelo: number | null; placa: string | null; preco_sugerido: number | string | null };
@@ -101,6 +101,7 @@ export default function FinanciamentoPage() {
 
   async function simular(e: React.FormEvent) {
     e.preventDefault();
+    if (celRuim) { setErro("Celular incompleto: precisa de DDD + 9 dígitos (ex.: (34) 98934-5990)."); return; }
     if (cpfRuim) {
       setErro("CPF inválido: algum número está trocado. Confira com o documento do cliente antes de simular — com CPF errado todos os bancos dão erro.");
       return;
@@ -190,6 +191,8 @@ export default function FinanciamentoPage() {
   const porBanco = new Map(aprovadas.map((o) => [o.banco, o]));
   const maiorRetorno = aprovadas.reduce<Oferta | null>((m, o) => (o.retorno != null && (!m || o.retorno > (m.retorno ?? 0)) ? o : m), null);
   const pode = servico && bancosAtivos.length > 0;
+  const celDig = f.celular.replace(/\D/g, "");
+  const celRuim = celDig.length >= 10 && !/^\d{2}9\d{8}$/.test(celDig);
   const cpfRuim = f.cpf.replace(/\D/g, "").length === 11 && !cpfValido(f.cpf);
 
   return (
@@ -235,7 +238,8 @@ export default function FinanciamentoPage() {
             </Campo>
           </div>
           <Campo label="Celular do cliente">
-            <input className={inp} value={f.celular} onChange={set("celular")} placeholder="(17) 99999-9999" inputMode="tel" required />
+            <input className={`${inp} ${celRuim ? "border-red-400" : ""}`} value={f.celular} onChange={set("celular")} placeholder="(17) 99999-9999" inputMode="tel" required />
+            {celRuim && <span className="text-[11px] font-bold text-red-700">Celular incompleto: precisa de DDD + 9 dígitos.</span>}
           </Campo>
 
           <Campo label="Veículo">
@@ -349,6 +353,7 @@ export default function FinanciamentoPage() {
                     return (
                       <p key={o.banco} className="text-[13px] text-green-900">
                         <b>{o.banco}</b> — {o.prazo}x de {brl(o.parcela)}{o.entrada != null ? ` · entrada ${brl(o.entrada)}` : ""}
+                        {entradaDiferente(atual.entrada, o.entrada) && <span className="text-[11px] text-amber-700"> ⚠ entrada do banco</span>}
                         {ret != null && <span className="text-[11px] text-amber-700"> · retorno ~{brl(ret)}</span>}
                       </p>
                     );
@@ -379,6 +384,12 @@ export default function FinanciamentoPage() {
                           <span className="block text-[10px] text-gray-400 mt-0.5">
                             {o.entrada != null ? `entrada ${brl(o.entrada)}` : ""}{o.financiado != null ? ` · financiado ${brl(o.financiado)}` : ""}
                           </span>
+                          {entradaDiferente(atual.entrada, o.entrada) && (
+                            <span className="flex items-start gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 rounded-md px-2 py-1 mt-1">
+                              <AlertTriangle size={11} className="shrink-0 mt-px" />
+                              O banco simulou com entrada de {brl(o.entrada)}, não {brl(atual.entrada)}. Essas parcelas valem pra entrada do banco.
+                            </span>
+                          )}
                           {o.retorno != null ? (
                             <span className="flex items-center gap-1 text-[11px] font-bold text-amber-700 mt-0.5">
                               <Coins size={12} /> retorno estimado {brl(o.retorno)} ({o.retornoPct}%)

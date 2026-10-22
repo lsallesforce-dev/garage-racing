@@ -29,7 +29,7 @@ import { sendMetaMessage, sendMetaAlertaTemplate, dentroJanela24h } from "@/lib/
 import { gerenteNaJanela, enfileirarAlertaGerente, invalidateHistory } from "@/lib/redis";
 import { alertaInterno } from "@/lib/alerta-interno";
 import type { ColetaFinanciamento } from "@/lib/financiamento-coleta";
-import { ofertasAprovadas, melhoresParaCliente, type Oferta } from "@/lib/financiamento-parcelas";
+import { ofertasAprovadas, melhoresParaCliente, entradaDiferente, type Oferta } from "@/lib/financiamento-parcelas";
 import { cpfValido } from "@/lib/cpf";
 
 const POLL_DELAY_S = 5;
@@ -150,7 +150,7 @@ export async function dispararSimulacao(p: {
   // 6 tentativas perdidas antes de alguém desconfiar do número.
   if (!cpfValido(cpf)) return { ok: false, motivo: "CPF inválido — confira os números (algum dígito está trocado)" };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(p.nascimento)) return { ok: false, motivo: "Data de nascimento inválida" };
-  if (celular.length < 10 || celular.length > 11) return { ok: false, motivo: "Celular precisa ter DDD + número" };
+  if (!/^\d{2}9\d{8}$/.test(celular)) return { ok: false, motivo: "Celular precisa ter DDD + 9 dígitos" };
 
   let v: VeiculoSim | null = null;
   if (!("valor" in p.veiculo)) {
@@ -447,6 +447,7 @@ async function entregarResultado(
     if (o) {
       return `✅ ${o.banco}: ${o.opcoes.map((x) => `${x.prazo}x ${brl(x.parcela)}`).join(" · ")}` +
         `${o.entrada != null ? ` · entrada ${brl(o.entrada)}` : ""}` +
+        `${entradaDiferente(sim.entrada == null ? null : Number(sim.entrada), o.entrada) ? `\n   ⚠ banco usou entrada ${brl(o.entrada!)} (cliente disse ${brl(Number(sim.entrada))})` : ""}` +
         `${o.retorno != null ? `\n   💰 retorno estimado ${brl(o.retorno)} (${o.retornoPct}%)` : ""}`;
     }
     if (r.status === "aprovado") return `✅ ${r.banco}: ${r.dados?.parcelas ?? "aprovado"}${r.dados?.valor_entrada ? ` · entrada R$ ${r.dados.valor_entrada}` : ""}`;

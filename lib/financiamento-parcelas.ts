@@ -116,3 +116,14 @@ export function valorDigitado(x: unknown): number | null {
   const n = Number(norm);
   return Number.isFinite(n) && n >= 0 ? n : NaN;
 }
+
+/**
+ * A API da CredPro não tem campo de entrada (só `valor_desejado`) e cada robô
+ * de banco faz do seu jeito: o Santander simula com FIPE + 10% e entrada
+ * própria (0 ou 20%), ignorando o que foi pedido. Diferença acima de
+ * R$ 500 ou 5% vira aviso — a parcela mostrada vale pra entrada DO BANCO.
+ */
+export function entradaDiferente(pedida: number | null | undefined, doBanco: number | null | undefined): boolean {
+  if (pedida == null || doBanco == null) return false;
+  return Math.abs(doBanco - pedida) > Math.max(500, pedida * 0.05);
+}
