@@ -127,3 +127,32 @@ export function entradaDiferente(pedida: number | null | undefined, doBanco: num
   if (pedida == null || doBanco == null) return false;
   return Math.abs(doBanco - pedida) > Math.max(500, pedida * 0.05);
 }
+
+export type EstimativaEntrada =
+  | { tipo: "estimada"; entrada: number; financiado: number; opcoes: OpcaoParcela[] }
+  | { tipo: "minimo"; minimo: number };
+
+/**
+ * Parcela aproximada com a entrada que o cliente quer dar, quando o banco
+ * simulou com outra. Mesmo prazo e taxa, financiado proporcional:
+ *   valor do banco = financiado + entrada do banco
+ *   novo financiado = valor do banco − entrada pedida
+ *   parcela nova ≈ parcela × (novo financiado ÷ financiado)
+ * É estimativa (IOF e tarifas não são exatamente proporcionais) — a tela diz
+ * "confirmar no banco". Entrada pedida MENOR que a do banco não estima: o
+ * banco pré-aprovou exigindo aquele mínimo (Itaú pediu R$ 64 mil com 20 mil).
+ */
+export function parcelasComEntrada(o: Oferta, entradaPedida: number | null | undefined): EstimativaEntrada | null {
+  if (entradaPedida == null || o.financiado == null || o.entrada == null || o.financiado <= 0) return null;
+  if (!entradaDiferente(entradaPedida, o.entrada)) return null;
+  if (entradaPedida < o.entrada) return { tipo: "minimo", minimo: o.entrada };
+  const novoFinanciado = o.financiado + o.entrada - entradaPedida;
+  if (novoFinanciado <= 0) return null;
+  const fator = novoFinanciado / o.financiado;
+  return {
+    tipo: "estimada",
+    entrada: entradaPedida,
+    financiado: Math.round(novoFinanciado * 100) / 100,
+    opcoes: o.opcoes.map((x) => ({ prazo: x.prazo, parcela: Math.round(x.parcela * fator * 100) / 100 })),
+  };
+}

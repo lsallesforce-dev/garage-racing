@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Landmark, Loader2, CheckCircle2, XCircle, Clock, Copy, Bot, User, AlertTriangle, Coins, RotateCcw, Trash2 } from "lucide-react";
-import { ofertasAprovadas, valorDigitado, entradaDiferente, type Oferta } from "@/lib/financiamento-parcelas";
+import { ofertasAprovadas, valorDigitado, entradaDiferente, parcelasComEntrada, type Oferta } from "@/lib/financiamento-parcelas";
 import { cpfValido } from "@/lib/cpf";
 
 type Veiculo = { id: string; marca: string | null; modelo: string | null; ano: number | null; ano_modelo: number | null; placa: string | null; preco_sugerido: number | string | null };
@@ -55,6 +55,7 @@ export default function FinanciamentoPage() {
   const [carregando, setCarregando] = useState(true);
   const [servico, setServico] = useState(true);
   const [bancosAtivos, setBancosAtivos] = useState<string[]>([]);
+  const [senhaIncorreta, setSenhaIncorreta] = useState<string[]>([]);
   const [escolhidos, setEscolhidos] = useState<string[]>([]);
   const [veiculos, setVeiculos] = useState<Veiculo[]>([]);
   const [historico, setHistorico] = useState<SimResumo[]>([]);
@@ -73,7 +74,8 @@ export default function FinanciamentoPage() {
     if (!r.ok) { setErro(j.error ?? "Não foi possível carregar"); return; }
     setServico(j.servico);
     setBancosAtivos(j.bancos);
-    setEscolhidos((e) => (e.length ? e : j.bancos));
+    setSenhaIncorreta(j.bancosSenhaIncorreta ?? []);
+    setEscolhidos((e) => (e.length ? e : j.bancos).filter((b: string) => j.bancos.includes(b)));
     setVeiculos(j.veiculos);
     setHistorico(j.simulacoes);
   }, []);
@@ -271,7 +273,7 @@ export default function FinanciamentoPage() {
             <Entendido valor={f.entrada} />
           </Campo>
 
-          {bancosAtivos.length > 0 && (
+          {(bancosAtivos.length > 0 || senhaIncorreta.length > 0) && (
             <div>
               <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Bancos</span>
               <div className="flex flex-wrap gap-2 mt-2">
@@ -285,7 +287,20 @@ export default function FinanciamentoPage() {
                     </button>
                   );
                 })}
+                {senhaIncorreta.map((b) => (
+                  <Link key={b} href="/configuracoes?tab=financiamento"
+                    title="Senha incorreta na última consulta — fica de fora até atualizar a senha"
+                    className="px-3 py-1.5 rounded-full text-[11px] font-black border border-red-200 bg-red-50 text-red-700 line-through decoration-red-300">
+                    {b}
+                  </Link>
+                ))}
               </div>
+              {senhaIncorreta.length > 0 && (
+                <p className="text-[10px] text-red-700 mt-2">
+                  {senhaIncorreta.join(", ")}: senha incorreta na última consulta — {senhaIncorreta.length === 1 ? "fica" : "ficam"} de fora (cada tentativa é cobrada) até atualizar em{" "}
+                  <Link href="/configuracoes?tab=financiamento" className="underline font-black">Configurações › Financiamento</Link>.
+                </p>
+              )}
             </div>
           )}
 
@@ -384,12 +399,27 @@ export default function FinanciamentoPage() {
                           <span className="block text-[10px] text-gray-400 mt-0.5">
                             {o.entrada != null ? `entrada ${brl(o.entrada)}` : ""}{o.financiado != null ? ` · financiado ${brl(o.financiado)}` : ""}
                           </span>
-                          {entradaDiferente(atual.entrada, o.entrada) && (
-                            <span className="flex items-start gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 rounded-md px-2 py-1 mt-1">
-                              <AlertTriangle size={11} className="shrink-0 mt-px" />
-                              O banco simulou com entrada de {brl(o.entrada)}, não {brl(atual.entrada)}. Essas parcelas valem pra entrada do banco.
-                            </span>
-                          )}
+                          {entradaDiferente(atual.entrada, o.entrada) && (() => {
+                            const est = parcelasComEntrada(o, atual.entrada);
+                            return (
+                              <span className="block text-[10px] text-amber-900 bg-amber-50 rounded-md px-2 py-1.5 mt-1">
+                                <span className="flex items-start gap-1 font-bold">
+                                  <AlertTriangle size={11} className="shrink-0 mt-px" />
+                                  O banco simulou com entrada de {brl(o.entrada)}, não {brl(atual.entrada)}.
+                                </span>
+                                {est?.tipo === "estimada" && (
+                                  <span className="block mt-1">
+                                    Com {brl(est.entrada)} de entrada (financiado ≈ {brl(est.financiado)}):{" "}
+                                    <b>{est.opcoes.map((x) => `${x.prazo}x ≈ ${brl(x.parcela)}`).join(" · ")}</b>
+                                    <span className="block text-amber-700/80">Estimativa pela mesma taxa — confirmar no banco.</span>
+                                  </span>
+                                )}
+                                {est?.tipo === "minimo" && (
+                                  <span className="block mt-1">Esse banco exige no mínimo {brl(est.minimo)} de entrada pra esse cliente.</span>
+                                )}
+                              </span>
+                            );
+                          })()}
                           {o.retorno != null ? (
                             <span className="flex items-center gap-1 text-[11px] font-bold text-amber-700 mt-0.5">
                               <Coins size={12} /> retorno estimado {brl(o.retorno)} ({o.retornoPct}%)

@@ -28,12 +28,14 @@ export async function GET() {
       .eq("status_venda", "DISPONIVEL")
       .order("marca"),
     supabaseAdmin.from("financiamento_bancos")
-      .select("banco").eq("user_id", tenant).eq("ativo", true),
+      .select("banco, ultimo_status").eq("user_id", tenant).eq("ativo", true),
   ]);
 
   return NextResponse.json({
     servico: credproConfigurada(),
-    bancos: (bancos ?? []).map((b) => b.banco),
+    // Senha incorreta fica de fora da simulação até alguém salvar a nova.
+    bancos: (bancos ?? []).filter((b) => b.ultimo_status !== "credencial_invalida").map((b) => b.banco),
+    bancosSenhaIncorreta: (bancos ?? []).filter((b) => b.ultimo_status === "credencial_invalida").map((b) => b.banco),
     veiculos: veiculos ?? [],
     simulacoes: (sims ?? []).map((s: any) => ({
       ...s,

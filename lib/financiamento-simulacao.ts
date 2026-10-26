@@ -29,7 +29,7 @@ import { sendMetaMessage, sendMetaAlertaTemplate, dentroJanela24h } from "@/lib/
 import { gerenteNaJanela, enfileirarAlertaGerente, invalidateHistory } from "@/lib/redis";
 import { alertaInterno } from "@/lib/alerta-interno";
 import type { ColetaFinanciamento } from "@/lib/financiamento-coleta";
-import { ofertasAprovadas, melhoresParaCliente, entradaDiferente, type Oferta } from "@/lib/financiamento-parcelas";
+import { ofertasAprovadas, melhoresParaCliente, entradaDiferente, parcelasComEntrada, type Oferta } from "@/lib/financiamento-parcelas";
 import { cpfValido } from "@/lib/cpf";
 
 const POLL_DELAY_S = 5;
@@ -68,13 +68,21 @@ type VeiculoSim = {
   categoria?: string | null; combustivel?: string | null;
 };
 
+/**
+ * Bancos que entram na simulação: ativos e SEM "senha incorreta" na última
+ * resposta. Senha errada é cobrada (R$ 0,20) a cada consulta — APROVE 26/10,
+ * 3 bancos com senha expirada = R$ 0,60 jogados fora por simulação. Salvar
+ * uma senha nova em Configurações limpa o ultimo_status e o banco volta.
+ */
+export const STATUS_PULA_BANCO = "credencial_invalida";
+
 export async function bancosAtivos(tenant: string) {
   const { data } = await supabaseAdmin
     .from("financiamento_bancos")
-    .select("banco, credencial_cifrada")
+    .select("banco, credencial_cifrada, ultimo_status")
     .eq("user_id", tenant)
     .eq("ativo", true);
-  return data ?? [];
+  return (data ?? []).filter((b) => b.ultimo_status !== STATUS_PULA_BANCO);
 }
 
 /** Lido à parte (não no CONFIG_GARAGE_SELECT): sem a migration 069, erro → desligado. */
@@ -183,7 +191,9 @@ export async function dispararSimulacao(p: {
       console.error(`🚨 [Simulação] credencial do ${l.banco} (tenant ${p.tenant}) não decifra:`, (e as Error).message);
     }
   }
-  if (!Object.keys(bancos).length) return { ok: false, motivo: "Nenhum banco ativo com acesso cadastrado" };
+  if (!Object.keys(bancos).length) {
+    return { ok: false, motivo: "Nenhum banco disponível: cadastre o acesso ou atualize a senha dos bancos marcados como “senha incorreta” em Configurações › Financiamento" };
+  }
 
   const placaLimpa = String(v.placa ?? "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
   const placa = /^[A-Z]{3}\d[A-Z0-9]\d{2}$/.test(placaLimpa) ? placaLimpa : "";
@@ -448,6 +458,12 @@ async function entregarResultado(
       return `✅ ${o.banco}: ${o.opcoes.map((x) => `${x.prazo}x ${brl(x.parcela)}`).join(" · ")}` +
         `${o.entrada != null ? ` · entrada ${brl(o.entrada)}` : ""}` +
         `${entradaDiferente(sim.entrada == null ? null : Number(sim.entrada), o.entrada) ? `\n   ⚠ banco usou entrada ${brl(o.entrada!)} (cliente disse ${brl(Number(sim.entrada))})` : ""}` +
+        `${(() => {
+          const est = parcelasComEntrada(o, sim.entrada == null ? null : Number(sim.entrada));
+          return est?.tipo === "estimada"
+            ? `\n   ≈ com a entrada do cliente: ${est.opcoes.map((x) => `${x.prazo}x ${brl(x.parcela)}`).join(" · ")} (estimativa)`
+            : est?.tipo === "minimo" ? `\n   banco exige no mínimo ${brl(est.minimo)} de entrada` : "";
+        })()}` +
         `${o.retorno != null ? `\n   💰 retorno estimado ${brl(o.retorno)} (${o.retornoPct}%)` : ""}`;
     }
     if (r.status === "aprovado") return `✅ ${r.banco}: ${r.dados?.parcelas ?? "aprovado"}${r.dados?.valor_entrada ? ` · entrada R$ ${r.dados.valor_entrada}` : ""}`;
