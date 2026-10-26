@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Landmark, Loader2, CheckCircle2, XCircle, Clock, Copy, Bot, User, AlertTriangle, Coins, RotateCcw, Trash2 } from "lucide-react";
-import { ofertasAprovadas, valorDigitado, entradaDiferente, parcelasComEntrada, type Oferta } from "@/lib/financiamento-parcelas";
+import { ofertasAprovadas, melhoresParaCliente, valorDigitado, entradaDiferente, parcelasComEntrada, type Oferta } from "@/lib/financiamento-parcelas";
 import { cpfValido } from "@/lib/cpf";
 
 type Veiculo = { id: string; marca: string | null; modelo: string | null; ano: number | null; ano_modelo: number | null; placa: string | null; preco_sugerido: number | string | null };
@@ -175,8 +175,8 @@ export default function FinanciamentoPage() {
   }
 
   function copiarParaCliente() {
-    if (!atual?.melhores?.length) return;
-    const linhas = atual.melhores.map((o) =>
+    if (!atual || !melhores.length) return;
+    const linhas = melhores.map((o) =>
       `🏦 *${o.banco}* — ${o.prazo}x de ${brl(o.parcela)}${o.entrada != null ? ` (entrada ${brl(o.entrada)})` : ""}`);
     const texto =
       `Consultei os bancos${atual.veiculo_desc ? ` pro ${atual.veiculo_desc}` : ""} e saíram estas condições:\n\n${linhas.join("\n")}\n\n` +
@@ -189,7 +189,10 @@ export default function FinanciamentoPage() {
   const falhas = resultados.filter((r) => FALHA.has(r.status as any)).length;
   const podeReenviar = !!atual && !rodando;
   // Todos os prazos e o retorno estimado (financiado × % cadastrado pela loja) por banco aprovado.
-  const aprovadas = ofertasAprovadas(resultados, atual?.retornos ?? {});
+  // Entrada sobre o preço do carro (preço − financiado): o banco calcula sobre FIPE × 1,10.
+  const aprovadas = ofertasAprovadas(resultados, atual?.retornos ?? {}, atual?.valor_veiculo);
+  // Recalculadas na tela (as gravadas em `melhores` podem ser da conta antiga, entrada sobre FIPE × 1,10).
+  const melhores = melhoresParaCliente(aprovadas);
   const porBanco = new Map(aprovadas.map((o) => [o.banco, o]));
   const maiorRetorno = aprovadas.reduce<Oferta | null>((m, o) => (o.retorno != null && (!m || o.retorno > (m.retorno ?? 0)) ? o : m), null);
   const pode = servico && bancosAtivos.length > 0;
@@ -355,7 +358,7 @@ export default function FinanciamentoPage() {
                 {atual.veiculo_desc ?? "Veículo"} · {brl(atual.valor_veiculo)} · entrada {atual.entrada == null ? "não informada" : brl(atual.entrada)}
               </p>
 
-              {!!atual.melhores?.length && (
+              {!!melhores.length && (
                 <div className="bg-green-50 rounded-2xl p-4 mb-4">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[10px] font-black uppercase tracking-widest text-green-800">Melhores condições</span>
@@ -363,7 +366,7 @@ export default function FinanciamentoPage() {
                       <Copy size={12} /> {copiado ? "Copiado!" : "Copiar pro cliente"}
                     </button>
                   </div>
-                  {atual.melhores.map((o) => {
+                  {melhores.map((o) => {
                     const ret = porBanco.get(o.banco)?.retorno;
                     return (
                       <p key={o.banco} className="text-[13px] text-green-900">
@@ -398,6 +401,10 @@ export default function FinanciamentoPage() {
                           </span>
                           <span className="block text-[10px] text-gray-400 mt-0.5">
                             {o.entrada != null ? `entrada ${brl(o.entrada)}` : ""}{o.financiado != null ? ` · financiado ${brl(o.financiado)}` : ""}
+                            {o.entradaBanco != null && o.financiado != null && atual.valor_veiculo != null
+                              && Math.abs(o.entradaBanco + o.financiado - Number(atual.valor_veiculo)) > Number(atual.valor_veiculo) * 0.01 && (
+                              <span className="block">banco considerou o carro a {brl(o.entradaBanco + o.financiado)} (FIPE + 10%), não {brl(atual.valor_veiculo)}</span>
+                            )}
                           </span>
                           {entradaDiferente(atual.entrada, o.entrada) && (() => {
                             const est = parcelasComEntrada(o, atual.entrada);
@@ -405,7 +412,7 @@ export default function FinanciamentoPage() {
                               <span className="block text-[10px] text-amber-900 bg-amber-50 rounded-md px-2 py-1.5 mt-1">
                                 <span className="flex items-start gap-1 font-bold">
                                   <AlertTriangle size={11} className="shrink-0 mt-px" />
-                                  O banco simulou com entrada de {brl(o.entrada)}, não {brl(atual.entrada)}.
+                                  O banco financiou {brl(o.financiado)} = entrada de {brl(o.entrada)} no preço do carro, não {brl(atual.entrada)}.
                                 </span>
                                 {est?.tipo === "estimada" && (
                                   <span className="block mt-1">

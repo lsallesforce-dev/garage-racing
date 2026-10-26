@@ -310,7 +310,7 @@ export const TEXTO_SEM_APROVACAO =
 export async function processarPoll(simId: string): Promise<string> {
   const { data: sim } = await supabaseAdmin
     .from("financiamento_simulacoes")
-    .select("id, user_id, lead_id, veiculo_id, consulta_id, status, tentativas, entrada, cpf, nascimento")
+    .select("id, user_id, lead_id, veiculo_id, consulta_id, status, tentativas, entrada, cpf, nascimento, valor_veiculo")
     .eq("id", simId)
     .maybeSingle();
   if (!sim) return "simulação não existe";
@@ -358,7 +358,11 @@ export async function processarPoll(simId: string): Promise<string> {
   if (!travou?.length) return "outro job já finalizou";
 
   await registrarStatusBancos(sim.user_id, consulta.resultados ?? []);
-  const aprovadas = ofertasAprovadas(consulta.resultados, await retornosDoTenant(sim.user_id).catch(() => ({})));
+  const aprovadas = ofertasAprovadas(
+    consulta.resultados,
+    await retornosDoTenant(sim.user_id).catch(() => ({})),
+    sim.valor_veiculo == null ? null : Number(sim.valor_veiculo),
+  );
   const ofertas = melhoresParaCliente(aprovadas);
   await supabaseAdmin.from("financiamento_simulacoes").update({ melhores: ofertas }).eq("id", sim.id);
   await entregarResultado(sim, consulta, ofertas, aprovadas);

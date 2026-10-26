@@ -21,8 +21,10 @@ export type Oferta = {
   banco: string;
   prazo: number;            // prazo da menor parcela
   parcela: number;          // menor parcela entre os prazos devolvidos
-  entrada: number | null;
+  entrada: number | null;     // entrada sobre o PREÇO do carro (preço − financiado); sem preço, a do banco
+  entradaBanco: number | null; // a que o banco devolveu, sobre o valor que ELE usou (FIPE × 1,10)
   financiado: number | null;
+  valorBase: number | null;    // preço do carro (ou, sem ele, entrada + financiado do banco)
   opcoes: OpcaoParcela[];   // todos os prazos devolvidos, maior prazo primeiro
   retornoPct: number | null;
   retorno: number | null;   // estimado: financiado × retornoPct
@@ -56,10 +58,18 @@ export function lerTodasParcelas(p: string | null | undefined): OpcaoParcela[] {
   return [...vistos].map(([prazo, parcela]) => ({ prazo, parcela })).sort((a, b) => b.prazo - a.prazo);
 }
 
-/** Uma oferta por banco aprovado (com parcela legível), sem ordenar. */
+/**
+ * Uma oferta por banco aprovado (com parcela legível), sem ordenar.
+ *
+ * Todo banco recebe o carro como FIPE × 1,10, não pelo preço de venda (APROVE
+ * 26/10, Kicks R$ 147.990: banco usou R$ 168.351,70 = FIPE 153.047 × 1,1, e
+ * "entrada + financiado" passava do preço). O que vale pro cliente é o
+ * FINANCIADO: com `precoVeiculo`, a entrada mostrada é preço − financiado.
+ */
 export function ofertasAprovadas(
   resultados: { banco: string; status: string | null; dados?: DadosBanco }[] | null | undefined,
   retornoPct: Record<string, number | null | undefined> = {},
+  precoVeiculo?: number | null,
 ): Oferta[] {
   const out: Oferta[] = [];
   for (const r of resultados ?? []) {
@@ -67,16 +77,21 @@ export function ofertasAprovadas(
     const opcoes = lerTodasParcelas(r.dados?.parcelas);
     if (!opcoes.length) continue;
     const menor = opcoes.reduce((a, b) => (b.parcela < a.parcela ? b : a));
-    const entrada = reaisBR(r.dados?.valor_entrada);
+    const entradaBanco = reaisBR(r.dados?.valor_entrada);
     const veiculo = reaisBR(r.dados?.valor_veiculo);
-    const financiado = reaisBR(r.dados?.valor_solicitado) ?? (veiculo != null ? veiculo - (entrada ?? 0) : null);
+    const financiado = reaisBR(r.dados?.valor_solicitado) ?? (veiculo != null ? veiculo - (entradaBanco ?? 0) : null);
+    const preco = precoVeiculo != null && precoVeiculo > 0 ? Number(precoVeiculo) : null;
+    const entrada = preco != null && financiado != null ? Math.max(0, Math.round((preco - financiado) * 100) / 100) : entradaBanco;
+    const valorBase = preco ?? (financiado != null ? financiado + (entradaBanco ?? 0) : null);
     const pct = retornoPct[r.banco] ?? null;
     out.push({
       banco: r.banco,
       prazo: menor.prazo,
       parcela: menor.parcela,
       entrada,
+      entradaBanco,
       financiado,
+      valorBase,
       opcoes,
       retornoPct: pct,
       retorno: pct != null && financiado != null ? Math.round(financiado * pct) / 100 : null,
@@ -135,18 +150,17 @@ export type EstimativaEntrada =
 /**
  * Parcela aproximada com a entrada que o cliente quer dar, quando o banco
  * simulou com outra. Mesmo prazo e taxa, financiado proporcional:
- *   valor do banco = financiado + entrada do banco
- *   novo financiado = valor do banco − entrada pedida
+ *   novo financiado = preço do carro − entrada pedida
  *   parcela nova ≈ parcela × (novo financiado ÷ financiado)
  * É estimativa (IOF e tarifas não são exatamente proporcionais) — a tela diz
  * "confirmar no banco". Entrada pedida MENOR que a do banco não estima: o
  * banco pré-aprovou exigindo aquele mínimo (Itaú pediu R$ 64 mil com 20 mil).
  */
 export function parcelasComEntrada(o: Oferta, entradaPedida: number | null | undefined): EstimativaEntrada | null {
-  if (entradaPedida == null || o.financiado == null || o.entrada == null || o.financiado <= 0) return null;
+  if (entradaPedida == null || o.financiado == null || o.entrada == null || o.financiado <= 0 || o.valorBase == null) return null;
   if (!entradaDiferente(entradaPedida, o.entrada)) return null;
   if (entradaPedida < o.entrada) return { tipo: "minimo", minimo: o.entrada };
-  const novoFinanciado = o.financiado + o.entrada - entradaPedida;
+  const novoFinanciado = o.valorBase - entradaPedida;
   if (novoFinanciado <= 0) return null;
   const fator = novoFinanciado / o.financiado;
   return {
