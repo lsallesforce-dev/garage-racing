@@ -65,7 +65,9 @@ export type NovaSimulacao = {
   veiculo_combustivel?: string;
   fipe_value?: number;
   valor_desejado?: number;
-  bancos: Record<string, { usuario: string; senha: string }>;
+  // Suporte CredPro (26/10/2026): o valor desejado vai TAMBÉM dentro de cada
+  // banco — só no nível de cima, Santander e Itaú ignoravam (o C6 lia).
+  bancos: Record<string, { usuario: string; senha: string; valor_desejado?: number }>;
 };
 
 export class CredProErro extends Error {

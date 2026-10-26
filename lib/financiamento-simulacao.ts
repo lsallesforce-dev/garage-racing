@@ -205,6 +205,7 @@ export async function dispararSimulacao(p: {
   // Com placa, a CredPro resolve marca/modelo/FIPE pela placa — e o nome que a
   // loja digitou ("S10 LS CABINE SIMPLES") teria prioridade e quebraria quem
   // localiza pelo nome FIPE (Santander, Omni). Sem placa, manda o que tem.
+  const valorDesejado = entrada != null && preco > entrada ? Math.round((preco - entrada) * 100) / 100 : null;
   const corpo: NovaSimulacao = {
     cpf,
     celular,
@@ -220,8 +221,12 @@ export async function dispararSimulacao(p: {
           veiculo_combustivel: v.combustivel ?? undefined,
         }),
     ...(fipe ? { fipe_value: fipe } : {}),
-    ...(entrada != null && preco > entrada ? { valor_desejado: Math.round((preco - entrada) * 100) / 100 } : {}),
-    bancos,
+    ...(valorDesejado != null ? { valor_desejado: valorDesejado } : {}),
+    // Por banco também (orientação do suporte CredPro, 26/10): sem isso
+    // Santander/Itaú simulavam sobre FIPE × 1,10 com a entrada deles.
+    bancos: valorDesejado != null
+      ? Object.fromEntries(Object.entries(bancos).map(([b, c]) => [b, { ...c, valor_desejado: valorDesejado }]))
+      : bancos,
   };
 
   const veiculoDesc = [v.marca, v.modelo, ano].filter(Boolean).join(" ") || placa || null;
