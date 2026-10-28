@@ -85,32 +85,39 @@ export function mlHeaders(token: string) {
 
 // ─── Mapeamento de atributos ───────────────────────────────────────────────────
 
-const FUEL_ML: Record<string, string> = {
-  FLEX:     "Flex",
-  GASOLINA: "Gasolina",
-  ALCOOL:   "Álcool",
-  ETANOL:   "Álcool",
-  DIESEL:   "Diesel",
-  ELETRICO: "Elétrico",
-  HIBRIDO:  "Híbrido",
-  GNV:      "GNV",
+// FUEL_TYPE e TRANSMISSION são atributos "list" no MLB1744: só aceitam os valores
+// da categoria (GET /categories/MLB1744/attributes). "Flex" não existe lá → 400.
+// Mandamos value_id + value_name oficiais.
+type MLValor = { id: string; name: string };
+
+const FUEL_ML: Record<string, MLValor> = {
+  FLEX:     { id: "372591",   name: "Gasolina e álcool" },
+  GASOLINA: { id: "64364",    name: "Gasolina" },
+  ALCOOL:   { id: "2517339",  name: "Álcool" },
+  ETANOL:   { id: "2517339",  name: "Álcool" },
+  DIESEL:   { id: "60406",    name: "Diesel" },
+  ELETRICO: { id: "403613",   name: "Elétrico" },
+  HIBRIDO:  { id: "61257",    name: "Híbrido" },
+  GNV:      { id: "372590",   name: "Gasolina-Álcool e gás natural" },
 };
 
-const TRANSMISSION_ML: Record<string, string> = {
-  MANUAL:         "Manual",
-  AUTOMATICO:     "Automático",
-  AUTOMATICA:     "Automático",
-  CVT:            "Automático",
-  SEMIAUTOMATICO: "Automático",
-  AUTOMATIZADO:   "Automático",
-  DCT:            "Automático",
+const CAMBIO_MANUAL: MLValor = { id: "370877", name: "Manual" };
+const CAMBIO_AUTO:   MLValor = { id: "370876", name: "Automática" };
+const TRANSMISSION_ML: Record<string, MLValor> = {
+  MANUAL:         CAMBIO_MANUAL,
+  AUTOMATICO:     CAMBIO_AUTO,
+  AUTOMATICA:     CAMBIO_AUTO,
+  CVT:            { id: "77915073", name: "Automática CVT" },
+  SEMIAUTOMATICO: { id: "378323",   name: "Semiautomática" },
+  AUTOMATIZADO:   { id: "378323",   name: "Semiautomática" },
+  DCT:            { id: "1244809",  name: "Automática sequencial" },
 };
 
 function norm(s: string): string {
   return s.toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Z0-9]/g, "");
 }
 
-function mapAttr(map: Record<string, string>, value: string, fallback: string): string {
+function mapAttr(map: Record<string, MLValor>, value: string, fallback: MLValor): MLValor {
   if (!value) return fallback;
   return map[norm(value)] ?? fallback;
 }
@@ -147,14 +154,17 @@ export function buildMLPayload(v: {
   const titulo = `${v.marca ?? ""} ${v.modelo ?? ""}${v.versao ? " " + v.versao : ""} ${v.ano_modelo ?? v.ano ?? ""}`.trim().slice(0, 60);
   const fotos  = (Array.isArray(v.fotos) ? v.fotos.filter(Boolean) : []).slice(0, 12);
 
-  const attributes: { id: string; value_name: string }[] = [
+  const fuel   = mapAttr(FUEL_ML, v.combustivel ?? "", FUEL_ML.FLEX);
+  const cambio = mapAttr(TRANSMISSION_ML, v.cambio ?? "", CAMBIO_MANUAL);
+
+  const attributes: { id: string; value_name: string; value_id?: string }[] = [
     { id: "BRAND",        value_name: v.marca   ?? "" },
     { id: "MODEL",        value_name: v.modelo  ?? "" },
     { id: "VEHICLE_YEAR", value_name: String(v.ano_modelo ?? v.ano ?? "") },
     // KILOMETERS exige número + unidade ("250000 km") — só o número o ML rejeita.
     { id: "KILOMETERS",   value_name: `${Number(v.quilometragem_estimada ?? 0)} km` },
-    { id: "FUEL_TYPE",    value_name: mapAttr(FUEL_ML, v.combustivel ?? "", "Flex") },
-    { id: "TRANSMISSION", value_name: mapAttr(TRANSMISSION_ML, v.cambio ?? "", "Manual") },
+    { id: "FUEL_TYPE",    value_id: fuel.id,   value_name: fuel.name },
+    { id: "TRANSMISSION", value_id: cambio.id, value_name: cambio.name },
     { id: "DOORS",        value_name: "4" },
   ].filter(a => a.value_name && a.value_name !== "0");
 
