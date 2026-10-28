@@ -285,6 +285,23 @@ export function contatoML(whatsapp?: string | null, telefone?: string | null): R
   };
 }
 
+// Título do ML (máx. 60). Versão só entra se acrescenta algo ao modelo — muitos cadastros
+// já trazem a versão no modelo ("Toro Freedom" + "FREEDOM"). O ano nunca é cortado.
+export function tituloML(marca: string, modelo?: string | null, versao?: string | null, ano?: number | null): string {
+  const limpa = (t: string) => t.replace(/\s+/g, " ").trim();
+  const mod = limpa(modelo ?? "");
+  const modN = semAcento(mod);
+  const extra = limpa(versao ?? "").split(" ")
+    .filter(p => p && !modN.includes(semAcento(p)))
+    .filter(p => !(/^autom/.test(semAcento(p)) && /\baut\b/.test(modN))) // "Aut." + "Automático"
+    .join(" ");
+  const sufixo = ano ? ` ${ano}` : "";
+  const corpo = limpa(`${marca} ${mod}${extra ? " " + extra : ""}`);
+  const max = 60 - sufixo.length;
+  const cortado = corpo.length <= max ? corpo : corpo.slice(0, max).replace(/\s+\S*$/, "");
+  return `${cortado}${sufixo}`;
+}
+
 /** Monta o payload de item para publicação no ML (categoria MLB1744 — Carros usados). */
 export function buildMLPayload(v: {
   marca?: string | null;
@@ -307,7 +324,7 @@ export function buildMLPayload(v: {
   whatsapp?: string | null; telefone?: string | null;
 }) {
   const marca  = marcaML(v.marca);
-  const titulo = `${marca} ${v.modelo ?? ""}${v.versao ? " " + v.versao : ""} ${v.ano_modelo ?? v.ano ?? ""}`.trim().slice(0, 60);
+  const titulo = tituloML(marca, v.modelo, v.versao, v.ano_modelo ?? v.ano);
   const fotos  = (Array.isArray(v.fotos) ? v.fotos.filter(Boolean) : []).slice(0, 12);
 
   const fuel   = mapAttr(FUEL_ML, v.combustivel ?? "", FUEL_ML.FLEX);
