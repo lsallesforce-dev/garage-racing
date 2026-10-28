@@ -122,6 +122,15 @@ function mapAttr(map: Record<string, MLValor>, value: string, fallback: MLValor)
   return map[norm(value)] ?? fallback;
 }
 
+// Marca no formato FIPE ("VW - VolksWagen", "GM - Chevrolet") não casa com a lista
+// BRAND do ML e sai feia no título → fica só o nome depois do " - ".
+function marcaML(marca: string | null | undefined): string {
+  const m = (marca ?? "").trim();
+  const nome = m.includes(" - ") ? m.split(" - ").pop()!.trim() : m;
+  if (nome === nome.toUpperCase()) return nome; // sigla: KTM, BMW, JAC
+  return nome.charAt(0).toUpperCase() + nome.slice(1).toLowerCase(); // VolksWagen → Volkswagen
+}
+
 // UF → nome do estado (ML exige location.state.name nominal, não a sigla)
 const UF_TO_ESTADO: Record<string, string> = {
   AC: "Acre", AL: "Alagoas", AP: "Amapá", AM: "Amazonas", BA: "Bahia",
@@ -151,14 +160,15 @@ export function buildMLPayload(v: {
   detalhes_inspecao?: string | null;
   pontos_fortes_venda?: unknown;
 }, loc?: { zipCode?: string | null; city?: string | null; state?: string | null }) {
-  const titulo = `${v.marca ?? ""} ${v.modelo ?? ""}${v.versao ? " " + v.versao : ""} ${v.ano_modelo ?? v.ano ?? ""}`.trim().slice(0, 60);
+  const marca  = marcaML(v.marca);
+  const titulo = `${marca} ${v.modelo ?? ""}${v.versao ? " " + v.versao : ""} ${v.ano_modelo ?? v.ano ?? ""}`.trim().slice(0, 60);
   const fotos  = (Array.isArray(v.fotos) ? v.fotos.filter(Boolean) : []).slice(0, 12);
 
   const fuel   = mapAttr(FUEL_ML, v.combustivel ?? "", FUEL_ML.FLEX);
   const cambio = mapAttr(TRANSMISSION_ML, v.cambio ?? "", CAMBIO_MANUAL);
 
   const attributes: { id: string; value_name: string; value_id?: string }[] = [
-    { id: "BRAND",        value_name: v.marca   ?? "" },
+    { id: "BRAND",        value_name: marca },
     { id: "MODEL",        value_name: v.modelo  ?? "" },
     { id: "VEHICLE_YEAR", value_name: String(v.ano_modelo ?? v.ano ?? "") },
     // KILOMETERS exige número + unidade ("250000 km") — só o número o ML rejeita.
