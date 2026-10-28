@@ -108,6 +108,7 @@ function AnuncioCard({ anuncio, onDelete, onRefresh }: {
   const urlPortal = anuncio.snapshot?.permalink ?? (anuncio.portal_ad_id ? linkPortal(anuncio.portal, anuncio.portal_ad_id) : null);
   const qualidade: number | null = anuncio.snapshot?.qualidade ?? null;
   const visitas: number | null   = anuncio.snapshot?.visitas ?? null;
+  const objetivos: { tipo: string; texto: string }[] = anuncio.snapshot?.objetivos ?? [];
   const demaisFotos: string[] = anuncio.fotos?.slice(1) ?? [];
 
   async function handleRefresh() {
@@ -178,6 +179,14 @@ function AnuncioCard({ anuncio, onDelete, onRefresh }: {
                 Qualidade {qualidade}
               </span>
             )}
+            {objetivos.length > 0 && (
+              <button
+                onClick={() => setExpanded(true)}
+                className="text-[9px] font-black text-blue-600 hover:underline"
+              >
+                {objetivos.length} objetivo{objetivos.length !== 1 ? "s" : ""}
+              </button>
+            )}
             {visitas != null && (
               <span className="text-[9px] text-gray-500 font-black">
                 {visitas.toLocaleString("pt-BR")} visita{visitas !== 1 ? "s" : ""}
@@ -231,6 +240,26 @@ function AnuncioCard({ anuncio, onDelete, onRefresh }: {
       {/* Painel expandido */}
       {expanded && (
         <div className="border-t border-gray-50 px-4 pb-4 pt-3 space-y-4">
+          {/* Objetivos pra subir a qualidade no ML */}
+          {objetivos.length > 0 && (
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1.5">
+                Pra subir a qualidade{qualidade != null ? ` (hoje ${qualidade})` : ""}
+              </p>
+              <ul className="space-y-1.5">
+                {objetivos.map((o, i) => (
+                  <li key={i} className="flex items-start gap-2 bg-yellow-50 border border-yellow-100 rounded-xl px-3 py-2 text-[11px] text-gray-700">
+                    <AlertCircle size={12} className="text-yellow-600 mt-0.5 shrink-0" />
+                    {o.texto}
+                  </li>
+                ))}
+              </ul>
+              <p className="text-[9px] text-gray-400 mt-1.5">
+                Estimativa do AutoZap — o Mercado Livre não informa os objetivos de anúncio de veículo pela API.
+              </p>
+            </div>
+          )}
+
           {/* Descrição enviada */}
           {anuncio.descricao && (
             <div>

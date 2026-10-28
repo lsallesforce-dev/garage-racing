@@ -8,6 +8,34 @@ import { getMLToken, mlHeaders, ML_API } from "@/lib/mercadolivre";
 
 const soPlaca = (p: string | null | undefined) => (p ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 
+// Atributos de carro elétrico (e o horário de contato) não contam pra ficha de carro a combustão:
+// a S10 com nota 66 só não tinha esses — e o ML não cobrava nada da ficha dela.
+const ATTR_IGNORADOS = /^(BATTERY_|CHARGE|CHARGER_|CARS_BATTERY_|HAS_AUTOPILOT$|CONTACT_SCHEDULE$)/;
+
+type Objetivo = { tipo: "ficha" | "video" | "fotos"; texto: string };
+
+// A API do ML não expõe os objetivos de qualidade pra classificado de veículo
+// (/item/{id}/performance → "Item classified is not supported"; health/actions → 403).
+// Estimativa calibrada nos anúncios reais da APROVE (28/10): nota 50 = "2 objetivos" no painel
+// (ficha técnica + vídeo); a S10 com ficha completa = 66, "1 objetivo" (vídeo). Descrição curta
+// NÃO conta — os de 50 têm 256–370 caracteres e o painel mostra só 2.
+function objetivosQualidade(it: any, attrsCategoria: { id: string; name: string }[]): Objetivo[] {
+  const preenchidos = new Set((it.attributes ?? []).filter((a: any) => a.value_name).map((a: any) => a.id));
+  const relevantes  = attrsCategoria.filter(a => !ATTR_IGNORADOS.test(a.id));
+  // Equipamentos (HAS_*/WITH_*) primeiro nos exemplos — é o que o lojista sabe responder
+  const faltando    = relevantes.filter(a => !preenchidos.has(a.id))
+    .sort((a, b) => Number(/^(HAS|WITH)_/.test(b.id)) - Number(/^(HAS|WITH)_/.test(a.id)));
+  const obj: Objetivo[] = [];
+  if (faltando.length > 0) {
+    const pct = Math.round(((relevantes.length - faltando.length) / relevantes.length) * 100);
+    const ex  = faltando.slice(0, 5).map(a => a.name.toLowerCase()).join(", ");
+    obj.push({ tipo: "ficha", texto: `Completar a ficha técnica (${pct}% preenchida — faltam ${faltando.length} itens, ex.: ${ex})` });
+  }
+  if (!it.video_id) obj.push({ tipo: "video", texto: "Adicionar vídeo do YouTube ao anúncio" });
+  if ((it.pictures ?? []).length < 10) obj.push({ tipo: "fotos", texto: `Só ${(it.pictures ?? []).length} fotos — o ML favorece 10 ou mais` });
+  return obj;
+}
+
 const STATUS_ML: Record<string, string> = {
   active:       "ativo",
   paused:       "pausado",
@@ -44,7 +72,7 @@ export async function syncAnunciosML(userId: string): Promise<{ sincronizados: n
   for (let i = 0; i < ids.length; i += 20) {
     const lote = ids.slice(i, i + 20).join(",");
     const r = await fetch(
-      `${ML_API}/items?ids=${lote}&attributes=id,title,price,status,health,date_created,pictures,attributes,permalink`,
+      `${ML_API}/items?ids=${lote}&attributes=id,title,price,status,health,date_created,pictures,attributes,permalink,video_id`,
       { headers: mlHeaders(token) },
     );
     if (!r.ok) continue;
@@ -57,6 +85,12 @@ export async function syncAnunciosML(userId: string): Promise<{ sincronizados: n
     const r = await fetch(`${ML_API}/visits/items?ids=${it.id}`, { headers: mlHeaders(token) }).catch(() => null);
     if (r?.ok) visitas[it.id] = Number((await r.json())?.[it.id] ?? 0);
   }));
+
+  // Atributos visíveis da categoria — base da ficha técnica (endpoint público)
+  const attrsCategoria: { id: string; name: string }[] = await fetch(`${ML_API}/categories/MLB1744/attributes`)
+    .then(r => (r.ok ? r.json() : []))
+    .then((l: any[]) => l.filter(a => !a.tags?.hidden && !a.tags?.read_only).map(a => ({ id: a.id, name: a.name })))
+    .catch(() => []);
 
   // 4. Casa com o estoque: ml_item_id primeiro, depois placa
   const { data: veiculos } = await supabaseAdmin
@@ -101,6 +135,7 @@ export async function syncAnunciosML(userId: string): Promise<{ sincronizados: n
         qualidade:    it.health != null ? Math.round(Number(it.health) * 100) : null,
         visitas:      visitas[it.id] ?? null,
         ml_status:    it.status,
+        objetivos:    attrsCategoria.length ? objetivosQualidade(it, attrsCategoria) : null,
         sincronizado_em: agora,
       },
       publicado_em:  antes?.publicado_em ?? it.date_created,
