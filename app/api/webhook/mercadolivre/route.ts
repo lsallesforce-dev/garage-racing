@@ -9,7 +9,8 @@ import { after } from "next/server";
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getMLToken, mlHeaders, ML_API } from "@/lib/mercadolivre";
-import { sendMetaMessage, sendMetaCtaButton } from "@/lib/meta";
+import { sendMetaMessage, sendMetaCtaButton, sendMetaAlertaTemplate } from "@/lib/meta";
+import { gerenteNaJanela, enfileirarAlertaGerente } from "@/lib/redis";
 import { sendAvisaMessage } from "@/lib/avisa";
 
 export const maxDuration = 60;
@@ -127,8 +128,17 @@ async function processNotification(body: any) {
           .catch(err => console.error("❌ ML alert Avisa falhou:", err?.message ?? err));
       } else if (cfg.meta_phone_id && cfg.meta_access_token) {
         const metaCreds = { phoneNumberId: cfg.meta_phone_id, accessToken: cfg.meta_access_token };
-        sendMetaCtaButton(gerentePhone, alertBody, "Responder no ML", mlLink, metaCreds)
-          .catch(() => sendMetaMessage(gerentePhone, `${alertBody}\n\n${mlLink}`, metaCreds).catch(() => {}));
+        // Cloud API: fora da janela de 24h do gerente texto livre não entrega →
+        // template de alerta; sem template, fila que despeja quando a janela abrir.
+        let ok = false;
+        if (await gerenteNaJanela(tenantId)) {
+          ok = await sendMetaCtaButton(gerentePhone, alertBody, "Responder no ML", mlLink, metaCreds)
+            .then(() => true)
+            .catch(() => sendMetaMessage(gerentePhone, `${alertBody}\n\n${mlLink}`, metaCreds).then(r => r != null).catch(() => false));
+        }
+        const textoFila = `Pergunta no Mercado Livre de ${nomeComprador} sobre ${veiculoNome}: "${texto.slice(0, 300)}" — responder em ${mlLink}`;
+        if (!ok) ok = await sendMetaAlertaTemplate(gerentePhone, nomeEmpresa, textoFila, "", metaCreds);
+        if (!ok) await enfileirarAlertaGerente(tenantId, textoFila, "");
       } else {
         console.warn(`⚠️ ML alert: tenant ${tenantId} sem canal de WhatsApp configurado (nem Avisa nem Meta)`);
       }
