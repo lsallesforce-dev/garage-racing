@@ -105,7 +105,9 @@ function AnuncioCard({ anuncio, onDelete, onRefresh }: {
   const [localReason, setLocalReason] = useState<string | null>(anuncio.snapshot?.reason ?? null);
 
   const fotoCapa = anuncio.fotos?.[0] ?? null;
-  const urlPortal = anuncio.portal_ad_id ? linkPortal(anuncio.portal, anuncio.portal_ad_id) : null;
+  const urlPortal = anuncio.snapshot?.permalink ?? (anuncio.portal_ad_id ? linkPortal(anuncio.portal, anuncio.portal_ad_id) : null);
+  const qualidade: number | null = anuncio.snapshot?.qualidade ?? null;
+  const visitas: number | null   = anuncio.snapshot?.visitas ?? null;
   const demaisFotos: string[] = anuncio.fotos?.slice(1) ?? [];
 
   async function handleRefresh() {
@@ -166,6 +168,21 @@ function AnuncioCard({ anuncio, onDelete, onRefresh }: {
             <span className="text-[9px] text-gray-400 font-bold">
               Publicado em {fmtDate(anuncio.publicado_em)}
             </span>
+            {qualidade != null && (
+              <span
+                title="Qualidade do anúncio no Mercado Livre (0–100)"
+                className={`px-2 py-0.5 rounded-full text-[9px] font-black ${
+                  qualidade >= 80 ? "bg-green-100 text-green-700" : qualidade >= 60 ? "bg-yellow-100 text-yellow-700" : "bg-red-100 text-red-600"
+                }`}
+              >
+                Qualidade {qualidade}
+              </span>
+            )}
+            {visitas != null && (
+              <span className="text-[9px] text-gray-500 font-black">
+                {visitas.toLocaleString("pt-BR")} visita{visitas !== 1 ? "s" : ""}
+              </span>
+            )}
           </div>
         </div>
 

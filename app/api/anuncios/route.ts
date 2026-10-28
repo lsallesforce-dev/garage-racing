@@ -5,6 +5,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { getMLToken, mlHeaders, ML_API } from "@/lib/mercadolivre";
+import { syncAnunciosML } from "@/lib/mercadolivre-sync";
+import { getClient } from "@/lib/redis";
 
 const OLX_AD_STATUS_URL = "https://apps.olx.com.br/autoupload/ad_status";
 
@@ -12,6 +14,11 @@ export async function GET(req: NextRequest) {
   const { user, error } = await requireAuth();
   if (error) return error;
   const userId = getEffectiveUserId(user!);
+
+  // Puxa da conta ML do tenant (inclusive anúncio criado direto no painel do ML).
+  // No máximo a cada 5 min por tenant — são ~N+2 chamadas ao ML.
+  const syncLivre = await getClient().set(`ml_sync:${userId}`, 1, { nx: true, ex: 300 }).catch(() => "OK");
+  if (syncLivre) await syncAnunciosML(userId).catch(e => console.error("❌ ML sync:", e?.message ?? e));
 
   // Anúncios de portais (OLX/Webmotors) + campanhas Meta (tabela separada) — em paralelo
   const [{ data: anuncios, error: dbErr }, { data: metaCamps }] = await Promise.all([
