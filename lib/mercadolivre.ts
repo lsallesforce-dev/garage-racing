@@ -263,6 +263,28 @@ export function fichaTecnicaML(v: FichaVeiculo): { id: string; value_name: strin
   return out;
 }
 
+// ─── Contato do anúncio ────────────────────────────────────────────────────────
+// No classificado de veículo o ML mostra phone2 como o WhatsApp do anúncio. Sem isso o
+// comprador só tem o telefone da conta ML — o lead não cai na agente (APROVE, 28/10).
+
+function partesTelefone(numero: string | null | undefined): { area: string; phone: string } | null {
+  let d = (numero ?? "").replace(/\D/g, "");
+  if (d.length >= 12 && d.startsWith("55")) d = d.slice(2);
+  if (d.length < 10 || d.length > 11) return null;
+  return { area: d.slice(0, 2), phone: d.slice(2) };
+}
+
+/** seller_contact com o WhatsApp da agente (phone2) e o fixo da loja (phone). */
+export function contatoML(whatsapp?: string | null, telefone?: string | null): Record<string, string> | null {
+  const w = partesTelefone(whatsapp);
+  const t = partesTelefone(telefone);
+  if (!w && !t) return null;
+  return {
+    ...(t ? { country_code: "55", area_code: t.area, phone: t.phone } : {}),
+    ...(w ? { country_code2: "55", area_code2: w.area, phone2: w.phone } : {}),
+  };
+}
+
 /** Monta o payload de item para publicação no ML (categoria MLB1744 — Carros usados). */
 export function buildMLPayload(v: {
   marca?: string | null;
@@ -280,7 +302,10 @@ export function buildMLPayload(v: {
   relatorio_ia?: string | null;
   detalhes_inspecao?: string | null;
   pontos_fortes_venda?: unknown;
-} & FichaVeiculo, loc?: { zipCode?: string | null; city?: string | null; state?: string | null }) {
+} & FichaVeiculo, loc?: {
+  zipCode?: string | null; city?: string | null; state?: string | null;
+  whatsapp?: string | null; telefone?: string | null;
+}) {
   const marca  = marcaML(v.marca);
   const titulo = `${marca} ${v.modelo ?? ""}${v.versao ? " " + v.versao : ""} ${v.ano_modelo ?? v.ano ?? ""}`.trim().slice(0, 60);
   const fotos  = (Array.isArray(v.fotos) ? v.fotos.filter(Boolean) : []).slice(0, 12);
@@ -335,6 +360,9 @@ export function buildMLPayload(v: {
       country: { id: "BR", name: "Brasil" },
     };
   }
+
+  const contato = contatoML(loc?.whatsapp, loc?.telefone);
+  if (contato) payload.seller_contact = contato;
 
   return { payload, titulo };
 }
