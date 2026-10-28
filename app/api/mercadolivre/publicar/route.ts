@@ -130,7 +130,7 @@ export async function POST(req: NextRequest) {
     .eq("id", veiculoId);
 
   const now = new Date().toISOString();
-  await supabaseAdmin.from("anuncios").upsert(
+  const { error: anuncioErr } = await supabaseAdmin.from("anuncios").upsert(
     {
       user_id:      userId,
       veiculo_id:   veiculoId,
@@ -147,6 +147,9 @@ export async function POST(req: NextRequest) {
     },
     { onConflict: "veiculo_id,portal", ignoreDuplicates: false }
   );
+  // Não derruba a publicação (o item já existe no ML), mas não pode sumir calado:
+  // foi assim que o CHECK de portal escondeu o anúncio da tela de Anúncios.
+  if (anuncioErr) console.error("❌ ML: anúncio publicado mas não gravado em anuncios:", anuncioErr.message);
 
   const permalink: string | null = respJson?.permalink ?? null;
   if (precisaPagamento) {

@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { getMLToken, mlHeaders, ML_API } from "@/lib/mercadolivre";
 
 const OLX_AD_STATUS_URL = "https://apps.olx.com.br/autoupload/ad_status";
 
@@ -130,6 +131,25 @@ export async function PATCH(req: NextRequest) {
     }
   }
 
+  if (anuncio.portal === "mercadolivre" && anuncio.portal_ad_id) {
+    const token = await getMLToken(userId);
+    if (token) {
+      const res = await fetch(`${ML_API}/items/${anuncio.portal_ad_id}`, { headers: mlHeaders(token) });
+      if (res.ok) {
+        const item = await res.json();
+        const dbStatus =
+          item.status === "active"       ? "ativo" :
+          item.status === "paused"       ? "pausado" :
+          item.status === "closed"       ? "removido" :
+          item.status === "under_review" ? "pendente" : item.status ?? "publicado";
+        await supabaseAdmin.from("anuncios")
+          .update({ status: dbStatus, atualizado_em: new Date().toISOString() })
+          .eq("id", anuncioId);
+        return NextResponse.json({ status: dbStatus, reason: null });
+      }
+    }
+  }
+
   return NextResponse.json({ status: "unknown" });
 }
 
@@ -201,9 +221,31 @@ export async function DELETE(req: NextRequest) {
     }
   }
 
+  // Encerra no Mercado Livre (closed é definitivo — mesmo que o despublicar faz)
+  if (anuncio.portal === "mercadolivre" && anuncio.portal_ad_id) {
+    const token = await getMLToken(userId);
+    if (token) {
+      const res = await fetch(`${ML_API}/items/${anuncio.portal_ad_id}`, {
+        method: "PUT",
+        headers: mlHeaders(token),
+        body: JSON.stringify({ status: "closed" }),
+      });
+      if (!res.ok) {
+        const err = await res.text().catch(() => "");
+        console.error("❌ ML encerrar anúncio falhou:", res.status, err.slice(0, 300));
+        return NextResponse.json({ error: `Mercado Livre recusou (${res.status})` }, { status: 502 });
+      }
+    }
+  }
+
+  // Limpa só as colunas do portal removido no veículo
+  const limparVeiculo =
+    anuncio.portal === "olx"          ? { status_olx: null, olx_ad_id: null } :
+    anuncio.portal === "mercadolivre" ? { status_ml: "removido", ml_item_id: null } : null;
+
   await Promise.all([
     supabaseAdmin.from("anuncios").update({ status: "deletado" }).eq("id", anuncioId),
-    supabaseAdmin.from("veiculos").update({ status_olx: null, olx_ad_id: null }).eq("id", anuncio.veiculo_id),
+    limparVeiculo && supabaseAdmin.from("veiculos").update(limparVeiculo).eq("id", anuncio.veiculo_id),
   ]);
 
   return NextResponse.json({ success: true });

@@ -28,6 +28,8 @@ function StatusBadge({ status, reason }: { status: string; reason?: string | nul
     publicado: { label: "Publicado", icon: <CheckCircle2 size={10} />, cls: "bg-green-100 text-green-700" },
     pendente:  { label: "Pendente",  icon: <Clock size={10} />,        cls: "bg-yellow-100 text-yellow-700" },
     rejeitado: { label: "Rejeitado", icon: <AlertCircle size={10} />,  cls: "bg-red-100 text-red-600" },
+    pausado:   { label: "Pausado",   icon: <Clock size={10} />,        cls: "bg-gray-100 text-gray-500" },
+    aguardando_pagamento: { label: "Aguardando pagamento", icon: <Clock size={10} />, cls: "bg-yellow-100 text-yellow-700" },
   };
 
   const c = cfg[status] ?? { label: status, icon: <Clock size={10} />, cls: "bg-gray-100 text-gray-500" };
@@ -60,6 +62,11 @@ function PortalIcon({ portal }: { portal: string }) {
       <span className="text-[8px] font-black text-white">OLX</span>
     </div>
   );
+  if (portal === "mercadolivre") return (
+    <div className="w-7 h-7 rounded-lg bg-yellow-400 flex items-center justify-center shrink-0">
+      <span className="text-[8px] font-black text-gray-900">ML</span>
+    </div>
+  );
   if (portal === "webmotors") return (
     <div className="w-7 h-7 rounded-lg bg-red-600 flex items-center justify-center shrink-0">
       <span className="text-[7px] font-black text-white leading-none">WEB</span>
@@ -71,6 +78,18 @@ function PortalIcon({ portal }: { portal: string }) {
     </div>
   );
 }
+
+// Link público do anúncio em cada portal (Meta não tem URL por anúncio)
+function linkPortal(portal: string, adId: string): string | null {
+  if (portal === "olx") return `https://www.olx.com.br/item/${adId}`;
+  // MLB7900735976 → produto.mercadolivre.com.br/MLB-7900735976 (o ML redireciona pro permalink)
+  if (portal === "mercadolivre") return `https://produto.mercadolivre.com.br/${adId.replace(/^MLB/, "MLB-")}`;
+  return null;
+}
+
+const PORTAL_LABEL: Record<string, string> = {
+  olx: "OLX", webmotors: "Webmotors", meta: "Meta", mercadolivre: "Mercado Livre",
+};
 
 // ─── Card de anúncio ──────────────────────────────────────────────────────────
 
@@ -86,6 +105,7 @@ function AnuncioCard({ anuncio, onDelete, onRefresh }: {
   const [localReason, setLocalReason] = useState<string | null>(anuncio.snapshot?.reason ?? null);
 
   const fotoCapa = anuncio.fotos?.[0] ?? null;
+  const urlPortal = anuncio.portal_ad_id ? linkPortal(anuncio.portal, anuncio.portal_ad_id) : null;
   const demaisFotos: string[] = anuncio.fotos?.slice(1) ?? [];
 
   async function handleRefresh() {
@@ -104,14 +124,19 @@ function AnuncioCard({ anuncio, onDelete, onRefresh }: {
   }
 
   async function handleDelete() {
-    if (!confirm(`Remover anúncio "${anuncio.titulo}" da ${anuncio.portal.toUpperCase()}?`)) return;
+    if (!confirm(`Remover anúncio "${anuncio.titulo}" do ${PORTAL_LABEL[anuncio.portal] ?? anuncio.portal}?`)) return;
     setDeleting(true);
     try {
-      await fetch("/api/anuncios", {
+      const res = await fetch("/api/anuncios", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ anuncioId: anuncio.id }),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error ?? "Não foi possível remover o anúncio.");
+        return;
+      }
       onDelete(anuncio.id);
     } finally {
       setDeleting(false);
@@ -156,9 +181,9 @@ function AnuncioCard({ anuncio, onDelete, onRefresh }: {
             >
               <RefreshCw size={13} className={refreshing ? "animate-spin" : ""} />
             </button>
-            {anuncio.portal_ad_id && (
+            {urlPortal && (
               <a
-                href={`https://www.olx.com.br/item/${anuncio.portal_ad_id}`}
+                href={urlPortal}
                 target="_blank"
                 rel="noopener noreferrer"
                 title="Ver no portal"
@@ -258,7 +283,7 @@ export default function AnunciosPage() {
   const router = useRouter();
   const [anuncios, setAnuncios] = useState<any[]>([]);
   const [loading, setLoading]   = useState(true);
-  const [filtro, setFiltro]     = useState<"todos" | "olx" | "webmotors" | "meta">("todos");
+  const [filtro, setFiltro]     = useState<"todos" | "olx" | "webmotors" | "meta" | "mercadolivre">("todos");
 
   useEffect(() => {
     fetch("/api/anuncios")
@@ -282,6 +307,7 @@ export default function AnunciosPage() {
     olx:        anuncios.filter(a => a.portal === "olx").length,
     webmotors:  anuncios.filter(a => a.portal === "webmotors").length,
     meta:       anuncios.filter(a => a.portal === "meta").length,
+    mercadolivre: anuncios.filter(a => a.portal === "mercadolivre").length,
   };
 
   return (
@@ -310,7 +336,7 @@ export default function AnunciosPage() {
 
           {/* Filtros por portal */}
           <div className="flex items-center gap-1 bg-white rounded-2xl p-1 border border-gray-100 shadow-sm self-start sm:self-auto">
-            {(["todos", "olx", "webmotors", "meta"] as const).map(f => (
+            {(["todos", "olx", "webmotors", "meta", "mercadolivre"] as const).map(f => (
               <button
                 key={f}
                 onClick={() => setFiltro(f)}
@@ -318,7 +344,7 @@ export default function AnunciosPage() {
                   filtro === f ? "bg-gray-900 text-white shadow" : "text-gray-400 hover:text-gray-700"
                 }`}
               >
-                {f === "todos" ? `Todos (${counts.todos})` : `${f.charAt(0).toUpperCase() + f.slice(1)} (${counts[f]})`}
+                {f === "todos" ? `Todos (${counts.todos})` : `${f === "mercadolivre" ? "Mercado Livre" : f.charAt(0).toUpperCase() + f.slice(1)} (${counts[f]})`}
               </button>
             ))}
           </div>
@@ -342,7 +368,7 @@ export default function AnunciosPage() {
           </div>
         ) : filtrados.length === 0 ? (
           <div className="py-32 text-center bg-white rounded-[3rem] border-2 border-dashed border-gray-100 italic font-black uppercase text-gray-300 tracking-widest text-xs">
-            {filtro === "todos" ? "Nenhum anúncio publicado ainda." : `Nenhum anúncio no ${filtro.toUpperCase()}.`}
+            {filtro === "todos" ? "Nenhum anúncio publicado ainda." : `Nenhum anúncio no ${PORTAL_LABEL[filtro] ?? filtro}.`}
           </div>
         ) : (
           <div className="space-y-3">
