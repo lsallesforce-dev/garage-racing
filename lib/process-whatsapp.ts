@@ -1959,6 +1959,12 @@ Responda apenas com o JSON, sem markdown.`;
         /tenho interesse e queria mais informa/i.test(userMessage) ? "olx"           :
         /\bolx\b/.test(msgLower)                                   ? "olx"           :
         /webmotors/.test(msgLower)                                 ? "webmotors"     :
+        // Botão de WhatsApp do anúncio no ML: link do item / código MLB, ou o
+        // cliente dizendo que viu o anúncio lá. "Mercado livre" solto não basta —
+        // aparece em conversa de financiamento (APROVE 29/09).
+        /mercadoli[vb]re\.com|\bmlb-?\d{8,}/i.test(userMessage) ||
+        /(vi|anúnci|anunci)[^.!?\n]{0,60}mercado\s?livre|mercado\s?livre[^.!?\n]{0,30}an[úu]nci/.test(msgLower)
+                                                                   ? "mercadolivre"  :
         /icarros|i-carros/.test(msgLower)                          ? "icarros"       :
         /napista|na pista/.test(msgLower)                          ? "napista"       :
         /vi o .+ no an[úu]ncio da/i.test(userMessage)              ? "catalogo"      :
@@ -1969,6 +1975,17 @@ Responda apenas com o JSON, sem markdown.`;
       if (portalDetectado) {
         upsertData.origem = portalDetectado;
         console.log(`🔍 Portal detectado na mensagem: ${portalDetectado} → ${phone}`);
+        // Link do anúncio do ML traz o código do item → já sabe de qual carro é
+        const mlb = portalDetectado === "mercadolivre" ? userMessage.match(/\bMLB-?(\d{8,})/i)?.[1] : null;
+        if (mlb) {
+          const { data: vMl } = await supabaseAdmin
+            .from("veiculos")
+            .select("id")
+            .eq("user_id", tenantUserId)
+            .eq("ml_item_id", `MLB${mlb}`)
+            .limit(1);
+          if (vMl?.[0]) upsertData.veiculo_id = vMl[0].id;
+        }
       }
     }
   }
