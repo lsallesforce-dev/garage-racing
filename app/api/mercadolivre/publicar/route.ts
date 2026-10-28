@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
   const [{ data: v }, { data: cfgRows }] = await Promise.all([
     supabaseAdmin
       .from("veiculos")
-      .select("id, marca, modelo, versao, ano, ano_modelo, preco_sugerido, quilometragem_estimada, combustivel, cambio, cor, placa, fotos, relatorio_ia, detalhes_inspecao, pontos_fortes_venda, ml_item_id")
+      .select("id, marca, modelo, versao, ano, ano_modelo, preco_sugerido, quilometragem_estimada, combustivel, cambio, cor, placa, fotos, relatorio_ia, detalhes_inspecao, pontos_fortes_venda, ml_item_id, opcionais, chassi, motor, categoria, qtd_proprietarios, segundo_dono")
       .eq("id", veiculoId)
       .single(),
     supabaseAdmin

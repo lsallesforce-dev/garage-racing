@@ -10,7 +10,7 @@ const soPlaca = (p: string | null | undefined) => (p ?? "").toUpperCase().replac
 
 // Atributos de carro elétrico (e o horário de contato) não contam pra ficha de carro a combustão:
 // a S10 com nota 66 só não tinha esses — e o ML não cobrava nada da ficha dela.
-const ATTR_IGNORADOS = /^(BATTERY_|CHARGE|CHARGER_|CARS_BATTERY_|HAS_AUTOPILOT$|CONTACT_SCHEDULE$)/;
+const ATTR_IGNORADOS = /^(BATTERY_|CHARGE|CHARGER_|CARS_BATTERY_|CONTACT_SCHEDULE$)/;
 
 type Objetivo = { tipo: "ficha" | "video" | "fotos"; texto: string };
 
@@ -26,8 +26,9 @@ function objetivosQualidade(it: any, attrsCategoria: { id: string; name: string 
   const faltando    = relevantes.filter(a => !preenchidos.has(a.id))
     .sort((a, b) => Number(/^(HAS|WITH)_/.test(b.id)) - Number(/^(HAS|WITH)_/.test(a.id)));
   const obj: Objetivo[] = [];
-  if (faltando.length > 0) {
-    const pct = Math.round(((relevantes.length - faltando.length) / relevantes.length) * 100);
+  const pct = Math.round(((relevantes.length - faltando.length) / relevantes.length) * 100);
+  // Fiesta foi de 50 pra 66 com 92% (faltando só itens que ninguém lista) — o ML não exige 100%.
+  if (pct < 90) {
     const ex  = faltando.slice(0, 5).map(a => a.name.toLowerCase()).join(", ");
     obj.push({ tipo: "ficha", texto: `Completar a ficha técnica (${pct}% preenchida — faltam ${faltando.length} itens, ex.: ${ex})` });
   }

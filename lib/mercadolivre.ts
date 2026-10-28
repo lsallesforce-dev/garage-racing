@@ -142,6 +142,127 @@ const UF_TO_ESTADO: Record<string, string> = {
   SE: "Sergipe", TO: "Tocantins",
 };
 
+// ─── Ficha técnica completa ────────────────────────────────────────────────────
+// Ficha incompleta = nota 50 no ML ("Completar a ficha técnica"). A S10 que a APROVE
+// criou no painel, com tudo preenchido, ficou 66 (só faltou vídeo).
+
+const SIM: MLValor = { id: "242085", name: "Sim" };
+const NAO: MLValor = { id: "242084", name: "Não" };
+
+// Equipamento → regex sobre os opcionais do veículo (texto livre, sem acento, minúsculo).
+// Só entram equipamentos que costumam aparecer na lista de opcionais: se a lista do carro
+// é razoável (>= 5 itens) e não cita o item, vai "Não". O que ninguém lista (porta-copos,
+// suporte de estepe…) fica de fora pra não afirmar ausência falsa.
+const EQUIPAMENTOS: [string, RegExp][] = [
+  ["HAS_ABS_BRAKES",               /\babs\b/],
+  ["HAS_AIR_CONDITIONING",         /ar[- ]?condicionado|climatronic|ar quente/],
+  ["HAS_CLIMATE_CONTROL",          /ar[- ]?condicionado (digital|automatico|eletronico)|climatronic|dual zone/],
+  ["HAS_ALARM",                    /alarme(?! de luz)/],
+  ["HAS_ALLOY_WHEELS",             /liga leve/],
+  ["HAS_AMFM_RADIO",               /am\/fm|multimidia|\bradio (am|com|cd|continental)/],
+  ["HAS_AUXILIARY_PORT",           /auxiliar/],
+  ["HAS_BLUETOOTH",                /bluetooth/],
+  ["HAS_CD_PLAYER",                /\bcd\b/],
+  ["HAS_DRIVER_AIRBAG",            /airbag/],
+  ["HAS_PASSENGER_AIRBAG",         /airbags? (passageiro|duplo|frontais)|[2-9] airbags|(seis|sete) airbags/],
+  ["HAS_LEATHER_UPHOLSTERY",       /(banco|assento)s?[^;]*couro/],
+  ["HAS_ONBOARD_COMPUTER",         /computador de bordo/],
+  ["HAS_PARKING_SENSOR",           /sensor(es)? (de )?(estacionamento|re\b|dianteiro|traseiro)/],
+  ["HAS_POWER_WINDOWS",            /vidros? eletric/],
+  ["HAS_RAIN_SENSOR",              /sensor de chuva/],
+  ["HAS_REAR_WINDOW_DEFOGGER",     /desembacador/],
+  ["HAS_SLIDING_ROOF",             /teto solar/],
+  ["HAS_STABILITY_CONTROL",        /estabilidade|\b(esp|esc|vsc|vsa|vdc)\b/],
+  ["HAS_STEERING_WHEEL_CONTROL",   /volante multifuncional|comandos [^;]*volante|volante [^;]*comandos/],
+  ["HAS_USB",                      /usb/],
+  ["HAS_WINDSCREEN_WIPER",         /limpador (traseiro|e desembacador)/],
+  ["HAS_CENTRAL_POWER_DOOR_LOCKS", /trava|travamento/],
+  ["HAS_AUTOPILOT",                /piloto automatico|cruise|cruzeiro/],
+  ["HAS_MP3_PLAYER",               /mp3/],
+  ["HAS_HEADLIGHT_CONTROL",        /acendimento automatico|crepuscular/],
+  ["HAS_LUGGAGE_ROOF_RACK",        /rack de teto|bagageiro/],
+  ["HAS_BULL_BAR",                 /quebra[- ]?mato/],
+  ["HAS_DVD",                      /\bdvd\b/],
+  ["HAS_REAR_FOGLIGHTS",           /neblina traseir/],
+  ["WITH_BACKUP_CAMERA",           /camera (de re|360|multivisao)/],
+];
+
+const CARROCERIA_ML: [RegExp, MLValor][] = [
+  [/pick[- ]?up|picape|cabine (dupla|simples)|\bcd\b|\bcs\b/, { id: "452756", name: "Pick-Up" }],
+  [/\bsuv\b/,           { id: "452759", name: "SUV" }],
+  [/crossover/,         { id: "452761", name: "Crossover" }],
+  [/sedan|\bseda\b/,    { id: "452758", name: "Sedã" }],
+  [/hatch/,             { id: "479344", name: "Hatch" }],
+  [/perua|wagon|\bsw\b/,{ id: "452760", name: "Perua" }],
+  [/minivan/,           { id: "452753", name: "Minivan" }],
+  [/furgao/,            { id: "452750", name: "Furgão" }],
+  [/\bvan\b/,           { id: "452755", name: "Van" }],
+  [/coupe|cupe/,        { id: "452749", name: "Coupé" }],
+  [/conversivel/,       { id: "452748", name: "Conversível" }],
+];
+
+const semAcento = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+
+export type FichaVeiculo = {
+  modelo?: string | null;
+  opcionais?: string[] | null;
+  chassi?: string | null;
+  motor?: string | null;
+  categoria?: string | null;
+  qtd_proprietarios?: number | null;
+  segundo_dono?: boolean | null;
+};
+
+/** Atributos além do mínimo obrigatório — equipamentos, carroceria, direção, tração e condições da loja. */
+export function fichaTecnicaML(v: FichaVeiculo): { id: string; value_name: string; value_id?: string }[] {
+  const out: { id: string; value_name: string; value_id?: string }[] = [];
+  const add = (id: string, val: MLValor) => out.push({ id, value_id: val.id, value_name: val.name });
+
+  const opc     = (v.opcionais ?? []).filter(Boolean);
+  const texto   = semAcento(opc.join(" ; "));
+  const listaOk = opc.length >= 5; // lista curta não autoriza dizer "Não"
+
+  for (const [id, re] of EQUIPAMENTOS) {
+    if (re.test(texto)) add(id, SIM);
+    else if (listaOk) add(id, NAO);
+  }
+
+  if (/direcao eletro|eletro-hidraulica/.test(texto)) add("STEERING", { id: "370873", name: "Assistida" });
+  else if (/direcao (eletrica|eps)/.test(texto))      add("STEERING", { id: "405719", name: "Elétrica" });
+  else if (/direcao hidraulica/.test(texto))          add("STEERING", { id: "370874", name: "Hidráulica" });
+
+  const modeloTxt = semAcento(v.modelo ?? "");
+  if (/4x4|tracao integral|awd/.test(`${texto} ${modeloTxt}`)) add("TRACTION_CONTROL", { id: "370880", name: "4x4" });
+  else if (/tracao traseira/.test(texto))                       add("TRACTION_CONTROL", { id: "493980", name: "Traseira" });
+  else if (/tracao dianteira/.test(texto))                      add("TRACTION_CONTROL", { id: "493979", name: "Dianteira" });
+
+  const categoriaTxt = semAcento(v.categoria ?? "");
+  const carroceria = CARROCERIA_ML.find(([re]) => re.test(categoriaTxt)) ?? CARROCERIA_ML.find(([re]) => re.test(modeloTxt));
+  if (carroceria) add("VEHICLE_BODY_TYPE", carroceria[1]);
+
+  const cilindrada = (v.motor ?? "").match(/\b(\d\.\d)/)?.[1] ?? modeloTxt.match(/\b(\d\.\d)/)?.[1];
+  if (cilindrada) out.push({ id: "ENGINE", value_name: cilindrada });
+
+  const chassi = (v.chassi ?? "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+  if (chassi.length === 17) out.push({ id: "VIN_LAST_DIGITS", value_name: chassi.slice(-6) });
+
+  add("SINGLE_OWNER", v.qtd_proprietarios === 1 || v.segundo_dono === false ? SIM : NAO);
+  add("ARMORED", /blindad/.test(texto) ? SIM : NAO);
+
+  // Condições da loja — as mesmas respostas que a APROVE deu ao criar a S10 no painel do ML
+  // (28/10/2026). Se outro tenant passar a publicar no ML, isso vira configuração por loja.
+  add("SALE_WITH_EXCHANGE",       SIM);
+  add("WITH_NEGOTIABLE_PRICE",    NAO);
+  add("WITH_PAID_IPVA",           SIM);
+  add("WITH_MECHANICAL_WARRANTY", SIM);
+  add("WITH_FACTORY_WARRANTY",    /garantia de fabrica/.test(texto) ? SIM : NAO);
+  add("CAR_DELIVERY",             NAO);
+  add("HOME_TEST_DRIVE",          NAO);
+  add("VIRTUAL_TOURS",            NAO);
+
+  return out;
+}
+
 /** Monta o payload de item para publicação no ML (categoria MLB1744 — Carros usados). */
 export function buildMLPayload(v: {
   marca?: string | null;
@@ -159,7 +280,7 @@ export function buildMLPayload(v: {
   relatorio_ia?: string | null;
   detalhes_inspecao?: string | null;
   pontos_fortes_venda?: unknown;
-}, loc?: { zipCode?: string | null; city?: string | null; state?: string | null }) {
+} & FichaVeiculo, loc?: { zipCode?: string | null; city?: string | null; state?: string | null }) {
   const marca  = marcaML(v.marca);
   const titulo = `${marca} ${v.modelo ?? ""}${v.versao ? " " + v.versao : ""} ${v.ano_modelo ?? v.ano ?? ""}`.trim().slice(0, 60);
   const fotos  = (Array.isArray(v.fotos) ? v.fotos.filter(Boolean) : []).slice(0, 12);
@@ -182,6 +303,7 @@ export function buildMLPayload(v: {
   // TRIM (versão) é OBRIGATÓRIO no MLB1744 — não é "VERSION". Fallback p/ não vir vazio.
   attributes.push({ id: "TRIM", value_name: v.versao || v.modelo || "Único" });
   if (v.placa) attributes.push({ id: "LICENSE_PLATE", value_name: v.placa.toUpperCase() });
+  attributes.push(...fichaTecnicaML(v));
 
   const payload: Record<string, unknown> = {
     title:              titulo,
