@@ -3209,7 +3209,14 @@ Responda apenas com o JSON, sem markdown.`;
     // JS é ASCII) e o pedido passava batido; a IA só perguntou "quer ver as
     // fotos?" e no dia seguinte o follow-up perguntou de novo (APROVE 20/10).
     /(^|[\s,])v[eê]\s+(umas?|as|algumas?|a)\s+(foto|fotos|imagem|imagens)\b/i.test(mensagemLower);
-  const mensagemSoFoto = /^(foto|fotos|imagem|imagens)[.!?]?$/.test(mensagemLower.trim());
+  // "Somente foto", "só as fotos", "pode ser foto" (resposta a "quer ver as fotos
+  // ou agendar visita?") — antes só valia "foto" sozinho e a IA respondeu "as
+  // fotos estão a caminho" sem nada sair (APROVE 27/10, 556796111874).
+  const mensagemSoFoto =
+    /^(?:s[oó]|somente|apenas|pode\s+ser|prefiro|quero)?\s*(?:as?\s+|umas?\s+)?(foto|fotos|imagem|imagens)\s*(?:mesmo|por\s+enquanto|primeiro)?[.!?]*$/.test(mensagemLower.trim()) ||
+    // Cliente avisando que a foto prometida não chegou é pedido de foto, não
+    // assunto pra "vou checar com a equipe" (mesmo caso, 28/10 08:11).
+    /\bn[ãa]o\s+(?:me\s+)?(?:chegou|chegaram|veio|vieram|recebi)\b[^.!?\n]{0,30}\b(foto|fotos|imagem|imagens)\b/.test(mensagemLower);
   const gatilhosFoto = [
     "manda foto", "tem foto", "tem imagem",
     "manda a foto", "manda as foto", "me manda a foto", "me envia a foto", "envia a foto",
@@ -4569,10 +4576,18 @@ Responda apenas com o JSON, sem markdown.`;
     const prometeu = (midia: string) =>
       new RegExp(`${VERBO_ENVIO}[^.!?\\n]{0,40}${midia}`, "i").test(aiResponse);
 
-    const indicaEnvioFoto = prometeu(String.raw`\bfotos?\b`) ||
+    // Substantivo ANTES do verbo também: "As fotos do Fiesta 2015 estão a caminho"
+    // passava (o padrão acima só pega verbo→mídia) e o cliente esperou até o dia
+    // seguinte: "não chegou nenhuma foto" (APROVE 27/10, 556796111874).
+    // ...menos quando são as fotos DO CLIENTE ("as fotos do seu carro estão chegando").
+    const midiaACaminho = (midia: string) => {
+      const m = aiResponse.match(new RegExp(`${midia}[^.!?\\n]{0,40}(?:a\\s+caminho|est[aã]o\\s+(?:indo|chegando)|j[áa]\\s+v[aã]o|j[áa]\\s+(?:est[aã]o\\s+)?(?:indo|chegando))`, "i"));
+      return !!m && !/\b(seu|sua|seus|suas|teu|tua)\b/i.test(m[0]);
+    };
+    const indicaEnvioFoto = prometeu(String.raw`\bfotos?\b`) || midiaACaminho(String.raw`\bfotos?\b`) ||
                               /\bacabei\s+de\s+(?:te\s+)?enviar\b/i.test(aiResponse) ||
                               /^aqui\s+est[aãáà]o?[!.\s]/i.test(aiResponse.trim()); // "Aqui estão!" no início (caso Denize)
-    const indicaEnvioVideo = prometeu(String.raw`\bv[íi]deos?\b`);
+    const indicaEnvioVideo = prometeu(String.raw`\bv[íi]deos?\b`) || midiaACaminho(String.raw`\bv[íi]deos?\b`);
 
     if ((indicaEnvioFoto && !fotoEnviada) || (indicaEnvioVideo && !videoEnviado)) {
       console.warn(`🚨 [safety-net mídia] Gemini afirmou envio mas sistema não enviou. Forçando envio agora.`);
