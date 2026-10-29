@@ -110,7 +110,10 @@ export async function buildReelProps(veiculo: any, cfgRow: any): Promise<ReelPro
     capaH: medida?.h ?? null,
     logoUrl: supabaseAdmin.storage.from("configuracoes").getPublicUrl(`logos/${veiculo.user_id}.png`).data.publicUrl,
     semMarca: cfg.fotoComMarca,
-    whatsapp: formatFone(cfg.telefoneLoja || cfg.whatsapp),
+    // A tela final diz "WHATSAPP": tem que ser o número da agente (cfg.whatsapp já
+    // vem de whatsapp_agente), não o fixo. O reel do Nivus da APROVE saiu com
+    // "WHATSAPP (17) 3215-7378" e o lead caía fora da IA (29/10).
+    whatsapp: formatFone(cfg.whatsapp || cfg.telefoneLoja),
     clips,
     capa: capaEdit
       ? {
