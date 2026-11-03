@@ -358,8 +358,10 @@ async function processSmbHistory(value: any) {
       const clienteWaId = soDigitos(thread?.id);
       if (!clienteWaId) continue;
 
-      // Find-or-create — nunca upsert: o lead pode já existir com status,
-      // vendedor e etiqueta que o histórico não pode sobrescrever.
+      // Só completa o histórico de quem JÁ é lead — não cria lead novo. Criar
+      // trazia a agenda inteira do lojista pro painel (Bonitão, 03/11: 1.116
+      // conversas, família e fornecedor junto). A conversa continua no celular;
+      // no AutoZap só entra lead a partir da conexão.
       let leadId: string | null = null;
       const { data: leadExistente } = await supabaseAdmin
         .from("leads")
@@ -367,20 +369,8 @@ async function processSmbHistory(value: any) {
         .eq("user_id", tenantUserId)
         .eq("wa_id", clienteWaId)
         .maybeSingle();
-      if (leadExistente) {
-        leadId = leadExistente.id;
-      } else {
-        const { data: leadNovo } = await supabaseAdmin
-          .from("leads")
-          // followup_count no teto: conversa importada do celular não é lead
-          // esperando retorno — é a agenda inteira do lojista (Bonitão, 03/11:
-          // 541 contatos, vários pessoais, todos elegíveis pro cron do follow-up).
-          .insert({ wa_id: clienteWaId, user_id: tenantUserId, origem: "coexistencia", status: "MORNO", followup_count: 1 })
-          .select("id")
-          .single();
-        leadId = leadNovo?.id ?? null;
-      }
-      if (!leadId) continue;
+      if (!leadExistente) continue;
+      leadId = leadExistente.id;
 
       const linhas: any[] = [];
       for (const msg of thread?.messages ?? []) {
