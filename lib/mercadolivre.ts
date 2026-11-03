@@ -302,6 +302,61 @@ export function tituloML(marca: string, modelo?: string | null, versao?: string 
   return `${cortado}${sufixo}`;
 }
 
+// MLB1744 aceita até 25 fotos (categories/MLB1744 → settings.max_pictures_per_item).
+export const ML_MAX_FOTOS = 25;
+
+/**
+ * Descrição do anúncio: texto do carro + destaques + ficha + equipamentos + condições da loja.
+ * Antes ia só o relatorio_ia/detalhes_inspecao — carro sem esses campos saía com o título como
+ * descrição (Toro Volcano, Strada, S10 LS: 22–36 caracteres, 03/11/2026).
+ * Sem telefone nem link: o ML proíbe contato na descrição (o contato vai no seller_contact).
+ */
+export function descricaoML(v: {
+  marca?: string | null; modelo?: string | null; versao?: string | null;
+  ano?: number | null; ano_modelo?: number | null; quilometragem_estimada?: number | null;
+  combustivel?: string | null; cambio?: string | null; cor?: string | null;
+  relatorio_ia?: string | null; detalhes_inspecao?: string | null;
+  pontos_fortes_venda?: unknown; opcionais?: string[] | null;
+}, titulo: string): string {
+  const blocos: string[] = [titulo];
+
+  const texto = (v.relatorio_ia || v.detalhes_inspecao || "").trim();
+  if (texto) blocos.push(texto);
+
+  const destaques = (Array.isArray(v.pontos_fortes_venda) ? v.pontos_fortes_venda : [])
+    .filter((p): p is string => typeof p === "string" && !!p.trim());
+  if (destaques.length) blocos.push("DESTAQUES\n" + destaques.map(p => `• ${p.trim()}`).join("\n"));
+
+  const ano = v.ano_modelo ?? v.ano;
+  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+  const ficha = [
+    ano ? `• Ano: ${v.ano && v.ano_modelo && v.ano !== v.ano_modelo ? `${v.ano}/${v.ano_modelo}` : ano}` : "",
+    v.quilometragem_estimada ? `• Quilometragem: ${Number(v.quilometragem_estimada).toLocaleString("pt-BR")} km` : "",
+    v.cambio ? `• Câmbio: ${cap(v.cambio)}` : "",
+    v.combustivel ? `• Combustível: ${cap(v.combustivel)}` : "",
+    v.cor ? `• Cor: ${cap(v.cor)}` : "",
+  ].filter(Boolean);
+  if (ficha.length) blocos.push("FICHA\n" + ficha.join("\n"));
+
+  // Lista de opcionais costuma ter repetição ("Airbag motorista" + "Airbags frontais…")
+  // e contradição ("Tração 4x4" + "Tração dianteira" na Toro Volcano) — 4x4 vence.
+  const vistos = new Set<string>();
+  const tem4x4 = (v.opcionais ?? []).some(o => /4x4/.test(o ?? ""));
+  const equip = (v.opcionais ?? []).map(o => (o ?? "").trim()).filter(o => {
+    const k = semAcento(o);
+    if (!o || vistos.has(k)) return false;
+    if (tem4x4 && /^tracao (dianteira|traseira)$/.test(k)) return false;
+    vistos.add(k);
+    return true;
+  });
+  if (equip.length) blocos.push("EQUIPAMENTOS\n" + equip.map(o => `• ${o}`).join("\n"));
+
+  // Mesmas condições que vão nos atributos (fichaTecnicaML) — anúncio não pode se contradizer
+  blocos.push("CONDIÇÕES\n• Aceitamos seu usado na troca\n• IPVA pago\n• Garantia mecânica");
+
+  return blocos.join("\n\n").slice(0, 50_000);
+}
+
 /** Monta o payload de item para publicação no ML (categoria MLB1744 — Carros usados). */
 export function buildMLPayload(v: {
   marca?: string | null;
@@ -325,7 +380,7 @@ export function buildMLPayload(v: {
 }) {
   const marca  = marcaML(v.marca);
   const titulo = tituloML(marca, v.modelo, v.versao, v.ano_modelo ?? v.ano);
-  const fotos  = (Array.isArray(v.fotos) ? v.fotos.filter(Boolean) : []).slice(0, 12);
+  const fotos  = (Array.isArray(v.fotos) ? v.fotos.filter(Boolean) : []).slice(0, ML_MAX_FOTOS);
 
   const fuel   = mapAttr(FUEL_ML, v.combustivel ?? "", FUEL_ML.FLEX);
   const cambio = mapAttr(TRANSMISSION_ML, v.cambio ?? "", CAMBIO_MANUAL);

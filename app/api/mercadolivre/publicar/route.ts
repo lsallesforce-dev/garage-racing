@@ -4,7 +4,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireVehicleOwner, getEffectiveUserId } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { getMLToken, buildMLPayload, mlHeaders, ML_API } from "@/lib/mercadolivre";
+import { getMLToken, buildMLPayload, descricaoML, mlHeaders, ML_API, ML_MAX_FOTOS } from "@/lib/mercadolivre";
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -113,7 +113,7 @@ export async function POST(req: NextRequest) {
   console.log(`✅ ML item criado: ${itemId}${precisaPagamento ? " (aguardando pagamento)" : ""}`);
 
   // Adiciona descrição em chamada separada (ML exige isso para classified)
-  const descricao = (v.relatorio_ia || v.detalhes_inspecao || titulo).slice(0, 50_000);
+  const descricao = descricaoML(v, titulo);
   const descResp = await fetch(`${ML_API}/items/${itemId}/description`, {
     method:  "POST",
     headers: mlHeaders(token),
@@ -143,7 +143,7 @@ export async function POST(req: NextRequest) {
       titulo,
       descricao,
       preco:        Number(v.preco_sugerido ?? 0),
-      fotos:        (Array.isArray(v.fotos) ? v.fotos.filter(Boolean) : []).slice(0, 12),
+      fotos:        (Array.isArray(v.fotos) ? v.fotos.filter(Boolean) : []).slice(0, ML_MAX_FOTOS),
       snapshot:     { listing_type: "silver", category: "MLB1744" },
       publicado_em:  now,
       atualizado_em: now,
