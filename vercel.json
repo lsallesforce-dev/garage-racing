@@ -61,6 +61,10 @@
       "schedule": "30 3,9,15,21 * * *"
     },
     {
+      "path": "/api/cron/gasto-meta",
+      "schedule": "0 12 1 * *"
+    },
+    {
       "path": "/api/cron/ig-comentarios",
       "schedule": "*/5 11-23 * * *"
     },

@@ -60,6 +60,10 @@ export default function ClienteDrawer({
   const [enviandoCobranca, setEnviandoCobranca] = useState(false);
   const [eventos, setEventos]               = useState<EventoAdmin[]>([]);
   const [eventosLoading, setEventosLoading] = useState(true);
+  const [gastoMeta, setGastoMeta] = useState<{
+    mes: string; custo_brl: number; fonte: "meta" | "estimado";
+    cobraveis: Record<string, number>; gratis: number; erro?: string;
+  } | null>(null);
 
   // Fecha com ESC
   useEffect(() => {
@@ -81,6 +85,20 @@ export default function ClienteDrawer({
       if (!vivo) return;
       setEventos(ok ? (data?.eventos ?? []) : []);
       setEventosLoading(false);
+    })();
+    return () => { vivo = false; };
+  }, [t.user_id, secret]);
+
+  // Gasto na Meta do mês passado (só tenant na Cloud API) — base do desconto
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      const { ok, data } = await fetchAdmin(
+        `/api/admin/gasto-meta?user_id=${t.user_id}`,
+        { headers: { "x-admin-secret": secret } },
+        { silent: true },
+      );
+      if (vivo && ok) setGastoMeta(data?.gastos?.[0] ?? null);
     })();
     return () => { vivo = false; };
   }, [t.user_id, secret]);
@@ -229,6 +247,24 @@ export default function ClienteDrawer({
                 </button>
                 {(t.plano_desconto ?? 0) > 0 && (
                   <span className="text-[10px] text-emerald-600 font-black">−{fmtBRL(t.plano_desconto!)}/mês</span>
+                )}
+                {gastoMeta && (
+                  <p className="basis-full text-[11px] text-gray-500">
+                    {gastoMeta.erro
+                      ? <>Gasto Meta {gastoMeta.mes}: <span className="text-red-600">{gastoMeta.erro}</span></>
+                      : <>
+                          Gasto Meta {gastoMeta.mes}: <b className="text-gray-900">{fmtBRL(gastoMeta.custo_brl)}</b>
+                          {gastoMeta.fonte === "estimado" && " (estimado)"}
+                          {" · "}{Object.values(gastoMeta.cobraveis).reduce((s, n) => s + n, 0)} templates cobrados
+                          {" · "}{gastoMeta.gratis} msgs grátis
+                          {gastoMeta.custo_brl > 0 && (
+                            <button onClick={() => setDescInput(String(Math.ceil(gastoMeta.custo_brl)))}
+                              className="ml-2 text-red-600 font-black uppercase tracking-wider text-[10px] hover:underline">
+                              Usar como desconto
+                            </button>
+                          )}
+                        </>}
+                  </p>
                 )}
               </div>
             )}
