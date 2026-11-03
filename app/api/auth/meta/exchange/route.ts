@@ -56,7 +56,9 @@ export async function POST(req: NextRequest) {
       new URLSearchParams({ client_id: appId, client_secret: appSecret, code }),
     );
     const tokenData = await tokenRes.json();
-    console.log(`🔍 [Meta exchange] tokenData=${JSON.stringify(tokenData).slice(0, 500)}`);
+    // NUNCA logar o access_token: o log da Vercel guardava o token inteiro da
+    // loja (achado no onboarding da Bonitão, 03/11). Só o que diagnostica.
+    console.log(`🔍 [Meta exchange] tokenData: ${tokenData.access_token ? `token ok (len=${String(tokenData.access_token).length})` : "SEM token"} expires_in=${tokenData.expires_in ?? "?"} error=${JSON.stringify(tokenData.error ?? null).slice(0, 300)}`);
     if (!tokenData.access_token) {
       // 36008 aqui, com app_id/secret/config_id já validados acima, significa que o
       // code não é de Login for Business: a configuração do config_id não é do tipo
