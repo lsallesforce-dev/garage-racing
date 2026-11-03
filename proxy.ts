@@ -378,8 +378,15 @@ export async function proxy(request: NextRequest) {
       }
 
       // Rewrite silencioso: URL do usuário continua sendo subdomain.autozap.digital
+      // Mesmo prefixo duplo do domínio próprio (bf674f8): o card linka
+      // /vitrine/{slug}/{id} e virava /vitrine/{slug}/vitrine/{slug}/{id} → 404
+      // em todo carro aberto pelo subdomínio (Bonitão, 03/11).
+      const base = `/vitrine/${subdomain}`;
+      const jaPrefixado = pathname === base || pathname.startsWith(`${base}/`);
       const rewriteUrl = request.nextUrl.clone();
-      rewriteUrl.pathname = `/vitrine/${subdomain}${pathname === "/" ? "" : pathname}`;
+      rewriteUrl.pathname = jaPrefixado
+        ? pathname
+        : `${base}${pathname === "/" ? "" : pathname}`;
 
       const response = NextResponse.rewrite(rewriteUrl, {
         request: { headers: comMetodo(request) },
