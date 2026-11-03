@@ -495,6 +495,13 @@ function ConfiguracoesConteudo() {
     document.body.appendChild(script);
   };
 
+  // Pré-carrega ao abrir a aba WhatsApp: o FB.login precisa rodar colado no
+  // clique, senão o navegador bloqueia o popup em silêncio e o botão fica
+  // girando pra sempre (Bonitão, 03/11 — o SDK só baixava NO clique).
+  useEffect(() => {
+    if (activeTab === "whatsapp") loadFacebookSDK();
+  }, [activeTab]);
+
   // Instante do FINISH do Embedded Signup — usado pra medir a idade do code.
   const sessionFinishAtRef = useRef<number | null>(null);
   // Asset IDs que o FINISH entrega. São a ÚNICA fonte confiável do WABA do
@@ -558,18 +565,15 @@ function ConfiguracoesConteudo() {
   // O segundo existe porque a Meta barra alguns negócios na coexistência antes
   // mesmo de pedir o número ("Selected business CoEx gate evaluation is
   // missing", LeMotors 07/10) — e sem featureType essa checagem não roda.
-  const handleMetaEmbeddedSignup = async (modo: "coexistencia" | "numero_novo" = "coexistencia") => {
-    loadFacebookSDK();
-    // Aguarda até 3s o SDK inicializar antes de prosseguir
+  // Sem await nenhum antes do FB.login: o popup só abre se a chamada sair no
+  // mesmo gesto do clique. Esperar o SDK baixar ou um getUser() na rede fazia o
+  // navegador bloquear a janela sem aviso — e o callback nunca vinha.
+  const handleMetaEmbeddedSignup = (modo: "coexistencia" | "numero_novo" = "coexistencia") => {
     if (!window.FB) {
-      await new Promise<void>(resolve => {
-        const t0 = Date.now();
-        const check = setInterval(() => {
-          if (window.FB || Date.now() - t0 > 3000) { clearInterval(check); resolve(); }
-        }, 100);
-      });
+      loadFacebookSDK();
+      alert("O Facebook ainda está carregando. Aguarde 2 segundos e clique em Conectar de novo.");
+      return;
     }
-    if (!window.FB) { alert("SDK do Facebook ainda carregando, tente novamente."); return; }
 
     // GUARDA: sem config_id o FB.login degrada pro Facebook Login CLÁSSICO — o code
     // que volta não é de Login for Business e a troca server-side falha SEMPRE com
@@ -587,8 +591,9 @@ function ConfiguracoesConteudo() {
     }
 
     setMetaConnecting(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setMetaConnecting(false); return; }
+    // Rede de segurança: popup bloqueado não chama o callback. Libera o botão
+    // depois de 2 min pra pessoa conseguir tentar de novo.
+    setTimeout(() => setMetaConnecting(false), 120_000);
 
     const redirectUri = `${window.location.origin}/configuracoes`;
 
