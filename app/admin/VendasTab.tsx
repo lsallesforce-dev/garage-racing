@@ -411,11 +411,11 @@ function Pipeline({ headers }: { headers: Record<string, string> }) {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center gap-3">
-        <div className="relative">
+        <div className="relative w-full sm:w-auto">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300" />
           <input type="text" placeholder="Buscar empresa ou cidade..." value={busca}
             onChange={e => setBusca(e.target.value)}
-            className="bg-white border border-gray-200 rounded-xl pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:border-red-500 w-72"
+            className="bg-white border border-gray-200 rounded-xl pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:border-red-500 w-full sm:w-72"
           />
         </div>
         <div className="flex items-center gap-1.5 flex-wrap">
@@ -457,8 +457,8 @@ function Pipeline({ headers }: { headers: Record<string, string> }) {
         />
       )}
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <table className="w-full text-left">
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto">
+        <table className="w-full min-w-[720px] text-left">
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50/50">
               {["Empresa", "Cidade", "Score", "Status", "Última Atividade", ""].map(h => (
@@ -558,7 +558,7 @@ function Aprovacao({ headers }: { headers: Record<string, string> }) {
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-6">
       <div className="flex items-center justify-between mb-5">
         <div>
           <h3 className="text-sm font-black uppercase tracking-widest text-gray-900">Fila de Aprovação</h3>
@@ -576,7 +576,7 @@ function Aprovacao({ headers }: { headers: Record<string, string> }) {
       ) : (
         <div className="flex flex-col gap-3">
           {novos.map(p => (
-            <div key={p.id} className="flex items-center justify-between gap-4 p-4 bg-gray-50 border border-gray-100 rounded-2xl">
+            <div key={p.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 p-4 bg-gray-50 border border-gray-100 rounded-2xl">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="text-sm font-black text-gray-900 uppercase tracking-tight truncate">{p.nome_empresa}</p>
@@ -759,9 +759,9 @@ function Inbox({ headers }: { headers: Record<string, string> }) {
   const mudarStatus = (novo: string) => acaoProspect({ acao: "status", valor: novo });
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-[600px]">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:h-[600px]">
       {/* Lista de conversas */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col">
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col h-64 md:h-auto">
         <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
           <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">Conversas</p>
           <button onClick={refreshManual} disabled={refreshing} title="Atualizar conversas e chat"
@@ -793,14 +793,14 @@ function Inbox({ headers }: { headers: Record<string, string> }) {
       </div>
 
       {/* Thread */}
-      <div className="md:col-span-2 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col">
+      <div className="md:col-span-2 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col h-[70vh] md:h-auto">
         {!selecionado ? (
           <div className="flex-1 flex items-center justify-center text-gray-300 text-sm font-black uppercase tracking-widest">
             Selecione uma conversa
           </div>
         ) : (
           <>
-            <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+            <div className="px-4 sm:px-5 py-3 border-b border-gray-100 flex flex-wrap items-center justify-between gap-2">
               <div className="min-w-0">
                 <p className="text-sm font-black text-gray-900 uppercase tracking-tight truncate">
                   {prospectAtivo?.nome_empresa ?? "—"}
@@ -808,7 +808,7 @@ function Inbox({ headers }: { headers: Record<string, string> }) {
                 <p className="text-[10px] text-gray-400">{prospectAtivo?.telefone ?? ""}</p>
               </div>
               {prospectAtivo && (
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex flex-wrap items-center gap-2">
                   {/* Repescagem: o follow-up que é a própria demonstração */}
                   <button
                     onClick={repescar}
@@ -851,7 +851,7 @@ function Inbox({ headers }: { headers: Record<string, string> }) {
               )}
             </div>
 
-            <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-3 bg-gray-50/40">
+            <div className="flex-1 overflow-y-auto p-3 sm:p-5 flex flex-col gap-3 bg-gray-50/40">
               {loadingThread ? (
                 <div className="m-auto text-gray-300"><Loader2 size={20} className="animate-spin" /></div>
               ) : mensagens.length === 0 ? (
@@ -860,7 +860,7 @@ function Inbox({ headers }: { headers: Record<string, string> }) {
                 const isProspect = m.remetente === "prospect";
                 return (
                   <div key={m.id} className={`flex ${isProspect ? "justify-start" : "justify-end"}`}>
-                    <div className={`max-w-[75%] rounded-2xl px-4 py-2.5 ${
+                    <div className={`max-w-[85%] sm:max-w-[75%] rounded-2xl px-4 py-2.5 ${
                       isProspect ? "bg-white border border-gray-200" :
                       m.remetente === "humano" ? "bg-orange-500 text-white" : "bg-gray-900 text-white"
                     }`}>
@@ -1016,7 +1016,7 @@ function Campanha({ headers }: { headers: Record<string, string> }) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       {/* Config da campanha */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 flex flex-col gap-5">
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-6 flex flex-col gap-5">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-black uppercase tracking-widest text-gray-900 flex items-center gap-2">
             <Megaphone size={14} /> Campanha
@@ -1097,7 +1097,7 @@ function Campanha({ headers }: { headers: Record<string, string> }) {
       </div>
 
       {/* Importação de revendas */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 flex flex-col gap-5 h-fit">
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-6 flex flex-col gap-5 h-fit">
         <h3 className="text-sm font-black uppercase tracking-widest text-gray-900 flex items-center gap-2">
           <Download size={14} /> Importar Revendas
         </h3>
@@ -1107,7 +1107,7 @@ function Campanha({ headers }: { headers: Record<string, string> }) {
         <textarea rows={4} value={queries} onChange={e => setQueries(e.target.value)}
           placeholder={"revenda de carros\nloja de carros usados\nveículos multimarcas"}
           className={`${inputCls} resize-none font-mono text-[12px]`} />
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 whitespace-nowrap">
             Cidade
           </label>
@@ -1126,7 +1126,7 @@ function Campanha({ headers }: { headers: Record<string, string> }) {
             por escrito, que vale +25 no score e hoje só aparece em 2 de 154.
           </span>
         </label>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 whitespace-nowrap">
             Máx. por busca
           </label>
@@ -1296,7 +1296,7 @@ function Metricas({ headers }: { headers: Record<string, string> }) {
       <PainelRodada funil={funil} headers={headers} onFeito={carregar} />
 
       {/* Perdidos / opt-out */}
-      <div className="grid grid-cols-2 gap-3 max-w-md">
+      <div className="grid grid-cols-2 gap-3 md:max-w-md">
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex items-center gap-3">
           <Ban size={16} className="text-gray-400 shrink-0" />
           <div>

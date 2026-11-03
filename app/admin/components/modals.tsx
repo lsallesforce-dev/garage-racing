@@ -31,7 +31,7 @@ export function NovoTenantModal({ secret, onClose, onSuccess }: { secret: string
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-[2rem] w-full max-w-md p-8 shadow-2xl relative">
+      <div className="bg-white rounded-[2rem] w-full max-w-md p-6 sm:p-8 shadow-2xl relative max-h-[90vh] overflow-y-auto">
         <button onClick={onClose} className="absolute top-6 right-6 text-gray-400 hover:text-gray-900 p-1"><X size={20} /></button>
         <h2 className="text-xl font-black uppercase italic tracking-tighter mb-1">Novo Cliente</h2>
         <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-6">Criar acesso manualmente</p>
@@ -95,7 +95,7 @@ export function NovoPagamentoModal({ secret, tenants, onClose, onSuccess }: {
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-[2rem] w-full max-w-md p-8 shadow-2xl relative">
+      <div className="bg-white rounded-[2rem] w-full max-w-md p-6 sm:p-8 shadow-2xl relative max-h-[90vh] overflow-y-auto">
         <button onClick={onClose} className="absolute top-6 right-6 text-gray-400 hover:text-gray-900 p-1"><X size={20} /></button>
         <h2 className="text-xl font-black uppercase italic tracking-tighter mb-1">Nova Cobrança</h2>
         <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-6">Registrar manualmente</p>
@@ -197,7 +197,7 @@ export function EditarPagamentoModal({ secret, pagamento, onClose, onSuccess }: 
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-[2rem] w-full max-w-md p-8 shadow-2xl relative">
+      <div className="bg-white rounded-[2rem] w-full max-w-md p-6 sm:p-8 shadow-2xl relative max-h-[90vh] overflow-y-auto">
         <button onClick={onClose} className="absolute top-6 right-6 text-gray-400 hover:text-gray-900 p-1"><X size={20} /></button>
         <h2 className="text-xl font-black uppercase italic tracking-tighter mb-1">Editar Cobrança</h2>
         <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-6">

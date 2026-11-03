@@ -55,7 +55,7 @@ export default function FinanceiroTab({
 
       {/* Alerta de pagamentos vencidos não marcados */}
       {pags_vencidos.length > 0 && (
-        <div className="flex items-center justify-between p-4 bg-red-50 border border-red-200 rounded-2xl">
+        <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-red-50 border border-red-200 rounded-2xl">
           <div className="flex items-center gap-3">
             <AlertCircle size={16} className="text-red-600 shrink-0" />
             <div>
@@ -87,19 +87,19 @@ export default function FinanceiroTab({
       )}
 
       {/* KPIs financeiros */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         {[
           { label: "MRR Projetado",  value: fmtBRL(mrr),          color: "text-green-600",  bg: "bg-green-50",  icon: TrendingUp   },
           { label: "Recebido",       value: fmtBRL(pag_pago),     color: "text-blue-600",   bg: "bg-blue-50",   icon: CheckCircle2 },
           { label: "A Receber",      value: fmtBRL(pag_pendente), color: "text-amber-600",  bg: "bg-amber-50",  icon: Clock        },
           { label: "Inadimplente",   value: fmtBRL(pag_atrasado), color: "text-red-600",    bg: "bg-red-50",    icon: AlertCircle  },
         ].map(({ label, value, color, bg, icon: Icon }) => (
-          <div key={label} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 flex items-center gap-4">
+          <div key={label} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-6 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 min-w-0">
             <div className={`w-10 h-10 rounded-xl ${bg} flex items-center justify-center shrink-0`}>
               <Icon size={16} className={color} />
             </div>
             <div>
-              <p className={`text-xl font-black ${color}`}>{value}</p>
+              <p className={`text-lg sm:text-xl font-black ${color} break-words`}>{value}</p>
               <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">{label}</p>
             </div>
           </div>
@@ -135,8 +135,8 @@ export default function FinanceiroTab({
       {/* ── Transações PagarMe ── */}
       {pagarmeOrders.length > 0 && (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
+          <div className="px-4 sm:px-6 py-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <CreditCard size={13} className="text-gray-400" />
               <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">Últimas Transações AutoZap</p>
               {pagarmeOcultos > 0 && (
@@ -153,7 +153,8 @@ export default function FinanceiroTab({
               </button>
             )}
           </div>
-          <table className="w-full text-left">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[560px] text-left">
             <thead>
               <tr className="border-b border-gray-100">
                 {["Data", "Cliente", "Valor", "Método", "Status"].map(h => (
@@ -189,6 +190,7 @@ export default function FinanceiroTab({
               })}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
@@ -218,8 +220,8 @@ export default function FinanceiroTab({
             <span className="text-xs text-gray-500 font-bold ml-auto self-center">{pagamentosFiltrados.length} cobrança(s)</span>
           </div>
 
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            <table className="w-full text-left">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto">
+            <table className="w-full min-w-[760px] text-left">
               <thead>
                 <tr className="border-b border-gray-100">
                   {["Cliente", "Plano", "Valor", "Método", "Vencimento", "Status", "Ações"].map(h => (

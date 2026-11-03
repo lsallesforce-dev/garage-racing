@@ -84,7 +84,7 @@ export default function OverviewTab({ stats, pagamentos, acao }: {
     <div className="flex flex-col gap-8">
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
         {[
           { icon: DollarSign, label: "MRR",             value: fmtBRL(mrr),         color: "text-green-600",   bg: "bg-green-50"   },
           { icon: Wallet,     label: "Recebido no Mês", value: fmtBRL(recebidoMes), color: "text-emerald-600", bg: "bg-emerald-50" },
@@ -93,11 +93,11 @@ export default function OverviewTab({ stats, pagamentos, acao }: {
           { icon: Eye,        label: "Demos",           value: demosCount,          color: "text-slate-600",   bg: "bg-slate-50"   },
           { icon: AlertCircle,label: "Expirados",       value: expirados,           color: "text-red-600",     bg: "bg-red-50"     },
         ].map(({ icon: Icon, label, value, color, bg }) => (
-          <div key={label} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 flex flex-col gap-2">
+          <div key={label} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-6 flex flex-col gap-2 min-w-0">
             <div className={`w-9 h-9 rounded-xl ${bg} flex items-center justify-center`}>
               <Icon size={16} className={color} />
             </div>
-            <p className={`text-2xl font-black ${color}`}>{value}</p>
+            <p className={`text-xl sm:text-2xl font-black ${color} break-words`}>{value}</p>
             <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">{label}</p>
           </div>
         ))}
@@ -106,7 +106,7 @@ export default function OverviewTab({ stats, pagamentos, acao }: {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
         {/* Gráfico cadastros */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-6">
           <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4 flex items-center gap-2">
             <TrendingUp size={11} /> Novos Clientes por Mês
           </p>
@@ -126,7 +126,7 @@ export default function OverviewTab({ stats, pagamentos, acao }: {
         </div>
 
         {/* Alertas */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-6">
           <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4 flex items-center gap-2">
             <AlertTriangle size={11} /> Atenção Necessária
           </p>
@@ -181,14 +181,14 @@ export default function OverviewTab({ stats, pagamentos, acao }: {
       </div>
 
       {/* Stats totais */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         {[
           { icon: Building2,    label: "Total Garagens", value: stats?.totais.garagens ?? 0 },
           { icon: Activity,     label: "Ativos 7 dias",  value: stats?.totais.ativos_7d ?? 0 },
           { icon: Car,          label: "Veículos no Ar", value: stats?.totais.veiculos ?? 0 },
           { icon: MessageSquare,label: "Mensagens Hoje", value: stats?.totais.mensagens_hoje ?? 0 },
         ].map(({ icon: Icon, label, value }) => (
-          <div key={label} className="bg-white rounded-2xl border border-gray-100 p-5 flex items-center gap-4">
+          <div key={label} className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-5 flex items-center gap-3 sm:gap-4 min-w-0">
             <Icon size={18} className="text-gray-400 shrink-0" />
             <div>
               <p className="text-2xl font-black text-gray-900">{value.toLocaleString("pt-BR")}</p>

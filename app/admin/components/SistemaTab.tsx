@@ -103,7 +103,7 @@ export default function SistemaTab({ health, secret }: { health: Health | null; 
       </div>
 
       {/* Link garagens */}
-      <div className="bg-gray-900 rounded-2xl p-6 flex items-center justify-between">
+      <div className="bg-gray-900 rounded-2xl p-5 sm:p-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Vitrine Pública</p>
           <p className="text-white font-black">autozap.digital/garagens</p>

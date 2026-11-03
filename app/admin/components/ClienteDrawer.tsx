@@ -31,7 +31,7 @@ function Toggle({ ativo, disabled, onClick }: { ativo: boolean; disabled?: boole
 }
 
 const lblCls = "text-[10px] font-black uppercase tracking-widest text-gray-400";
-const cardCls = "bg-white rounded-2xl border border-gray-100 shadow-sm p-6";
+const cardCls = "bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-6";
 const inputCls = "bg-[#f5f5f3] border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-red-500 transition";
 
 export default function ClienteDrawer({
@@ -123,7 +123,7 @@ export default function ClienteDrawer({
       <aside className="absolute right-0 top-0 h-full w-full max-w-2xl bg-[#efefed] shadow-2xl overflow-y-auto">
 
         {/* Header do drawer */}
-        <div className="sticky top-0 z-10 bg-white border-b border-gray-100 px-6 py-4">
+        <div className="sticky top-0 z-10 bg-white border-b border-gray-100 px-4 sm:px-6 py-4">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
               <TenantAvatar t={t} />
@@ -140,12 +140,12 @@ export default function ClienteDrawer({
                 disabled={acaoLoading === `${t.user_id}-imp`}
                 className="flex items-center gap-1.5 px-3 py-2 bg-gray-900 hover:bg-red-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition disabled:opacity-50">
                 {acaoLoading === `${t.user_id}-imp` ? <Loader2 size={12} className="animate-spin" /> : <Eye size={12} />}
-                Entrar como cliente
+                <span className="hidden sm:inline">Entrar como cliente</span><span className="sm:hidden">Entrar</span>
               </button>
               {t.vitrine_slug && (
                 <a href={`/vitrine/${t.vitrine_slug}`} target="_blank"
                   className="flex items-center gap-1.5 px-3 py-2 bg-white border border-gray-200 text-gray-600 hover:text-gray-900 hover:bg-gray-50 text-[10px] font-black uppercase tracking-widest rounded-xl transition">
-                  <ExternalLink size={12} /> Vitrine
+                  <ExternalLink size={12} /> <span className="hidden sm:inline">Vitrine</span>
                 </a>
               )}
               <button onClick={onClose} title="Fechar (ESC)"
@@ -156,7 +156,7 @@ export default function ClienteDrawer({
           </div>
         </div>
 
-        <div className="p-6 flex flex-col gap-5">
+        <div className="p-3 sm:p-6 flex flex-col gap-4 sm:gap-5">
 
           {/* ── Assinatura & Cobrança ─────────────────────────────────────── */}
           <div className={cardCls}>
@@ -167,12 +167,12 @@ export default function ClienteDrawer({
             {/* Plano */}
             <div className="mb-5">
               <p className={`${lblCls} mb-2.5`}>Plano</p>
-              <div className="flex gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {["starter", "pro", "premium", "demo"].map(p => (
                   <button key={p}
                     onClick={() => acao(t.user_id, p === "demo" ? "demo" : "mudar_plano", p === "demo" ? undefined : p)}
                     disabled={acaoLoading === `${t.user_id}-${p === "demo" ? "demo" : "mudar_plano"}`}
-                    className={`flex-1 px-4 py-2.5 text-xs font-black uppercase tracking-wider rounded-xl transition disabled:opacity-50 ${
+                    className={`px-2 sm:px-4 py-2.5 text-xs font-black uppercase tracking-wider rounded-xl transition disabled:opacity-50 ${
                       (t.plano ?? "pro") === p
                         ? (p === "demo" ? "bg-slate-600 text-white shadow" : "bg-gray-900 text-white shadow")
                         : "bg-[#f5f5f3] border border-gray-200 text-gray-600 hover:bg-gray-100"

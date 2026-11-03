@@ -42,7 +42,7 @@ Apaga o login e todos os dados. Não dá pra desfazer.`)) return;
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-6">
         <div className="flex items-center justify-between mb-5">
           <div>
             <h3 className="text-sm font-black uppercase tracking-widest text-gray-900">Cadastros Aguardando Aprovação</h3>
@@ -61,7 +61,7 @@ Apaga o login e todos os dados. Não dá pra desfazer.`)) return;
         ) : (
           <div className="flex flex-col gap-3">
             {pendentes.map(p => (
-              <div key={p.user_id} className="flex items-center justify-between gap-4 p-4 bg-amber-50 border border-amber-100 rounded-2xl">
+              <div key={p.user_id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 p-4 bg-amber-50 border border-amber-100 rounded-2xl">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-black text-gray-900 truncate">{p.nome_empresa || "Sem nome"}</p>
                   <p className="text-[11px] text-gray-500 truncate">{p.email}</p>
@@ -75,7 +75,7 @@ Apaga o login e todos os dados. Não dá pra desfazer.`)) return;
                     Cadastrado em {new Date(p.created_at).toLocaleDateString("pt-BR")}
                   </p>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
                 <button
                   disabled={excluindo === p.user_id || aprovando === p.user_id}
                   onClick={() => excluir(p)}

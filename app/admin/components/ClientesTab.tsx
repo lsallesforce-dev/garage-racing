@@ -58,12 +58,13 @@ export default function ClientesTab({ tenants, acao, acaoLoading, impersonate, o
       <div className="flex flex-wrap items-center gap-3">
         <input type="text" placeholder="Buscar por nome, e-mail, WhatsApp ou token..." value={search}
           onChange={e => setSearch(e.target.value)}
-          className="bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-red-500 w-72"
+          className="bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-red-500 w-full sm:w-72"
         />
-        <div className="flex gap-1.5">
+        <div className="flex gap-1.5 overflow-x-auto max-w-full [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {/* rolagem lateral no celular — 6 filtros não cabem numa linha */}
           {(["todos", "ativo", "trial", "expirado", "demo", "bloqueado"] as const).map(f => (
             <button key={f} onClick={() => setFiltroPlano(f)}
-              className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition ${
+              className={`shrink-0 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition ${
                 filtroPlano === f ? "bg-gray-900 text-white shadow" : "bg-white border border-gray-200 text-gray-500 hover:bg-gray-50"
               }`}>
               {f}
@@ -73,8 +74,59 @@ export default function ClientesTab({ tenants, acao, acaoLoading, impersonate, o
         <span className="text-xs text-gray-500 font-bold ml-auto">{tenantsFiltrados.length} resultado(s)</span>
       </div>
 
-      {/* Tabela */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      {/* Celular: um card por cliente (a tabela de 7 colunas não cabe) */}
+      <div className="md:hidden flex flex-col gap-3">
+        {tenantsFiltrados.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-gray-100 text-center py-12 text-sm text-gray-300 font-black uppercase tracking-widest">Nenhum resultado</div>
+        ) : tenantsFiltrados.map(t => (
+          <div key={t.user_id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-col gap-3">
+            <div className="flex items-start gap-3">
+              <TenantAvatar t={t} />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-black text-gray-900 uppercase tracking-tight truncate">{t.nome_empresa}</p>
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  Desde {fmtDate(t.created_at)}
+                  {t.bloqueado && <span className="ml-1.5 text-red-500 font-bold">· BLOQUEADO</span>}
+                </p>
+              </div>
+              <button onClick={e => abrirKebab(e, t.user_id)}
+                title="Mais ações"
+                className={`p-2 -mr-1 -mt-1 rounded-lg transition shrink-0 ${
+                  kebab?.userId === t.user_id ? "text-gray-900 bg-gray-100" : "text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+                }`}>
+                <MoreVertical size={16} />
+              </button>
+            </div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <PlanoBadge t={t} />
+              <AtividadeBadge t={t} />
+              <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest border whitespace-nowrap ${
+                t.cobranca_automatica ? "bg-green-50 text-green-700 border-green-100" : "bg-gray-100 text-gray-400 border-gray-200"
+              }`}>
+                {t.cobranca_automatica ? "Cobrança auto ✓" : "Cobrança manual"}
+              </span>
+            </div>
+            <div className="flex items-center gap-4">
+              <p className="text-[11px] text-gray-500"><span className="text-base font-black text-gray-900">{t.veiculos}</span> veíc.</p>
+              <p className="text-[11px] text-gray-500"><span className="text-base font-black text-gray-900">{t.leads}</span> leads</p>
+              <button onClick={() => onAbrir(t)}
+                className="ml-auto px-5 py-2 bg-gray-900 hover:bg-red-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition">
+                Abrir
+              </button>
+            </div>
+            {(t.ultima_msg_at || (planoStatus(t) === "ativo" && t.plano_vence_em)) && (
+              <p className="text-[10px] text-gray-400 -mt-1">
+                {planoStatus(t) === "ativo" && t.plano_vence_em && <>vence {fmtDiaMes(t.plano_vence_em)}</>}
+                {planoStatus(t) === "ativo" && t.plano_vence_em && t.ultima_msg_at && " · "}
+                {t.ultima_msg_at && <>última msg {fmtDate(t.ultima_msg_at)}</>}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Tabela (tablet/desktop) */}
+      <div className="hidden md:block bg-white rounded-2xl border border-gray-100 shadow-sm overflow-x-auto">
         <table className="w-full text-left">
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50/50">

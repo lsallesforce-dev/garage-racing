@@ -384,16 +384,18 @@ export default function AdminPage() {
       )}
 
       {/* Header */}
+      {/* No celular: linha 1 = logo + ações, linha 2 = abas com rolagem lateral.
+          No desktop (lg) volta a ser uma linha só. */}
       <header className="bg-white border-b border-gray-100 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <span className="text-xl font-black uppercase italic tracking-tighter">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2 lg:py-0 lg:h-16 flex flex-wrap lg:flex-nowrap items-center justify-between gap-x-4 gap-y-2">
+          <div className="contents lg:flex lg:items-center lg:gap-4 lg:min-w-0">
+            <span className="text-xl font-black uppercase italic tracking-tighter order-1">
               <span className="text-gray-900">AUTO</span><span className="text-red-600">ZAP</span>
             </span>
-            <div className="flex items-center gap-1 border-l border-gray-200 pl-4">
+            <div className="order-3 w-full lg:w-auto flex items-center gap-1 overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0 lg:border-l lg:border-gray-200 lg:pl-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {TABS.map(({ id, label, icon: Icon, badge }) => (
                 <button key={id} onClick={() => setTab(id)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                  className={`shrink-0 whitespace-nowrap flex items-center gap-1.5 px-3 py-2 lg:py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
                     tab === id ? "bg-gray-900 text-white" : "text-gray-500 hover:bg-gray-100"
                   }`}>
                   <Icon size={11} /> {label}
@@ -406,7 +408,7 @@ export default function AdminPage() {
               ))}
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="order-2 flex items-center gap-1 sm:gap-2 shrink-0">
             <button onClick={() => { carregar(secret); carregarPagamentos(secret); carregarPagarme(secret); }}
               disabled={loading}
               className="p-2 text-gray-400 hover:text-gray-700 rounded-xl hover:bg-gray-100 transition disabled:opacity-50" title="Recarregar painel (Clientes / Financeiro)">
@@ -419,20 +421,22 @@ export default function AdminPage() {
             {/* "Nova Cobrança" continua contextual do financeiro */}
             {tab === "financeiro" && (
               <button onClick={() => setShowNovoPag(true)}
-                className="flex items-center gap-1.5 px-4 py-2 bg-gray-900 text-white font-black uppercase text-[10px] tracking-widest rounded-xl hover:bg-red-600 transition">
-                <Plus size={13} /> Nova Cobrança
+                title="Nova Cobrança"
+                className="flex items-center gap-1.5 px-3 sm:px-4 py-2 bg-gray-900 text-white font-black uppercase text-[10px] tracking-widest rounded-xl hover:bg-red-600 transition">
+                <Plus size={13} /><DollarSign size={13} className="sm:hidden" /> <span className="hidden sm:inline">Nova Cobrança</span>
               </button>
             )}
             {/* "Novo Cliente" SEMPRE visível — antes só aparecia na aba clientes */}
             <button onClick={() => setShowNovoTenant(true)}
-              className="flex items-center gap-1.5 px-4 py-2 bg-gray-900 text-white font-black uppercase text-[10px] tracking-widest rounded-xl hover:bg-red-600 transition">
-              <Plus size={13} /> Novo Cliente
+              title="Novo Cliente"
+              className="flex items-center gap-1.5 px-3 sm:px-4 py-2 bg-gray-900 text-white font-black uppercase text-[10px] tracking-widest rounded-xl hover:bg-red-600 transition">
+              <Plus size={13} /><Building2 size={13} className="sm:hidden" /> <span className="hidden sm:inline">Novo Cliente</span>
             </button>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-5 sm:py-8">
 
         {tab === "overview" && (
           <OverviewTab stats={stats} pagamentos={pagamentos} acao={acao} />
