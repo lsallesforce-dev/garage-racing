@@ -94,6 +94,7 @@ export async function GET(req: NextRequest) {
         .maybeSingle();
 
       if (!cfg || !assinaturaValida(cfg)) { ignorados++; continue; }
+      if ((cfg as any).agente_pausado === true) { ignorados++; continue; }
 
       const useAvisa = !!(cfg.avisa_base_url && cfg.avisa_token);
       const r = useAvisa
@@ -165,13 +166,18 @@ export async function GET(req: NextRequest) {
     try {
       const { data: lead } = await supabaseAdmin
         .from("leads")
-        .select("id, wa_id, user_id, em_atendimento_humano")
+        .select("id, wa_id, user_id, em_atendimento_humano, origem")
         .eq("id", item.lead_id)
         .maybeSingle();
 
       if (!lead || lead.em_atendimento_humano) { ignorados++; continue; }
       // Lead do Instagram: o reenvio/reprocessamento daqui é de WhatsApp.
       if (String(lead.wa_id).startsWith("ig:")) { ignorados++; continue; }
+      // Conversa importada do celular (sync de histórico da coexistência) não é
+      // "webhook que falhou": a msg do cliente entra com o horário ORIGINAL e,
+      // se for de hoje, cai na janela de 2h. Bonitão, 03/11: a IA respondeu
+      // conversa antiga da agenda do lojista com o agente pausado.
+      if (lead.origem === "coexistencia") { ignorados++; continue; }
 
       const { data: cfg } = await supabaseAdmin
         .from("config_garage")
@@ -180,6 +186,9 @@ export async function GET(req: NextRequest) {
         .maybeSingle();
 
       if (!cfg || !assinaturaValida(cfg)) { ignorados++; continue; }
+      // Pausado = IA calada, inclusive no reprocessamento (o webhook já
+      // respeitava; este cron chamava o processWhatsAppMessage direto).
+      if ((cfg as any).agente_pausado === true) { ignorados++; continue; }
 
       // No máximo 2 tentativas por lead a cada 6h. Sem teto, um lead cujo
       // processamento morre sempre no mesmo ponto era reprocessado a cada 15 min
