@@ -105,7 +105,10 @@ export async function relatorioGastoMeta(mes?: string, userId?: string): Promise
     .from("config_garage")
     .select("user_id, nome_empresa, nome_fantasia, meta_waba_id, meta_access_token")
     .not("meta_waba_id", "is", null)
-    .not("meta_access_token", "is", null);
+    .not("meta_access_token", "is", null)
+    // Sem número = sem canal. Tenant AutoZap guardou o WABA que foi transferido
+    // pra APROVE (26/09) e o token antigo não lê mais — daria erro todo mês.
+    .not("meta_phone_id", "is", null);
   if (userId) q = q.eq("user_id", userId);
   const { data: tenants } = await q;
 
