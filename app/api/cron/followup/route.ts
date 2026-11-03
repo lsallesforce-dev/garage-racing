@@ -379,7 +379,7 @@ export async function GET(req: NextRequest) {
       user_id, nome_empresa, nome_fantasia, nome_agente, whatsapp,
       meta_phone_id, meta_access_token,
       avisa_base_url, avisa_token,
-      plano_ativo, trial_ends_at, plano_vence_em
+      plano_ativo, trial_ends_at, plano_vence_em, agente_pausado
     `)
     .in("user_id", tenantIds);
 
@@ -411,6 +411,9 @@ export async function GET(req: NextRequest) {
       // ── 2b. Gate de assinatura ──────────────────────────────────────────────
       const garagem = configMap.get(lead.user_id);
       if (!garagem) { ignorar("sem_config"); continue; }
+      // Agente pausado = IA não fala com ninguém, nem por follow-up (o pos-midia
+      // já respeitava; este cron não).
+      if (garagem.agente_pausado === true) { ignorar("agente_pausado"); continue; }
 
       const trialConfigurado = garagem.trial_ends_at != null;
       const trialValido = trialConfigurado && new Date(garagem.trial_ends_at) > agora;

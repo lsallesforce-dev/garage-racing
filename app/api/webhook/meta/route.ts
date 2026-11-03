@@ -372,7 +372,10 @@ async function processSmbHistory(value: any) {
       } else {
         const { data: leadNovo } = await supabaseAdmin
           .from("leads")
-          .insert({ wa_id: clienteWaId, user_id: tenantUserId, origem: "coexistencia", status: "MORNO" })
+          // followup_count no teto: conversa importada do celular não é lead
+          // esperando retorno — é a agenda inteira do lojista (Bonitão, 03/11:
+          // 541 contatos, vários pessoais, todos elegíveis pro cron do follow-up).
+          .insert({ wa_id: clienteWaId, user_id: tenantUserId, origem: "coexistencia", status: "MORNO", followup_count: 1 })
           .select("id")
           .single();
         leadId = leadNovo?.id ?? null;
