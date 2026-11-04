@@ -92,7 +92,8 @@ export async function syncAnunciosML(userId: string): Promise<{ sincronizados: n
     .eq("portal", "mercadolivre");
   const naBusca = new Set(ids);
   const fora = (existentes ?? [])
-    .filter(a => a.portal_ad_id && !naBusca.has(a.portal_ad_id) && a.status !== "deletado" && a.status !== "removido")
+    // "removido" também é reconferido: pode ter sido marcado pela busca atrasada (T-Cross, 04/11)
+    .filter(a => a.portal_ad_id && !naBusca.has(a.portal_ad_id) && a.status !== "deletado")
     .map(a => a.portal_ad_id as string);
   const naoExistem: string[] = [];
   for (let i = 0; i < fora.length; i += 20) {
@@ -125,7 +126,7 @@ export async function syncAnunciosML(userId: string): Promise<{ sincronizados: n
   // 4. Casa com o estoque: ml_item_id primeiro, depois placa
   const { data: veiculos } = await supabaseAdmin
     .from("veiculos")
-    .select("id, placa, ml_item_id, relatorio_ia, detalhes_inspecao")
+    .select("id, placa, ml_item_id, relatorio_ia, detalhes_inspecao, fotos")
     .eq("user_id", userId);
   const porItem  = new Map((veiculos ?? []).filter(v => v.ml_item_id).map(v => [v.ml_item_id as string, v]));
   const porPlaca = new Map((veiculos ?? []).filter(v => soPlaca(v.placa)).map(v => [soPlaca(v.placa), v]));
@@ -152,7 +153,10 @@ export async function syncAnunciosML(userId: string): Promise<{ sincronizados: n
       titulo:       it.title,
       descricao:    antes?.descricao ?? (v.relatorio_ia || v.detalhes_inspecao || null),
       preco:        it.price,
-      fotos:        (it.pictures ?? []).map((p: any) => p.secure_url ?? p.url).filter(Boolean).slice(0, 12),
+      // Card mostra a foto do estoque (capa escolhida pela loja); a do ML só se o carro não tiver
+      fotos:        (Array.isArray(v.fotos) && v.fotos.filter(Boolean).length
+                      ? v.fotos.filter(Boolean)
+                      : (it.pictures ?? []).map((p: any) => p.secure_url ?? p.url).filter(Boolean)).slice(0, 25),
       snapshot: {
         listing_type: "silver",
         category:     "MLB1744",
