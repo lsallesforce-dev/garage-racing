@@ -8,7 +8,7 @@
 // quer controle continua gravando slot a slot.
 
 import React, { useEffect, useRef, useState } from "react";
-import { Loader2, Scissors, Upload } from "lucide-react";
+import { Download, Film, Loader2, Scissors, Upload, Wand2 } from "lucide-react";
 import type { MarketingCapturas } from "@/lib/marketing-shotlist";
 import { ehVideo } from "./SlotTake";
 
@@ -16,11 +16,25 @@ interface Props {
   veiculoId: string;
   temVideoDoAnuncio: boolean;
   onPronto: (c: MarketingCapturas) => void;
+  /** Atalhos pro reel do carro (aba Reel do card). Sem isso, os botões não aparecem. */
+  acoes?: AcoesVideo;
+}
+
+export interface AcoesVideo {
+  /** Abre a aba Reel já com o editor de takes aberto. */
+  onEditarTakes: () => void;
+  /** Leva pra aba Reel, onde o vídeo toca. */
+  onVerVideo: () => void;
+  /** Baixa o reel pronto (ou o vídeo do estoque). Ausente = nada pra baixar ainda. */
+  onBaixar?: () => void;
+  baixando?: boolean;
+  /** Reel renderizando — editar agora brigaria com o render. */
+  processando?: boolean;
 }
 
 type Estado = "ocioso" | "subindo" | "processando" | "pronto" | "erro";
 
-export default function VideoUnicoCard({ veiculoId, temVideoDoAnuncio, onPronto }: Props) {
+export default function VideoUnicoCard({ veiculoId, temVideoDoAnuncio, onPronto, acoes }: Props) {
   const [estado, setEstado] = useState<Estado>("ocioso");
   const [msg, setMsg] = useState<string>("");
   const [arrastando, setArrastando] = useState(false);
@@ -163,6 +177,38 @@ export default function VideoUnicoCard({ veiculoId, temVideoDoAnuncio, onPronto 
           >
             <Scissors size={11} /> Usar o vídeo do anúncio
           </button>
+        ) : null}
+
+        {acoes ? (
+          <>
+            <button
+              type="button"
+              onClick={acoes.onEditarTakes}
+              disabled={ocupado || acoes.processando}
+              title={acoes.processando ? "O reel está renderizando — espera terminar pra editar" : "Ajustar corte, duração e legenda de cada take"}
+              className="flex items-center gap-1.5 rounded-xl bg-gray-100 px-3 py-2 text-[9px] font-black uppercase tracking-widest text-gray-600 hover:bg-gray-200 disabled:opacity-50"
+            >
+              <Wand2 size={11} /> Editar takes
+            </button>
+            <button
+              type="button"
+              onClick={acoes.onBaixar}
+              disabled={!acoes.onBaixar || acoes.baixando}
+              title={acoes.onBaixar ? "Baixar o vídeo (.mp4)" : "Gere o reel primeiro"}
+              className="flex items-center gap-1.5 rounded-xl bg-gray-100 px-3 py-2 text-[9px] font-black uppercase tracking-widest text-gray-600 hover:bg-gray-200 disabled:opacity-50"
+            >
+              {acoes.baixando ? <Loader2 size={11} className="animate-spin" /> : <Download size={11} />}
+              {acoes.baixando ? "Baixando..." : "Baixar vídeo"}
+            </button>
+            <button
+              type="button"
+              onClick={acoes.onVerVideo}
+              title="Ir pra aba Reel, onde está o vídeo"
+              className="flex items-center gap-1.5 rounded-xl bg-gray-100 px-3 py-2 text-[9px] font-black uppercase tracking-widest text-gray-600 hover:bg-gray-200"
+            >
+              <Film size={11} /> {acoes.processando ? "Vídeo (renderizando)" : "Vídeo"}
+            </button>
+          </>
         ) : null}
       </div>
 

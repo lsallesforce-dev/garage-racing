@@ -26,7 +26,7 @@ import {
 import { Camera, Check, ChevronDown, Images, Loader2, PlayCircle } from "lucide-react";
 import SlotTake, { ehVideo } from "./captura/SlotTake";
 import VideoModeloModal from "./captura/VideoModeloModal";
-import VideoUnicoCard from "./captura/VideoUnicoCard";
+import VideoUnicoCard, { type AcoesVideo } from "./captura/VideoUnicoCard";
 
 interface Props {
   veiculoId: string;
@@ -37,6 +37,8 @@ interface Props {
   onChange: (c: MarketingCapturas, fotos?: string[]) => void;
   /** Vídeo do anúncio já cadastrado — habilita decupar sem subir nada. */
   videoUrl?: string | null;
+  /** Atalhos pro reel (Editar takes / Baixar vídeo / Vídeo) no bloco de takes. */
+  acoesVideo?: AcoesVideo;
 }
 
 // Antes de gastar upload: o take tem que ser curto. Vertical é só aviso — take
@@ -57,7 +59,7 @@ async function inspecionarVideo(file: File): Promise<{ duracao: number; vertical
   });
 }
 
-export default function CapturaGuiada({ veiculoId, capturas, onChange, videoUrl }: Props) {
+export default function CapturaGuiada({ veiculoId, capturas, onChange, videoUrl, acoesVideo }: Props) {
   const [subindo, setSubindo] = useState<string | null>(null);
   const [erroSlot, setErroSlot] = useState<Record<string, string>>({});
   const [classificando, setClassificando] = useState(false);
@@ -403,6 +405,7 @@ export default function CapturaGuiada({ veiculoId, capturas, onChange, videoUrl 
           <VideoUnicoCard
             veiculoId={veiculoId}
             temVideoDoAnuncio={!!videoUrl}
+            acoes={acoesVideo}
             onPronto={(c) => { onChange(c); setMsg({ tipo: "ok", texto: "Takes preenchidos a partir do vídeo ✅" }); }}
           />
 

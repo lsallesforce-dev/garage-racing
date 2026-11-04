@@ -467,6 +467,26 @@ export default function KitsGaleria() {
     }
   }
 
+  // Atalho do bloco de takes (aba Criar) pra aba Reel. A aba troca o conteúdo do
+  // card e ele encolhe — rola até o topo do card senão o usuário fica olhando o vazio.
+  function irProReel(id: string, editar = false) {
+    setSecao((p) => ({ ...p, [id]: "reel" }));
+    if (editar) setEditando((p) => ({ ...p, [id]: true }));
+    requestAnimationFrame(() => document.getElementById(`kit-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }
+
+  async function baixarVideoEstoque(c: CarroKit) {
+    if (baixando[c.id] || !c.video_url) return;
+    setBaixando((p) => ({ ...p, [c.id]: "reel" }));
+    try {
+      await baixarUrl(reelToProxy(c.video_url), `video-${slugCarro(c)}.mp4`);
+    } catch {
+      setErro((p) => ({ ...p, [c.id]: "Erro ao baixar" }));
+    } finally {
+      setBaixando((p) => { const n = { ...p }; delete n[c.id]; return n; });
+    }
+  }
+
   async function baixarReel(c: CarroKit) {
     if (baixando[c.id] || !c.marketing_reel_url) return;
     setBaixando((p) => ({ ...p, [c.id]: "reel" }));
@@ -678,7 +698,7 @@ export default function KitsGaleria() {
             const capturaAberta = aberto[c.id] ?? !temKit; // sem kit: captura aberta por padrão
 
             return (
-              <div key={c.id} className="bg-white rounded-3xl border border-gray-100 shadow-sm p-4 flex flex-col gap-3">
+              <div key={c.id} id={`kit-${c.id}`} className="bg-white rounded-3xl border border-gray-100 shadow-sm p-4 flex flex-col gap-3 scroll-mt-4">
                 {/* Header */}
                 <div className="flex items-center gap-3">
                   <div className="w-16 h-16 flex-shrink-0 rounded-xl overflow-hidden bg-gray-100">
@@ -768,6 +788,13 @@ export default function KitsGaleria() {
                         veiculoId={c.id}
                         capturas={c.marketing_capturas ?? {}}
                         videoUrl={c.video_url}
+                        acoesVideo={{
+                          onEditarTakes: () => irProReel(c.id, true),
+                          onVerVideo: () => irProReel(c.id),
+                          onBaixar: reelPronto ? () => baixarReel(c) : videoDoEstoque ? () => baixarVideoEstoque(c) : undefined,
+                          baixando: baixando[c.id] === "reel",
+                          processando: c.marketing_reel_status === "processando",
+                        }}
                         onChange={(cap, fotosNovas) =>
                           patchCarro(c.id, { marketing_capturas: cap, ...(fotosNovas ? { fotos: fotosNovas } : {}) })
                         }
