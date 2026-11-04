@@ -42,6 +42,8 @@ const STATUS_ML: Record<string, string> = {
   paused:       "pausado",
   closed:       "removido",
   under_review: "pendente",
+  // Recém-criado: ML ainda baixando fotos / confirmando a cota do pacote
+  not_yet_active: "pendente",
   inactive:     "pausado",
 };
 
@@ -80,6 +82,33 @@ export async function syncAnunciosML(userId: string): Promise<{ sincronizados: n
     for (const x of await r.json()) if (x.code === 200) itens.push(x.body);
   }
 
+  // 2b. Anúncio que o AutoZap tem e a busca não trouxe: pergunta direto ao ML. A busca
+  // da conta demora a indexar item novo — a BMW publicada às 19:14:32 foi marcada
+  // "removido" 4 s depois só por ainda não estar nela (APROVE, 04/11/2026).
+  const { data: existentes } = await supabaseAdmin
+    .from("anuncios")
+    .select("veiculo_id, portal_ad_id, descricao, publicado_em, status")
+    .eq("user_id", userId)
+    .eq("portal", "mercadolivre");
+  const naBusca = new Set(ids);
+  const fora = (existentes ?? [])
+    .filter(a => a.portal_ad_id && !naBusca.has(a.portal_ad_id) && a.status !== "deletado" && a.status !== "removido")
+    .map(a => a.portal_ad_id as string);
+  const naoExistem: string[] = [];
+  for (let i = 0; i < fora.length; i += 20) {
+    const lote = fora.slice(i, i + 20);
+    const r = await fetch(
+      `${ML_API}/items?ids=${lote.join(",")}&attributes=id,title,price,status,health,date_created,pictures,attributes,permalink,video_id`,
+      { headers: mlHeaders(token) },
+    );
+    if (!r.ok) continue; // na dúvida, não mexe
+    // O multiget responde na ordem pedida; o corpo do 404 não traz o id
+    (await r.json()).forEach((x: any, k: number) => {
+      if (x.code === 200) itens.push(x.body);          // existe: entra no upsert com o status real
+      else if (x.code === 404) naoExistem.push(lote[k]);
+    });
+  }
+
   // 3. Visitas — o endpoint só aceita 1 id por chamada
   const visitas: Record<string, number> = {};
   await Promise.all(itens.map(async it => {
@@ -101,11 +130,6 @@ export async function syncAnunciosML(userId: string): Promise<{ sincronizados: n
   const porItem  = new Map((veiculos ?? []).filter(v => v.ml_item_id).map(v => [v.ml_item_id as string, v]));
   const porPlaca = new Map((veiculos ?? []).filter(v => soPlaca(v.placa)).map(v => [soPlaca(v.placa), v]));
 
-  const { data: existentes } = await supabaseAdmin
-    .from("anuncios")
-    .select("veiculo_id, portal_ad_id, descricao, publicado_em")
-    .eq("user_id", userId)
-    .eq("portal", "mercadolivre");
   const existente = new Map((existentes ?? []).map(a => [a.veiculo_id, a]));
 
   const semVeiculo: string[] = [];
@@ -152,9 +176,9 @@ export async function syncAnunciosML(userId: string): Promise<{ sincronizados: n
     sincronizados++;
   }
 
-  // 5. Anúncio que o AutoZap achava no ar mas sumiu da conta (encerrado/excluído no painel do ML)
-  const vistos = new Set(itens.map(it => it.id));
-  const sumidos = (existentes ?? []).filter(a => a.portal_ad_id && !vistos.has(a.portal_ad_id)).map(a => a.portal_ad_id as string);
+  // 5. Só vira "removido" sem passar pelo upsert o item que o ML diz que não existe (404).
+  // Encerrado no painel volta como "closed" no 2b e já cai em "removido" pelo STATUS_ML.
+  const sumidos = naoExistem.filter(Boolean);
   if (sumidos.length) {
     await supabaseAdmin.from("anuncios")
       .update({ status: "removido", atualizado_em: agora })
