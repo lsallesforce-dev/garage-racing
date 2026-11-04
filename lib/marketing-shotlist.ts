@@ -125,6 +125,22 @@ export interface MarketingCapturas {
 export const TAG_FOTO_CAPA = "frente-3-4";
 export const TAG_FOTO_VERTICAL = "frente-vertical";
 
+// Etiqueta (capturas.fotos) que aponta pra foto que saiu da galeria fotos[] é
+// lixo: a foto foi apagada no estoque e o kit seguia usando ela como capa e
+// slide — "Regerar kit" não resolvia (APROVE, 04/11). Toda foto etiquetada
+// vive também em fotos[] (capturas e piso/aplicar mantêm isso), então fora da
+// galeria = apagada. Galeria vazia: não poda (não dá pra distinguir).
+export function semFotosApagadas(
+  capturas: MarketingCapturas | null | undefined,
+  galeria: string[] | null | undefined,
+): MarketingCapturas {
+  const c = capturas ?? {};
+  if (!galeria?.length || !c.fotos?.length) return c;
+  const naGaleria = new Set(galeria);
+  const fotos = c.fotos.filter((f) => naGaleria.has(f.url));
+  return fotos.length === c.fotos.length ? c : { ...c, fotos };
+}
+
 // Qual foto vira o fundo de cada formato.
 //
 // Feed é 4:5 e story/reel são 9:16. Uma foto deitada no 9:16 ou corta a frente e
@@ -136,7 +152,8 @@ export function fotoDoFormato(
   galeria: string[] | null | undefined,
   formato: "feed" | "story",
 ): string | null {
-  const etiquetada = (tag: string) => capturas?.fotos?.find((f) => f.tag === tag)?.url ?? null;
+  const validas = semFotosApagadas(capturas, galeria);
+  const etiquetada = (tag: string) => validas.fotos?.find((f) => f.tag === tag)?.url ?? null;
   const vertical = formato === "story" ? etiquetada(TAG_FOTO_VERTICAL) : null;
   return vertical ?? etiquetada(TAG_FOTO_CAPA) ?? galeria?.[0] ?? null;
 }
@@ -167,9 +184,10 @@ export const CARROSSEL_MAX = 10;
 
 export function montarCarrossel(
   capaUrl: string,
-  capturas: MarketingCapturas,
+  capturasBrutas: MarketingCapturas,
   galeria: string[] | null | undefined
 ): string[] {
+  const capturas = semFotosApagadas(capturasBrutas, galeria);
   const slides: string[] = [capaUrl];
   const usadas = new Set<string>([capturas.fotos?.find((f) => f.tag === "frente-3-4")?.url ?? ""]);
   for (const tag of CARROSSEL_ORDEM) {

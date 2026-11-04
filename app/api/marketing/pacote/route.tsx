@@ -14,7 +14,7 @@ import { requireVehicleOwner } from "@/lib/api-auth";
 import { cfgFromRow, gerarLegenda } from "@/lib/marketing-kit";
 import { fotoParaCapa, loadCapaFont, logoParaCapa, renderCapa } from "@/lib/marketing-capa";
 import { completarCapturas } from "@/lib/marketing-classificar";
-import { fotoDoFormato, montarCarrossel, type MarketingCapturas } from "@/lib/marketing-shotlist";
+import { fotoDoFormato, montarCarrossel, semFotosApagadas, type MarketingCapturas } from "@/lib/marketing-shotlist";
 import { montarSlidesCarrossel } from "@/lib/marketing-slide";
 import { subirMiniatura } from "@/lib/marketing-miniatura";
 import { garantirCallouts } from "@/lib/reel-callouts-ia";
@@ -50,10 +50,17 @@ export async function POST(req: NextRequest) {
 
     // Fotos: se a shot list ainda não está preenchida, o Gemini Vision etiqueta a
     // galeria existente automaticamente (kit se monta sozinho a partir do anúncio).
-    let capturas: MarketingCapturas = veiculo.marketing_capturas ?? {};
+    // Etiqueta de foto apagada no estoque sai antes — senão a capa continua sendo
+    // a foto apagada e a vaga (ex: frente-3-4) nunca é re-etiquetada.
+    const capturasBanco: MarketingCapturas = veiculo.marketing_capturas ?? {};
+    let capturas = semFotosApagadas(capturasBanco, veiculo.fotos);
+    let mudou = capturas !== capturasBanco;
     const semFrente = !capturas.fotos?.some((f) => f.tag === "frente-3-4");
     if (semFrente && veiculo.fotos?.length) {
-      capturas = await completarCapturas(veiculo);
+      capturas = await completarCapturas({ ...veiculo, marketing_capturas: capturas });
+      mudou = true;
+    }
+    if (mudou) {
       await supabaseAdmin.from("veiculos").update({ marketing_capturas: capturas }).eq("id", veiculoId);
     }
 
