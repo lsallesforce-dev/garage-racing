@@ -1264,7 +1264,7 @@ async function veiculosCitadosNoTexto(texto: string, tenantUserId: string): Prom
  *  pedido de CPF, e o preço do anúncio virou "entrada" (04/10 e 05/10). */
 function semBlocosDeContexto(msg: string): string {
   return msg
-    .replace(/\[(?:Contexto do link|Lead veio do anúncio|Veículo identificado pelo anúncio)[\s\S]*?\]\s*/g, "")
+    .replace(/\[(?:Contexto do link|Lead veio do anúncio|Veículo identificado pelo anúncio|Mercado Livre:)[\s\S]*?\]\s*/g, "")
     .trim();
 }
 
@@ -1536,6 +1536,31 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   }
 
   if (!userMessage && !audioData) return;
+
+  // ── Mensagem pronta do botão de WhatsApp do Mercado Livre ──────────────────
+  // "Tenho algumas perguntas sobre este <carro>: <link> Além disso, tenho um
+  // crédito aprovado através do app do Mercado Pago para financiá-lo." é texto
+  // do ML, não pedido de financiamento da loja. A frase do crédito abria a
+  // coleta de CPF na primeira resposta, sem cumprimento nem nada do carro
+  // (APROVE 04/11, lead da S10: o cliente nem queria financiar). Vira bloco
+  // de contexto: a IA sabe do anúncio e do crédito do Mercado Pago, e o 10d
+  // (que ignora o que está entre colchetes) não dispara.
+  {
+    const ml = userMessage.match(/tenho algumas perguntas sobre (?:este|esta|esse|essa)\s+([^:\n]{3,120}?):?\s*\n+\s*(https?:\/\/\S*mercadoli[vb]re\S*)/i);
+    if (ml) {
+      const creditoMP = /cr[ée]dito aprovado[^.!?\n]*mercado\s?pago/i.test(userMessage);
+      const resto = userMessage
+        .replace(ml[0], " ")
+        .replace(/al[ée]m disso,?\s*tenho um cr[ée]dito aprovado[^.!?\n]*[.!?]?/i, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      userMessage =
+        `[Contexto do link: anúncio do Mercado Livre — ${ml[1].trim()} — ${ml[2]}]` +
+        (creditoMP ? `\n[Mercado Livre: o app avisou que o cliente tem crédito pré-aprovado no Mercado Pago. Não peça CPF nem dados de simulação por isso; pergunte se ele vai usar esse crédito ou se tem carro na troca.]` : "") +
+        (resto ? `\n${resto}` : "");
+      console.log(`🛒 [ML] Mensagem pronta do Mercado Livre convertida em contexto (crédito MP: ${creditoMP})`);
+    }
+  }
 
   // ── Contexto do anúncio (Click-to-WhatsApp) ────────────────────────────────
   // Prioridade 1: busca o veiculo_id diretamente via ad_id na tabela meta_campanhas.
