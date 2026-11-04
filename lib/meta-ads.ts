@@ -397,7 +397,11 @@ export function montarTargeting(
   }
   if (cfg.placement !== PLACEMENT_STORIES && cfg.placement.includes("instagram")) {
     publisherPlatforms.push("instagram");
-    instagramPositions.push("stream", "story", "reels");
+    // Carrossel fora do Story: os cards são 4:5 (arte do feed) e o Story do IG
+    // força cada um pra 1:1 — o carro sai achatado/esticado pros lados (APROVE
+    // 04/11, carrossel premium). Também era a posição mais cara da conta
+    // (R$ 8,50/conversa em 30 dias). Foto única e vídeo seguem no Story.
+    instagramPositions.push(...(cfg.formato === "carrossel" ? ["stream", "reels"] : ["stream", "story", "reels"]));
   }
 
   // Gênero: 1=masculino, 2=feminino, vazio=todos
@@ -909,7 +913,8 @@ export async function criarCampanhaCarrosselEstoque(
   const inicio = configuracao.iniciaEm ? new Date(configuracao.iniciaEm) : agora;
   const encerraEm = new Date(inicio.getTime() + configuracao.duracaoDias * 24 * 60 * 60 * 1000);
 
-  const targeting = montarTargeting(configuracao, garagem);
+  // Carrossel do estoque é sempre carrossel — fora do Story (ver montarTargeting).
+  const targeting = montarTargeting({ ...configuracao, formato: "carrossel" }, garagem);
   const flexSpec = targeting.flexible_spec ?? [];
 
   const usaTotal = configuracao.tipoOrcamento === "total" && !!configuracao.orcamentoTotal;
