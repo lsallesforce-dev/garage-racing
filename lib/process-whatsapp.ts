@@ -2970,7 +2970,19 @@ Responda apenas com o JSON, sem markdown.`;
     "fazendo barulho", "fazendo um barulho", "um barulho", "barulho no motor",
     "barulhão", "barulhao", "barulho estranho", "motor batendo", "batendo no motor",
   ];
-  const temDefeito = gatilhosDefeito.some((g) => textoClientePosvenda.includes(g));
+  // Replay dos 5 disparos de ago–nov/2026: NENHUM era pós-venda. Três vieram de
+  // cliente descrevendo o carro DELE pra troca/venda ("não tem defeito", "revisões
+  // na concessionária, mantendo a garantia") ou de outro sentido da palavra ("meu
+  // carro de garantia no empréstimo") — e o lead quente caía em stand-by sem
+  // ninguém responder (APROVE 31/10: Tracker na troca por T-Cross, 5 dias no vácuo).
+  // 1) Negação do defeito não é defeito: tira antes de procurar gatilho.
+  const textoDefeito = textoClientePosvenda
+    .replace(/\b(sem|nenhum|zero|n[ãa]o\s+tem|n[ãa]o\s+tem\s+nenhum|nunca\s+teve|nunca\s+deu)\s+(nenhum\s+)?defeitos?/g, " ")
+    .replace(/\b(nunca|n[ãa]o)\s+(me\s+)?deu\s+(nenhum\s+)?problemas?/g, " ")
+    // "não liga"/"não pega" são prefixo de "não ligar"/"não pegar" ("mandar
+    // mensagem, não ligar"): só valem como palavra inteira.
+    .replace(/n[ãa]o\s+(liga|pega)(?=[a-zà-ú])/g, " ");
+  const temDefeito = gatilhosDefeito.some((g) => textoDefeito.includes(g));
 
   // "garantia"/"oficina"/"concessionária" são ambíguos: pergunta de compra
   // ("tem garantia de fábrica?") vs reclamação ("vou acionar a garantia").
@@ -2978,7 +2990,11 @@ Responda apenas com o JSON, sem markdown.`;
   const mencionaGarantia = /\b(garantia|oficina|concession[áa]ria)\b/.test(textoClientePosvenda);
   const sinalPosse = /\b(meu|minha|comprei|compramos|peguei|pegamos|levei|levar|come[çc]ou|acontecendo|aconteceu|t[áa]\s|est[áa]\s)\b/.test(textoClientePosvenda);
   const perguntaDeCompra = /\b(tem|tem de|possui|qual|quanto|quantos?|inclui|coberto|cobre|de f[áa]brica)\b/.test(textoClientePosvenda);
-  const garantiaPosvenda = mencionaGarantia && sinalPosse && !perguntaDeCompra;
+  // 2) Cliente falando do carro que quer DAR na troca / vender, ou "garantia" de
+  // empréstimo, usa as mesmas palavras sem ser reclamação de carro comprado aqui.
+  const falaDoCarroDeTroca =
+    /\b(em|na|de|pra|para)\s+troca\b|\bvend(endo|er)\b|\bvendo\s+(o|a|meu|minha)\b|\bavalia(r|[çc][ãa]o)\b|\bempr[ée]stimo\b/.test(textoClientePosvenda);
+  const garantiaPosvenda = mencionaGarantia && sinalPosse && !perguntaDeCompra && !falaDoCarroDeTroca;
 
   const isPosvenda = temDefeito || garantiaPosvenda;
 
