@@ -276,32 +276,41 @@ const brl = (v: unknown) =>
 // loja, onde o agente atende de verdade. Trocar pra `true` no dia da aprovação.
 const DIRECT_LIBERADO_PELA_META = false;
 
-/** Link do WhatsApp do agente já com a mensagem pronta (que carrega o carro). */
-function linkWhatsApp(config: any, carro: string | null, rede: RedeSocial): string | null {
-  const num = String(config?.whatsapp_agente || config?.whatsapp || "").replace(/\D/g, "").replace(/^(?!55)/, "55");
-  if (num.length < 12) return null;
-  const onde = rede === "facebook" ? "Facebook" : "Instagram";
-  const msg = carro ? `Oi! Vi o ${carro} no ${onde} e quero saber mais.` : `Oi! Vim pelo ${onde} e quero saber mais.`;
-  return `https://wa.me/${num}?text=${encodeURIComponent(msg)}`;
+/**
+ * WhatsApp do agente escrito como telefone: "(17) 99188-8631". Era um wa.me com
+ * a mensagem pronta, mas o Instagram não deixa link clicável na resposta privada
+ * e o cliente via um texto enorme de %20 (APROVE, 05/11).
+ */
+function telefoneWhatsApp(config: any): string | null {
+  const num = String(config?.whatsapp_agente || config?.whatsapp || "").replace(/\D/g, "").replace(/^55(?=\d{10,11}$)/, "");
+  if (num.length === 11) return `(${num.slice(0, 2)}) ${num.slice(2, 7)}-${num.slice(7)}`;
+  if (num.length === 10) return `(${num.slice(0, 2)}) ${num.slice(2, 6)}-${num.slice(6)}`;
+  return null;
+}
+
+/** Modelo sem a versão abreviada que sobra do cleanModelo ("T-Cross Comfor." → "T-Cross"). */
+function nomeCurto(modelo: string): string {
+  const limpo = cleanModelo(modelo) || modelo;
+  return limpo.split(/\s+/).filter((w) => !w.endsWith(".")).join(" ") || limpo;
 }
 
 /**
  * Texto da resposta privada. Montado com dado do banco, sem IA: é UMA mensagem
  * só e não pode sair com preço inventado.
  */
-function textoDaRespostaPrivada(config: any, v: any | null, rede: RedeSocial): string {
+function textoDaRespostaPrivada(config: any, v: any | null): string {
   const loja = config?.nome_fantasia || config?.nome_empresa || "nossa loja";
   // cleanModelo: o cadastro traz a versão inteira ("COMPASS SPORT 2.0 4x2 Flex
   // 16V Aut."); na mensagem vai só o nome do carro, como na capa do kit.
   const nome = v
-    ? [v.marca, cleanModelo(String(v.modelo ?? "")) || v.modelo, v.ano_modelo || v.ano].filter(Boolean).join(" ")
+    ? [v.marca, nomeCurto(String(v.modelo ?? "")), v.ano_modelo || v.ano].filter(Boolean).join(" ")
     : null;
-  const wa = DIRECT_LIBERADO_PELA_META && config?.ig_direct_ia === true ? null : linkWhatsApp(config, nome, rede);
+  const wa = DIRECT_LIBERADO_PELA_META && config?.ig_direct_ia === true ? null : telefoneWhatsApp(config);
 
   if (!v) {
     return `Oi! Aqui é da ${loja} 😊 Vi seu comentário no nosso post. ` +
       (wa
-        ? `Me chama no WhatsApp e conta qual carro te interessou, que já te passo valor, fotos e detalhes: ${wa}`
+        ? `Me chama no WhatsApp ${wa} e conta qual carro te interessou, que já te passo valor, fotos e detalhes.`
         : `Qual carro te interessou? Me conta aqui que já te passo os detalhes.`);
   }
   const preco = brl(v.preco_sugerido);
@@ -310,7 +319,7 @@ function textoDaRespostaPrivada(config: any, v: any | null, rede: RedeSocial): s
   return `Oi! Aqui é da ${loja} 😊 Vi seu comentário no post do ${nome}.` +
     (dados ? ` Ele está disponível: ${dados}.` : " Ele está disponível.") +
     (wa
-      ? ` Quer mais fotos ou uma simulação de financiamento? Me chama no WhatsApp: ${wa}`
+      ? ` Quer mais fotos ou uma simulação de financiamento? Me chama no WhatsApp ${wa}.`
       : ` Quer mais fotos ou uma simulação de financiamento? É só responder aqui.`);
 }
 
@@ -360,7 +369,7 @@ export async function tratarComentario(t: TenantIg, c: IgComentario & { parentId
   if (erroVeiculo) console.error(`❌ [${t.rede}] carro do post ${c.mediaId}: ${erroVeiculo.message}`);
   const v = vs?.[0] && vs[0].status_venda !== "VENDIDO" ? vs[0] : null;
 
-  const texto = textoDaRespostaPrivada(t.config, v, t.rede);
+  const texto = textoDaRespostaPrivada(t.config, v);
   const erro: { message?: string } = {};
   if (!(await sendIgPrivateReply(c.id, texto, t.creds, erro))) {
     return fechar("falhou", { detalhe: erro.message ?? "Meta recusou a resposta privada", veiculo_id: v?.id ?? null });
