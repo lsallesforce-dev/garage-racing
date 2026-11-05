@@ -1754,15 +1754,6 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
     if (!adVeiculoId) console.log(`📢 [Ad referral] headline injetado (ad_id sem campanha cadastrada): ${adReferral.headline}`);
   }
 
-  // Marca mensagem como lida (ticks azuis) — fire-and-forget.
-  // Só no canal Meta: o tenant de Avisa tem credencial Meta gravada (sobra da
-  // coexistência) e isso disparava uma chamada perdida POR MENSAGEM, sempre
-  // devolvendo "API access blocked" — um round-trip e uma linha vermelha de log
-  // em cada atendimento da APROVE.
-  if (!useAvisa && !viaInstagram && job.messageId && metaCreds.phoneNumberId && metaCreds.accessToken) {
-    markMetaRead(job.messageId, metaCreds).catch(() => {});
-  }
-
   // ── 2. Modo Diretor (!status) ───────────────────────────────────────────────
   const adminPhone = process.env.NEXT_PUBLIC_ZAPI_PHONE;
   const { data: admin } = await supabaseAdmin
@@ -2230,6 +2221,18 @@ Responda apenas com o JSON, sem markdown.`;
     await supabaseAdmin.from("leads").update({ ia_liberada: true }).eq("id", lead.id);
     (lead as any).ia_liberada = true;
     console.log(`✅ [Lead gate] ${phone} liberado por ${motivo} — IA assume a conversa.`);
+  }
+
+  // Tique azul + "digitando..." — fire-and-forget, só DEPOIS do stand-by (4) e do
+  // gate lead-only (4a): o typing_indicator promete uma resposta. Antes ele saía
+  // pra toda mensagem, e na coexistência no celular do dono (Bonitão, 05/11) o
+  // contato em atendimento humano via "digitando..." que nunca virava mensagem —
+  // e a conversa aparecia lida sem o dono ter aberto.
+  // Só no canal Meta: o tenant de Avisa tem credencial Meta gravada (sobra da
+  // coexistência) e isso disparava uma chamada perdida POR MENSAGEM, sempre
+  // devolvendo "API access blocked".
+  if (!useAvisa && !viaInstagram && job.messageId && metaCreds.phoneNumberId && metaCreds.accessToken) {
+    markMetaRead(job.messageId, metaCreds).catch(() => {});
   }
 
   // ── 4b. Guarda anti-loop (robô/lead-fantasma repetindo a MESMA coisa) ────────
