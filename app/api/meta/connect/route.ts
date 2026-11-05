@@ -40,7 +40,10 @@ export async function GET(req: NextRequest) {
     // comentários; pages_messaging = resposta privada a comentário;
     // pages_manage_metadata = inscrever a Página no webhook. Em App Review —
     // até aprovar, só quem tem cargo no app recebe.
-    scope:         "ads_management,pages_manage_ads,business_management,pages_show_list,pages_read_engagement,instagram_basic,pages_manage_posts,instagram_content_publish,instagram_manage_contents,instagram_manage_messages,instagram_manage_comments,pages_manage_metadata,pages_messaging",
+    // Facebook (Messenger + comentários da Página), adicionados ao painel em
+    // 05/11/2026: pages_read_user_content = ler comentário de cliente no
+    // webhook `feed`; pages_manage_engagement = responder o comentário em público.
+    scope:         "ads_management,pages_manage_ads,business_management,pages_show_list,pages_read_engagement,instagram_basic,pages_manage_posts,instagram_content_publish,instagram_manage_contents,instagram_manage_messages,instagram_manage_comments,pages_manage_metadata,pages_messaging,pages_read_user_content,pages_manage_engagement",
     response_type: "code",
     state:         userId,
   });
