@@ -3017,14 +3017,14 @@ function ConfiguracoesConteudo() {
               {metaPaginaSalva && (
                 <div className="bg-white border border-gray-200 rounded-2xl p-4 space-y-3">
                   <div>
-                    <p className="text-[11px] font-black uppercase tracking-widest text-gray-900">Atendimento no Instagram</p>
+                    <p className="text-[11px] font-black uppercase tracking-widest text-gray-900">Atendimento no Instagram e Facebook</p>
                     <p className="text-[11px] text-gray-500 mt-1">
-                      As conversas do direct aparecem no Chat. Ligue a IA para ela responder sozinha.
+                      As conversas do direct e do Messenger aparecem no Chat. Ligue a IA para ela responder sozinha.
                     </p>
                   </div>
                   {([
-                    ["ig_direct_ia", "IA responde o direct", "Atende quem chama a loja no Instagram, como já faz no WhatsApp."],
-                    ["ig_comentarios_ia", "IA responde comentários", "Quem perguntar num post de carro recebe os dados no direct."],
+                    ["ig_direct_ia", "IA responde direct e Messenger", "Atende quem chama a loja no Instagram ou na Página do Facebook, como já faz no WhatsApp."],
+                    ["ig_comentarios_ia", "IA responde comentários", "Quem perguntar num post de carro (Instagram ou Facebook) recebe os dados por mensagem."],
                   ] as const).map(([campo, titulo, ajuda]) => (
                     <button
                       key={campo}
@@ -3054,7 +3054,7 @@ function ConfiguracoesConteudo() {
                     href="/api/meta/connect"
                     className="flex items-center justify-center w-full py-2 rounded-xl border border-blue-200 text-blue-700 hover:bg-blue-50 text-[11px] font-bold transition-colors"
                   >
-                    Reconectar o Facebook para liberar o Instagram
+                    Reconectar o Facebook para liberar o atendimento
                   </a>
                   <p className="text-[10px] text-gray-400">
                     Depois do login, escolha a Página e clique em Salvar configuração. Não precisa desvincular.

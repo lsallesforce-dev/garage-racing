@@ -24,7 +24,7 @@ import { geminiFlashSales, geminiFlashFallback, parseGeminiJson } from "@/lib/ge
  * 'whatsapp' NÃO entra: é o default de quem chegou sem rastro nenhum.
  */
 const ORIGENS_CONFIAVEIS = new Set([
-  "meta_ads", "olx", "portal", "site", "catalogo", "webmotors", "icarros", "napista", "link_whatsapp", "instagram",
+  "meta_ads", "olx", "portal", "site", "catalogo", "webmotors", "icarros", "napista", "link_whatsapp", "instagram", "facebook",
 ]);
 
 export function origemProvaLead(origem: string | null | undefined): boolean {

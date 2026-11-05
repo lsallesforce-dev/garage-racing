@@ -27,6 +27,10 @@ const GRAPH_URL = "https://graph.facebook.com/v23.0";
 const MAX_CHARS = 900;
 
 export const IG_PREFIXO = "ig:";
+/** Messenger (Página do Facebook): `leads.wa_id` = "fb:<PSID>". */
+export const FB_PREFIXO = "fb:";
+
+export type RedeSocial = "instagram" | "facebook";
 
 export interface IgCreds {
   pageId: string;
@@ -42,6 +46,20 @@ export const igsidDoLead = (waId: string): string =>
   String(waId ?? "").slice(IG_PREFIXO.length);
 
 export const waIdDoIgsid = (igsid: string): string => `${IG_PREFIXO}${igsid}`;
+
+export const ehLeadFacebook = (waId: string | null | undefined): boolean =>
+  String(waId ?? "").startsWith(FB_PREFIXO);
+
+/** Lead do Instagram OU do Messenger: não tem telefone, a conversa é pela Página. */
+export const ehLeadSocial = (waId: string | null | undefined): boolean =>
+  ehLeadInstagram(waId) || ehLeadFacebook(waId);
+
+/** Id do cliente na rede (IGSID ou PSID), sem o prefixo. */
+export const idSocialDoLead = (waId: string): string =>
+  String(waId ?? "").replace(/^(ig|fb):/, "");
+
+export const waIdSocial = (rede: RedeSocial, id: string): string =>
+  `${rede === "facebook" ? FB_PREFIXO : IG_PREFIXO}${id}`;
 
 async function graph(
   path: string,
@@ -94,6 +112,19 @@ export async function getIgCreds(userId: string): Promise<IgCreds | null> {
     .select("page_id, page_access_token, instagram_actor_id")
     .eq("user_id", userId)
     .not("instagram_actor_id", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  const p = data?.[0];
+  if (!p?.page_id || !p?.page_access_token) return null;
+  return { pageId: p.page_id, pageToken: p.page_access_token, igId: p.instagram_actor_id };
+}
+
+/** Página do tenant (com ou sem Instagram ligado): é o que o Messenger usa. */
+export async function getPageCreds(userId: string): Promise<IgCreds | null> {
+  const { data } = await supabaseAdmin
+    .from("meta_paginas")
+    .select("page_id, page_access_token, instagram_actor_id")
+    .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(1);
   const p = data?.[0];
@@ -184,9 +215,11 @@ export const sendIgVideo = (igsid: string, url: string, legenda: string | undefi
   sendIgAnexo("video", igsid, url, legenda, creds, errorRef);
 
 /** Nome e @ de quem escreveu. Falha calada: lead sem nome ainda é lead. */
-export async function perfilIg(igsid: string, creds: IgCreds): Promise<{ nome: string | null; username: string | null }> {
+export async function perfilIg(igsid: string, creds: IgCreds, rede: RedeSocial = "instagram"): Promise<{ nome: string | null; username: string | null }> {
   try {
-    const d = await graph(`/${igsid}`, creds.pageToken, { query: { fields: "name,username" } });
+    // Messenger não tem @: pedir `username` num PSID faz a chamada inteira falhar.
+    const fields = rede === "facebook" ? "name" : "name,username";
+    const d = await graph(`/${igsid}`, creds.pageToken, { query: { fields } });
     return { nome: d?.name ?? null, username: d?.username ?? null };
   } catch {
     return { nome: null, username: null };
@@ -223,6 +256,22 @@ export async function replyIgComment(
 ): Promise<boolean> {
   try {
     await graph(`/${commentId}/replies`, creds.pageToken, { method: "POST", query: { message: texto.slice(0, 300) } });
+    return true;
+  } catch (e: any) {
+    if (errorRef) errorRef.message = String(e?.message ?? e).slice(0, 200);
+    return false;
+  }
+}
+
+/** Resposta pública a comentário da Página do Facebook (`pages_manage_engagement`). */
+export async function replyFbComment(
+  commentId: string,
+  texto: string,
+  creds: IgCreds,
+  errorRef?: { message?: string },
+): Promise<boolean> {
+  try {
+    await graph(`/${commentId}/comments`, creds.pageToken, { method: "POST", query: { message: texto.slice(0, 300) } });
     return true;
   } catch (e: any) {
     if (errorRef) errorRef.message = String(e?.message ?? e).slice(0, 200);
@@ -268,7 +317,8 @@ export async function listarComentarios(mediaId: string, creds: IgCreds): Promis
 export async function inscreverPaginaNoWebhook(creds: IgCreds): Promise<{ ok: boolean; detalhe: string }> {
   // `messages` exige pages_messaging; quem conectou sem ela ainda consegue se
   // inscrever por `feed`, que basta pra Meta considerar a Página inscrita.
-  for (const campos of ["messages,messaging_postbacks", "feed"]) {
+  // `feed` traz os comentários dos posts da Página do Facebook.
+  for (const campos of ["messages,messaging_postbacks,feed", "messages,messaging_postbacks", "feed"]) {
     try {
       await graph(`/${creds.pageId}/subscribed_apps`, creds.pageToken, {
         method: "POST",

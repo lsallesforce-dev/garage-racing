@@ -1,5 +1,7 @@
 // lib/instagram-atendimento.ts
-// Entrada do Instagram: direct e comentários.
+// Entrada do Instagram (direct e comentários) e da Página do Facebook
+// (Messenger e comentários). As duas redes usam o mesmo token de Página, o mesmo
+// endpoint de envio e as mesmas regras de janela — por isso moram juntas.
 //
 // Chamado por dois lugares:
 //   - app/api/webhook/meta (objeto "instagram"), em tempo real;
@@ -21,12 +23,14 @@ import { cleanModelo } from "@/lib/marketing-kit";
 import { geminiFlashSales, geminiFlashFallback, parseGeminiJson } from "@/lib/gemini";
 import {
   type IgCreds, type IgComentario,
-  waIdDoIgsid, perfilIg, ehEnvioDoSistema,
-  sendIgPrivateReply, replyIgComment, listarComentarios,
+  type RedeSocial, waIdSocial, perfilIg, ehEnvioDoSistema,
+  sendIgPrivateReply, replyIgComment, replyFbComment, listarComentarios,
 } from "@/lib/instagram";
 
 interface TenantIg {
   userId: string;
+  /** Por qual rede este evento chegou. Decide o prefixo do lead e a resposta pública. */
+  rede: RedeSocial;
   creds: IgCreds;
   config: GarageConfig & Record<string, any>;
 }
@@ -42,10 +46,24 @@ export async function tenantDoInstagram(igId: string): Promise<TenantIg | null> 
     .limit(1);
   const p = pags?.[0];
   if (!p?.user_id || !p.page_access_token) return null;
-  return tenantPorUserId(p.user_id, { pageId: p.page_id, pageToken: p.page_access_token, igId });
+  return tenantPorUserId(p.user_id, { pageId: p.page_id, pageToken: p.page_access_token, igId }, "instagram");
 }
 
-async function tenantPorUserId(userId: string, creds: IgCreds): Promise<TenantIg | null> {
+/** Resolve o tenant pela Página do Facebook (o `entry.id` do objeto "page"). */
+export async function tenantDaPagina(pageId: string): Promise<TenantIg | null> {
+  if (!pageId) return null;
+  const { data: pags } = await supabaseAdmin
+    .from("meta_paginas")
+    .select("user_id, page_id, page_access_token, instagram_actor_id")
+    .eq("page_id", pageId)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  const p = pags?.[0];
+  if (!p?.user_id || !p.page_access_token) return null;
+  return tenantPorUserId(p.user_id, { pageId: p.page_id, pageToken: p.page_access_token, igId: p.instagram_actor_id }, "facebook");
+}
+
+async function tenantPorUserId(userId: string, creds: IgCreds, rede: RedeSocial): Promise<TenantIg | null> {
   const { data: cfgs } = await supabaseAdmin
     .from("config_garage")
     .select(CONFIG_GARAGE_SELECT)
@@ -54,7 +72,7 @@ async function tenantPorUserId(userId: string, creds: IgCreds): Promise<TenantIg
     .limit(1);
   const config = cfgs?.[0] as any;
   if (!config) return null;
-  return { userId, creds, config };
+  return { userId, rede, creds, config };
 }
 
 // ─── Direct ───────────────────────────────────────────────────────────────────
@@ -91,7 +109,7 @@ async function tratarEco(t: TenantIg, ev: any): Promise<void> {
 
   const { data: leads } = await supabaseAdmin
     .from("leads").select("id")
-    .eq("user_id", t.userId).eq("wa_id", waIdDoIgsid(cliente)).limit(1);
+    .eq("user_id", t.userId).eq("wa_id", waIdSocial(t.rede, cliente)).limit(1);
   const leadId = leads?.[0]?.id;
   // Sem lead não há conversa do AutoZap pra assumir (o lojista falando com um
   // amigo pelo direct da loja não vira lead).
@@ -101,7 +119,7 @@ async function tratarEco(t: TenantIg, ev: any): Promise<void> {
   await Promise.all([
     supabaseAdmin.from("mensagens").insert({
       lead_id: leadId,
-      content: texto || "[mídia enviada pelo Instagram]",
+      content: texto || `[mídia enviada pelo ${t.rede === "facebook" ? "Messenger" : "Instagram"}]`,
       remetente: "agente",
       enviado_por_humano: true,
     }),
@@ -109,7 +127,7 @@ async function tratarEco(t: TenantIg, ev: any): Promise<void> {
       .update({ em_atendimento_humano: true, updated_at: new Date().toISOString() })
       .eq("id", leadId),
   ]);
-  console.log(`🙋 [Instagram] lojista respondeu pelo app — lead ${leadId} em atendimento humano`);
+  console.log(`🙋 [${t.rede}] lojista respondeu pelo app — lead ${leadId} em atendimento humano`);
 }
 
 /**
@@ -124,7 +142,7 @@ async function semearLeadDoComentario(t: TenantIg, igsid: string, username: stri
   const { data: coms } = await supabaseAdmin
     .from("ig_comentarios")
     .select("veiculo_id, texto, detalhe")
-    .eq("user_id", t.userId).eq("acao", "respondido")
+    .eq("user_id", t.userId).eq("canal", t.rede).eq("acao", "respondido")
     .gte("created_at", desde)
     .or(filtros.join(","))
     .order("created_at", { ascending: false })
@@ -136,9 +154,9 @@ async function semearLeadDoComentario(t: TenantIg, igsid: string, username: stri
     .from("leads")
     .upsert({
       user_id: t.userId,
-      wa_id: waIdDoIgsid(igsid),
-      canal: "instagram",
-      origem: "instagram",
+      wa_id: waIdSocial(t.rede, igsid),
+      canal: t.rede,
+      origem: t.rede,
       origem_mensagem: `Comentou no post: "${String(c.texto ?? "").slice(0, 120)}"`,
       ...(c.veiculo_id ? { veiculo_id: c.veiculo_id } : {}),
       ...(username ? { ig_username: username } : {}),
@@ -156,19 +174,19 @@ async function tratarMensagem(t: TenantIg, ev: any): Promise<void> {
   if (msg.is_echo) return tratarEco(t, ev);
 
   const igsid = String(ev?.sender?.id ?? "");
-  if (!igsid || igsid === t.creds.igId) return;
+  if (!igsid || igsid === t.creds.igId || igsid === t.creds.pageId) return;
   const mid: string | null = msg.mid ?? null;
   if (mid && await isDuplicateMessage(t.userId, mid)) return;
 
   if (!assinaturaAtiva(t.config as any)) {
-    console.warn(`⏸️ [Instagram] tenant ${t.userId} com acesso expirado — direct ignorado`);
+    console.warn(`⏸️ [${t.rede}] tenant ${t.userId} com acesso expirado — mensagem ignorada`);
     return;
   }
 
   const { texto, audioUrl } = conteudoDaMensagem(msg);
   if (!texto && !audioUrl) return;
 
-  const phone = waIdDoIgsid(igsid);
+  const phone = waIdSocial(t.rede, igsid);
   const { data: leads } = await supabaseAdmin
     .from("leads").select("id, nome, ig_username")
     .eq("user_id", t.userId).eq("wa_id", phone).limit(1);
@@ -176,12 +194,12 @@ async function tratarMensagem(t: TenantIg, ev: any): Promise<void> {
 
   // Perfil só quando falta: é uma chamada à Meta por mensagem.
   const igPerfil = !leadExistente?.nome || !leadExistente?.ig_username
-    ? await perfilIg(igsid, t.creds)
+    ? await perfilIg(igsid, t.creds, t.rede)
     : { nome: leadExistente.nome, username: leadExistente.ig_username };
 
   if (!leadExistente) await semearLeadDoComentario(t, igsid, igPerfil.username);
 
-  // IA desligada (interruptor do Instagram ou agente pausado): a mensagem entra
+  // IA desligada (interruptor do direct, que vale pro Messenger também, ou agente pausado): a mensagem entra
   // no Chat pro vendedor responder, e o agente não gera resposta.
   const iaLigada = t.config.ig_direct_ia === true && t.config.agente_pausado !== true;
 
@@ -196,7 +214,7 @@ async function tratarMensagem(t: TenantIg, ev: any): Promise<void> {
     messageId: mid,
     tenantUserId: t.userId,
     garageConfig: t.config,
-    canal: "instagram",
+    canal: t.rede,
     igCreds: t.creds,
     igPerfil,
     ...(!iaLigada || !allowed || atrasada ? { skipSend: true } : {}),
@@ -213,12 +231,12 @@ async function tratarMensagem(t: TenantIg, ev: any): Promise<void> {
       ultimoErro = e;
     }
   }
-  await logWebhookError({ tenantUserId: t.userId, phone, messageId: mid, etapa: "processamento_instagram", erro: ultimoErro });
+  await logWebhookError({ tenantUserId: t.userId, phone, messageId: mid, etapa: `processamento_${t.rede}`, erro: ultimoErro });
 }
 
 // ─── Comentários ──────────────────────────────────────────────────────────────
 
-const PROMPT_COMENTARIO = `Você lê um comentário feito no post de um carro à venda no Instagram de uma revenda.
+const PROMPT_COMENTARIO = `Você lê um comentário feito no post de um carro à venda no Instagram ou no Facebook de uma revenda.
 Responda se quem comentou parece INTERESSADO EM COMPRAR ou quer INFORMAÇÃO sobre o carro.
 
 É interessado (true): pergunta preço, valor, km, ano, parcela, entrada, financiamento, troca, cidade, "ainda tem?",
@@ -259,10 +277,11 @@ const brl = (v: unknown) =>
 const DIRECT_LIBERADO_PELA_META = false;
 
 /** Link do WhatsApp do agente já com a mensagem pronta (que carrega o carro). */
-function linkWhatsApp(config: any, carro: string | null): string | null {
+function linkWhatsApp(config: any, carro: string | null, rede: RedeSocial): string | null {
   const num = String(config?.whatsapp_agente || config?.whatsapp || "").replace(/\D/g, "").replace(/^(?!55)/, "55");
   if (num.length < 12) return null;
-  const msg = carro ? `Oi! Vi o ${carro} no Instagram e quero saber mais.` : "Oi! Vim pelo Instagram e quero saber mais.";
+  const onde = rede === "facebook" ? "Facebook" : "Instagram";
+  const msg = carro ? `Oi! Vi o ${carro} no ${onde} e quero saber mais.` : `Oi! Vim pelo ${onde} e quero saber mais.`;
   return `https://wa.me/${num}?text=${encodeURIComponent(msg)}`;
 }
 
@@ -270,14 +289,14 @@ function linkWhatsApp(config: any, carro: string | null): string | null {
  * Texto da resposta privada. Montado com dado do banco, sem IA: é UMA mensagem
  * só e não pode sair com preço inventado.
  */
-function textoDaRespostaPrivada(config: any, v: any | null): string {
+function textoDaRespostaPrivada(config: any, v: any | null, rede: RedeSocial): string {
   const loja = config?.nome_fantasia || config?.nome_empresa || "nossa loja";
   // cleanModelo: o cadastro traz a versão inteira ("COMPASS SPORT 2.0 4x2 Flex
   // 16V Aut."); na mensagem vai só o nome do carro, como na capa do kit.
   const nome = v
     ? [v.marca, cleanModelo(String(v.modelo ?? "")) || v.modelo, v.ano_modelo || v.ano].filter(Boolean).join(" ")
     : null;
-  const wa = DIRECT_LIBERADO_PELA_META && config?.ig_direct_ia === true ? null : linkWhatsApp(config, nome);
+  const wa = DIRECT_LIBERADO_PELA_META && config?.ig_direct_ia === true ? null : linkWhatsApp(config, nome, rede);
 
   if (!v) {
     return `Oi! Aqui é da ${loja} 😊 Vi seu comentário no nosso post. ` +
@@ -300,7 +319,7 @@ export async function tratarComentario(t: TenantIg, c: IgComentario & { parentId
   if (t.config.ig_comentarios_ia !== true) return "desligado";
   if (!c.id || !c.texto.trim()) return "vazio";
   if (c.parentId) return "resposta";                         // resposta a outro comentário (inclui as nossas)
-  if (c.autorId && c.autorId === t.creds.igId) return "proprio";
+  if (c.autorId && (c.autorId === t.creds.igId || c.autorId === t.creds.pageId)) return "proprio";
   if (!assinaturaAtiva(t.config as any)) return "expirado";
 
   // Reserva o comentário ANTES de qualquer trabalho. Se já existe, outro
@@ -308,6 +327,7 @@ export async function tratarComentario(t: TenantIg, c: IgComentario & { parentId
   const { error: jaExiste } = await supabaseAdmin.from("ig_comentarios").insert({
     comment_id: c.id,
     user_id: t.userId,
+    canal: t.rede,
     media_id: c.mediaId,
     autor_id: c.autorId,
     autor_username: c.autorUsername,
@@ -337,17 +357,18 @@ export async function tratarComentario(t: TenantIg, c: IgComentario & { parentId
     .eq("user_id", t.userId)
     .contains("marketing_posts", JSON.stringify([{ post_id: c.mediaId }]))
     .limit(1);
-  if (erroVeiculo) console.error(`❌ [Instagram] carro do post ${c.mediaId}: ${erroVeiculo.message}`);
+  if (erroVeiculo) console.error(`❌ [${t.rede}] carro do post ${c.mediaId}: ${erroVeiculo.message}`);
   const v = vs?.[0] && vs[0].status_venda !== "VENDIDO" ? vs[0] : null;
 
-  const texto = textoDaRespostaPrivada(t.config, v);
+  const texto = textoDaRespostaPrivada(t.config, v, t.rede);
   const erro: { message?: string } = {};
   if (!(await sendIgPrivateReply(c.id, texto, t.creds, erro))) {
     return fechar("falhou", { detalhe: erro.message ?? "Meta recusou a resposta privada", veiculo_id: v?.id ?? null });
   }
   // A pública é cortesia: se falhar, o cliente já recebeu o que importa.
-  await replyIgComment(c.id, "Te chamei no direct 😉", t.creds);
-  console.log(`💬 [Instagram] comentário ${c.id} respondido (tenant ${t.userId}, veículo ${v?.id ?? "—"})`);
+  if (t.rede === "facebook") await replyFbComment(c.id, "Te chamei no Messenger 😉", t.creds);
+  else await replyIgComment(c.id, "Te chamei no direct 😉", t.creds);
+  console.log(`💬 [${t.rede}] comentário ${c.id} respondido (tenant ${t.userId}, veículo ${v?.id ?? "—"})`);
   // `detalhe` guarda o texto enviado: vira a 1ª mensagem do histórico quando o
   // cliente responder no direct (semearLeadDoComentario).
   return fechar("respondido", { detalhe: texto, veiculo_id: v?.id ?? null });
@@ -392,6 +413,49 @@ export async function processarWebhookInstagram(payload: any): Promise<void> {
   }
 }
 
+/**
+ * Processa um payload do objeto "page" (Página do Facebook): Messenger em
+ * `entry.messaging` e comentários em `changes[field=feed]`. Nunca lança.
+ * O leadgen também chega como "page" — a rota trata esse antes de chamar aqui.
+ */
+export async function processarWebhookFacebook(payload: any): Promise<void> {
+  for (const entry of payload?.entry ?? []) {
+    try {
+      const evs: any[] = entry?.messaging ?? [];
+      const feed = (entry?.changes ?? []).filter((ch: any) => ch?.field === "feed");
+      if (!evs.length && !feed.length) continue;
+      console.log(`📥 [Facebook] página ${entry?.id}: ${evs.length} msg(s), ${feed.length} feed`);
+      const t = await tenantDaPagina(String(entry?.id ?? ""));
+      if (!t) {
+        console.warn(`⚠️ [Facebook] nenhum tenant para a página ${entry?.id}`);
+        continue;
+      }
+      for (const ev of evs) await tratarMensagem(t, ev);
+      for (const ch of feed) {
+        const val = ch.value ?? {};
+        // `feed` traz post, curtida, edição... Só interessa comentário novo.
+        if (val.item !== "comment" || val.verb !== "add") continue;
+        // Comentário de 1º nível vem com parent_id = id do post; resposta a outro
+        // comentário vem com o id do comentário pai.
+        const parentId = val.parent_id && val.parent_id !== val.post_id ? String(val.parent_id) : null;
+        const criado = Number(val.created_time);
+        await tratarComentario(t, {
+          id: String(val.comment_id ?? ""),
+          texto: String(val.message ?? ""),
+          autorId: val.from?.id ? String(val.from.id) : null,
+          autorUsername: val.from?.name ?? null,
+          mediaId: String(val.post_id ?? ""),
+          criadoEm: Number.isFinite(criado) && criado > 0 ? new Date(criado * 1000).toISOString() : null,
+          parentId,
+        });
+      }
+    } catch (e) {
+      console.error("❌ [Facebook] webhook:", e);
+      await logWebhookError({ tenantUserId: null, etapa: "webhook_facebook", erro: e }).catch(() => {});
+    }
+  }
+}
+
 // ─── Varredura (cron) ─────────────────────────────────────────────────────────
 
 /** Varre os posts recentes dos tenants com a IA de comentários ligada. */
@@ -408,7 +472,7 @@ export async function varrerComentarios(): Promise<{ tenants: number; posts: num
       .order("created_at", { ascending: false }).limit(1);
     const p = pags?.[0];
     if (!p?.page_access_token) continue;
-    const t = await tenantPorUserId(userId, { pageId: p.page_id, pageToken: p.page_access_token, igId: p.instagram_actor_id });
+    const t = await tenantPorUserId(userId, { pageId: p.page_id, pageToken: p.page_access_token, igId: p.instagram_actor_id }, "instagram");
     if (!t || t.config.ig_comentarios_ia !== true) continue;
     out.tenants++;
 

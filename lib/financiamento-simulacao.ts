@@ -108,7 +108,7 @@ export async function iniciarSimulacao(p: {
 }): Promise<InicioSimulacao> {
   if (!credproConfigurada()) return { ok: false, motivo: "CREDPRO_API_KEY ausente" };
   if (!(await financiamentoAutoLigado(p.tenant))) return { ok: false, motivo: "desligado no tenant" };
-  if (p.phone.startsWith("ig:")) return { ok: false, motivo: "lead do Instagram sem celular" };
+  if (/^(ig|fb):/.test(p.phone)) return { ok: false, motivo: "lead do Instagram/Messenger sem celular" };
   if (!p.veiculoId) return { ok: false, motivo: "sem veículo em foco" };
 
   const nascimento = nascimentoISO(p.coleta.nascimento);

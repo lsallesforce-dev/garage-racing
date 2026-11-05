@@ -20,7 +20,7 @@ import { buscarDadosLead } from "@/lib/meta-ads";
 import { sendMetaMessage, sendMetaCtaButton } from "@/lib/meta";
 import { sendAvisaMessage } from "@/lib/avisa";
 import { CONFIG_GARAGE_SELECT } from "@/lib/config-garage";
-import { processarWebhookInstagram } from "@/lib/instagram-atendimento";
+import { processarWebhookInstagram, processarWebhookFacebook } from "@/lib/instagram-atendimento";
 
 export const maxDuration = 300;
 
@@ -645,6 +645,14 @@ export async function POST(req: NextRequest) {
         }
       });
       return NextResponse.json({ status: "leadgen_queued" });
+    }
+
+    // Página do Facebook (Messenger e comentários) — objeto "page", o mesmo do
+    // leadgen, que já saiu acima. Sem `messaging` nem `feed` não é com a gente.
+    if (payload?.object === "page" && payload?.entry?.some((e: any) =>
+      (e?.messaging ?? []).length > 0 || (e?.changes ?? []).some((c: any) => c?.field === "feed"))) {
+      after(() => processarWebhookFacebook(payload));
+      return NextResponse.json({ status: "queued_facebook" });
     }
 
     // Coexistência: eco de mensagem que o lojista enviou pelo WhatsApp Business App

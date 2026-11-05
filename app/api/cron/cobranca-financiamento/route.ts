@@ -149,7 +149,7 @@ export async function GET(req: NextRequest) {
           .gte("updated_at", tres).order("updated_at", { ascending: true }).limit(40);
         const sem: any[] = [];
         for (const l of emHumano ?? []) {
-          if (String(l.wa_id).startsWith("ig:")) continue;
+          if (/^(ig|fb):/.test(String(l.wa_id))) continue;
           const { count } = await supabaseAdmin.from("mensagens").select("id", { count: "exact", head: true })
             .eq("lead_id", l.id).eq("enviado_por_humano", true);
           if ((count ?? 0) === 0) sem.push(l);
@@ -179,7 +179,7 @@ export async function GET(req: NextRequest) {
 
     let acoes = 0;
     for (const l of (leads ?? []) as any[]) {
-      if (!l.wa_id || String(l.wa_id).startsWith("ig:")) continue;
+      if (!l.wa_id || /^(ig|fb):/.test(String(l.wa_id))) continue;
       const desde = l.instrucao_pendente_desde as string;
 
       // Alguém da loja escreveu depois do pedido → cobrança encerrada.

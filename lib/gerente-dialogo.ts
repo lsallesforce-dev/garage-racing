@@ -134,7 +134,7 @@ export async function tratarMensagemDoGerente(p: {
     .order("instrucao_pendente_desde", { ascending: false })
     .limit(10);
   const candidatos: Candidato[] = (data ?? [])
-    .filter((l: any) => l.wa_id && !String(l.wa_id).startsWith("ig:") && String(l.wa_id).replace(/\D/g, "") !== p.gerentePhone)
+    .filter((l: any) => l.wa_id && !/^(ig|fb):/.test(String(l.wa_id)) && String(l.wa_id).replace(/\D/g, "") !== p.gerentePhone)
     .map((l: any) => {
       const v = Array.isArray(l.veiculos) ? l.veiculos[0] : l.veiculos;
       return {

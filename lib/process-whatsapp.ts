@@ -19,7 +19,7 @@ import { sendAvisaMessage, sendAvisaImage, sendAvisaVideo, sendAvisaAudio } from
 import { gerarRelatorioPista } from "@/lib/leads";
 import { resolverVendedor } from "@/lib/lead-routing";
 import { classificarLead, liberaAutomatico, origemProvaLead, MAX_MSGS_PARA_CLASSIFICAR } from "@/lib/lead-gate";
-import { sendIgMessage, sendIgImage, sendIgVideo, igsidDoLead, ehLeadInstagram, type IgCreds } from "@/lib/instagram";
+import { sendIgMessage, sendIgImage, sendIgVideo, idSocialDoLead, ehLeadSocial, type IgCreds } from "@/lib/instagram";
 import { transcreverAudioCliente } from "@/lib/transcribe";
 import { decryptWhatsAppAudio } from "@/lib/whatsapp-audio";
 import { decryptWhatsAppImage } from "@/lib/whatsapp-image";
@@ -253,9 +253,10 @@ export interface WhatsAppJobPayload {
    *  está em `mensagens` — não grava de novo. Gravar duplicava a fala no painel e
    *  renovava a janela do cron, que reprocessava pra sempre. */
   reprocesso?: boolean;
-  // Instagram (direct): `phone` vem como "ig:<IGSID>" e a resposta ao CLIENTE sai
-  // pelo Instagram. Alerta pro gerente continua no WhatsApp do tenant.
-  canal?: "whatsapp" | "instagram";
+  // Instagram (direct) / Facebook (Messenger): `phone` vem como "ig:<IGSID>" ou
+  // "fb:<PSID>" e a resposta ao CLIENTE sai pela Página. Alerta pro gerente
+  // continua no WhatsApp do tenant.
+  canal?: "whatsapp" | "instagram" | "facebook";
   igCreds?: IgCreds | null;
   igPerfil?: { nome: string | null; username: string | null } | null;
   adReferral?: {           // Click-to-WhatsApp: contexto do anúncio Meta Ads
@@ -298,20 +299,23 @@ function buildBriefingVendedor(
   };
 }
 
-// Vai junto das instruções do dono quando a conversa é no direct. O resto do
-// prompt foi escrito pensando em WhatsApp; isto corrige só o que muda de fato.
-const INSTRUCAO_CANAL_INSTAGRAM =
-  "CANAL DESTA CONVERSA: Instagram (direct), não WhatsApp. O cliente está falando com a loja pelo Instagram: " +
-  "responda tudo aqui mesmo, com mensagens curtas. Não diga que está no WhatsApp nem peça pra ele chamar no WhatsApp " +
-  "sem motivo. Você não tem o telefone dele: se precisar (agendar visita, simular financiamento), peça o número com " +
-  "naturalidade. Não envie áudio.";
+// Vai junto das instruções do dono quando a conversa é no direct/Messenger. O
+// resto do prompt foi escrito pensando em WhatsApp; isto corrige só o que muda.
+function instrucaoCanalSocial(canal: "instagram" | "facebook"): string {
+  const onde = canal === "facebook" ? "Facebook (Messenger)" : "Instagram (direct)";
+  const rede = canal === "facebook" ? "Messenger" : "Instagram";
+  return `CANAL DESTA CONVERSA: ${onde}, não WhatsApp. O cliente está falando com a loja pelo ${rede}: ` +
+    "responda tudo aqui mesmo, com mensagens curtas. Não diga que está no WhatsApp nem peça pra ele chamar no WhatsApp " +
+    "sem motivo. Você não tem o telefone dele: se precisar (agendar visita, simular financiamento), peça o número com " +
+    "naturalidade. Não envie áudio.";
+}
 
 /**
  * Link que o gerente abre a partir de um alerta. Lead de WhatsApp → wa.me.
- * Lead do Instagram não tem telefone: abre a conversa no Chat do AutoZap.
+ * Lead do Instagram/Messenger não tem telefone: abre a conversa no Chat do AutoZap.
  */
 function linkDaConversa(phone: string): string {
-  if (ehLeadInstagram(phone)) {
+  if (ehLeadSocial(phone)) {
     const base = (process.env.NEXT_PUBLIC_APP_URL || "https://www.autozap.digital").replace(/\/$/, "");
     return `${base}/chat?wa_id=${encodeURIComponent(phone)}`;
   }
@@ -1291,8 +1295,9 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
 
   // Instagram: só a conversa com o CLIENTE (to === phone) sai por lá. Qualquer
   // outro destino — gerente, financeiro, vendedor — segue no WhatsApp do tenant.
-  const igCreds = job.canal === "instagram" ? job.igCreds ?? null : null;
-  const viaInstagram = !!igCreds && ehLeadInstagram(phone);
+  const canalSocial = job.canal === "instagram" || job.canal === "facebook" ? job.canal : null;
+  const igCreds = canalSocial ? job.igCreds ?? null : null;
+  const viaInstagram = !!igCreds && ehLeadSocial(phone);
   const paraIg = (to: string) => viaInstagram && to === phone;
 
   // Sem canal configurado → aborta imediatamente, sem chamar nada de Meta
@@ -1330,7 +1335,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   const sendText = async (to: string, text: string): Promise<boolean> => {
     const errorRef: { message?: string } = {};
     const r = paraIg(to)
-      ? await sendIgMessage(igsidDoLead(to), text, igCreds!, undefined, errorRef)
+      ? await sendIgMessage(idSocialDoLead(to), text, igCreds!, undefined, errorRef)
       : useAvisa
       ? await sendAvisaMessage(to, text, avisaCreds, undefined, errorRef)
       : await sendMetaMessage(to, text, metaCreds);
@@ -1430,7 +1435,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   const sendImage = async (to: string, url: string, caption?: string): Promise<boolean> => {
     const errorRef: { message?: string } = {};
     const r = paraIg(to)
-      ? await sendIgImage(igsidDoLead(to), url, caption, igCreds!, errorRef)
+      ? await sendIgImage(idSocialDoLead(to), url, caption, igCreds!, errorRef)
       : useAvisa
       ? await sendAvisaImage(to, url, caption, avisaCreds, errorRef)
       : await sendMetaImage(to, url, caption, metaCreds);
@@ -1446,7 +1451,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   const sendVideo = async (to: string, url: string, caption?: string): Promise<boolean> => {
     const errorRef: { message?: string } = {};
     const r = paraIg(to)
-      ? await sendIgVideo(igsidDoLead(to), url, caption, igCreds!, errorRef)
+      ? await sendIgVideo(idSocialDoLead(to), url, caption, igCreds!, errorRef)
       : useAvisa
       ? await sendAvisaVideo(to, url, caption, avisaCreds, errorRef)
       : await sendMetaVideo(to, url, caption, metaCreds);
@@ -1958,9 +1963,9 @@ Responda apenas com o JSON, sem markdown.`;
   if (viaInstagram) {
     // Quem chama a loja no direct veio de um canal de venda: origem rastreada,
     // não cai na heurística de portal abaixo.
-    upsertData.canal = "instagram";
-    upsertData.origem = "instagram";
-    if (job.igPerfil?.username) upsertData.ig_username = job.igPerfil.username;
+    upsertData.canal = canalSocial ?? "instagram";
+    upsertData.origem = canalSocial ?? "instagram";
+    if (canalSocial === "instagram" && job.igPerfil?.username) upsertData.ig_username = job.igPerfil.username;
   } else if (adReferral?.headline && adReferral.headline.length > 3) {
     upsertData.origem_mensagem = `Lead do anúncio: ${adReferral.headline}`;
     upsertData.origem = "meta_ads";
@@ -4086,7 +4091,7 @@ Responda apenas com o JSON, sem markdown.`;
       midiaSendada: midiaSendadaLabel,
       tomVenda: garageConfig?.tom_venda,
       instrucoesAdicionais: viaInstagram
-        ? [garageConfig?.instrucoes_adicionais, INSTRUCAO_CANAL_INSTAGRAM].filter(Boolean).join("\n\n")
+        ? [garageConfig?.instrucoes_adicionais, instrucaoCanalSocial(canalSocial ?? "instagram")].filter(Boolean).join("\n\n")
         : garageConfig?.instrucoes_adicionais,
       ofertaEspecial: garageConfig?.oferta_especial,
       horarioFuncionamento: garageConfig?.horario_funcionamento,

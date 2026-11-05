@@ -60,6 +60,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; dot: string 
 // @, e nunca o id cru ("ig:1784...").
 function contatoDoLead(l: { wa_id: string; canal?: string | null; ig_username?: string | null }): string {
   if (l.canal === "instagram") return l.ig_username ? `@${l.ig_username}` : "Instagram";
+  if (l.canal === "facebook") return "Messenger";
   return l.wa_id;
 }
 
@@ -655,7 +656,7 @@ function CentralChatInner() {
                   {selectedLead.nome || "Cliente Interessado"}
                 </h3>
                 <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                  <p className={`text-[9px] font-bold text-gray-400 tracking-widest ${selectedLead.canal === "instagram" ? "" : "uppercase"}`}>
+                  <p className={`text-[9px] font-bold text-gray-400 tracking-widest ${selectedLead.canal === "instagram" || selectedLead.canal === "facebook" ? "" : "uppercase"}`}>
                     {contatoDoLead(selectedLead)}
                   </p>
                   {statusCfg && (
@@ -788,6 +789,16 @@ function CentralChatInner() {
                 >
                   <span className="hidden lg:inline">Instagram</span>
                   <span className="lg:hidden">IG</span>
+                </a>
+              ) : selectedLead.canal === "facebook" ? (
+                <a
+                  href="https://business.facebook.com/latest/inbox/messenger"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white text-[9px] font-black uppercase rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/20 whitespace-nowrap"
+                >
+                  <span className="hidden lg:inline">Messenger</span>
+                  <span className="lg:hidden">FB</span>
                 </a>
               ) : (
                 <a

@@ -85,7 +85,7 @@ export async function GET(req: NextRequest) {
 
       if (!lead || lead.em_atendimento_humano) { ignorados++; continue; }
       // Lead do Instagram: o reenvio/reprocessamento daqui é de WhatsApp.
-      if (String(lead.wa_id).startsWith("ig:")) { ignorados++; continue; }
+      if (/^(ig|fb):/.test(String(lead.wa_id))) { ignorados++; continue; }
 
       const { data: cfg } = await supabaseAdmin
         .from("config_garage")
@@ -172,7 +172,7 @@ export async function GET(req: NextRequest) {
 
       if (!lead || lead.em_atendimento_humano) { ignorados++; continue; }
       // Lead do Instagram: o reenvio/reprocessamento daqui é de WhatsApp.
-      if (String(lead.wa_id).startsWith("ig:")) { ignorados++; continue; }
+      if (/^(ig|fb):/.test(String(lead.wa_id))) { ignorados++; continue; }
       // Conversa importada do celular (sync de histórico da coexistência) não é
       // "webhook que falhou": a msg do cliente entra com o horário ORIGINAL e,
       // se for de hoje, cai na janela de 2h. Bonitão, 03/11: a IA respondeu

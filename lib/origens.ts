@@ -11,6 +11,7 @@
 //   meta_ads      → app/api/webhook/meta + process-whatsapp (adReferral/CTWA)
 //   coexistencia  → app/api/webhook/meta (contato via coexistência)
 //   instagram     → lib/instagram-atendimento (direct e comentário no post)
+//   facebook      → lib/instagram-atendimento (Messenger e comentário na Página)
 //   olx           → app/api/webhook/olx, olx/[garageId], olx-chat/[garageId]
 //   webmotors     → app/api/webhook/webmotors
 //   mercadolivre  → app/api/webhook/mercadolivre
@@ -56,6 +57,10 @@ export const ORIGENS: Record<string, OrigemCfg> = {
   instagram: {
     label: "Instagram", emoji: "📸", bar: "bg-pink-500", bg: "bg-pink-50",
     text: "text-pink-600", badge: "bg-pink-50 text-pink-600 border-pink-200", hex: "#ec4899",
+  },
+  facebook: {
+    label: "Facebook", emoji: "📘", bar: "bg-blue-600", bg: "bg-blue-50",
+    text: "text-blue-700", badge: "bg-blue-50 text-blue-700 border-blue-200", hex: "#2563eb",
   },
   olx: {
     label: "OLX", emoji: "🟠", bar: "bg-orange-500", bg: "bg-orange-50",
