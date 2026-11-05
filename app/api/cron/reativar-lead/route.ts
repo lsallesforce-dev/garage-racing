@@ -44,10 +44,15 @@ export async function POST(req: NextRequest) {
   // ── Carrega lead ─────────────────────────────────────────────────────────────
   const { data: lead } = await supabaseAdmin
     .from("leads")
-    .select("id, wa_id, nome, user_id, veiculo_id, status, etapa_funil, resumo_negociacao, em_atendimento_humano, followup_count")
+    .select("id, wa_id, nome, user_id, veiculo_id, status, etapa_funil, resumo_negociacao, em_atendimento_humano, followup_count, ia_liberada")
     .eq("id", leadId)
     .eq("user_id", tenantUserId)
     .single();
+
+  // Contato marcado como pessoal no painel nunca recebe reativação de venda.
+  if (lead?.ia_liberada === false) {
+    return NextResponse.json({ ok: true, skipped: "contato pessoal" });
+  }
 
   // Lead do Instagram não tem telefone e não pode receber mensagem fora das 24h.
   if (lead && /^(ig|fb):/.test(String(lead.wa_id))) {

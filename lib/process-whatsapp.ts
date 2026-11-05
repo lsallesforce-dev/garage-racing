@@ -446,13 +446,14 @@ FORMATO DA RESPOSTA DE ESTADO: no máximo 2 fatos por resposta, seco, sem adjeti
     : `2. ESTADO DO CARRO: Se perguntarem sobre qualidade, EXALTE O VEÍCULO com termos profissionais ("excelente estado", "muito novo", "todo revisado"). Varie as palavras.`;
 
   return `
-Você é ${p.nomeAgente}, vendedor(a) de veículos da ${p.nomeEmpresa}, atendendo pelo WhatsApp. Você é uma PESSOA de verdade, não um robô: conhece o estoque na ponta da língua, é objetivo e simpático na medida, e fala como gente fala no zap: frase curta, natural, sem floreio e SEM GÍRIA. Profissional e relaxado ao mesmo tempo; nunca formal/corporativo, nunca caricato, nunca animadinho de call center.
+Você é ${p.nomeAgente}, vendedor(a) de veículos da ${p.nomeEmpresa}, atendendo pelo WhatsApp. Você fala como uma PESSOA de verdade, não como robô: conhece o estoque na ponta da língua, é objetivo e simpático na medida, e fala como gente fala no zap: frase curta, natural, sem floreio e SEM GÍRIA. Profissional e relaxado ao mesmo tempo; nunca formal/corporativo, nunca caricato, nunca animadinho de call center.
 Seu objetivo é vender conduzindo um papo natural e direto, indistinguível de um humano.
 ${tomBlock}${repasseBlock}
 [DIRETRIZES DE PERSONALIDADE E TOM]
 - Comporte-se como um vendedor profissional: ágil, educado e direto ao ponto.
 - LINGUAGEM: tom natural e comercial, português informal porém correto. NUNCA caricato. ⛔ PROIBIDO GÍRIA: nada de "blz", "mano", "tá ligado", "firmeza", "suave", "de boa", "tmj", "kkk". Mesmo que o cliente use gíria, você responde natural mas SEM gíria.
 - ⛔ NUNCA use travessão (—) nem meia-risca (–) na resposta. Ninguém digita isso no WhatsApp; é cara de robô/IA. Use vírgula, ponto ou reticências. Errado: "Tá no pátio — pode vir". Certo: "Tá no pátio, pode vir."
+- ⛔ SE PERGUNTAREM SE É IA/ROBÔ: se o cliente perguntar se é robô, IA, bot, atendimento automático, "é você mesmo?" ou "tô falando com uma pessoa?", NUNCA negue e NUNCA diga que é uma pessoa ou que é o dono da loja. Assuma numa frase curta e natural que você é o assistente virtual da ${p.nomeEmpresa}, diga que chama alguém da equipe se ele preferir, e na mesma mensagem siga respondendo o que ele queria. Ex.: "Sou o assistente virtual da loja, mas se preferir chamo alguém da equipe pra falar com você. O Fox tem 145 mil km." Caso real: corretor perguntou "É IA no atendimento?" e a resposta "Não, sou o Eduardo mesmo" mentiu pro cliente.
 - ⛔ REGRA ANTI-RESPOSTA-VAZIA: Toda resposta DEVE conter informação concreta. Se o cliente perguntou preço, a resposta DEVE conter o preço. Se perguntou km, DEVE conter o km. É PROIBIDO TERMINANTE responder com frases genéricas como "Pronto para te ajudar!", "Fico à disposição!", "É só chamar!" sem responder o que foi perguntado. Cada mensagem sua deve ter SUBSTÂNCIA — algo que o cliente não sabia antes de ler.
 - ⛔ REGRA ANTI-REPETIÇÃO DE FRASE: NUNCA repita a mesma frase ou frase quase idêntica em mensagens diferentes da conversa. Varie o jeito de falar a cada turno.
 - ⛔ EMOJI MODERADO: Use emoji no MÁXIMO 1 vez a cada 5 mensagens enviadas. Vendedor profissional é sóbrio. PROIBIDO terminar mensagens com 😉 ou 😊 em sequência. Se as últimas 3 mensagens suas têm emoji, a próxima NÃO pode ter. Emojis excessivos = sinal de robô.
@@ -2182,6 +2183,14 @@ Responda apenas com o JSON, sem markdown.`;
   // leads.ia_liberada: null = aguardando, true = lead, false = contato pessoal.
   // O dono decide na mão pelo painel (filtro AGUARDANDO_IA) ou mandando !ia /
   // !off na própria conversa pelo celular.
+  // Contato marcado como pessoal no painel (qualquer tenant, não só lead-only):
+  // a IA nunca responde, mesmo que algum cron tire o lead do atendimento humano.
+  if (lead?.ia_liberada === false && garageConfig?.ia_modo_lead_only !== true) {
+    console.log(`🔕 [Pessoal] ${phone} marcado como contato pessoal no painel — IA não responde.`);
+    if (lead.id) await releaseLeadLock(tenantUserId, lead.id).catch(() => {});
+    return;
+  }
+
   if (garageConfig?.ia_modo_lead_only === true && lead && lead.ia_liberada !== true) {
     if (lead.ia_liberada === false) {
       console.log(`🔕 [Lead gate] ${phone} marcado como contato pessoal — IA não responde.`);
@@ -2873,7 +2882,16 @@ Responda apenas com o JSON, sem markdown.`;
   const mensagemClientePura = semBlocosDeContexto(userMessage)
     .replace(/\[Cliente enviou foto\(s\) do veículo\]/g, "")
     .trim();
-  const mensagemLower = mensagemClientePura.toLowerCase();
+  // mensagemLower só alimenta a decisão de mídia (passos 11/11b). A leitura da
+  // imagem que o cliente mandou ("[Cliente enviou uma imagem: Banner…]", "[Cliente
+  // mandou um PRINT de anuncio…]") é anotação do sistema: a palavra "imagem" dela
+  // + qualquer "pode/tem/quer" do texto virava pedido de foto. Caso real: vendedor
+  // da Parcelex mandou banner de campanha pro dono da Bonitão (05/11) e levou 9
+  // fotos de um Taos. A legenda que o cliente escreveu fica (vem depois do bloco).
+  const mensagemLower = mensagemClientePura
+    .replace(/\[Cliente (?:enviou uma imagem|mandou um PRINT de anuncio)[\s\S]*?\]\s*/g, " ")
+    .trim()
+    .toLowerCase();
   // Usa o WhatsApp do gerente configurado no painel; fallback para variável de ambiente
   const _gerenteRaw = garageConfig?.whatsapp || process.env.NEXT_PUBLIC_ZAPI_PHONE;
   const gerentePhone = _gerenteRaw

@@ -158,7 +158,18 @@ export async function GET(req: NextRequest) {
       .limit(1000);
     const ativos = (emHumano ?? []).map((l) => l.id).filter((id) => !paradosIds.has(id));
 
+    // Contato marcado como pessoal no painel (ia_liberada=false) não é lead
+    // parado: sem alerta e, principalmente, sem a IA "retomar" a conversa.
+    const { data: pessoais } = await supabaseAdmin
+      .from("leads")
+      .select("id")
+      .eq("user_id", tenantUserId)
+      .eq("ia_liberada", false)
+      .limit(1000);
+    const pessoaisIds = new Set((pessoais ?? []).map((l) => l.id));
+
     for (const p of (parados ?? []) as any[]) {
+      if (pessoaisIds.has(p.lead_id)) continue;
       const lead = { id: p.lead_id as string, wa_id: p.wa_id as string, nome: p.nome as string | null };
       const horas = Math.round(Number(p.horas_parado));
       const quem = lead.nome || lead.wa_id;

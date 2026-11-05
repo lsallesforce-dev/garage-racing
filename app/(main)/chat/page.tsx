@@ -67,10 +67,10 @@ function contatoDoLead(l: { wa_id: string; canal?: string | null; ig_username?: 
 // De onde o lead veio (campo `origem`) — mapa único em lib/origens.ts, o mesmo
 // usado pelo dashboard e pela página /origem-leads.
 
-const FILTROS = ["Todos", "QUENTE", "MORNO", "FRIO", "HUMANO", "AGUARDANDO_IA", "SEM_ATENDIMENTO", "PROBLEMA"] as const;
+const FILTROS = ["Todos", "QUENTE", "MORNO", "FRIO", "HUMANO", "AGUARDANDO_IA", "SEM_ATENDIMENTO", "PROBLEMA", "PESSOAIS"] as const;
 type Filtro = typeof FILTROS[number];
 const FILTRO_LABELS: Record<string, string> = {
-  Todos: "Todos", QUENTE: "Quente", MORNO: "Morno", FRIO: "Frio", HUMANO: "Humano", AGUARDANDO_IA: "Liberar?", SEM_ATENDIMENTO: "Sem Atend.", PROBLEMA: "Pós-venda",
+  Todos: "Todos", QUENTE: "Quente", MORNO: "Morno", FRIO: "Frio", HUMANO: "Humano", AGUARDANDO_IA: "Liberar?", SEM_ATENDIMENTO: "Sem Atend.", PROBLEMA: "Pós-venda", PESSOAIS: "Pessoais",
 };
 const FILTRO_COLORS: Record<string, { active: string; inactive: string }> = {
   Todos:    { active: "bg-gray-900 text-white",          inactive: "bg-gray-50 text-gray-400 hover:bg-gray-100" },
@@ -81,6 +81,7 @@ const FILTRO_COLORS: Record<string, { active: string; inactive: string }> = {
   AGUARDANDO_IA: { active: "bg-violet-600 text-white",   inactive: "bg-violet-50 text-violet-700 hover:bg-violet-100 border border-violet-200" },
   SEM_ATENDIMENTO: { active: "bg-orange-500 text-white", inactive: "bg-orange-50 text-orange-600 hover:bg-orange-100 border border-orange-200" },
   PROBLEMA: { active: "bg-red-600 text-white",           inactive: "bg-red-50 text-red-700 hover:bg-red-100 border border-red-200" },
+  PESSOAIS: { active: "bg-gray-700 text-white",          inactive: "bg-gray-50 text-gray-400 hover:bg-gray-100 border border-gray-200" },
 };
 
 function formatTime(dateStr: string) {
@@ -190,7 +191,18 @@ function CentralChatInner() {
 
     // Filtro server-side: sem isso os leads em HUMANO ficam enterrados após a pág 1
     // (leads antigos com updated_at velho nunca aparecem no filtro client-side).
-    if (filtro === "HUMANO") {
+    // Contato marcado como pessoal (ia_liberada=false) some de todas as abas e só
+    // aparece em "Pessoais": dono que usa o celular pessoal no AutoZap
+    // (coexistência) não quer conversa particular na lista de leads.
+    if (filtro === "PESSOAIS") {
+      query = query.eq("ia_liberada", false);
+    } else {
+      query = query.or("ia_liberada.is.null,ia_liberada.eq.true");
+    }
+
+    if (filtro === "PESSOAIS") {
+      // já filtrado acima
+    } else if (filtro === "HUMANO") {
       query = query.eq("em_atendimento_humano", true);
     } else if (filtro === "AGUARDANDO_IA") {
       // Modo lead-only: contatos que chegaram no número pessoal do dono e não
@@ -385,6 +397,22 @@ function CentralChatInner() {
     carregarLeads();
   };
 
+  // Qualquer tenant: esconde o contato da lista (conversa particular do dono) e
+  // a IA nunca responde. Desfazer volta pra lista sem mexer no atendimento.
+  const marcarPessoal = async (pessoal: boolean) => {
+    if (!selectedLead) return;
+    if (pessoal && !confirm('Marcar como contato pessoal? A conversa some da lista (fica em "Pessoais") e a IA nunca responde esse contato.')) return;
+    await fetch("/api/leads/atendimento", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(pessoal
+        ? { lead_id: selectedLead.id, ia_liberada: false, em_atendimento_humano: true }
+        : { lead_id: selectedLead.id, ia_liberada: null }),
+    });
+    setSelectedLead(null);
+    carregarLeads();
+  };
+
   const devolverParaIA = async () => {
     if (!selectedLead) return;
     await fetch("/api/leads/atendimento", {
@@ -449,7 +477,8 @@ function CentralChatInner() {
   // Filtragem + ordenação por atividade mais recente
   const leadsFiltrados = leads
     .filter((l) => {
-      const matchFiltro = filtro === "Todos" || filtro === "SEM_ATENDIMENTO"
+      if (filtro === "PESSOAIS" ? l.ia_liberada !== false : l.ia_liberada === false) return false;
+      const matchFiltro = filtro === "Todos" || filtro === "SEM_ATENDIMENTO" || filtro === "PESSOAIS"
         || (filtro === "AGUARDANDO_IA" ? l.ia_liberada === null
           : filtro === "HUMANO" ? l.em_atendimento_humano === true
           : l.status === filtro);
@@ -724,6 +753,29 @@ function CentralChatInner() {
                     </button>
                   )}
                 </div>
+              )}
+
+              {/* Contato pessoal: qualquer tenant (no lead-only já existe o "É pessoal" acima) */}
+              {!leadOnly && selectedLead && (
+                selectedLead.ia_liberada === false ? (
+                  <button
+                    onClick={() => marcarPessoal(false)}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-gray-700 hover:bg-gray-900 text-white text-[9px] font-black uppercase tracking-widest rounded-xl transition-all whitespace-nowrap"
+                    title="Volta pra lista de leads (continua em atendimento humano)"
+                  >
+                    <span className="hidden sm:inline">Não é pessoal</span>
+                    <span className="sm:hidden">Lead</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => marcarPessoal(true)}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-gray-900 hover:text-white text-gray-500 text-[9px] font-black uppercase tracking-widest rounded-xl transition-all whitespace-nowrap"
+                    title="Contato pessoal: some da lista e a IA nunca responde"
+                  >
+                    <span className="hidden sm:inline">Pessoal</span>
+                    <span className="sm:hidden">Pess.</span>
+                  </button>
+                )
               )}
 
               {/* Indicador + botão de modo */}

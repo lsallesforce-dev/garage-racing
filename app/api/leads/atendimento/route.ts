@@ -14,8 +14,11 @@ export async function POST(req: NextRequest) {
   // ia_liberada é o gate do modo lead-only (migration 037): o dono decide no
   // painel se aquele contato é lead (true) ou pessoal (false). Aceita os dois
   // campos, mas exige pelo menos um.
+  // ia_liberada=false também é o "contato pessoal" de qualquer tenant (some da
+  // lista do chat e a IA nunca responde); null desfaz e volta pra lista sem
+  // mexer no atendimento.
   const temAtendimento = typeof em_atendimento_humano === "boolean";
-  const temLiberacao = typeof ia_liberada === "boolean";
+  const temLiberacao = typeof ia_liberada === "boolean" || ia_liberada === null;
   if (!lead_id || (!temAtendimento && !temLiberacao)) {
     return NextResponse.json({ error: "lead_id e em_atendimento_humano ou ia_liberada obrigatórios" }, { status: 400 });
   }
