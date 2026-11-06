@@ -1602,6 +1602,20 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
       }
     }
 
+    // Prioridade 1a3: texto do anúncio (body). Anúncio feito pelo app do
+    // WhatsApp Business tem headline genérico ("Converse conosco") e o carro
+    // vem no corpo ("VOLKSWAGEN GOL CITY 1.0 · 2014/2015 · R$ 35.900"). Roda
+    // antes do Vision, que lê só "Volkswagen Gol" na foto e pegava o PRIMEIRO
+    // Gol do estoque — Bonitão, 06/11: Gol 2013 sem foto no lugar do City 2015.
+    if (!adVeiculoId && adReferral.body) {
+      const vBody = await findVehicleForMedia(adReferral.body, tenantUserId);
+      if (vBody && modeloApareceNoTexto(vBody.modelo, adReferral.body)) {
+        adVeiculoId = vBody.id;
+        adVeiculoNome = `${vBody.marca} ${vBody.modelo}`;
+        console.log(`📢 [Ad referral] veiculo_id resolvido pelo texto do anúncio: ${adVeiculoId} (${adVeiculoNome})`);
+      }
+    }
+
     // Prioridade 1b: anúncio criado fora do AutoZap — consulta criativo via Meta Graph API
     // Usa o meta_ads_token do tenant para buscar o nome do anúncio e resolver o veículo.
     if (!adVeiculoId) {

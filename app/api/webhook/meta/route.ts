@@ -505,6 +505,8 @@ function extractFields(payload: any): {
   adReferral?: { headline: string | null; body: string | null; source_type: string | null; ad_id: string | null; image_url?: string | null } | null;
   isClientImage?: boolean;
   isSticker?: boolean;
+  msgType?: string | null;
+  msgErrors?: unknown;
 } {
   try {
     const entry   = payload?.entry?.[0];
@@ -598,7 +600,7 @@ function extractFields(payload: any): {
       return { phone: "", userMessage: "", fromMe: true, messageId: null, phoneNumberId, audioMediaId: null, isClientImage: false };
     }
 
-    return { phone, userMessage: userMessage.trim(), fromMe: false, messageId, phoneNumberId, audioMediaId, imageMediaId, msgTimestamp, adReferral, isClientImage, isSticker };
+    return { phone, userMessage: userMessage.trim(), fromMe: false, messageId, phoneNumberId, audioMediaId, imageMediaId, msgTimestamp, adReferral, isClientImage, isSticker, msgType: msg.type ?? null, msgErrors: msg.errors ?? null };
   } catch (e) {
     console.error("❌ Erro ao extrair campos do payload Meta:", e);
     return { phone: "", userMessage: "", fromMe: true, messageId: null, phoneNumberId: "", audioMediaId: null, isClientImage: false };
@@ -701,7 +703,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ status: "coexistencia_sync_queued" });
     }
 
-    const { phone, userMessage, fromMe, messageId, phoneNumberId, audioMediaId, imageMediaId, msgTimestamp, adReferral, isClientImage, isSticker } = extractFields(payload);
+    const extraido = extractFields(payload);
+    const { phone, fromMe, messageId, phoneNumberId, audioMediaId, imageMediaId, msgTimestamp, adReferral, isClientImage, isSticker, msgType, msgErrors } = extraido;
+    // Lead de anúncio cujo conteúdo a Meta não entrega legível (tipo não
+    // suportado — visto com "Anúncio no Status"): o clique no anúncio JÁ é o
+    // pedido. Sem isto o lead sumia sem resposta; o referral leva o carro.
+    const userMessage = extraido.userMessage || (adReferral && !audioMediaId ? "Olá! Vi o anúncio e quero mais informações." : "");
+    if (!extraido.userMessage && userMessage) {
+      console.warn(`📭 [Meta] Lead de anúncio sem texto legível de ${phone} (type=${msgType ?? "?"}) — atendendo pelo anúncio. errors=${JSON.stringify(msgErrors ?? null).slice(0, 300)}`);
+    }
 
     // Responde 200 imediatamente (Meta requer resposta em < 20s ou vai reenviar)
     if (fromMe || !phone) {
@@ -759,6 +769,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ status: "agent_paused" });
     }
 
+    // Vazio ANTES do dedup e do debounce CTWA: os dois MARCAM a mensagem como
+    // vista. A Meta às vezes entrega o lead de anúncio primeiro sem texto (tipo
+    // não suportado) e depois com o texto, com o MESMO wamid — a 1ª entrega
+    // marcava, saía calada aqui, e a 2ª caía no dedup. Bonitão, 06/11: dois
+    // leads do anúncio do Gol City sumiram sem resposta e sem log.
+    if (!userMessage && !audioMediaId) {
+      console.warn(`📭 [Meta] Mensagem sem conteúdo de ${phone} (type=${msgType ?? "?"}${adReferral ? ", veio de anúncio" : ""}) — ignorada sem marcar dedup. errors=${JSON.stringify(msgErrors ?? null).slice(0, 300)}`);
+      return NextResponse.json({ status: "empty_content" });
+    }
+
     // Deduplicação por messageId
     if (messageId && await isDuplicateMessage(tenantUserId, messageId)) {
       console.log(`🔁 [Dedup] messageId ${messageId} já processado`);
@@ -776,10 +796,6 @@ export async function POST(req: NextRequest) {
         console.log(`🔁 [CTWA Debounce] ${phone} já processado nos últimos 60s — ignorando re-entrega`);
         return NextResponse.json({ status: "ctwa_debounced" });
       }
-    }
-
-    if (!userMessage && !audioMediaId) {
-      return NextResponse.json({ status: "empty_content" });
     }
 
     // Debounce de imagens: quando o cliente envia múltiplas fotos em sequência
