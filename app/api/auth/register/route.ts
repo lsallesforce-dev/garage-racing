@@ -3,6 +3,7 @@ import { Resend } from "resend";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { rateLimit } from "@/lib/redis";
 import { alertaCadastroNovo } from "@/lib/alerta-interno";
+import { canalDaOrigem, sanitizarOrigem } from "@/lib/origem-visita";
 import { emailShell, emailCorpo, EMAIL_FROM } from "@/lib/email-template";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -11,7 +12,9 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 // que manda um template em inglês e depende da allow-list de Redirect URLs.
 // Aqui a conta é criada com o service role e a confirmação sai pelo Resend.
 export async function POST(req: NextRequest) {
-  const { email, password, nome_empresa, whatsapp } = await req.json();
+  const { email, password, nome_empresa, whatsapp, origem_visita } = await req.json();
+  const origemVisita = sanitizarOrigem(origem_visita);
+  const canal = canalDaOrigem(origemVisita);
   if (!email || !String(email).includes("@")) {
     return NextResponse.json({ error: "E-mail inválido" }, { status: 400 });
   }
@@ -51,6 +54,8 @@ export async function POST(req: NextRequest) {
         nome_empresa: empresa,
         whatsapp: whatsappLimpo,
         aprovado: false,
+        origem_visita: origemVisita,
+        origem_canal: canal,
       },
     },
   });
@@ -92,6 +97,7 @@ export async function POST(req: NextRequest) {
       email: emailLimpo,
       whatsapp: whatsappLimpo,
       origem: "tela de login (falta confirmar o e-mail)",
+      veioDe: canal,
     }).catch(() => {}),
   );
 

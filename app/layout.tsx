@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import Script from 'next/script';
 import GtagLeadTracker from '@/components/GtagLeadTracker';
+import CapturaOrigem from '@/components/CapturaOrigem';
 import './globals.css';
 
 const GA_ID = process.env.NEXT_PUBLIC_GA_ID || 'G-JWDYTSV7TT';
@@ -76,6 +77,7 @@ export default function RootLayout({
       className={`${inter.variable} h-full antialiased`}
     >
       <body className="min-h-screen text-gray-900 selection:bg-red-100 selection:text-red-900">
+        <CapturaOrigem />
         {/* Google tag (gtag.js) */}
         <Script src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`} strategy="afterInteractive" />
         <Script id="gtag-init" strategy="afterInteractive">

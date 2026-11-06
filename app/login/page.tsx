@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { lerOrigemVisita } from "@/lib/origem-visita";
 
 type Mode = "login" | "register" | "forgot";
 
@@ -141,6 +142,7 @@ export default function LoginPage() {
           password,
           nome_empresa: nomeEmpresa.trim(),
           whatsapp: whatsapp.trim(),
+          origem_visita: lerOrigemVisita(),
         }),
       });
       dados = await res.json().catch(() => ({}));

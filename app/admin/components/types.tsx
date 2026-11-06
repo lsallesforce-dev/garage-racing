@@ -88,6 +88,7 @@ export interface Pendente {
   nome_empresa: string | null;
   whatsapp: string | null;
   created_at: string;
+  origem_canal?: string | null;
 }
 
 // Evento da timeline do tenant (GET /api/admin/eventos)

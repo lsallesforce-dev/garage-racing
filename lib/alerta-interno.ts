@@ -156,6 +156,8 @@ export function alertaCadastroNovo(dados: {
   whatsapp?: string | null;
   endereco?: string | null;
   origem: string;
+  /** De onde a pessoa chegou no site (lib/origem-visita → canalDaOrigem). */
+  veioDe?: string | null;
   /** Padrão "Novo cadastro no AutoZap". */
   titulo?: string;
 }): Promise<ResultadoAlerta> {
@@ -169,6 +171,7 @@ export function alertaCadastroNovo(dados: {
     `E-mail: ${dados.email}`,
     dados.endereco ? `Endereço: ${dados.endereco}` : null,
     `Origem: ${dados.origem}`,
+    dados.veioDe ? `Veio de: ${dados.veioDe}` : null,
     contato ? "" : null,
     // Link cru: o WhatsApp e o cliente de e-mail tornam clicável sozinhos.
     contato ? `Clique para conversar com ${contato.exibicao}: ${contato.url}` : null,

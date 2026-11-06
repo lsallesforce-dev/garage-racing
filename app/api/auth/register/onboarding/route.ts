@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { rateLimit } from "@/lib/redis";
 import { alertaCadastroNovo } from "@/lib/alerta-interno";
+import { canalDaOrigem, sanitizarOrigem } from "@/lib/origem-visita";
 
 // Versão do termo de aceite vigente — bump ao alterar Termos/Privacidade
 const TERMOS_VERSAO = "2026-06-21";
@@ -11,7 +12,9 @@ const TERMOS_VERSAO = "2026-06-21";
 // lojista segue direto pros passos de configuração da loja. O cadastro da tela
 // de login é outro contrato (confirmação por e-mail) e fica em ../route.ts.
 export async function POST(req: NextRequest) {
-  const { nome, email, senha, aceitou_termos } = await req.json();
+  const { nome, email, senha, aceitou_termos, origem_visita } = await req.json();
+  const origemVisita = sanitizarOrigem(origem_visita);
+  const canal = canalDaOrigem(origemVisita);
 
   if (!email || !String(email).includes("@")) {
     return NextResponse.json({ error: "E-mail inválido" }, { status: 400 });
@@ -46,6 +49,8 @@ export async function POST(req: NextRequest) {
       nome: (nome ?? "").toString().trim(),
       termos_aceitos_em: new Date().toISOString(),
       termos_versao: TERMOS_VERSAO,
+      origem_visita: origemVisita,
+      origem_canal: canal,
     },
   });
 
@@ -73,6 +78,7 @@ export async function POST(req: NextRequest) {
       // O WhatsApp e o nome da loja só existem no passo seguinte; quando ele
       // conclui, /api/onboarding/iniciar-trial manda o aviso com o contato.
       origem: "onboarding — conta criada, ainda preenchendo os dados da loja",
+      veioDe: canal,
     }).catch(() => {}),
   );
 

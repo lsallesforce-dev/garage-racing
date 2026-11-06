@@ -40,6 +40,7 @@ export async function POST() {
       whatsapp: cfg?.whatsapp,
       endereco: cfg?.endereco,
       origem: "onboarding (falta liberar)",
+      veioDe: (user!.user_metadata as { origem_canal?: string } | undefined)?.origem_canal,
     }).catch(() => {});
   });
 

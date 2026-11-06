@@ -74,6 +74,9 @@ Apaga o login e todos os dados. Não dá pra desfazer.`)) return;
                   <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">
                     Cadastrado em {new Date(p.created_at).toLocaleDateString("pt-BR")}
                   </p>
+                  {p.origem_canal && (
+                    <p className="text-[10px] text-gray-600 font-bold mt-0.5">🧭 Veio de: {p.origem_canal}</p>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
                 <button

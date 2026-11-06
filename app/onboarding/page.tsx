@@ -3,6 +3,7 @@
 import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { lerOrigemVisita } from "@/lib/origem-visita";
 import { CheckCircle2, Loader2, ArrowRight, Eye, EyeOff } from "lucide-react";
 
 type Step = 0 | 1 | 2 | 3;
@@ -59,7 +60,7 @@ function OnboardingInner() {
       const res = await fetch("/api/auth/register/onboarding", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nome: account.nome, email: account.email, senha: account.senha, aceitou_termos: aceitouTermos }),
+        body: JSON.stringify({ nome: account.nome, email: account.email, senha: account.senha, aceitou_termos: aceitouTermos, origem_visita: lerOrigemVisita() }),
       });
       const json = await res.json();
 

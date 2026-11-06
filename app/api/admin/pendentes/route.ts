@@ -21,6 +21,8 @@ export async function GET(req: NextRequest) {
       nome_empresa: u.user_metadata?.nome_empresa ?? u.user_metadata?.nome ?? null,
       whatsapp:     u.user_metadata?.whatsapp ?? null,
       created_at:   u.created_at,
+      // De onde veio (lib/origem-visita). Cadastro anterior a 06/11/2026 não tem.
+      origem_canal: u.user_metadata?.origem_canal ?? null,
     }));
 
   return NextResponse.json(pendentes);
