@@ -279,6 +279,18 @@ export async function replyFbComment(
   }
 }
 
+/** Legenda do post comentado (Instagram: `caption`; Página do Facebook: `message`). Falha calada. */
+export async function legendaDoPost(mediaId: string, creds: IgCreds, rede: RedeSocial): Promise<string | null> {
+  if (!mediaId) return null;
+  const campo = rede === "facebook" ? "message" : "caption";
+  try {
+    const d = await graph(`/${mediaId}`, creds.pageToken, { query: { fields: campo } });
+    return typeof d?.[campo] === "string" ? d[campo] : null;
+  } catch {
+    return null;
+  }
+}
+
 export interface IgComentario {
   id: string;
   texto: string;

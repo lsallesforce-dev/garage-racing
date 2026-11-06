@@ -24,7 +24,7 @@ import { geminiFlashSales, geminiFlashFallback, parseGeminiJson } from "@/lib/ge
 import {
   type IgCreds, type IgComentario,
   type RedeSocial, waIdSocial, perfilIg, ehEnvioDoSistema,
-  sendIgPrivateReply, replyIgComment, replyFbComment, listarComentarios,
+  sendIgPrivateReply, replyIgComment, replyFbComment, listarComentarios, legendaDoPost,
 } from "@/lib/instagram";
 
 interface TenantIg {
@@ -323,6 +323,50 @@ function textoDaRespostaPrivada(config: any, v: any | null): string {
       : ` Quer mais fotos ou uma simulação de financiamento? É só responder aqui.`);
 }
 
+const semAcento = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+/**
+ * Carro do estoque citado na legenda do post. Pontua como o seletor de foto do
+ * agente: preço igual ao da legenda vale mais que tudo, depois ano, modelo e
+ * marca. Sem o nome do modelo na legenda, não arrisca: devolve null e
+ * a resposta sai genérica (APROVE, 06/11: reel do Civic postado pelo app do
+ * Instagram respondia "conta qual carro te interessou").
+ */
+async function carroPelaLegenda(t: TenantIg, mediaId: string): Promise<any | null> {
+  const legenda = await legendaDoPost(mediaId, t.creds, t.rede);
+  if (!legenda) return null;
+  const txt = semAcento(legenda);
+  const precosNaLegenda = new Set(
+    [...legenda.matchAll(/R\$\s*([\d.]+)(?:,\d{2})?/g)].map((m) => Number(m[1].replace(/\./g, ""))).filter((n) => n > 1000),
+  );
+
+  const { data: estoque } = await supabaseAdmin
+    .from("veiculos")
+    .select("id, marca, modelo, ano, ano_modelo, preco_sugerido, quilometragem_estimada, status_venda")
+    .eq("user_id", t.userId)
+    .eq("status_venda", "DISPONIVEL")
+    .limit(300);
+
+  const pontuados = (estoque ?? []).map((v: any) => {
+    const palavras = (s: string) => semAcento(s).split(/[^a-z0-9-]+/).filter((w) => w.length >= 3);
+    const modelo = palavras(cleanModelo(String(v.modelo ?? "")) || String(v.modelo ?? ""));
+    // O nome do carro ("civic", "onix") tem que estar na legenda. Versão sozinha
+    // ("sport", "flex") casa com metade do estoque.
+    if (!modelo[0] || !txt.includes(modelo[0])) return { v, score: 0 };
+    const acertosModelo = modelo.filter((w) => txt.includes(w)).length;
+    let score = acertosModelo * 50;
+    if (palavras(String(v.marca ?? "")).some((w) => txt.includes(w))) score += 30;
+    if ([v.ano, v.ano_modelo].some((a) => a && txt.includes(String(a)))) score += 100;
+    if (precosNaLegenda.has(Math.round(Number(v.preco_sugerido)))) score += 200;
+    return { v, score };
+  }).filter((p) => p.score > 0).sort((a, b) => b.score - a.score);
+
+  // Empate no topo = legenda ambígua (dois Civic 2019 sem preço): melhor genérico que errado.
+  if (!pontuados.length || (pontuados[1] && pontuados[1].score === pontuados[0].score)) return null;
+  console.log(`🔎 [${t.rede}] post ${mediaId} → carro ${pontuados[0].v.id} pela legenda (score ${pontuados[0].score})`);
+  return pontuados[0].v;
+}
+
 /** Processa UM comentário. Idempotente: a chave primária de ig_comentarios barra a repetição. */
 export async function tratarComentario(t: TenantIg, c: IgComentario & { parentId?: string | null }): Promise<string> {
   if (t.config.ig_comentarios_ia !== true) return "desligado";
@@ -367,7 +411,10 @@ export async function tratarComentario(t: TenantIg, c: IgComentario & { parentId
     .contains("marketing_posts", JSON.stringify([{ post_id: c.mediaId }]))
     .limit(1);
   if (erroVeiculo) console.error(`❌ [${t.rede}] carro do post ${c.mediaId}: ${erroVeiculo.message}`);
-  const v = vs?.[0] && vs[0].status_venda !== "VENDIDO" ? vs[0] : null;
+  // Post feito fora do AutoZap (reel postado pelo app do Instagram, por
+  // exemplo) não está em marketing_posts: acha o carro pela legenda.
+  const v = (vs?.[0] && vs[0].status_venda !== "VENDIDO" ? vs[0] : null)
+    ?? await carroPelaLegenda(t, c.mediaId);
 
   const texto = textoDaRespostaPrivada(t.config, v);
   const erro: { message?: string } = {};
