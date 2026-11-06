@@ -32,11 +32,18 @@ interface Props {
 // precisava ser lembrada em três lugares; a que faltasse virava undefined em
 // silêncio, não erro.
 
+// Robô batendo em /meta.json, /index.php etc. cai nesta rota (o domínio próprio
+// reescreve /<qualquer-coisa> pra cá). Sem a checagem, cada acesso consultava o
+// banco com um id inválido e gerava uma linha vermelha no log: 1.772 acessos a
+// /meta.json em 40h depois que o catálogo da Meta entrou no ar (06/11).
+const ID_DE_VEICULO = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const fmtBRL = (v: number | null | undefined) =>
   v == null ? "" : new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(v);
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { tenant, id } = await params;
+  if (!ID_DE_VEICULO.test(id)) return { title: { absolute: "Página não encontrada" } };
   const { data } = await supabaseAdmin
     .from("veiculos")
     .select("marca, modelo, versao, ano_modelo, preco_sugerido, capa_marketing_url, fotos")
@@ -75,6 +82,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function VitrineDetalhePage({ params, searchParams }: Props) {
   const { tenant, id } = await params;
+  if (!ID_DE_VEICULO.test(id)) notFound();
   const viaAnuncio = String((await searchParams)?.o ?? "") === "cat";
 
   const { data: veiculo, error } = await supabaseAdmin
