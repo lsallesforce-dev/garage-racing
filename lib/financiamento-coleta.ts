@@ -18,12 +18,14 @@
 
 import { getClient as redis } from "@/lib/redis";
 import { cpfValido } from "@/lib/cpf";
+import { cidadeNaResposta } from "@/lib/municipios-br";
 
 // Mantém o import antigo (financiamento-entender) funcionando.
 export { cpfValido };
 
 export type ColetaFinanciamento = {
   entrada?: string;     // texto pronto pra exibir: "R$ 10.000" | "sem entrada"
+  nome?: string;        // nome completo, como o cliente escreveu (o banco exige)
   cpf?: string;         // 000.000.000-00
   nascimento?: string;  // dd/mm/aaaa
   iniciadaEm: string;
@@ -126,14 +128,56 @@ export function formatarReais(v: number): string {
 
 export type Extraido = {
   entrada?: string;
+  nome?: string;
   cpf?: string;
   nascimento?: string;
   cpfInvalido?: boolean; // mandou 11 dígitos que não fecham o dígito verificador
 };
 
+// Palavras que provam que o texto NÃO é um nome ("bom dia tudo bem", "de entrada").
+const NAO_E_NOME = new Set([
+  "bom", "boa", "dia", "tarde", "noite", "tudo", "bem", "ok", "okay", "sim", "nao", "obrigado", "obrigada",
+  "valeu", "beleza", "quero", "queria", "gostaria", "tenho", "entrada", "financiamento", "financiar", "carro",
+  "moto", "troca", "cpf", "data", "nascimento", "reais", "mil", "sem", "nada", "pode", "vou", "esse", "essa",
+  "aqui", "ai", "certo", "isso", "oi", "ola", "por", "favor", "minha", "meu", "ele", "ela", "vc", "voce",
+  "fechou", "entao", "amigo", "amiga", "combinado", "blz", "show", "legal", "perfeito", "otimo", "top", "falou",
+  "abraco", "deus", "tchau", "ate", "mais", "hoje", "amanha", "agora", "depois", "ja", "so", "mas", "que", "estou",
+  "to", "ta", "aguardo", "aguardando", "espero", "consigo", "manda", "mande", "envia", "pronto", "feito", "entendi",
+  // Envio de documento: "Mandei cnh" virou o nome "Mandei Cnh" no replay de 07/11.
+  "mandei", "mandou", "enviei", "enviou", "segue", "seguem", "cnh", "rg", "documento", "documentos", "doc", "foto",
+  "fotos", "comprovante", "holerite", "renda", "print", "deu", "certo", "errado", "chegou", "recebeu", "viu",
+]);
+const CONECTIVOS_NOME = new Set(["de", "da", "do", "das", "dos", "e"]);
+
+/** Nome completo plausível: 2+ palavras só com letras, sem palavra de conversa. Devolve normalizado ou null. */
+export function nomeCompletoValido(texto: string): string | null {
+  const limpo = String(texto || "")
+    .replace(/^\s*(meu nome (completo )?(é|e)|me chamo|nome (completo)?:?|sou (o|a))\s+/i, "")
+    .replace(/[.,;!?]+$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!limpo || limpo.length > 80 || !/^[\p{L}' ]+$/u.test(limpo)) return null;
+  const palavras = limpo.split(" ");
+  const norm = (w: string) => w.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+  const fortes = palavras.filter((w) => !CONECTIVOS_NOME.has(norm(w)));
+  if (fortes.length < 2 || palavras.length > 7) return null;
+  if (fortes.some((w) => w.length < 2) || palavras.some((w) => NAO_E_NOME.has(norm(w)))) return null;
+  // "sao jose do rio preto" no meio da coleta é a cidade, não o nome
+  // (Bonitão, 06/11). Fim com cidade COMPOSTA ("Ana de Rio Preto") também cai.
+  // Cidade de uma palavra no fim NÃO: Oliveira, Santos e Sales são municípios
+  // e sobrenomes. "Paulo Adamantina" (nome + cidade) é caso pro Gemini, que lê
+  // o contexto — esta regex só decide quando ele está fora do ar.
+  for (let i = 0; i < palavras.length - 1; i++) {
+    if (cidadeNaResposta(palavras.slice(i).join(" "))) return null;
+  }
+  return palavras
+    .map((w) => (CONECTIVOS_NOME.has(norm(w)) ? w.toLowerCase() : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()))
+    .join(" ");
+}
+
 export function extrairDadosFinanciamento(
   texto: string,
-  opts: { soFaltaEntrada?: boolean; temEntrada?: boolean } = {},
+  opts: { soFaltaEntrada?: boolean; temEntrada?: boolean; faltaNome?: boolean } = {},
 ): Extraido {
   const out: Extraido = {};
   let resto = ` ${texto || ""} `;
@@ -183,6 +227,14 @@ export function extrairDadosFinanciamento(
     }
   }
 
+  // Nome completo: só quando ainda falta e o que SOBROU da mensagem (sem CPF e
+  // data) é inteiro um nome — "Adriana Souza 128… 13/02/1974". Regex não sabe
+  // achar nome no meio de frase; isso fica com a leitura do Gemini.
+  if (opts.faltaNome) {
+    const nome = nomeCompletoValido(resto);
+    if (nome) { out.nome = nome; resto = " "; }
+  }
+
   // Entrada.
   const baixo = resto.toLowerCase();
   const curta = baixo.trim().replace(/[.!?,;]+$/g, "").trim();
@@ -220,6 +272,7 @@ export function extrairDadosFinanciamento(
 export function faltando(c: Partial<ColetaFinanciamento>): string[] {
   const f: string[] = [];
   if (!c.entrada) f.push("entrada");
+  if (!c.nome) f.push("nome");
   if (!c.cpf) f.push("cpf");
   if (!c.nascimento) f.push("nascimento");
   return f;
@@ -227,6 +280,7 @@ export function faltando(c: Partial<ColetaFinanciamento>): string[] {
 
 const ROTULO: Record<string, string> = {
   entrada: "💰 quanto pretende dar de *entrada*",
+  nome: "👤 seu *nome completo*",
   cpf: "📄 seu *CPF*",
   nascimento: "🎂 sua *data de nascimento*",
 };
@@ -249,11 +303,12 @@ const RESPOSTA_PERGUNTA: Record<Exclude<PerguntaFin, "outra">, string> = {
   documentos:
     "Pra simulação eu só preciso desses dados. A documentação o gerente te orienta depois.",
   restricao:
-    "Isso só dá pra saber na análise do banco, que o gerente faz com o seu CPF e a data de nascimento.",
+    "Isso só dá pra saber na análise do banco, que o gerente faz com o seu nome, CPF e data de nascimento.",
 };
 
 const NOME_CAMPO: Record<string, string> = {
   entrada: "a entrada",
+  nome: "o nome",
   cpf: "o CPF",
   nascimento: "a data de nascimento",
 };
@@ -269,7 +324,7 @@ function listar(itens: string[]): string {
  */
 export function montarRespostaColeta(p: {
   primeira: boolean;
-  novos: Partial<Record<"entrada" | "cpf" | "nascimento", string>>;
+  novos: Partial<Record<"entrada" | "nome" | "cpf" | "nascimento", string>>;
   falta: string[];
   pergunta?: PerguntaFin | null;
   cpfInvalido?: boolean;
@@ -281,7 +336,7 @@ export function montarRespostaColeta(p: {
     p.pergunta && p.pergunta !== "outra" && !jaRespondeu ? RESPOSTA_PERGUNTA[p.pergunta] : null;
   if (respPergunta) blocos.push(respPergunta);
 
-  const chegou = (["entrada", "cpf", "nascimento"] as const).filter((k) => p.novos[k]);
+  const chegou = (["entrada", "nome", "cpf", "nascimento"] as const).filter((k) => p.novos[k]);
   const desc = chegou.map((k) => (k === "entrada" ? `a entrada (${p.novos.entrada})` : NOME_CAMPO[k]));
   // Na primeira mensagem o "anotei" vai dentro da abertura, não antes dela.
   const abertura = p.primeira && !respPergunta;
@@ -311,6 +366,9 @@ export const TEXTO_COLETA_ESCALADA =
 
 export const TEXTO_COLETA_COMPLETA =
   "Recebi tudo, obrigado! Já passei pro nosso gerente fazer a simulação — ele te retorna por aqui com as condições. 😊";
+
+/** Fechou sem o nome: o gerente já tem o que simula, e o nome vem na resposta. */
+export const PEDIDO_NOME_FINAL = "\n\nPra deixar sua ficha completa, me manda também seu *nome completo*? 🙂";
 
 // ─── Estado (Redis) ───────────────────────────────────────────────────────────
 const chave = (tenant: string, leadId: string) => `fin_coleta:${tenant}:${leadId}`;

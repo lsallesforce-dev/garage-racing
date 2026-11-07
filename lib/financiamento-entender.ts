@@ -15,7 +15,7 @@
 
 import { geminiFlashSales, geminiFlashFallback, parseGeminiJson } from "@/lib/gemini";
 import {
-  cpfValido, dataValida, formatarReais, faltando, montarRespostaColeta,
+  cpfValido, dataValida, formatarReais, faltando, montarRespostaColeta, nomeCompletoValido,
   type ColetaFinanciamento, type Extraido, type PerguntaFin,
 } from "@/lib/financiamento-coleta";
 
@@ -37,7 +37,7 @@ function montarPrompt(mensagem: string, ultimaMsgAgente: string, coleta: ColetaF
 
 Última mensagem da loja: ${JSON.stringify((ultimaMsgAgente || "(nenhuma)").slice(0, 500))}
 A loja ${coleta ? "JÁ está" : "ainda NÃO está"} coletando dados pra simulação de financiamento.
-Dados que a loja já tem: entrada=${coleta?.entrada ?? "não"}, CPF=${coleta?.cpf ? "sim" : "não"}, nascimento=${coleta?.nascimento ? "sim" : "não"}
+Dados que a loja já tem: entrada=${coleta?.entrada ?? "não"}, nome completo=${coleta?.nome ? "sim" : "não"}, CPF=${coleta?.cpf ? "sim" : "não"}, nascimento=${coleta?.nascimento ? "sim" : "não"}
 Mensagem do cliente: ${JSON.stringify(mensagem.slice(0, 1200))}
 
 Devolva exatamente:
@@ -46,12 +46,13 @@ Devolva exatamente:
   "pergunta": "entrada_minima" | "banco" | "parcela" | "presencial" | "documentos" | "restricao" | "outra" | null,
   "entrada_tipo": "valor" | "sem_entrada" | "veiculo" | "veiculo_e_valor" | null,
   "entrada_valor": número em reais ou null,
+  "nome_completo": "nome e sobrenome do cliente" ou null,
   "cpf": "somente os 11 dígitos" ou null,
   "nascimento": "dd/mm/aaaa" ou null
 }
 
 intencao:
-- "informou_dado": a mensagem traz entrada, CPF ou data de nascimento (mesmo junto de outra coisa).
+- "informou_dado": a mensagem traz entrada, nome completo, CPF ou data de nascimento (mesmo junto de outra coisa).
 - "pergunta": pergunta COMO funciona o financiamento — quanto precisa de entrada, qual banco, valor da parcela, se precisa ir na loja, documentos/CNH, nome sujo/score.
 - "quer_financiar": pede simulação, financiamento ou parcelamento, sem dar dado e sem pergunta específica ("financia?", "faz a simulação pra mim").
 - "desistiu": não quer (mais) financiar, vai pagar à vista, ou é pra outra pessoa que não quer financiar.
@@ -68,6 +69,11 @@ entrada:
 nascimento:
 - Pode vir colado: "040465" = 04/04/1965; "23081976" = 23/08/1976. Ano com 2 dígitos acima de 30 é 19xx.
 - Só o ano ("1965") NÃO é data de nascimento: devolva null.
+
+nome_completo:
+- Só o nome da PRÓPRIA pessoa que vai financiar, com pelo menos nome e sobrenome ("Adriana Souza Lima").
+- Só o primeiro nome ("Adriana") NÃO serve: devolva null. Nome do vendedor/da loja, de outra pessoa citada ou de cidade NÃO é o nome do cliente.
+- Se o cliente disser que o financiamento vai ser no nome de outra pessoa e der o nome dela, use o dessa pessoa.
 
 Nunca invente. Campo que a mensagem não traz = null.`;
 }
@@ -103,6 +109,8 @@ export async function entenderFinanciamento(p: {
     if (!j || !INTENCOES.includes(j.intencao)) return null;
 
     const dados: Extraido = {};
+    const nome = nomeCompletoValido(String(j.nome_completo ?? ""));
+    if (nome) dados.nome = nome;
     const cpf = String(j.cpf ?? "").replace(/\D/g, "");
     if (cpfValido(cpf)) dados.cpf = `${cpf.slice(0, 3)}.${cpf.slice(3, 6)}.${cpf.slice(6, 9)}-${cpf.slice(9)}`;
 
@@ -142,6 +150,10 @@ export function combinarLeituras(regex: Extraido, ia: Entendimento | null): Extr
     cpf: regex.cpf ?? ia.dados.cpf,
     nascimento: regex.nascimento ?? ia.dados.nascimento,
     entrada: ia.dados.entrada ?? regex.entrada,
+    // Nome: com a IA no ar, só ela decide — entende "no nome do meu esposo,
+    // João Silva" e sabe que "Paulo Adamantina" é nome + cidade. A regex
+    // (lida sem a IA) é a reserva pra quando o Gemini cai.
+    nome: ia.dados.nome,
     cpfInvalido: regex.cpfInvalido && !ia.dados.cpf,
   };
 }
@@ -151,7 +163,7 @@ export function combinarLeituras(regex: Extraido, ia: Entendimento | null): Extr
 // envia mensagem, grava no banco e alerta o gerente é o passo 10d do
 // process-whatsapp. Separada pra poder ser testada com as conversas reais.
 
-type Campo = "entrada" | "cpf" | "nascimento";
+type Campo = "entrada" | "nome" | "cpf" | "nascimento";
 
 export type DecisaoTurno =
   /** Não é assunto de financiamento: segue o fluxo normal (coleta fica como está). */
@@ -206,6 +218,7 @@ export function decidirTurno(p: {
   // Dado novo = o que ainda não estava na coleta.
   const novos: Partial<Record<Campo, string>> = {};
   if (ext.entrada && ext.entrada !== coletaAtual?.entrada) novos.entrada = ext.entrada;
+  if (ext.nome && ext.nome !== coletaAtual?.nome) novos.nome = ext.nome;
   if (ext.cpf && ext.cpf !== coletaAtual?.cpf) novos.cpf = ext.cpf;
   if (ext.nascimento && ext.nascimento !== coletaAtual?.nascimento) novos.nascimento = ext.nascimento;
   const trouxeDado = Object.keys(novos).length > 0;
@@ -217,7 +230,7 @@ export function decidirTurno(p: {
   const eFinanciamento = entendimento ? entendimento.intencao !== "outro" : p.gatilho;
   if (!trouxeDado && !ext.cpfInvalido && !eFinanciamento) return { acao: "seguir" };
 
-  const soFaltaEntrada = !!(coletaAtual?.cpf && coletaAtual?.nascimento && !coletaAtual?.entrada);
+  const soFaltaEntrada = !!(coletaAtual?.cpf && coletaAtual?.nascimento && coletaAtual?.nome && !coletaAtual?.entrada);
   const coleta: ColetaFinanciamento = {
     ...(coletaAtual ?? { iniciadaEm: new Date().toISOString() }),
     ...novos,
@@ -231,7 +244,11 @@ export function decidirTurno(p: {
   coleta.semProgresso = trouxeDado ? 0 : coletaAtual ? (coletaAtual.semProgresso ?? 0) + 1 : 0;
 
   const falta = faltando(coleta);
-  if (falta.length === 0) return { acao: "completa", coleta };
+  // O nome é pedido desde o 1º turno, mas não segura o pedido: com entrada,
+  // CPF e nascimento na mão o gerente já simula. Esperar só o nome deixaria
+  // parado quem manda os três e some (replay de 07/11: "10.000 de entrada
+  // <CPF> <data>" numa mensagem só) — a mensagem final pede o nome.
+  if (falta.every((f) => f === "nome")) return { acao: "completa", coleta };
 
   const pergunta = entendimento?.intencao === "pergunta" ? entendimento.pergunta : null;
   const resposta = montarRespostaColeta({

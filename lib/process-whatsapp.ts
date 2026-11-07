@@ -9,7 +9,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendMetaMessage, sendMetaImage, sendMetaVideo, sendMetaAudio, sendMetaCtaButton, markMetaRead, baixarMidiaMeta, sendMetaAlertaTemplate, sendMetaTemplate } from "@/lib/meta";
 import {
   falaDeFinanciamento, recusaFinanciamento, extrairDadosFinanciamento,
-  TEXTO_COLETA_COMPLETA, TEXTO_COLETA_ESCALADA, lerColeta, salvarColeta, encerrarColeta,
+  TEXTO_COLETA_COMPLETA, TEXTO_COLETA_ESCALADA, PEDIDO_NOME_FINAL, lerColeta, salvarColeta, encerrarColeta,
 } from "@/lib/financiamento-coleta";
 import { entenderFinanciamento, decidirTurno } from "@/lib/financiamento-entender";
 import { iniciarSimulacao, TEXTO_SIMULANDO } from "@/lib/financiamento-simulacao";
@@ -2422,10 +2422,11 @@ Responda apenas com o JSON, sem markdown.`;
       const dadoColeta = coletaAberta
         ? extrairDadosFinanciamento(semBlocosDeContexto(userMessage || ""), {
             temEntrada: !!coletaAberta.entrada,
-            soFaltaEntrada: !!(coletaAberta.cpf && coletaAberta.nascimento && !coletaAberta.entrada),
+            soFaltaEntrada: !!(coletaAberta.cpf && coletaAberta.nascimento && coletaAberta.nome && !coletaAberta.entrada),
+            faltaNome: !coletaAberta.nome,
           })
         : null;
-      if (dadoColeta && (dadoColeta.cpf || dadoColeta.nascimento || dadoColeta.entrada)) {
+      if (dadoColeta && (dadoColeta.cpf || dadoColeta.nascimento || dadoColeta.entrada || dadoColeta.nome)) {
         rajadaSoColeta = true;
         console.log(`🧵 [Rajada] Mensagem de ${phone} traz dado da coleta de financiamento — processo só ela.`);
       } else {
@@ -3150,10 +3151,12 @@ Responda apenas com o JSON, sem markdown.`;
       const ultimaAgenteFin: string =
         historico.filter((h: any) => h.role === "model").slice(-1)[0]?.parts?.[0]?.text ?? "";
       // CPF e nascimento já na mão: a última mensagem do agente pediu SÓ a entrada.
-      const soFaltaEntrada = !!(coletaAtual?.cpf && coletaAtual?.nascimento && !coletaAtual?.entrada);
+      const soFaltaEntrada = !!(coletaAtual?.cpf && coletaAtual?.nascimento && coletaAtual?.nome && !coletaAtual?.entrada);
       const leituraRegex = extrairDadosFinanciamento(textoFin, {
         soFaltaEntrada,
         temEntrada: !!coletaAtual?.entrada,
+        // Só com a coleta aberta: fora dela, "Paulo Adamantina" é nome + cidade.
+        faltaNome: !!coletaAtual && !coletaAtual.nome,
       });
       const entendimento = await entenderFinanciamento({
         mensagem: textoFin,
@@ -3181,7 +3184,13 @@ Responda apenas com o JSON, sem markdown.`;
           : null;
         let respFin: string;
 
+        // Nome completo da coleta vale mais que o primeiro nome que a IA anotou.
+        const nomeClienteFin = coleta.nome || lead.nome || "Cliente";
+
         if (decisao.acao === "completa") {
+          if (coleta.nome && (!lead.nome || coleta.nome.toLowerCase().startsWith(String(lead.nome).toLowerCase()))) {
+            await supabaseAdmin.from("leads").update({ nome: coleta.nome }).eq("id", lead.id);
+          }
           // Tenant com simulação automática (CredPro) → o próprio AutoZap
           // consulta os bancos e manda as condições pro cliente
           // (lib/financiamento-simulacao). Qualquer coisa fora do lugar
@@ -3193,10 +3202,10 @@ Responda apenas com o JSON, sem markdown.`;
             veiculoId: veiculoPrincipal?.id,
             coleta,
           }).catch((e) => ({ ok: false as const, motivo: String(e?.message ?? e) }));
-          respFin = simFin.ok ? TEXTO_SIMULANDO : TEXTO_COLETA_COMPLETA;
+          respFin = (simFin.ok ? TEXTO_SIMULANDO : TEXTO_COLETA_COMPLETA) + (coleta.nome ? "" : PEDIDO_NOME_FINAL);
           const resumoFin = simFin.ok
-            ? `Financiamento — simulação automática em andamento. Entrada: ${coleta.entrada} · CPF: ${coleta.cpf} · Nascimento: ${coleta.nascimento}`
-            : `Financiamento — fazer simulação. Entrada: ${coleta.entrada} · CPF: ${coleta.cpf} · Nascimento: ${coleta.nascimento}`;
+            ? `Financiamento — simulação automática em andamento. Entrada: ${coleta.entrada} · Nome: ${coleta.nome ?? "pedido ao cliente"} · CPF: ${coleta.cpf} · Nascimento: ${coleta.nascimento}`
+            : `Financiamento — fazer simulação. Entrada: ${coleta.entrada} · Nome: ${coleta.nome ?? "pedido ao cliente"} · CPF: ${coleta.cpf} · Nascimento: ${coleta.nascimento}`;
           await supabaseAdmin.from("leads").update({
             em_atendimento_humano: true,
             status: "QUENTE",
@@ -3218,15 +3227,17 @@ Responda apenas com o JSON, sem markdown.`;
           } else if (destinoFin && !useAvisa && !(await gerenteNaJanela(tenantUserId))) {
             finViaTemplate = await sendMetaTemplate(destinoFin, "simulacao_financiamento", [
               garageConfig?.nome_fantasia || garageConfig?.nome_empresa || "loja",
-              phone,
+              // O modelo aprovado não tem campo de nome: vai junto do telefone
+              // ("Cliente: +5517… (Adriana Souza)") pra não precisar de outra aprovação.
+              coleta.nome ? `${phone} (${coleta.nome})` : phone,
               veiculoFinTxt ?? "não informado",
               coleta.entrada!, coleta.cpf!, coleta.nascimento!,
             ], metaCreds);
           }
           if (!simFin.ok && destinoFin && !finViaTemplate) {
             await sendAlertComLink(destinoFin,
-              `💳 *Financiamento — dados pra simulação*\n\n👤 ${lead.nome || "Cliente"}\n📱 +${phone}${veiculoFinTxt ? `\n🚗 Interesse: ${veiculoFinTxt}` : ""}` +
-              `\n\n💰 Entrada: ${coleta.entrada}\n📄 CPF: ${coleta.cpf}\n🎂 Nascimento: ${coleta.nascimento}` +
+              `💳 *Financiamento — dados pra simulação*\n\n👤 ${nomeClienteFin}\n📱 +${phone}${veiculoFinTxt ? `\n🚗 Interesse: ${veiculoFinTxt}` : ""}` +
+              `\n\n💰 Entrada: ${coleta.entrada}${coleta.nome ? "" : "\n👤 Nome completo: pedido ao cliente (vem na conversa)"}\n📄 CPF: ${coleta.cpf}\n🎂 Nascimento: ${coleta.nascimento}` +
               `\n\n👉 Faça a simulação e responda o cliente. A IA está em stand-by nesse lead.`,
               phone
             ).catch(() => {});
@@ -3236,9 +3247,10 @@ Responda apenas com o JSON, sem markdown.`;
           const { falta, pergunta: perguntaFin } = decisao;
           if (decisao.acao === "escalar") {
             respFin = TEXTO_COLETA_ESCALADA;
-            const rotulo: Record<string, string> = { entrada: "entrada", cpf: "CPF", nascimento: "data de nascimento" };
+            const rotulo: Record<string, string> = { entrada: "entrada", nome: "nome completo", cpf: "CPF", nascimento: "data de nascimento" };
             const jaTem = [
               coleta.entrada ? `Entrada: ${coleta.entrada}` : null,
+              coleta.nome ? `Nome: ${coleta.nome}` : null,
               coleta.cpf ? `CPF: ${coleta.cpf}` : null,
               coleta.nascimento ? `Nascimento: ${coleta.nascimento}` : null,
             ].filter(Boolean).join(" · ") || "nada ainda";
@@ -3254,7 +3266,7 @@ Responda apenas com o JSON, sem markdown.`;
             await encerrarColeta(tenantUserId, lead.id);
             if (destinoFin) {
               await sendAlertComLink(destinoFin,
-                `💳 *Financiamento — cliente precisa de você*\n\n👤 ${lead.nome || "Cliente"}\n📱 +${phone}${veiculoFinTxt ? `\n🚗 Interesse: ${veiculoFinTxt}` : ""}` +
+                `💳 *Financiamento — cliente precisa de você*\n\n👤 ${nomeClienteFin}\n📱 +${phone}${veiculoFinTxt ? `\n🚗 Interesse: ${veiculoFinTxt}` : ""}` +
                 `\n\nEle quer simular, mas a coleta automática não fechou.` +
                 `\n✅ Já informou: ${jaTem}\n⏳ Falta: ${faltaTxt}\n💬 Última mensagem: "${ultimaCli}"` +
                 `\n\n👉 Assuma a conversa. A IA está em stand-by nesse lead.`,

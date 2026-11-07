@@ -119,6 +119,7 @@ export async function iniciarSimulacao(p: {
     origem: "ia",
     cpf: p.coleta.cpf ?? "",
     nascimento,
+    clienteNome: p.coleta.nome ?? null,
     // wa_id é 55 + DDD + número; a CredPro quer só DDD + número.
     celular: soDigitos(p.phone).replace(/^55(?=\d{10,11}$)/, ""),
     entrada: entradaEmReais(p.coleta.entrada),
