@@ -12,7 +12,9 @@ import {
   TEXTO_COLETA_COMPLETA, TEXTO_COLETA_ESCALADA, PEDIDO_NOME_FINAL, lerColeta, salvarColeta, encerrarColeta,
 } from "@/lib/financiamento-coleta";
 import { entenderFinanciamento, decidirTurno } from "@/lib/financiamento-entender";
-import { iniciarSimulacao, TEXTO_SIMULANDO } from "@/lib/financiamento-simulacao";
+import { simulacaoDisponivel } from "@/lib/financiamento-simulacao";
+import { perguntarAoGerente, responderAcao } from "@/lib/gerente-acoes";
+import { atenderGerente, type Equipe } from "@/lib/gerente-assistente";
 import { clienteEncerrouConversa } from "@/lib/conversa-encerrada";
 import { cidadeNaResposta } from "@/lib/municipios-br";
 import { sendAvisaMessage, sendAvisaImage, sendAvisaVideo, sendAvisaAudio } from "@/lib/avisa";
@@ -1840,9 +1842,21 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   // de agenda do gerente em vez do agente de vendas.
   const isOwner = ownerWa ? normalizeWa(phone) === ownerWa : false;
 
-  if (isOwner && userMessage.trim()) {
+  // Equipe que conversa com a Júlia como assistente (diálogo gerente × agente):
+  // gerente, número do financeiro e vendedores cadastrados com WhatsApp.
+  // Vendedor só enxerga os próprios leads (lib/gerente-assistente).
+  const financeiroWa = garageConfig?.whatsapp_financeiro ? normalizeWa(String(garageConfig.whatsapp_financeiro)) : null;
+  let equipe: Equipe | null = isOwner || (!!financeiroWa && normalizeWa(phone) === financeiroWa) ? { papel: "gerente" } : null;
+  if (!equipe && !/^(ig|fb):/.test(phone)) {
+    const { data: vends } = await supabaseAdmin
+      .from("vendedores").select("id, nome, whatsapp").eq("user_id", tenantUserId).not("whatsapp", "is", null).limit(50);
+    const v = (vends ?? []).find((x: any) => x.whatsapp && normalizeWa(String(x.whatsapp)) === normalizeWa(phone));
+    if (v) equipe = { papel: "vendedor", vendedorId: v.id, nome: v.nome };
+  }
+
+  if (equipe && userMessage.trim()) {
     const agendaKeywords = /agenda|agendar|compromisso|reunião|reuniao|visita|liga(r|ção|cao)|lembrar|lembrete|marcar/i;
-    if (agendaKeywords.test(userMessage)) {
+    if (isOwner && agendaKeywords.test(userMessage)) {
       try {
         const agoraGerente = new Date();
         const hoje = agoraGerente.toLocaleDateString("pt-BR", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
@@ -1914,7 +1928,19 @@ Responda apenas com o JSON, sem markdown.`;
     // a Júlia entende de qual cliente é, avisa o cliente quando faz sentido e
     // confirma pro gerente. Mensagem que não é sobre cliente nenhum segue o
     // caminho antigo. Ver lib/gerente-dialogo.
+    // Resposta a uma pergunta da Júlia ("consulto nos bancos?", "posso
+    // mandar pro cliente?", "quer que eu retome?") — botão ou "1"/"sim".
     try {
+      const respondeu = await responderAcao({
+        tenant: tenantUserId, remetente: phone, texto: userMessage,
+        responder: (t) => sendText(phone, t),
+      });
+      if (respondeu) return;
+    } catch (e: any) {
+      console.warn("⚠️ [gerente-acoes] falhou — segue o fluxo normal:", e?.message ?? e);
+    }
+
+    if (equipe.papel === "gerente") try {
       const tratou = await tratarMensagemDoGerente({
         tenantUserId,
         texto: userMessage,
@@ -1925,6 +1951,21 @@ Responda apenas com o JSON, sem markdown.`;
       if (tratou) return;
     } catch (e: any) {
       console.warn("⚠️ [gerente-dialogo] falhou — segue o fluxo normal:", e?.message ?? e);
+    }
+
+    // ── 2d. Pedido livre da equipe (preço/fotos de carro, situação de
+    // cliente, resumo do dia, retomar cliente). Ver lib/gerente-assistente.
+    try {
+      const atendeu = await atenderGerente({
+        tenant: tenantUserId,
+        texto: userMessage,
+        equipe,
+        responder: (t) => sendText(phone, t),
+        enviarImagem: (url, legenda) => sendImage(phone, url, legenda),
+      });
+      if (atendeu) return;
+    } catch (e: any) {
+      console.warn("⚠️ [gerente-assistente] falhou — segue o fluxo normal:", e?.message ?? e);
     }
   }
 
@@ -3191,25 +3232,35 @@ Responda apenas com o JSON, sem markdown.`;
           if (coleta.nome && (!lead.nome || coleta.nome.toLowerCase().startsWith(String(lead.nome).toLowerCase()))) {
             await supabaseAdmin.from("leads").update({ nome: coleta.nome }).eq("id", lead.id);
           }
-          // Tenant com simulação automática (CredPro) → o próprio AutoZap
-          // consulta os bancos e manda as condições pro cliente
-          // (lib/financiamento-simulacao). Qualquer coisa fora do lugar
-          // (desligado, sem banco, sem preço, saldo) → fluxo antigo: gerente.
-          const simFin = await iniciarSimulacao({
-            tenant: tenantUserId,
-            leadId: lead.id,
-            phone,
-            veiculoId: veiculoPrincipal?.id,
-            coleta,
+          // Tenant com simulação automática (CredPro): desde 07/11 a Júlia
+          // PERGUNTA ao gerente se consulta nos bancos (lib/gerente-acoes) e,
+          // com o resultado, se pode mandar pro cliente. Nada sai sozinho.
+          // Sem simulação disponível (desligado, sem banco, sem carro) ou
+          // pergunta não entregue → fluxo antigo: dados crus pro gerente.
+          const simDisp = await simulacaoDisponivel({
+            tenant: tenantUserId, phone, veiculoId: veiculoPrincipal?.id, coleta,
           }).catch((e) => ({ ok: false as const, motivo: String(e?.message ?? e) }));
-          respFin = (simFin.ok ? TEXTO_SIMULANDO : TEXTO_COLETA_COMPLETA) + (coleta.nome ? "" : PEDIDO_NOME_FINAL);
-          const resumoFin = simFin.ok
-            ? `Financiamento — simulação automática em andamento. Entrada: ${coleta.entrada} · Nome: ${coleta.nome ?? "pedido ao cliente"} · CPF: ${coleta.cpf} · Nascimento: ${coleta.nascimento}`
-            : `Financiamento — fazer simulação. Entrada: ${coleta.entrada} · Nome: ${coleta.nome ?? "pedido ao cliente"} · CPF: ${coleta.cpf} · Nascimento: ${coleta.nascimento}`;
+          const dadosFinTxt =
+            `👤 ${nomeClienteFin}\n📱 +${phone}${veiculoFinTxt ? `\n🚗 Interesse: ${veiculoFinTxt}` : ""}` +
+            `\n\n💰 Entrada: ${coleta.entrada}${coleta.nome ? "" : "\n👤 Nome completo: pedido ao cliente (vem na conversa)"}\n📄 CPF: ${coleta.cpf}\n🎂 Nascimento: ${coleta.nascimento}`;
+          let perguntaFin: string | null = null;
+          if (simDisp.ok && destinoFin) {
+            perguntaFin = await perguntarAoGerente({
+              tenant: tenantUserId,
+              leadId: lead.id,
+              clientePhone: phone,
+              tipo: "simular_financiamento",
+              payload: { veiculoId: veiculoPrincipal?.id ?? null, coleta },
+              texto: `💳 *Financiamento — ${nomeClienteFin}*\n\n${dadosFinTxt}\n\n🔎 Quer que eu consulte nos bancos cadastrados? Te mostro o resultado antes de mandar pro cliente.`,
+              botoes: ["Sim, consultar", "Não, eu faço"],
+              destino: destinoFin,
+            }).catch(() => null);
+          }
+          respFin = TEXTO_COLETA_COMPLETA + (coleta.nome ? "" : PEDIDO_NOME_FINAL);
           await supabaseAdmin.from("leads").update({
             em_atendimento_humano: true,
             status: "QUENTE",
-            instrucao_pendente: resumoFin,
+            instrucao_pendente: `Financiamento — fazer simulação. Entrada: ${coleta.entrada} · Nome: ${coleta.nome ?? "pedido ao cliente"} · CPF: ${coleta.cpf} · Nascimento: ${coleta.nascimento}`,
             instrucao_pendente_desde: new Date().toISOString(),
           }).eq("id", lead.id);
           await encerrarColeta(tenantUserId, lead.id);
@@ -3218,12 +3269,10 @@ Responda apenas com o JSON, sem markdown.`;
           // próprio ("simulacao_financiamento", UTILITY) — o genérico
           // alerta_gerente a Meta reclassificou como MARKETING (caro e com
           // limite de frequência). Falhou → cadeia normal do sendAlertComLink.
-          // Simulação rodando: o gerente recebe o resultado quando sair
-          // (processarPoll em lib/financiamento-simulacao), não os dados crus agora.
           let finViaTemplate = false;
           if (destinoFin) await setGerenteFoco(tenantUserId, phone).catch(() => {});
-          if (simFin.ok) {
-            console.log(`💳 [Financiamento] ${phone} — coleta completa, simulação automática ${simFin.simId} disparada`);
+          if (perguntaFin) {
+            console.log(`💳 [Financiamento] ${phone} — coleta completa, perguntei ao gerente se consulta nos bancos (ação ${perguntaFin})`);
           } else if (destinoFin && !useAvisa && !(await gerenteNaJanela(tenantUserId))) {
             finViaTemplate = await sendMetaTemplate(destinoFin, "simulacao_financiamento", [
               garageConfig?.nome_fantasia || garageConfig?.nome_empresa || "loja",
@@ -3234,15 +3283,14 @@ Responda apenas com o JSON, sem markdown.`;
               coleta.entrada!, coleta.cpf!, coleta.nascimento!,
             ], metaCreds);
           }
-          if (!simFin.ok && destinoFin && !finViaTemplate) {
+          if (!perguntaFin && destinoFin && !finViaTemplate) {
             await sendAlertComLink(destinoFin,
-              `💳 *Financiamento — dados pra simulação*\n\n👤 ${nomeClienteFin}\n📱 +${phone}${veiculoFinTxt ? `\n🚗 Interesse: ${veiculoFinTxt}` : ""}` +
-              `\n\n💰 Entrada: ${coleta.entrada}${coleta.nome ? "" : "\n👤 Nome completo: pedido ao cliente (vem na conversa)"}\n📄 CPF: ${coleta.cpf}\n🎂 Nascimento: ${coleta.nascimento}` +
+              `💳 *Financiamento — dados pra simulação*\n\n${dadosFinTxt}` +
               `\n\n👉 Faça a simulação e responda o cliente. A IA está em stand-by nesse lead.`,
               phone
             ).catch(() => {});
           }
-          if (!simFin.ok) console.log(`💳 [Financiamento] ${phone} — coleta completa (sem simulação automática: ${simFin.motivo}), alerta disparado (entrega: ver [Alerta]), IA em stand-by`);
+          if (!perguntaFin) console.log(`💳 [Financiamento] ${phone} — coleta completa (sem simulação automática: ${simDisp.ok ? "pergunta não entregue" : simDisp.motivo}), alerta disparado (entrega: ver [Alerta]), IA em stand-by`);
         } else {
           const { falta, pergunta: perguntaFin } = decisao;
           if (decisao.acao === "escalar") {

@@ -19,6 +19,7 @@ import { gerenteNaJanela } from "@/lib/redis";
 import { alertaTenantPorEmail } from "@/lib/alerta-interno";
 import { sendMetaMessage } from "@/lib/meta";
 import { CONFIG_GARAGE_SELECT } from "@/lib/config-garage";
+import { perguntarAoGerente } from "@/lib/gerente-acoes";
 
 export const maxDuration = 120;
 
@@ -195,6 +196,28 @@ export async function GET(req: NextRequest) {
         await supabaseAdmin.from("leads").update({ em_atendimento_humano: false }).eq("id", lead.id);
         resumo.retomados++;
         console.log(`🤖 [alertas/${tenantUserId}] IA reassumiu o lead ${lead.id} após ${horas}h parado`);
+      }
+
+      // Sem retomada automática: a Júlia PERGUNTA se retoma (lib/gerente-acoes)
+      // e só reaborda no sim do gerente. Pergunta não entregue → aviso antigo.
+      if (podeAvisar && cfg.handoff_ia_retoma !== true && !/^(ig|fb):/.test(String(lead.wa_id))) {
+        const acaoId = await perguntarAoGerente({
+          tenant: tenantUserId,
+          leadId: lead.id,
+          clientePhone: lead.wa_id,
+          tipo: "reabordar_lead",
+          payload: {},
+          texto: `⏰ *Lead esperando há ${horas}h*
+
+${quem}
+Última mensagem foi dele e ninguém respondeu.
+👉 https://wa.me/${lead.wa_id}
+
+🤖 Quer que eu retome a conversa com ele?`,
+          botoes: ["Sim, retome", "Não, eu falo"],
+          destino: gerente,
+        }).catch(() => null);
+        if (acaoId) { resumo.handoffAvisados++; continue; }
       }
 
       if (podeAvisar) {

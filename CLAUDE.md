@@ -239,6 +239,10 @@ A IA **não escreve** sobre crédito: a resposta vem de modelos fixos (`montarRe
 - **Rajada:** mensagem com dado de coleta não é descartada no passo 4c (`rajadaSoColeta`) — o 10d sai antes do 13d, então ninguém relia a mensagem que chegou durante a digitação.
 - Testar mudança aqui com replay das conversas reais (`decidirTurno` é pura); regex nova sem replay já quebrou duas vezes.
 
+### Diálogo gerente × agente (`lib/gerente-acoes.ts`, `lib/gerente-assistente.ts`)
+
+Avisos que oferecem ação viram pergunta com sim/não (tabela `gerente_acoes`, migration 075): "consulto nos bancos?" (10d — a simulação CredPro **nunca** sai sem o sim), "posso mandar pro cliente?" (resultado do `processarPoll`), "quer que eu retome?" (`alertas-operacionais`, quando `handoff_ia_retoma` está desligado). Cloud API: botões `acao:<id>:sim|nao` (o webhook passa o id como mensagem); Avisa: "1"/"2" resolve a pergunta aberta mais recente do remetente. Gerente, financeiro e vendedores (`vendedores.whatsapp`) também pedem livremente: preço/fotos de carro, situação de cliente, resumo do dia, retomar cliente — Gemini só classifica, o código consulta. Sem a tabela ou sem entregar a pergunta, tudo cai no aviso antigo.
+
 `semBlocosDeContexto` tira os blocos `[Lead veio do anúncio…]` em **qualquer posição**: a consolidação de rajada põe o bloco no meio da mensagem, e a legenda do anúncio ("facilitamos o financiamento", "R$ 95.900") virava fala do cliente.
 
 ### Cidade com nome de gente

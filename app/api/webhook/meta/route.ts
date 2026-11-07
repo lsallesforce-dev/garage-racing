@@ -531,8 +531,13 @@ function extractFields(payload: any): {
     // prefixo "msg:" vira a própria mensagem do cliente — ex.
     // "msg:Tenho interesse no Fiat Strada Ranch 2024" (carrossel de ofertas).
     const payloadBotao: string = msg.button?.payload ?? "";
+    // Botão de pergunta da Júlia ao gerente (lib/gerente-acoes): o id
+    // "acao:<uuid>:sim|nao" vira a mensagem, e o roteador do gerente resolve
+    // a ação sem passar pelo Gemini.
+    const idBotao: string = msg.interactive?.button_reply?.id ?? "";
     let userMessage =
       msg.text?.body
+      ?? (idBotao.startsWith("acao:") ? idBotao : null)
       ?? msg.interactive?.button_reply?.title
       ?? msg.interactive?.list_reply?.title
       ?? (payloadBotao.startsWith("msg:") ? payloadBotao.slice(4).trim() : null)

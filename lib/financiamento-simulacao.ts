@@ -24,9 +24,9 @@ import {
   credproConfigurada, criarSimulacao, consultarSimulacao, reaisBR,
   CredProErro, type ConsultaCredPro, type NovaSimulacao,
 } from "@/lib/credpro";
-import { sendAvisaMessage } from "@/lib/avisa";
-import { sendMetaMessage, sendMetaAlertaTemplate, dentroJanela24h } from "@/lib/meta";
-import { gerenteNaJanela, enfileirarAlertaGerente, invalidateHistory } from "@/lib/redis";
+import { invalidateHistory } from "@/lib/redis";
+import { carregarCanal, enviarGerente } from "@/lib/canal-tenant";
+import { perguntarAoGerente } from "@/lib/gerente-acoes";
 import { alertaInterno } from "@/lib/alerta-interno";
 import type { ColetaFinanciamento } from "@/lib/financiamento-coleta";
 import { ofertasAprovadas, melhoresParaCliente, entradaDiferente, parcelasComEntrada, type Oferta } from "@/lib/financiamento-parcelas";
@@ -125,6 +125,26 @@ export async function iniciarSimulacao(p: {
     entrada: entradaEmReais(p.coleta.entrada),
     veiculo: { id: p.veiculoId },
   });
+}
+
+/**
+ * Dá pra simular sozinho? Mesmas checagens baratas do iniciarSimulacao, sem
+ * disparar nada — o 10d usa pra decidir se PERGUNTA ao gerente "consulto nos
+ * bancos?" (desde 07/11 a consulta só sai com o sim dele).
+ */
+export async function simulacaoDisponivel(p: {
+  tenant: string;
+  phone: string;
+  veiculoId: string | null | undefined;
+  coleta: ColetaFinanciamento;
+}): Promise<{ ok: true } | { ok: false; motivo: string }> {
+  if (!credproConfigurada()) return { ok: false, motivo: "CREDPRO_API_KEY ausente" };
+  if (!(await financiamentoAutoLigado(p.tenant))) return { ok: false, motivo: "desligado no tenant" };
+  if (/^(ig|fb):/.test(p.phone)) return { ok: false, motivo: "lead do Instagram/Messenger sem celular" };
+  if (!p.veiculoId) return { ok: false, motivo: "sem veículo em foco" };
+  if (!nascimentoISO(p.coleta.nascimento)) return { ok: false, motivo: "nascimento ilegível" };
+  if (!(await bancosAtivos(p.tenant)).length) return { ok: false, motivo: "nenhum banco cadastrado" };
+  return { ok: true };
 }
 
 /** Carro da simulação: do estoque (`id`) ou digitado na página (placa e/ou marca/modelo/ano + valor). */
@@ -386,51 +406,6 @@ async function registrarStatusBancos(tenant: string, resultados: NonNullable<Con
   }
 }
 
-type Canal = {
-  cfg: any;
-  useAvisa: boolean;
-  avisa: { baseUrl: string; token: string };
-  meta: { phoneNumberId: string; accessToken: string };
-  loja: string;
-  gerente: string | null;
-};
-
-async function carregarCanal(tenant: string): Promise<Canal | null> {
-  const { data } = await supabaseAdmin
-    .from("config_garage")
-    .select("nome_empresa, nome_fantasia, whatsapp, whatsapp_financeiro, avisa_base_url, avisa_token, meta_phone_id, meta_access_token")
-    .eq("user_id", tenant)
-    .order("created_at", { ascending: false })
-    .limit(1);
-  const cfg = data?.[0];
-  if (!cfg) return null;
-  const norm = (n: string | null) => (n ? soDigitos(n).replace(/^(?!55)/, "55") : null);
-  return {
-    cfg,
-    useAvisa: !!(cfg.avisa_base_url && cfg.avisa_token),
-    avisa: { baseUrl: cfg.avisa_base_url ?? "", token: cfg.avisa_token ?? "" },
-    meta: { phoneNumberId: cfg.meta_phone_id ?? "", accessToken: cfg.meta_access_token || process.env.META_ACCESS_TOKEN || "" },
-    loja: cfg.nome_fantasia || cfg.nome_empresa || "loja",
-    gerente: norm(cfg.whatsapp_financeiro) || norm(cfg.whatsapp),
-  };
-}
-
-async function enviarCliente(c: Canal, leadId: string, waId: string, texto: string): Promise<boolean> {
-  if (c.useAvisa) return sendAvisaMessage(waId, texto, c.avisa);
-  if (!(await dentroJanela24h(leadId))) return false;
-  const r = await sendMetaMessage(waId, texto, c.meta).catch(() => null);
-  return r != null;
-}
-
-async function enviarGerente(c: Canal, tenant: string, texto: string, clientePhone: string) {
-  if (!c.gerente) return;
-  if (c.useAvisa) { await sendAvisaMessage(c.gerente, texto, c.avisa, { typing: false }); return; }
-  let ok = false;
-  if (await gerenteNaJanela(tenant)) ok = !!(await sendMetaMessage(c.gerente, texto, c.meta).catch(() => null));
-  if (!ok) ok = await sendMetaAlertaTemplate(c.gerente, c.loja, texto, clientePhone, c.meta);
-  if (!ok) await enfileirarAlertaGerente(tenant, texto, clientePhone);
-}
-
 async function entregarResultado(
   sim: { id: string; user_id: string; lead_id: string | null; veiculo_id: string | null; entrada: number | null; cpf: string; nascimento: string },
   consulta: ConsultaCredPro,
@@ -449,13 +424,11 @@ async function entregarResultado(
   if (!lead || !canal) return;
   const carro = v ? `${v.marca ?? ""} ${v.modelo ?? ""}${v.ano ? ` ${v.ano}` : ""}`.trim() : null;
 
+  // Desde 07/11 nada sai pro cliente sem o gerente liberar: o resultado vai
+  // pra ele com a pergunta "posso enviar?" (lib/gerente-acoes). Envio e
+  // atualização da pendência acontecem no "sim" (executarAcao).
   const textoCliente = ofertas.length ? textoOfertasCliente(ofertas, carro) : TEXTO_SEM_APROVACAO;
-  const entregue = await enviarCliente(canal, lead.id, lead.wa_id, textoCliente);
-  if (entregue) {
-    await supabaseAdmin.from("mensagens").insert({ lead_id: lead.id, content: textoCliente, remetente: "agente" });
-    await invalidateHistory(tenant, lead.id).catch(() => {});
-    await supabaseAdmin.from("financiamento_simulacoes").update({ enviada_cliente: true }).eq("id", sim.id);
-  }
+  const resumoOfertas = ofertas.map((o) => `${o.banco} ${o.prazo}x ${brl(o.parcela)}`).join(" · ");
 
   // Resumo pro gerente: todas as respostas, não só as 3 melhores — recusa e
   // credencial inválida ele precisa ver pra agir. Aprovado leva todos os
@@ -481,22 +454,33 @@ async function entregarResultado(
     if (r.status === "credencial_invalida" || r.status === "credencial_restricao") return `🔑 ${r.banco}: ${st.replace("_", " ")} — conferir o acesso em Configurações › Financiamento`;
     return `⚪ ${r.banco}: ${st}`;
   });
-  await enviarGerente(canal, tenant,
-    `💳 *Simulação automática — ${lead.nome || "Cliente"}* (+${lead.wa_id})${carro ? `\n🚗 ${carro}` : ""}\n\n${linhas.join("\n")}` +
-    `\n\n${ofertas.length ? (entregue ? "O cliente já recebeu as melhores condições." : "⚠️ Não consegui mandar pro cliente (fora da janela de 24h) — mande você.") : "Nenhum banco aprovou: o cliente foi avisado que você vai chamar."}` +
-    `\n👉 Assuma a conversa pra fechar. A IA está em stand-by nesse lead.`,
-    lead.wa_id,
-  ).catch(() => {});
+  const relatorio =
+    `💳 *Simulação — ${lead.nome || "Cliente"}* (+${lead.wa_id})${carro ? `\n🚗 ${carro}` : ""}\n\n${linhas.join("\n")}`;
+  const pergunta =
+    `${relatorio}\n\n${ofertas.length ? "Posso mandar estas condições pro cliente?" : "Nenhum banco aprovou. Posso avisar o cliente que você vai chamar pra ver outras opções?"}` +
+    `\n\n📝 Mensagem que vai pro cliente:\n"${textoCliente.slice(0, 500)}"`;
+  const acaoId = await perguntarAoGerente({
+    tenant,
+    leadId: lead.id,
+    clientePhone: lead.wa_id,
+    tipo: "enviar_simulacao_cliente",
+    payload: { simId: sim.id, texto: textoCliente, resumo: resumoOfertas, aprovou: ofertas.length > 0 },
+    texto: pergunta,
+    botoes: ["Pode enviar", "Não, eu falo"],
+    destino: canal.gerente,
+  }).catch(() => null);
+  if (!acaoId) {
+    // Sem a pergunta (tabela ausente, envio falhou): só o relatório, e o
+    // gerente fala com o cliente. Nada vai pro cliente sem ele.
+    await enviarGerente(canal, tenant, `${relatorio}\n\n👉 Passe as condições pro cliente. A IA está em stand-by nesse lead.`, lead.wa_id).catch(() => {});
+  }
 
-  // Prefixo "Simulação…" (e não "Financiamento…") tira o lead do cron de
-  // cobrança quando o cliente já recebeu as condições; sem aprovação ou sem
-  // entrega, continua "Financiamento…" e a cobrança do gerente segue valendo.
-  const resumo = ofertas.length && entregue
-    ? `Simulação automática enviada ao cliente: ${ofertas.map((o) => `${o.banco} ${o.prazo}x ${brl(o.parcela)}`).join(" · ")}. Fechar o financiamento com ele.`
-    : `Financiamento — simulação automática ${ofertas.length ? "aprovada mas não entregue ao cliente" : "sem aprovação"}. ` +
-      `Entrada: ${sim.entrada != null ? brl(Number(sim.entrada)) : "não informada"} · CPF: ${sim.cpf} · Nascimento: ${sim.nascimento.split("-").reverse().join("/")}`;
+  // Prefixo "Financiamento…" mantém o cron de cobrança no gerente até ele
+  // liberar o envio (no "sim" a pendência vira "Simulação… enviada").
   await supabaseAdmin.from("leads").update({
-    instrucao_pendente: resumo,
+    instrucao_pendente:
+      `Financiamento — simulação pronta (${ofertas.length ? resumoOfertas : "sem aprovação"}), aguardando o gerente liberar o envio ao cliente. ` +
+      `Entrada: ${sim.entrada != null ? brl(Number(sim.entrada)) : "não informada"} · CPF: ${sim.cpf} · Nascimento: ${sim.nascimento.split("-").reverse().join("/")}`,
     instrucao_pendente_desde: new Date().toISOString(),
   }).eq("id", lead.id);
 }

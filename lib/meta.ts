@@ -338,6 +338,39 @@ export async function sendMetaCtaButton(
   }, c.accessToken);
 }
 
+// ─── Botões de resposta rápida (até 3) ────────────────────────────────────────
+// Usado nas perguntas da Júlia ao gerente (lib/gerente-acoes). O id do botão
+// volta no webhook em interactive.button_reply.id. Só entrega dentro da janela
+// de 24h do destinatário (é mensagem livre, não template).
+export async function sendMetaReplyButtons(
+  phone: string,
+  body: string,
+  botoes: { id: string; titulo: string }[],
+  creds?: Partial<MetaCreds>,
+): Promise<any> {
+  const c = resolveCreds(creds);
+  if (!c) {
+    console.warn("⚠️ Meta credentials missing — botões não enviados");
+    return;
+  }
+  return post(`/${c.phoneNumberId}/messages`, {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to: formatPhone(phone),
+    type: "interactive",
+    interactive: {
+      type: "button",
+      body: { text: body.slice(0, 1024) },
+      action: {
+        buttons: botoes.slice(0, 3).map((b) => ({
+          type: "reply",
+          reply: { id: b.id.slice(0, 256), title: b.titulo.slice(0, 20) },
+        })),
+      },
+    },
+  }, c.accessToken);
+}
+
 // ─── Coexistência: sincronização dos dados do WhatsApp Business App ───────────
 // Depois que o lojista conclui o Embedded Signup em modo coexistência, há uma
 // JANELA DE 24H pra puxar os contatos e o histórico dele. Passou disso, a Meta
