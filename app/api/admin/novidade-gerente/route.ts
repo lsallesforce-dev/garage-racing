@@ -16,7 +16,7 @@ import { requireAdminSecret } from "@/lib/api-auth";
 import { alertaInterno } from "@/lib/alerta-interno";
 import { carregarCanal, ehAutoEnvio } from "@/lib/canal-tenant";
 import { sendAvisaMessage } from "@/lib/avisa";
-import { sendMetaMessage } from "@/lib/meta";
+import { sendMetaMessage, sendMetaReplyButtons } from "@/lib/meta";
 import { gerenteNaJanela, enfileirarAlertaGerente } from "@/lib/redis";
 import { bancosAtivos, financiamentoAutoLigado } from "@/lib/financiamento-simulacao";
 
@@ -37,8 +37,9 @@ function textoNovidade(p: { agente: string; loja: string; financiamento: boolean
       ? `💳 Cliente quer financiar → "Consulto nos bancos?" e, com o resultado, "Posso mandar pro cliente?". Nada vai pro cliente sem o seu ok.\n`
       : "") +
     `⏰ Cliente esperando resposta → "Quer que eu retome a conversa?"\n\n` +
-    `Pra responder, ${p.cloudApi ? "toque no botão ou mande" : "mande"} *1* (sim) ou *2* (não).\n` +
-    `Esqueceu? Mande *ajuda* que eu mostro tudo de novo. 😉`
+    (p.cloudApi
+      ? `Nas minhas perguntas é só tocar no botão. Esqueceu o que eu faço? Mande *ajuda*. 😉`
+      : `Pra responder, mande *1* (sim) ou *2* (não).\nEsqueceu? Mande *ajuda* que eu mostro tudo de novo. 😉`)
   );
 }
 
@@ -87,6 +88,14 @@ export async function POST(req: NextRequest) {
         status = (await sendAvisaMessage(destino!, texto, canal.avisa, { typing: false })) ? "enviado" : "falhou";
       } else if (await gerenteNaJanela(tenant)) {
         status = (await sendMetaMessage(destino!, texto, canal.meta).catch(() => null)) != null ? "enviado" : "falhou";
+        // Fecha com botões pra ele testar na hora: o título do botão chega
+        // como mensagem dele e cai no lib/gerente-assistente (resumo / menu).
+        if (status === "enviado") {
+          await sendMetaReplyButtons(destino!, "Quer testar agora? 👇", [
+            { id: "novidade:hoje", titulo: "Como foi hoje?" },
+            { id: "novidade:ajuda", titulo: "Ajuda" },
+          ], canal.meta).catch(() => {});
+        }
       } else {
         // Fora da janela de 24h: entra na fila que despeja quando o gerente
         // falar com a loja (o "oi" diário abre a janela).
