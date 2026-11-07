@@ -762,7 +762,8 @@ export async function POST(req: NextRequest) {
         const quando = new Date(p.em).toLocaleString("pt-BR", {
           timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
         });
-        const corpo = `⏰ *Alerta atrasado (${quando})*\n\n${p.texto}\n\n🔗 https://wa.me/${String(p.clientePhone).replace(/\D/g, "")}`;
+        const fone = String(p.clientePhone ?? "").replace(/\D/g, "");
+        const corpo = `⏰ *Alerta atrasado (${quando})*\n\n${p.texto}${fone ? `\n\n🔗 https://wa.me/${fone}` : ""}`;
         const ok = await sendMetaMessage(numGerente, corpo, credsGerente).then(() => true).catch(() => false);
         if (ok) entregues++;
         else await enfileirarAlertaGerente(tenantUserId, p.texto, p.clientePhone);
