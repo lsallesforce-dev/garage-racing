@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
 
   const { data: veiculo } = await supabaseAdmin
     .from("veiculos")
-    .select("marketing_reel_status, marketing_reel_iniciado_em, video_takes, marketing_capturas")
+    .select("marketing_reel_status, marketing_reel_iniciado_em, video_takes, marketing_capturas, fotos")
     .eq("id", veiculoId)
     .single();
 
@@ -66,9 +66,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ status: "already_processing" }, { status: 202 });
   }
   const temTakes = (veiculo?.video_takes?.length ?? 0) > 0 || (veiculo?.marketing_capturas?.takes?.length ?? 0) > 0;
-  if (!temTakes) {
+  // Sem takes, o reel sai das fotos (lib/reel-render clipesDeFotos, mínimo 4 —
+  // mesmo número de MIN_FOTOS_REEL; não importo de lá pra não puxar o Remotion pra Vercel).
+  const fotosSuficientes = (Array.isArray(veiculo?.fotos) ? veiculo.fotos.length : 0) >= 4;
+  if (!temTakes && !fotosSuficientes) {
     return NextResponse.json(
-      { error: "Grave os takes de vídeo na captura guiada do veículo antes de gerar o reel." },
+      { error: "Grave os takes de vídeo na captura guiada (ou suba pelo menos 4 fotos) antes de gerar o reel." },
       { status: 400 }
     );
   }

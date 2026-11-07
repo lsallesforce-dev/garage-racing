@@ -31,6 +31,34 @@ const r2 = new S3Client({
   },
 });
 
+/** Mínimo de fotos pra montar o reel sem takes (menos que isso fica pobre). */
+export const MIN_FOTOS_REEL = 4;
+const MAX_FOTOS_REEL = 9;
+const SEG_POR_FOTO = 2.4;
+
+/** Cenas do reel a partir das fotos do estoque, com os mesmos callouts dos takes. */
+export function clipesDeFotos(veiculo: any, callouts: string[]): ReelClip[] {
+  const fotos: string[] = (Array.isArray(veiculo.fotos) ? veiculo.fotos : []).filter((f: unknown) => typeof f === "string" && f);
+  const usar = (fotos.length > MIN_FOTOS_REEL ? fotos.slice(1) : fotos).slice(0, MAX_FOTOS_REEL);
+  // Callout cortado no limite de caracteres termina em conectivo ("RETROVISORES
+  // EXTERNOS COM"); tira o conectivo solto. "Rodas de aço" não vende nada.
+  const limpos = callouts
+    .map((c) => c.replace(/\s+(COM|E|DO|DA|DE|DOS|DAS|EM|NO|NA|PARA)$/i, "").trim())
+    .filter((c) => c && !/^RODAS DE A[ÇC]O$/i.test(c));
+  return usar.map((src, i) => ({
+    src,
+    foto: true,
+    durationInFrames: Math.round(SEG_POR_FOTO * REEL.fps),
+    callout: limpos[i] || undefined,
+  }));
+}
+
+/** O carro dá reel? Takes de vídeo OU fotos suficientes. */
+export function podeGerarReel(veiculo: any): boolean {
+  const temTakes = (veiculo?.video_takes?.length ?? 0) > 0 || (veiculo?.marketing_capturas?.takes?.length ?? 0) > 0;
+  return temTakes || (Array.isArray(veiculo?.fotos) ? veiculo.fotos.length : 0) >= MIN_FOTOS_REEL;
+}
+
 // Monta os ReelProps a partir do veículo + config do tenant.
 export async function buildReelProps(veiculo: any, cfgRow: any): Promise<ReelProps> {
   const cfg = cfgFromRow(cfgRow);
@@ -47,7 +75,7 @@ export async function buildReelProps(veiculo: any, cfgRow: any): Promise<ReelPro
   // MESMA lista que o editor mostra (ordem, cortes, deletes, takes novos). Ver
   // clipesDoReel: enquanto isso viveu duplicado aqui e na rota, dava pra editar
   // um reel e gerar outro — trocar o vídeo de um slot não chegava no render.
-  const clips: ReelClip[] = clipesDoReel(veiculo).map((c, i) => {
+  let clips: ReelClip[] = clipesDoReel(veiculo).map((c, i) => {
     const r = resolverCallout({
       manual: c.manualCallout,
       tag: c.tag,
@@ -65,6 +93,12 @@ export async function buildReelProps(veiculo: any, cfgRow: any): Promise<ReelPro
       subCallout: (subManual || r.subCallout) || undefined,
     };
   });
+
+  // Carro sem takes de vídeo: o reel sai das FOTOS do estoque (ordem da galeria,
+  // sem a 1ª, que já é o fundo da intro). Pedido do Lucas 07/11 pro Fiesta e a
+  // Hilux da APROVE: o reel do Civic custou R$3/conversa contra R$8–9 da imagem
+  // parada, e nenhum dos dois tinha take gravado.
+  if (!clips.length) clips = clipesDeFotos(veiculo, callouts);
 
   // Trilha: escolha do editor (ver TRILHAS_OK em app/api/marketing/reel-edit/route.ts), default animado.
   const TRILHAS = [
@@ -186,8 +220,8 @@ async function getBundle(): Promise<string> {
 export async function renderReel(veiculoId: string): Promise<string> {
   const { data: veiculo } = await supabaseAdmin.from("veiculos").select("*").eq("id", veiculoId).single();
   if (!veiculo) throw new Error("Veículo não encontrado");
-  if (!veiculo.video_takes?.length && !(veiculo.marketing_capturas?.takes?.length)) {
-    throw new Error("Veículo sem takes de vídeo — grave os takes na captura guiada");
+  if (!podeGerarReel(veiculo)) {
+    throw new Error(`Veículo sem takes de vídeo e com menos de ${MIN_FOTOS_REEL} fotos — grave os takes na captura guiada`);
   }
 
   const { data: cfgRows } = await supabaseAdmin
@@ -205,7 +239,7 @@ export async function renderReel(veiculoId: string): Promise<string> {
   const tmpProxy = await fs.mkdtemp(path.join(os.tmpdir(), `proxy_${veiculoId}_`));
   try {
     for (const clip of inputProps.clips) {
-      if (!clip.src) continue;
+      if (!clip.src || clip.foto) continue;
       try {
         clip.src = await proxyDoTake(clip.src, tmpProxy);
       } catch (e: any) {

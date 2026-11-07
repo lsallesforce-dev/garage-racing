@@ -1,5 +1,5 @@
 import React from "react";
-import { AbsoluteFill, interpolate, OffthreadVideo, useCurrentFrame, useVideoConfig } from "remotion";
+import { AbsoluteFill, Img, interpolate, OffthreadVideo, useCurrentFrame, useVideoConfig } from "remotion";
 import { REEL } from "../theme";
 import type { ReelClip, TipoTransicao } from "../types";
 
@@ -57,7 +57,23 @@ export const ClipScene: React.FC<{
         filter: blurPx > 0.05 ? `blur(${blurPx}px)` : undefined,
       }}
     >
-      {clip.src ? (
+      {clip.src && clip.foto ? (
+        // Foto (carro sem takes): a foto do estoque é deitada; "cover" num 9:16
+        // cortaria a frente e a traseira. Fundo = a mesma foto desfocada, e por
+        // cima a foto inteira com zoom lento (Ken Burns) pra cena ter movimento.
+        <>
+          <Img
+            src={clip.src}
+            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", filter: "blur(38px) brightness(0.55)", transform: "scale(1.15)" }}
+          />
+          <AbsoluteFill style={{ justifyContent: "center", alignItems: "center" }}>
+            <Img
+              src={clip.src}
+              style={{ width: "100%", height: "auto", maxHeight: "72%", objectFit: "contain", transform: `scale(${1 + 0.045 * (frame / Math.max(total, 1))}) translateX(${interpolate(frame, [0, total], [-1.2, 1.2])}%)` }}
+            />
+          </AbsoluteFill>
+        </>
+      ) : clip.src ? (
         <OffthreadVideo
           src={clip.src}
           startFrom={Math.round((clip.startFrom ?? 0) * fps)}
