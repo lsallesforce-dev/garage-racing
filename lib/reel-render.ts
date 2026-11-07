@@ -42,9 +42,18 @@ export function clipesDeFotos(veiculo: any, callouts: string[]): ReelClip[] {
   const usar = (fotos.length > MIN_FOTOS_REEL ? fotos.slice(1) : fotos).slice(0, MAX_FOTOS_REEL);
   // Callout cortado no limite de caracteres termina em conectivo ("RETROVISORES
   // EXTERNOS COM"); tira o conectivo solto. "Rodas de aço" não vende nada.
+  // Também: pedaço cortado no meio ("CONECTIVIDADE WI"), item que não vende
+  // ("AR QUENTE", "BANCOS EM TECIDO") e repetido ("AR CONDICIONADO" + "AR-CONDICIONADO DIGITAL").
+  const NAO_VENDE = /^(RODAS DE A[ÇC]O|AR QUENTE|BANCOS? EM TECIDO|TRAVAS? EL[ÉE]TRICAS?|ALARME)$/i;
+  const chave = (c: string) => c.normalize("NFD").replace(/[^A-Za-z]/g, "").toUpperCase().slice(0, 12);
+  const vistos = new Set<string>();
   const limpos = callouts
-    .map((c) => c.replace(/\s+(COM|E|DO|DA|DE|DOS|DAS|EM|NO|NA|PARA)$/i, "").trim())
-    .filter((c) => c && !/^RODAS DE A[ÇC]O$/i.test(c));
+    .map((c) => c.replace(/\s+(COM|E|DO|DA|DE|DOS|DAS|EM|NO|NA|PARA)$/i, "").replace(/\s+(\S{1,2})$/, (m, w) => (/^(R[ÉE]|AR|4X[24]|GPS|USB|LED)$/i.test(w) ? m : "")).trim())
+    .filter((c) => {
+      if (!c || NAO_VENDE.test(c) || vistos.has(chave(c))) return false;
+      vistos.add(chave(c));
+      return true;
+    });
   return usar.map((src, i) => ({
     src,
     foto: true,
