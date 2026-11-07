@@ -561,6 +561,17 @@ function extractFields(payload: any): {
     const isClientImage = msg.type === "image" && !userMessage;
     const imageMediaId: string | null = msg.type === "image" ? (msg.image?.id ?? null) : null;
     if (isSticker) userMessage = "[Cliente enviou uma figurinha]";
+    // Vídeo e documento sem legenda caíam no "sem conteúdo" e sumiam do painel
+    // (Bonitão, 06/11: 3 clientes mandaram documento — CNH/comprovante de
+    // financiamento — e ninguém viu). A legenda, quando vem, vira a mensagem.
+    if (!userMessage && msg.type === "video") {
+      userMessage = String(msg.video?.caption ?? "").trim() || "[Cliente enviou um vídeo]";
+    }
+    if (!userMessage && msg.type === "document") {
+      const nomeArq = String(msg.document?.filename ?? "").trim();
+      userMessage = String(msg.document?.caption ?? "").trim()
+        || `[Cliente enviou um documento${nomeArq ? `: ${nomeArq}` : ""}]`;
+    }
     if (isClientImage) {
       const legenda = String(msg.image?.caption ?? "").trim();
       userMessage = legenda || "[Cliente enviou foto(s) do veículo]";

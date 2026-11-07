@@ -1616,6 +1616,20 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
       }
     }
 
+    // Prioridade 1a4: a mensagem pronta do próprio cliente. "Anúncio no Status"
+    // não traz body e o headline é o nome do formato; o carro só aparece no
+    // texto que o WhatsApp preenche ("Gostaria de saber mais sobre o Gol City
+    // 2015"). Mesma trava do modelo. Bonitão, 07/11: Status do Gol City ainda
+    // resolvia pro Gol 2013 pelo Vision.
+    if (!adVeiculoId && userMessage) {
+      const vMsg = await findVehicleForMedia(userMessage, tenantUserId);
+      if (vMsg && modeloApareceNoTexto(vMsg.modelo, userMessage)) {
+        adVeiculoId = vMsg.id;
+        adVeiculoNome = `${vMsg.marca} ${vMsg.modelo}`;
+        console.log(`📢 [Ad referral] veiculo_id resolvido pela mensagem do cliente: ${adVeiculoId} (${adVeiculoNome})`);
+      }
+    }
+
     // Prioridade 1b: anúncio criado fora do AutoZap — consulta criativo via Meta Graph API
     // Usa o meta_ads_token do tenant para buscar o nome do anúncio e resolver o veículo.
     if (!adVeiculoId) {
