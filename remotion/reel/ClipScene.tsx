@@ -15,7 +15,10 @@ export const ClipScene: React.FC<{
   overlap?: number;
 }> = ({ clip, callout, subCallout, cor, total, transicao = "fade", overlap = 12 }) => {
   const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
+  const { fps, width, height } = useVideoConfig();
+  // Versão de feed (4:3/1:1, render com --width/--height): a foto do estoque já
+  // é 4:3, então ocupa o quadro inteiro, sem a moldura desfocada do 9:16.
+  const quadroDeitado = width >= height;
 
   const t = Math.max(overlap, 1);
   // Opacidade, deslocamento, escala e desfoque da cena conforme a transição
@@ -57,7 +60,12 @@ export const ClipScene: React.FC<{
         filter: blurPx > 0.05 ? `blur(${blurPx}px)` : undefined,
       }}
     >
-      {clip.src && clip.foto ? (
+      {clip.src && clip.foto && quadroDeitado ? (
+        <Img
+          src={clip.src}
+          style={{ width: "100%", height: "100%", objectFit: "cover", transform: `scale(${1.02 + 0.05 * (frame / Math.max(total, 1))}) translateX(${interpolate(frame, [0, total], [-1, 1])}%)` }}
+        />
+      ) : clip.src && clip.foto ? (
         // Foto (carro sem takes): a foto do estoque é deitada; "cover" num 9:16
         // cortaria a frente e a traseira. Fundo = a mesma foto desfocada, e por
         // cima a foto inteira com zoom lento (Ken Burns) pra cena ter movimento.
