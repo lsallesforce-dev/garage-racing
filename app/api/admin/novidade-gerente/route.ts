@@ -16,7 +16,7 @@ import { requireAdminSecret } from "@/lib/api-auth";
 import { alertaInterno } from "@/lib/alerta-interno";
 import { carregarCanal, ehAutoEnvio } from "@/lib/canal-tenant";
 import { sendAvisaMessage } from "@/lib/avisa";
-import { sendMetaMessage, sendMetaReplyButtons } from "@/lib/meta";
+import { sendMetaMessage, sendMetaReplyButtons, sendMetaTemplate } from "@/lib/meta";
 import { gerenteNaJanela, enfileirarAlertaGerente } from "@/lib/redis";
 import { bancosAtivos, financiamentoAutoLigado } from "@/lib/financiamento-simulacao";
 
@@ -97,10 +97,13 @@ export async function POST(req: NextRequest) {
           ], canal.meta).catch(() => {});
         }
       } else {
-        // Fora da janela de 24h: entra na fila que despeja quando o gerente
-        // falar com a loja (o "oi" diário abre a janela).
+        // Fora da janela de 24h: template "novidade_assistente" (MARKETING,
+        // criado 08/11 na APROVE e no Bonitão) com os botões "Como foi hoje?"
+        // e "Ajuda" — o toque abre a janela. O texto completo vai pra fila
+        // que despeja quando ele falar com a loja.
+        const viaTemplate = await sendMetaTemplate(destino!, "novidade_assistente", [agente, canal.loja], canal.meta);
         await enfileirarAlertaGerente(tenant, texto, "");
-        status = "na fila (gerente fora da janela 24h)";
+        status = viaTemplate ? "template enviado (texto completo na fila)" : "na fila (template ainda não aprovado)";
       }
     } catch (e: any) {
       status = `falhou: ${String(e?.message ?? e).slice(0, 120)}`;
