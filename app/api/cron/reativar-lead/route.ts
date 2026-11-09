@@ -72,6 +72,29 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, skip: "encerrado" });
   }
 
+  // Madrugada não: o lote sai de 3 em 3 minutos e atravessava a noite — a
+  // Carmatti (07-09/11) mandou reativação às 2h, 4h e 5h da manhã.
+  const horaBRT = Number(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo", hour: "numeric", hour12: false }));
+  if (horaBRT < 8 || horaBRT >= 20) {
+    return NextResponse.json({ ok: true, skip: "fora_do_horario" });
+  }
+
+  // Só reativa conversa recente. O botão pega todo lead em atendimento humano
+  // parado há 48h+, sem teto — na Carmatti isso foram ~800 clientes de maio a
+  // setembro recebendo "tenho as simulações que você pediu" meses depois.
+  const { data: ultCli } = await supabaseAdmin
+    .from("mensagens")
+    .select("created_at")
+    .eq("lead_id", lead.id)
+    .eq("remetente", "usuario")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const DIAS_MAX_REATIVAR = 7;
+  if (!ultCli || Date.now() - new Date(ultCli.created_at).getTime() > DIAS_MAX_REATIVAR * 86400_000) {
+    return NextResponse.json({ ok: true, skip: "conversa_antiga" });
+  }
+
   // ── Carrega config do tenant ─────────────────────────────────────────────────
   const { data: configs } = await supabaseAdmin
     .from("config_garage")
@@ -133,7 +156,7 @@ export async function POST(req: NextRequest) {
     if (v) {
       carro = `${v.marca} ${v.modelo} ${v.ano ?? ""}`.trim();
       preco = v.preco_sugerido
-        ? `R$ ${new Intl.NumberFormat("pt-BR").format(v.preco_sugerido / 100)}`
+        ? `R$ ${new Intl.NumberFormat("pt-BR").format(Number(v.preco_sugerido))}`
         : "";
       disponivel = v.status_venda !== "VENDIDO";
 
