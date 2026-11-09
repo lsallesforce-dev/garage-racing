@@ -41,8 +41,9 @@ const PREFIXO_PUBLICO = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/obje
  */
 async function jpegParaInstagram(url: string): Promise<string> {
   try {
-    if (!/\.png(\?|$)/i.test(url) || !url.startsWith(PREFIXO_PUBLICO)) return url;
-    const caminhoJpg = url.slice(PREFIXO_PUBLICO.length).split("?")[0].replace(/\.png$/i, ".jpg");
+    // PNG do kit e, no "postar direto", foto do estoque em PNG/WEBP (o IG só aceita JPEG).
+    if (!/\.(png|webp)(\?|$)/i.test(url) || !url.startsWith(PREFIXO_PUBLICO)) return url;
+    const caminhoJpg = url.slice(PREFIXO_PUBLICO.length).split("?")[0].replace(/\.(png|webp)$/i, ".jpg");
 
     // Já convertida antes (o lojista republica o mesmo carro) — reusa.
     const { data: existente } = await supabaseAdmin.storage.from(BUCKET).list(
@@ -91,23 +92,44 @@ export async function POST(req: NextRequest) {
     if (!veiculo) return NextResponse.json({ error: "Veículo não encontrado" }, { status: 404 });
 
     const midia = midiaDoVeiculo(veiculo);
+
+    // "Postar direto" (fonte = "estoque"): fotos e vídeo do jeito que estão no
+    // estoque, sem kit e sem anúncio — loja que trata as fotos por fora e só
+    // quer publicar (Carmatti, 09/11). As fotos escolhidas na tela só valem se
+    // forem DESTE carro: a URL vem do cliente e a Meta baixa o que mandarmos.
+    const direto = body?.fonte === "estoque";
+    const galeria: string[] = Array.isArray(veiculo.fotos) ? veiculo.fotos.filter(Boolean) : [];
+    const escolhidas: string[] = Array.isArray(body?.fotos)
+      ? [...new Set<string>(body.fotos)].filter((u) => typeof u === "string" && galeria.includes(u))
+      : galeria;
+
     // Story tem arte própria (9:16). Feed usa o carrossel do kit, e se não
     // houver, a capa — nunca a foto crua: o post orgânico é a arte da loja.
-    const imagens =
-      formato === "story"
+    // No "postar direto" é o contrário: só as fotos do estoque (máx. 10 no
+    // carrossel, que é o teto do IG; story = a primeira escolhida).
+    const imagens = direto
+      ? (formato === "story" ? escolhidas.slice(0, 1) : escolhidas.slice(0, 10))
+      : formato === "story"
         ? [midia.storyKit ?? midia.capaKit ?? midia.fotoCrua].filter(Boolean) as string[]
         : (midia.carrossel.length ? midia.carrossel : [midia.capaKit ?? midia.fotoCrua].filter(Boolean) as string[]);
 
     // Reels e story em vídeo usam o REEL do kit (midia.reel só vem preenchido
     // quando o worker terminou: marketing_reel_status = "pronto"). Sem reel do
     // kit, vale o vídeo que o lojista subiu no estoque — caso da loja que edita
-    // o vídeo por fora e só quer postar.
-    const videoUrl = usaVideo(formato) ? (midia.reel ?? midia.videoEstoque) : null;
+    // o vídeo por fora e só quer postar. No "postar direto" a ordem inverte:
+    // o vídeo do estoque vem primeiro.
+    const videoUrl = !usaVideo(formato)
+      ? null
+      : direto ? (midia.videoEstoque ?? midia.reel) : (midia.reel ?? midia.videoEstoque);
     if (usaVideo(formato) && !videoUrl) {
       return NextResponse.json({ error: "Este carro ainda não tem vídeo — gere o reel ou suba um vídeo no estoque." }, { status: 400 });
     }
     if (!usaVideo(formato) && !imagens.length) {
-      return NextResponse.json({ error: "Este carro não tem arte pronta — gere o Kit de Postagem antes." }, { status: 400 });
+      return NextResponse.json({
+        error: direto
+          ? "Escolha pelo menos uma foto do carro."
+          : "Este carro não tem arte pronta — gere o Kit de Postagem antes.",
+      }, { status: 400 });
     }
 
     const legenda: string = (typeof body?.legenda === "string" && body.legenda.trim())
@@ -214,6 +236,7 @@ export async function POST(req: NextRequest) {
       post_id: r.id,
       permalink: r.permalink ?? "",
       formato,
+      ...(direto ? { origem: "estoque" } : {}),
       em: new Date().toISOString(),
       removido_em: null,
     }));

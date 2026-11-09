@@ -19,6 +19,7 @@ import PisoRestauro from "@/components/PisoRestauro";
 import ReelEditor from "@/components/ReelEditor";
 import PublicarMetaButton from "@/components/PublicarMetaButton";
 import SlidesTextoEditor from "@/components/SlidesTextoEditor";
+import PostarDireto from "@/components/PostarDireto";
 import type { MarketingCapturas } from "@/lib/marketing-shotlist";
 import { midiaDoVeiculo, melhorFormato, miniatura, miniaturaFalhou } from "@/lib/veiculo-midia";
 import {
@@ -850,13 +851,15 @@ export default function KitsGaleria() {
                 {/* ─── PUBLICAR: legenda, postar (grátis), anunciar (pago) ─── */}
                 {aba === "publicar" && (
                   !temKit ? (
-                    <div className="rounded-xl bg-gray-50 p-4 text-center">
-                      <p className="text-[10px] font-bold text-gray-400 mb-2">Gere o kit pra ter a arte e a legenda.</p>
+                    // Sem kit dá pra postar com as fotos/vídeo do estoque; o kit
+                    // vira opção (arte com a marca da loja), não pré-requisito.
+                    <div className="flex flex-col gap-2">
+                      <PostarDireto carro={c} onPosts={(posts) => patchCarro(c.id, { marketing_posts: posts })} />
                       <button
                         onClick={() => setSecao((p) => ({ ...p, [c.id]: "criar" }))}
-                        className="rounded-xl bg-gray-900 px-4 py-2 text-[9px] font-black uppercase tracking-widest text-white hover:bg-red-600"
+                        className="text-[9px] font-black uppercase tracking-widest text-gray-400 hover:text-gray-700"
                       >
-                        Ir para Criar
+                        Ou gere o kit (arte com a marca da loja) →
                       </button>
                     </div>
                   ) : (
@@ -981,6 +984,9 @@ export default function KitsGaleria() {
                           <p className="text-[9px] font-black uppercase tracking-widest text-green-600">✓ No ar no {postado[c.id]}</p>
                         )}
                       </div>
+
+                      {/* POSTAR DIRETO — fotos/vídeo do estoque, sem a arte do kit */}
+                      <PostarDireto carro={c} recolhivel onPosts={(posts) => patchCarro(c.id, { marketing_posts: posts })} />
 
                       {/* ANUNCIAR — pago, Meta Ads */}
                       <PublicarKit carro={c} />
