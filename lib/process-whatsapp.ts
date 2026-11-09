@@ -5168,14 +5168,10 @@ Retorne JSON estrito:
       );
       console.log(`🔥 Lead ${temperatura} — enviando alerta para ${destinoWa}`);
       if (!useAvisa && metaCreds.phoneNumberId && metaCreds.accessToken) {
-        await sendMetaCtaButton(destinoWa, briefing.texto, "Abrir Conversa", briefing.waLink, metaCreds)
-          .then(() => console.log(`✅ CTA button enviado ao vendedor (${destinoWa})`))
-          .catch(async (err: any) => {
-            console.warn(`⚠️ CTA button falhou para ${destinoWa}:`, err?.message?.slice(0, 200));
-            await sendAlert(destinoWa, `${briefing.texto}\n\n${briefing.waLink}`)
-              .then(() => console.log(`✅ Fallback alerta enviado ao vendedor (${destinoWa})`))
-              .catch((e: any) => console.error(`❌ Fallback também falhou para ${destinoWa}:`, e?.message?.slice(0, 200)));
-          });
+        // Pelo sendAlertComLink, como os outros alertas: fora da janela de 24h
+        // vai por template (ou fila). O botão direto a Meta aceita e descarta
+        // depois — Bonitão, 07-09/11: 16 alertas de lead quente nunca chegaram.
+        await sendAlertComLink(destinoWa, briefing.texto, phone);
       } else {
         await sendAlert(destinoWa, `${briefing.texto}\n\n${briefing.waLink}`)
           .then(() => console.log(`✅ Alerta enviado ao vendedor via Avisa (${destinoWa})`))
