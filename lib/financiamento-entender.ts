@@ -165,6 +165,23 @@ export function combinarLeituras(regex: Extraido, ia: Entendimento | null): Extr
 
 type Campo = "entrada" | "nome" | "cpf" | "nascimento";
 
+const TROCA = "veículo na troca";
+/**
+ * Junta a entrada que já estava na coleta com a nova leitura quando uma traz o
+ * carro e a outra o dinheiro. Fora disso, vale a nova (cliente corrigiu o valor).
+ *   "R$ 20.000" + "veículo na troca"            → "veículo na troca + R$ 20.000"
+ *   "veículo na troca" + "R$ 15.000"            → "veículo na troca + R$ 15.000"
+ *   "veículo na troca + R$ 20.000" + "veículo na troca" → mantém (não perde o valor)
+ */
+export function somarEntradas(atual: string, nova: string): string {
+  const dinheiro = (e: string) => e.match(/R\$\s?[\d.]+/)?.[0] ?? null;
+  const temCarro = (e: string) => e.startsWith(TROCA);
+  if (!temCarro(atual) && dinheiro(atual) && nova === TROCA) return `${TROCA} + ${dinheiro(atual)}`;
+  if (atual === TROCA && !temCarro(nova) && dinheiro(nova)) return `${TROCA} + ${dinheiro(nova)}`;
+  if (temCarro(atual) && dinheiro(atual) && nova === TROCA) return atual;
+  return nova;
+}
+
 export type DecisaoTurno =
   /** Não é assunto de financiamento: segue o fluxo normal (coleta fica como está). */
   | { acao: "seguir" }
@@ -214,6 +231,12 @@ export function decidirTurno(p: {
   ) {
     ext.entrada = undefined;
   }
+
+  // Dinheiro e carro na troca SOMAM, não se substituem. Caso real (APROVE
+  // 09/11, Paulo do Civic): "mais ou menos 20 mil" e depois "tenho um City pra
+  // dar" → a coleta trocou "R$ 20.000" por "veículo na troca" e o gerente
+  // recebia a entrada sem o dinheiro.
+  if (ext.entrada && coletaAtual?.entrada) ext.entrada = somarEntradas(coletaAtual.entrada, ext.entrada);
 
   // Dado novo = o que ainda não estava na coleta.
   const novos: Partial<Record<Campo, string>> = {};
