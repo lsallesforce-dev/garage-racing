@@ -184,7 +184,9 @@ export function extrairDadosFinanciamento(
 
   // CPF primeiro — e sai do texto, pra não virar "entrada" nem "data".
   // Aceita qualquer separador: "334.262.978.92", "334262978-92", "334 262 978 92".
-  const reCpf = /(?<!\d)(\d{3})[.\s-]?(\d{3})[.\s-]?(\d{3})[.\s/-]?(\d{2})(?!\d)/g;
+  // Até 2 separadores entre os grupos: CPF escrito à mão e lido da foto vem
+  // como "109- 451 388-14" (APROVE 09/11). O dígito verificador segura o resto.
+  const reCpf = /(?<!\d)(\d{3})[.\s-]{0,2}(\d{3})[.\s-]{0,2}(\d{3})[.\s/-]{0,2}(\d{2})(?!\d)/g;
   for (const m of resto.matchAll(reCpf)) {
     const d = m.slice(1, 5).join("");
     if (cpfValido(d)) {

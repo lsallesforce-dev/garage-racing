@@ -44,7 +44,7 @@ Devolva SÓ este JSON, sem markdown:
   "tipo": "print_anuncio" | "carro_do_cliente" | "documento" | "outro",
   "carro": "marca modelo versão ano que aparece escrito, ou null",
   "preco": "preço que aparece escrito, ou null",
-  "texto": "o texto legível na imagem, resumido em até 200 caracteres, ou null",
+  "texto": "o texto legível na imagem, ou null. Em documento, boleto, bilhete escrito à mão ou print de conversa: TRANSCREVA nomes completos, CPF, datas e números EXATAMENTE como aparecem (não resuma nem arredonde números), até 400 caracteres. Nos outros tipos, resuma em até 200 caracteres.",
   "resumo": "uma frase curta do que aparece"
 }`;
 
@@ -74,7 +74,10 @@ export async function lerImagemDoCliente(
         tipo,
         carro: j?.carro ?? null,
         preco: j?.preco ?? null,
-        texto: typeof j?.texto === "string" ? j.texto.slice(0, 200) : null,
+        // 400: CPF/nome/data do boleto ou do bilhete escrito à mão precisam chegar
+        // inteiros na coleta de financiamento (APROVE 09/11, Paulo do Civic: 3
+        // imagens com o CPF e a IA pedindo o CPF de novo).
+        texto: typeof j?.texto === "string" ? j.texto.replace(/"/g, "'").replace(/[[\]]/g, " ").slice(0, 400) : null,
         resumo: typeof j?.resumo === "string" ? j.resumo.slice(0, 160) : "",
       };
     } catch (e: any) {

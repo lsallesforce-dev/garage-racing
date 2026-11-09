@@ -2173,7 +2173,9 @@ Responda apenas com o JSON, sem markdown.`;
           // Nao e carro de troca: nao inventa "vou avaliar seu carro". Deixa o
           // contexto explicito e o agente responde o que der.
           const legenda = userMessage === MARCA_FOTO_CLIENTE ? "" : userMessage;
-          userMessage = `[Cliente enviou uma imagem: ${leitura.resumo || leitura.tipo}]` + (legenda ? `\n${legenda}` : "");
+          // O texto da imagem vai junto: sem ele, o CPF do boleto ou do bilhete
+          // escrito à mão nunca chegava na coleta de financiamento (passo 10d).
+          userMessage = `[Cliente enviou uma imagem: ${leitura.resumo || leitura.tipo}${leitura.texto ? ` — texto na imagem: "${leitura.texto}"` : ""}]` + (legenda ? `\n${legenda}` : "");
           printDeAnuncio = true; // reaproveita a trava: nao e pre-avaliacao de troca
         }
       }
@@ -3028,7 +3030,11 @@ Responda apenas com o JSON, sem markdown.`;
   // Usa só o texto digitado pelo cliente — strip do contexto injetado
   // ([Contexto do link:...], [Lead veio do anúncio:...]) para evitar falsos
   // positivos com specs do veículo (ex: "Câmbio Automático" na ficha).
-  const textoClientePosvenda = semBlocosDeContexto(userMessage).trim().toLowerCase();
+  // A leitura da imagem (que agora traz o texto transcrito do boleto/documento)
+  // também sai: "garantia" ou "defeito" escrito num documento não é reclamação.
+  const textoClientePosvenda = semBlocosDeContexto(userMessage)
+    .replace(/\[Cliente (?:enviou uma imagem|mandou um PRINT de anuncio)[\s\S]*?\]/g, " ")
+    .trim().toLowerCase();
 
   // Gatilhos FORTES — defeito inequívoco. Disparam pós-venda sozinhos.
   const gatilhosDefeito = [
@@ -3184,8 +3190,25 @@ Responda apenas com o JSON, sem markdown.`;
   if (lead?.id && !skipSend && !garageConfig?.modo_repasse && mensagemClientePura) {
     // Descrição de mídia ("[Cliente enviou uma imagem: Recibo de pagamento de
     // financiamento…]") é anotação do sistema, não fala do cliente.
-    const textoFin = mensagemClientePura.replace(/\[[^\]]*\]/g, " ").replace(/\s+/g, " ").trim();
     const coletaAtual = await lerColeta(tenantUserId, lead.id);
+    // Com a coleta ABERTA, o CPF e a data de nascimento que estão numa IMAGEM
+    // (boleto, documento, bilhete escrito à mão) contam como se o cliente
+    // tivesse digitado. Só esses dois: CPF passa pelo dígito verificador, e a
+    // data só vale se a imagem falar de nascimento (boleto tem vencimento).
+    // Valor da imagem NÃO vira entrada (o total do boleto não é entrada).
+    // Caso real: APROVE 09/11, Paulo do Civic mandou 3 imagens com o CPF da
+    // esposa e a IA pediu "digite o CPF" quatro vezes.
+    let dadosDaImagem = "";
+    if (coletaAtual) {
+      const textoImagem = [...mensagemClientePura.matchAll(/texto na imagem: "([^"]*)"/g)].map((m) => m[1]).join(" ");
+      if (textoImagem) {
+        const lido = extrairDadosFinanciamento(textoImagem, {});
+        const nasc = /nasc|anivers/i.test(textoImagem) ? lido.nascimento : undefined;
+        dadosDaImagem = [lido.cpf, nasc].filter(Boolean).join(" ");
+        if (dadosDaImagem) console.log(`💳 [Financiamento] ${phone} — dado lido na imagem: ${lido.cpf ? "CPF" : ""}${nasc ? " nascimento" : ""}`);
+      }
+    }
+    const textoFin = `${mensagemClientePura.replace(/\[[^\]]*\]/g, " ")} ${dadosDaImagem}`.replace(/\s+/g, " ").trim();
     const gatilhoFin = !!textoFin && falaDeFinanciamento(textoFin);
 
     if (textoFin && (coletaAtual || gatilhoFin)) {
