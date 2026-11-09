@@ -3068,11 +3068,29 @@ Responda apenas com o JSON, sem markdown.`;
   const perguntaDeCompra = /\b(tem|tem de|possui|qual|quanto|quantos?|inclui|coberto|cobre|de f[áa]brica)\b/.test(textoClientePosvenda);
   // 2) Cliente falando do carro que quer DAR na troca / vender, ou "garantia" de
   // empréstimo, usa as mesmas palavras sem ser reclamação de carro comprado aqui.
+  // Descrever um carro (km, revisões, dono) também é o cliente falando do carro
+  // dele, não reclamando: "garantia de cinco anos, fez quatro revisão… tá com
+  // sessenta mil km" (APROVE 09/11, HB20 oferecido na troca da Hilux).
+  const descreveCarro =
+    /\b(quil[ôo]metros?|km|rodad[oa]s?|revis(ão|ao|ões|oes)|revisad[oa]|[úu]nico\s+dono|dono|ipva|chave\s+reserva|manual\s+e\s+chave)\b/.test(textoClientePosvenda);
   const falaDoCarroDeTroca =
-    /\b(em|na|de|pra|para)\s+troca\b|\bvend(endo|er)\b|\bvendo\s+(o|a|meu|minha)\b|\bavalia(r|[çc][ãa]o)\b|\bempr[ée]stimo\b/.test(textoClientePosvenda);
-  const garantiaPosvenda = mencionaGarantia && sinalPosse && !perguntaDeCompra && !falaDoCarroDeTroca;
+    /\b(em|na|de|pra|para)\s+troca\b|\btrocar\b|\bvend(endo|er)\b|\bvendo\s+(o|a|meu|minha)\b|\bavalia(r|[çc][ãa]o)\b|\bempr[ée]stimo\b/.test(textoClientePosvenda);
+  // 3) A conversa recente é sobre o carro de troca do cliente: a mensagem solta
+  // não diz isso, mas o agente acabou de pedir fotos "do seu HB20" pra avaliar.
+  const recenteConversa = historico.slice(-4)
+    // sem o bloco do anúncio: a legenda "aceitamos seu usado na troca" não é conversa
+    .map((h: any) => semBlocosDeContexto(String(h?.parts?.[0]?.text ?? ""))).join(" \n ").toLowerCase();
+  const conversaDeTroca =
+    /\btroca\b|\btrocar\b|pr[ée][\s-]?avalia|\bavalia[çc][ãa]o\b|\bavaliar\b|fotos?\s+d[oa]\s+seu|dar\s+no\s+neg[óo]cio/.test(recenteConversa);
+  // Quem comprou AQUI e voltou com problema diz isso; aí vale mesmo no meio de troca.
+  const compreiNaLoja = /\bcompr(ei|amos)\b[^.?!]{0,40}\b(a[íi]|com\s+voc[êe]s|na\s+loja|de\s+voc[êe]s|nessa\s+loja)\b/.test(textoClientePosvenda);
+  const contextoDeTroca = (conversaDeTroca || falaDoCarroDeTroca) && !compreiNaLoja;
+  const garantiaPosvenda = mencionaGarantia && sinalPosse && !perguntaDeCompra
+    && !falaDoCarroDeTroca && !descreveCarro && !contextoDeTroca;
 
-  const isPosvenda = temDefeito || garantiaPosvenda;
+  // Defeito do carro que o cliente quer DAR na troca ("tem um barulho na suspensão")
+  // também não é pós-venda.
+  const isPosvenda = (temDefeito && !contextoDeTroca) || garantiaPosvenda;
 
   if (isPosvenda && lead) {
     console.log(`🔴 [Pós-venda] ${phone} — defeito/garantia detectado → IA em stand-by: "${textoClientePosvenda.slice(0, 80)}"`);
