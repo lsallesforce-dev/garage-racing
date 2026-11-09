@@ -71,6 +71,14 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  async redirects() {
+    return [
+      // Fluxo Grupo (repasse automático em grupo) saiu do menu de todos os
+      // tenants em 09/11/2026: a Carmatti ligou sem querer e o texto de repasse
+      // ("sem garantia") foi parar no Status. Código e cron ficam; a página não.
+      { source: "/fluxo-grupo", destination: "/dashboard", permanent: false },
+    ];
+  },
   typescript: {
     // O gerador de tipos do Next.js 16 produz um .next/dev/types/routes.d.ts malformado
     // para rotas dinâmicas aninhadas (ex: /vitrine/[tenant]/[id]).
