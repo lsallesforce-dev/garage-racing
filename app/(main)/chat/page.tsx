@@ -134,17 +134,23 @@ function CentralChatInner() {
   // faz sentido mostrar o filtro "Liberar?" e os botões de liberar/marcar
   // pessoal — nos demais tenants ia_liberada é null pra todo mundo.
   const [leadOnly, setLeadOnly] = useState(false);
+  // Conversas paradas antes desta data ficam fora da lista (config_garage.chat_oculta_ate,
+  // migration 076) — nada é apagado. undefined = ainda lendo a config.
+  const [ocultaAte, setOcultaAte] = useState<string | null | undefined>(undefined);
+  const [mostrarAntigos, setMostrarAntigos] = useState(false);
   useEffect(() => {
     if (!effectiveUserId) return;
     let ativo = true;
     (async () => {
       const { data } = await supabase
         .from("config_garage")
-        .select("ia_modo_lead_only")
+        .select("ia_modo_lead_only, chat_oculta_ate")
         .eq("user_id", effectiveUserId)
         .order("created_at", { ascending: false })
         .limit(1);
-      if (ativo) setLeadOnly(data?.[0]?.ia_modo_lead_only === true);
+      if (!ativo) return;
+      setLeadOnly(data?.[0]?.ia_modo_lead_only === true);
+      setOcultaAte(data?.[0]?.chat_oculta_ate ?? null);
     })();
     return () => { ativo = false; };
   }, [effectiveUserId]);
@@ -177,6 +183,7 @@ function CentralChatInner() {
   const carregarLeads = useCallback(async (pagina = 0, acumular = false) => {
     if (!effectiveUserId) return;
     if (isVendedor && !vendedorResolvido) return; // espera resolver o vendedor antes de listar
+    if (ocultaAte === undefined) return;          // espera a config pra não piscar a lista inteira
 
     let query = supabase
       .from("leads")
@@ -198,6 +205,8 @@ function CentralChatInner() {
       query = query.eq("ia_liberada", false);
     } else {
       query = query.or("ia_liberada.is.null,ia_liberada.eq.true");
+      // Cliente que escreve de novo sobe o updated_at e volta pra lista sozinho.
+      if (ocultaAte && !mostrarAntigos) query = query.gte("updated_at", ocultaAte);
     }
 
     if (filtro === "PESSOAIS") {
@@ -252,7 +261,7 @@ function CentralChatInner() {
 
     setLeads(prev => acumular ? [...prev, ...novos] : novos);
     setPaginaLeads(pagina);
-  }, [effectiveUserId, isVendedor, meuVendedorId, vendedorResolvido, filtro]);
+  }, [effectiveUserId, isVendedor, meuVendedorId, vendedorResolvido, filtro, ocultaAte, mostrarAntigos]);
 
   const carregarMais = async () => {
     setCarregandoMais(true);
@@ -653,6 +662,17 @@ function CentralChatInner() {
               className="w-full py-3 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-all disabled:opacity-50"
             >
               {carregandoMais ? "Carregando..." : `Ver mais (${totalLeads - leads.length} restantes)`}
+            </button>
+          )}
+
+          {ocultaAte && filtro !== "PESSOAIS" && (
+            <button
+              onClick={() => { setMostrarAntigos((v) => !v); setPaginaLeads(0); }}
+              className="w-full py-3 text-[9px] font-black uppercase tracking-widest text-gray-300 hover:text-gray-500 transition-all"
+            >
+              {mostrarAntigos
+                ? "Esconder conversas antigas"
+                : `Conversas paradas até ${new Date(new Date(ocultaAte).getTime() - 1).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })} escondidas · mostrar`}
             </button>
           )}
         </div>
