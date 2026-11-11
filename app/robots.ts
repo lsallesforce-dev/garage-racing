@@ -8,10 +8,23 @@
 // =============================================================================
 
 import type { MetadataRoute } from "next";
+import { headers } from "next/headers";
+import { garagemDoHost } from "@/lib/vitrine-tenant";
 
 const BASE = (process.env.NEXT_PUBLIC_APP_URL || "https://www.autozap.digital").replace(/\/+$/, "");
 
-export default function robots(): MetadataRoute.Robots {
+export default async function robots(): Promise<MetadataRoute.Robots> {
+  // Domínio próprio da loja: lá só existe a vitrine. Antes saía o robots do
+  // AutoZap apontando o sitemap e o host pra autozap.digital (11/11/2026).
+  const loja = await garagemDoHost((await headers()).get("host")).catch(() => null);
+  if (loja) {
+    return {
+      rules: [{ userAgent: "*", allow: "/", disallow: ["/api/"] }],
+      sitemap: `${loja.base}/sitemap.xml`,
+      host: loja.base,
+    };
+  }
+
   return {
     rules: [
       {

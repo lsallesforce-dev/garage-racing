@@ -58,3 +58,25 @@ export function iconesDaVitrine(garagem: any, tenant: string) {
   const url = `/vitrine/${garagem?.vitrine_slug ?? tenant}/icone?v=${versao}`;
   return { icon: [{ url, type: "image/png", sizes: "192x192" }], shortcut: url, apple: url };
 }
+
+/**
+ * Loja dona do host, quando a request chega pelo DOMÍNIO PRÓPRIO
+ * (www.aprovemultimarcas.com.br). robots.txt e sitemap.xml ficam fora do proxy
+ * (matcher), então no domínio próprio eles caíam nos do AutoZap: o Google lia
+ * um sitemap com 344 URLs de autozap.digital e nenhuma da loja (11/11/2026).
+ * Host do AutoZap / Vercel / local → null (sitemap institucional).
+ */
+export async function garagemDoHost(hostCru: string | null | undefined) {
+  const host = String(hostCru ?? "").toLowerCase().split(":")[0].trim();
+  if (!host || host === "localhost" || host.endsWith("autozap.digital") || host.endsWith(".vercel.app")) return null;
+  const alt = host.startsWith("www.") ? host.slice(4) : `www.${host}`;
+  const { data } = await supabaseAdmin
+    .from("config_garage")
+    .select("user_id, vitrine_slug, dominio_custom, updated_at")
+    .in("dominio_custom", [host, alt])
+    .limit(1);
+  const g = data?.[0];
+  if (!g?.dominio_custom) return null;
+  const base = `https://${String(g.dominio_custom).replace(/^https?:\/\//, "").replace(/\/+$/, "")}`;
+  return { userId: g.user_id as string, slug: g.vitrine_slug as string | null, base, updatedAt: g.updated_at as string | null };
+}
