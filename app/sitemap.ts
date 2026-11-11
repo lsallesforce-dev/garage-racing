@@ -12,10 +12,8 @@ import type { MetadataRoute } from "next";
 import { createClient } from "@supabase/supabase-js";
 import { getPortalEstoque, getPortalLandingPaths } from "@/lib/portal/query";
 
-import { headers } from "next/headers";
 import { temFotoNaVitrine } from "@/lib/veiculo-midia";
 import { LANDINGS } from "@/lib/portal/landings";
-import { garagemDoHost } from "@/lib/vitrine-tenant";
 const BASE = (process.env.NEXT_PUBLIC_APP_URL || "https://www.autozap.digital").replace(/\/+$/, "");
 
 // Cliente service-role (mesma config da vitrine) — ignora RLS para ler o que é público.
@@ -24,32 +22,7 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-/**
- * Sitemap do DOMÍNIO PRÓPRIO da loja: só a home e os carros dela, nas URLs
- * canônicas do domínio (`https://dominio/<id>`, igual ao canonical da página).
- */
-async function sitemapDaLoja(loja: NonNullable<Awaited<ReturnType<typeof garagemDoHost>>>): Promise<MetadataRoute.Sitemap> {
-  const { data: carros } = await supabaseAdmin
-    .from("veiculos")
-    .select("id, capa_marketing_url, fotos")
-    .eq("user_id", loja.userId)
-    .eq("status_venda", "DISPONIVEL");
-  return [
-    { url: `${loja.base}/`, lastModified: loja.updatedAt ? new Date(loja.updatedAt) : undefined, changeFrequency: "daily", priority: 1.0 },
-    ...(carros ?? []).filter(temFotoNaVitrine).map((c) => ({
-      url: `${loja.base}/${c.id}`,
-      changeFrequency: "weekly" as const,
-      priority: 0.8,
-    })),
-  ];
-}
-
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  // Domínio próprio de loja (matcher do proxy deixa sitemap.xml passar direto):
-  // devolve o sitemap DELA, não o do AutoZap.
-  const loja = await garagemDoHost((await headers()).get("host")).catch(() => null);
-  if (loja) return sitemapDaLoja(loja);
-
   // Páginas institucionais (sempre presentes).
   const estaticas: MetadataRoute.Sitemap = [
     { url: `${BASE}/`,            changeFrequency: "weekly",  priority: 1.0 },
@@ -64,7 +37,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // Vitrines das revendas — só as que têm slug público.
     const { data: garagens } = await supabaseAdmin
       .from("config_garage")
-      .select("vitrine_slug, user_id, updated_at, dominio_custom")
+      .select("vitrine_slug, user_id, updated_at")
       .not("vitrine_slug", "is", null)
       .neq("vitrine_slug", "");
 
@@ -74,9 +47,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     const vitrines: MetadataRoute.Sitemap = [];
     for (const g of garagens) {
       if (!g.vitrine_slug || slugByUser.has(g.user_id)) continue;
-      // Loja com domínio próprio: o canonical é o domínio dela (e lá tem sitemap
-      // próprio). Listar /vitrine/<slug> aqui mandava pro Google a cópia.
-      if (String(g.dominio_custom ?? "").trim()) continue;
       slugByUser.set(g.user_id, g.vitrine_slug);
       vitrines.push({
         url: `${BASE}/vitrine/${g.vitrine_slug}`,
