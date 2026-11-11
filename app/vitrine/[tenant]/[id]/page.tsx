@@ -6,7 +6,7 @@ import VitrineDetalheClient from "./VitrineDetalheClient";
 import VitrineDetalhePremiumClient from "./VitrineDetalhePremiumClient";
 import VitrineIndisponivel from "../../VitrineIndisponivel";
 import { assinaturaAtiva } from "@/lib/assinatura";
-import { resolveGaragem } from "@/lib/vitrine-tenant";
+import { resolveGaragem, iconesDaVitrine } from "@/lib/vitrine-tenant";
 import { registrarVisitaVitrine } from "@/lib/vitrine-visitas";
 import MetaPixel from "@/components/MetaPixel";
 
@@ -66,6 +66,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     // home da vitrine: a marca na aba é a da loja, não a nossa.
     title: { absolute: loja ? `${titulo} | ${loja}` : titulo },
     description: `${titulo}${preco ? ` por ${preco}` : ""}. Confira fotos, vídeo e ficha completa. Atendimento na hora pelo WhatsApp.`,
+    icons: iconesDaVitrine(garagem, tenant),
     ...(canonical ? { alternates: { canonical } } : {}),
     openGraph: {
       ...(loja ? { siteName: loja } : {}),

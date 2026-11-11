@@ -277,11 +277,12 @@ export default function VitrineDetalhePremiumClient({
             {opcionais.length > 0 && (
               <section>
                 <h2 className="text-[11px] font-black uppercase tracking-widest text-[var(--fg-faint)] mb-4">Opcionais</h2>
-                <div className="flex flex-wrap gap-2">
+                {/* ul/li e não span solto: o Google lia "Airbag motoristaAirbag passageiro" grudado no resultado da busca (11/11). */}
+                <ul className="flex flex-wrap gap-2">
                   {opcionais.map((o, i) => (
-                    <span key={i} className="bg-[var(--surface)] border border-[var(--border-strong)] text-[var(--fg-muted)] px-3 py-1.5 rounded-full text-[12px] font-semibold">{o}</span>
+                    <li key={i} className="bg-[var(--surface)] border border-[var(--border-strong)] text-[var(--fg-muted)] px-3 py-1.5 rounded-full text-[12px] font-semibold">{o}</li>
                   ))}
-                </div>
+                </ul>
               </section>
             )}
           </div>

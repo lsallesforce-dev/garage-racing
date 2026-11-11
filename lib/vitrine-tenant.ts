@@ -43,3 +43,18 @@ export function baseVitrine(garagem: any, tenant: string): string {
   const app = (process.env.NEXT_PUBLIC_APP_URL || "https://www.autozap.digital").replace(/\/+$/, "");
   return `${app}/vitrine/${tenant}`;
 }
+
+/**
+ * Ícone da loja (aba + resultado do Google) — app/vitrine/[tenant]/icone.
+ * Sem isso a vitrine herdava o "Z" do AutoZap do app/layout.tsx, inclusive no
+ * domínio próprio. Sem logo cadastrada, devolve undefined e fica o padrão.
+ * O ?v= vem da URL da logo (o upload grava ?v=<timestamp>): trocou a logo, o
+ * navegador e o Google buscam de novo.
+ */
+export function iconesDaVitrine(garagem: any, tenant: string) {
+  const logo = String(garagem?.logo_url ?? "").trim();
+  if (!logo) return undefined;
+  const versao = logo.match(/[?&]v=([\w-]+)/)?.[1] ?? "1";
+  const url = `/vitrine/${garagem?.vitrine_slug ?? tenant}/icone?v=${versao}`;
+  return { icon: [{ url, type: "image/png", sizes: "192x192" }], shortcut: url, apple: url };
+}
