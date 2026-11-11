@@ -28,6 +28,43 @@ function resolveCreds(creds?: Partial<MetaCreds>): MetaCreds | null {
   return { phoneNumberId, accessToken };
 }
 
+// ─── Template bloqueado na conta (ex.: 141006, sem cartão) ───────────────────
+// Com a conta do WhatsApp BLOCKED a Meta ACEITA o template (HTTP 200) e não
+// entrega — o webhook de status nem chega no log. Quem chamava achava que o
+// aviso saiu e não punha na fila do gerente: o aviso sumia (Bonitão, 07-10/11:
+// 0 templates entregues no pricing_analytics). Aqui a gente pergunta a saúde
+// do número antes; bloqueado → devolve false e o chamador cai na fila Redis,
+// que despeja quando o gerente escreve pra loja. Cache curto pra perceber logo
+// quando o cartão entrar. Falha ao consultar → segue como antes (tenta enviar).
+async function templateBloqueado(c: MetaCreds): Promise<boolean> {
+  const chave = `meta_tpl_bloq:${c.phoneNumberId}`;
+  let redis: { get: (k: string) => Promise<unknown>; set: (k: string, v: string, o: { ex: number }) => Promise<unknown> } | null = null;
+  try {
+    const { getClient } = await import("@/lib/redis");
+    redis = getClient() as any;
+    const cache = await redis!.get(chave);
+    if (cache === "1" || cache === 1) return true;
+    if (cache === "0" || cache === 0) return false;
+  } catch { /* sem Redis: consulta direto */ }
+  try {
+    const res = await fetch(`${GRAPH_URL}/${c.phoneNumberId}?fields=health_status`, {
+      headers: { Authorization: `Bearer ${c.accessToken}` },
+    });
+    if (!res.ok) return false;
+    const j: any = await res.json();
+    const bloqueado = j?.health_status?.can_send_message === "BLOCKED";
+    if (bloqueado) {
+      const codigos = (j?.health_status?.entities ?? [])
+        .flatMap((e: any) => (e?.errors ?? []).map((x: any) => x?.error_code)).filter(Boolean);
+      console.warn(`🚫 [Template] conta do número ${c.phoneNumberId} BLOCKED (${codigos.join(",") || "sem código"}) — template não será usado`);
+    }
+    await redis?.set(chave, bloqueado ? "1" : "0", { ex: bloqueado ? 1800 : 6 * 3600 }).catch?.(() => {});
+    return bloqueado;
+  } catch {
+    return false;
+  }
+}
+
 async function post(path: string, body: object, accessToken: string): Promise<any> {
   const res = await fetch(`${GRAPH_URL}${path}`, {
     method: "POST",
@@ -503,6 +540,7 @@ export async function sendMetaTemplate(
 ): Promise<boolean> {
   const c = resolveCreds(creds);
   if (!c) return false;
+  if (await templateBloqueado(c)) return false;
   try {
     await post(`/${c.phoneNumberId}/messages`, {
       messaging_product: "whatsapp",
@@ -539,6 +577,7 @@ export async function sendMetaAlertaTemplate(
     { type: "text", text: paramTemplate(texto) },
     { type: "text", text: String(clientePhone || "").replace(/\D/g, "") || "-" },
   ];
+  if (await templateBloqueado(c)) return false;
   for (const nome of ALERTA_TEMPLATES) {
     try {
       await post(`/${c.phoneNumberId}/messages`, {
