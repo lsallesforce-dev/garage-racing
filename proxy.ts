@@ -418,9 +418,13 @@ export async function proxy(request: NextRequest) {
     const base = `/vitrine/${slug}`;
     const jaPrefixado = pathname === base || pathname.startsWith(`${base}/`);
     const rewriteUrl = request.nextUrl.clone();
+    // /sitemap.xml da loja mora em /vitrine/{slug}/mapa-do-site: uma pasta
+    // "sitemap.xml" dentro de [tenant] vira sitemap aninhado do Next e quebra.
     rewriteUrl.pathname = jaPrefixado
       ? pathname
-      : `${base}${pathname === "/" ? "" : pathname}`;
+      : pathname === "/sitemap.xml"
+        ? `${base}/mapa-do-site`
+        : `${base}${pathname === "/" ? "" : pathname}`;
 
     const response = NextResponse.rewrite(rewriteUrl, {
       request: { headers: comMetodo(request) },
