@@ -28,6 +28,7 @@ import { decryptWhatsAppImage } from "@/lib/whatsapp-image";
 import { sintetizarVoz, prepararTextoParaVoz } from "@/lib/tts";
 import { hybridVehicleSearch, findVehicleForMedia, palavraDistintivaDoModelo } from "@/lib/hybrid-search";
 import { calendarioDoAgente } from "@/lib/feriados-br";
+import { detectarOrigemSocial } from "@/lib/origem-link";
 import { tratarMensagemDoGerente } from "@/lib/gerente-dialogo";
 import { setGerenteFoco } from "@/lib/redis";
 import { chaveVideoWhatsApp, agendarVideoWhatsApp } from "@/lib/video-whatsapp";
@@ -2043,8 +2044,14 @@ Responda apenas com o JSON, sem markdown.`;
       .single();
 
     const origemAtual = (leadExistente as any)?.origem ?? "whatsapp";
+    // Rede social / Google / indicação só valem na PRIMEIRA mensagem: no meio da
+    // conversa "vi no insta" ou "tem indicação de banco?" não dizem de onde o
+    // lead veio. A frase vem pronta dos links rastreados (legenda do post do
+    // Facebook, link da bio, perfil do Google) — ver lib/origem-link.ts.
+    const leadNovo = !leadExistente;
     if (origemAtual === "whatsapp" || origemAtual === null) {
       const msgLower = userMessage.toLowerCase();
+      const social = leadNovo ? detectarOrigemSocial(userMessage) : null;
       const portalDetectado =
         /portal\s*autozap/i.test(userMessage)                      ? "portal"        :
         /tenho interesse e queria mais informa/i.test(userMessage) ? "olx"           :
@@ -2059,6 +2066,7 @@ Responda apenas com o JSON, sem markdown.`;
         /icarros|i-carros/.test(msgLower)                          ? "icarros"       :
         /napista|na pista/.test(msgLower)                          ? "napista"       :
         /vi o .+ no an[úu]ncio da/i.test(userMessage)              ? "catalogo"      :
+        social                                                     ? social          :
         /vi o .+ na vitrine da/i.test(userMessage)                 ? "site"          :
         /vitrine da /i.test(userMessage)                           ? "site"          :
         /^\[Contexto do link:.*R\$/.test(userMessage)              ? "link_whatsapp" :

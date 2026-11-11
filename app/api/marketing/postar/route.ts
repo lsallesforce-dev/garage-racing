@@ -16,6 +16,7 @@ import {
   resolverPaginaParaPostar, postarNoFacebook, postarNoInstagram,
   usaVideo, type DestinoPost, type FormatoPost,
 } from "@/lib/meta-organico";
+import { linkWhatsOrigem } from "@/lib/origem-link";
 
 export const dynamic = "force-dynamic";
 // 10 imagens pra subir + a espera do Instagram processar cada container (o
@@ -85,7 +86,7 @@ export async function POST(req: NextRequest) {
 
     const { data: veiculos } = await supabaseAdmin
       .from("veiculos")
-      .select(`id, marca, modelo, ${COLUNAS_MIDIA}`)
+      .select(`id, marca, modelo, ano_modelo, ${COLUNAS_MIDIA}`)
       .eq("id", veiculoId)
       .limit(1);
     const veiculo: any = veiculos?.[0];
@@ -169,11 +170,28 @@ export async function POST(req: NextRequest) {
 
     const { data: garagens } = await supabaseAdmin
       .from("config_garage")
-      .select("meta_ads_token, meta_access_token")
+      .select("meta_ads_token, meta_access_token, whatsapp_agente, nome_fantasia, nome_empresa")
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(1);
     const token = garagens?.[0]?.meta_ads_token || garagens?.[0]?.meta_access_token;
+
+    // Rastreio de origem (lib/origem-link.ts): sem isso o lead que vinha do post
+    // caía como "WhatsApp Direto". Face aceita link clicável na legenda → link
+    // com a frase "vi no Facebook". No Insta link de legenda não clica, então
+    // manda pro link da bio (que o lojista configura com linkWhatsOrigem). Não
+    // repete se a legenda já traz um wa.me.
+    const numeroLoja = garagens?.[0]?.whatsapp_agente;
+    const loja = garagens?.[0]?.nome_fantasia || garagens?.[0]?.nome_empresa || "loja";
+    const carro = [veiculo.marca, String(veiculo.modelo ?? "").split(/\s+/).slice(0, 2).join(" "), veiculo.ano_modelo]
+      .filter(Boolean).join(" ").trim();
+    const jaTemLink = /wa\.me|api\.whatsapp\.com/i.test(legenda);
+    const legendaFacebook = numeroLoja && !jaTemLink
+      ? `${legenda}\n\n📲 Chama no WhatsApp: ${linkWhatsOrigem(numeroLoja, "facebook", loja, carro)}`
+      : legenda;
+    const legendaInstagram = numeroLoja && !jaTemLink && !/link\s+(da|na)\s+bio/i.test(legenda)
+      ? `${legenda}\n\n📲 Chama no WhatsApp pelo link da bio`
+      : legenda;
     if (!token) {
       return NextResponse.json({ error: "Facebook não conectado. Conecte em Configurações." }, { status: 400 });
     }
@@ -196,7 +214,7 @@ export async function POST(req: NextRequest) {
         erros.push("No Facebook, por enquanto, só o post de feed — story e reels saem só no Instagram.");
       } else {
         try {
-          const r = await postarNoFacebook({ pageId: pagina.pageId, pageToken: pagina.pageToken, imagens, legenda });
+          const r = await postarNoFacebook({ pageId: pagina.pageId, pageToken: pagina.pageToken, imagens, legenda: legendaFacebook });
           // objeto (id + link) porque a venda precisa do id pra apagar e a
           // galeria do link pra abrir o post.
           resultado.facebook = { id: r.postId, permalink: r.permalink };
@@ -214,7 +232,7 @@ export async function POST(req: NextRequest) {
           const imagensIg = usaVideo(formato) ? [] : await Promise.all(imagens.map(jpegParaInstagram));
           const r = await postarNoInstagram({
             igUserId: pagina.igUserId, pageToken: pagina.pageToken,
-            imagens: imagensIg, videoUrl, legenda, formato,
+            imagens: imagensIg, videoUrl, legenda: legendaInstagram, formato,
           });
           resultado.instagram = { id: r.mediaId, permalink: r.permalink };
         } catch (e: any) {

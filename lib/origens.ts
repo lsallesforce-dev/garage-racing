@@ -10,8 +10,11 @@
 // Quem grava cada valor:
 //   meta_ads      → app/api/webhook/meta + process-whatsapp (adReferral/CTWA)
 //   coexistencia  → app/api/webhook/meta (contato via coexistência)
-//   instagram     → lib/instagram-atendimento (direct e comentário no post)
-//   facebook      → lib/instagram-atendimento (Messenger e comentário na Página)
+//   instagram     → lib/instagram-atendimento (direct e comentário no post) e
+//                   process-whatsapp (1ª msg "vi no Instagram", link da bio)
+//   facebook      → lib/instagram-atendimento (Messenger e comentário na Página) e
+//                   process-whatsapp (1ª msg "vi no Facebook", link da legenda)
+//   google/indicacao → process-whatsapp, 1ª msg (lib/origem-link.ts)
 //   olx           → app/api/webhook/olx, olx/[garageId], olx-chat/[garageId]
 //   webmotors     → app/api/webhook/webmotors
 //   mercadolivre  → app/api/webhook/mercadolivre
@@ -97,6 +100,14 @@ export const ORIGENS: Record<string, OrigemCfg> = {
   link_whatsapp: {
     label: "Link WhatsApp", emoji: "🔗", bar: "bg-emerald-500", bg: "bg-emerald-50",
     text: "text-emerald-600", badge: "bg-emerald-50 text-emerald-600 border-emerald-200", hex: "#10b981",
+  },
+  google: {
+    label: "Google", emoji: "🔎", bar: "bg-sky-500", bg: "bg-sky-50",
+    text: "text-sky-600", badge: "bg-sky-50 text-sky-600 border-sky-200", hex: "#0ea5e9",
+  },
+  indicacao: {
+    label: "Indicação", emoji: "🤝", bar: "bg-rose-400", bg: "bg-rose-50",
+    text: "text-rose-500", badge: "bg-rose-50 text-rose-500 border-rose-200", hex: "#fb7185",
   },
   ligacao: {
     label: "Ligação", emoji: "📞", bar: "bg-amber-500", bg: "bg-amber-50",
