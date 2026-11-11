@@ -34,7 +34,6 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { CONFIG_GARAGE_SELECT } from "@/lib/config-garage";
 import { sendMetaMessage, sendMetaAlertaTemplate, dentroJanela24h } from "@/lib/meta";
 import { gerenteNaJanela, enfileirarAlertaGerente, invalidateHistory, rateLimit, setGerenteFoco } from "@/lib/redis";
-import { alertaInterno } from "@/lib/alerta-interno";
 import { feriadoNacional } from "@/lib/feriados-br";
 
 export const maxDuration = 120;
@@ -252,10 +251,11 @@ export async function GET(req: NextRequest) {
         if (financeiro && financeiro !== gerente && financeiro !== agente) {
           ok = await sendMetaAlertaTemplate(financeiro, loja, texto, l.wa_id, creds);
         }
-        // Loja sem segundo número: quem fica sabendo é o AutoZap, que cobra a loja.
-        if (!ok) ok = (await alertaInterno("cobranca-financiamento", `${loja}: financiamento sem resposta há ${horas}h`, texto)).entregue;
+        // Loja sem segundo número (financeiro): a escalação fica só no log/painel.
+        // Até 11/11/2026 caía no WhatsApp do Lucas (alertaInterno) — 17 avisos em
+        // 7 dias e ele pediu pra parar: cobrar a loja é do gerente, não do AutoZap.
         resumo.escalados++;
-        console.log(`💳 [cobranca-fin/${tenant}] escalado — lead ${l.id} (${ok ? "entregue" : "falhou"})`);
+        console.log(`💳 [cobranca-fin/${tenant}] escalado — lead ${l.id} (${ok ? "financeiro avisado" : "sem financeiro, só registro"})`);
         continue;
       }
 
