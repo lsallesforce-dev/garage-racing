@@ -275,6 +275,11 @@ const brl = (v: unknown) =>
 // Enquanto for assim, a resposta ao comentário leva o cliente pro WhatsApp da
 // loja, onde o agente atende de verdade. Trocar pra `true` no dia da aprovação.
 const DIRECT_LIBERADO_PELA_META = false;
+// Tenant de teste (autozap@autozap.digital): quem comenta lá tem cargo no app,
+// então o direct chega. É onde se ensaia e grava o vídeo do App Review, e o
+// revisor da Meta precisa ver o convite pra responder no direct, não o WhatsApp.
+// Loja real fica de fora: o cliente responderia no direct e ninguém receberia.
+const TENANTS_COM_DIRECT_LIBERADO = new Set(["9e80d6e1-7ad9-4578-a848-1dd61fc36c9a"]);
 
 /**
  * WhatsApp do agente escrito como telefone: "(17) 99188-8631". Era um wa.me com
@@ -298,14 +303,15 @@ function nomeCurto(modelo: string): string {
  * Texto da resposta privada. Montado com dado do banco, sem IA: é UMA mensagem
  * só e não pode sair com preço inventado.
  */
-function textoDaRespostaPrivada(config: any, v: any | null): string {
+function textoDaRespostaPrivada(config: any, v: any | null, userId: string): string {
   const loja = config?.nome_fantasia || config?.nome_empresa || "nossa loja";
   // cleanModelo: o cadastro traz a versão inteira ("COMPASS SPORT 2.0 4x2 Flex
   // 16V Aut."); na mensagem vai só o nome do carro, como na capa do kit.
   const nome = v
     ? [v.marca, nomeCurto(String(v.modelo ?? "")), v.ano_modelo || v.ano].filter(Boolean).join(" ")
     : null;
-  const wa = DIRECT_LIBERADO_PELA_META && config?.ig_direct_ia === true ? null : telefoneWhatsApp(config);
+  const directLiberado = DIRECT_LIBERADO_PELA_META || TENANTS_COM_DIRECT_LIBERADO.has(userId);
+  const wa = directLiberado && config?.ig_direct_ia === true ? null : telefoneWhatsApp(config);
 
   if (!v) {
     return `Oi! Aqui é da ${loja} 😊 Vi seu comentário no nosso post. ` +
@@ -416,7 +422,7 @@ export async function tratarComentario(t: TenantIg, c: IgComentario & { parentId
   const v = (vs?.[0] && vs[0].status_venda !== "VENDIDO" ? vs[0] : null)
     ?? await carroPelaLegenda(t, c.mediaId);
 
-  const texto = textoDaRespostaPrivada(t.config, v);
+  const texto = textoDaRespostaPrivada(t.config, v, t.userId);
   const erro: { message?: string } = {};
   if (!(await sendIgPrivateReply(c.id, texto, t.creds, erro))) {
     return fechar("falhou", { detalhe: erro.message ?? "Meta recusou a resposta privada", veiculo_id: v?.id ?? null });
