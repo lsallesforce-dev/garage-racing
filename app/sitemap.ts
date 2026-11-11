@@ -37,7 +37,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // Vitrines das revendas — só as que têm slug público.
     const { data: garagens } = await supabaseAdmin
       .from("config_garage")
-      .select("vitrine_slug, user_id, updated_at")
+      .select("vitrine_slug, user_id, updated_at, dominio_custom")
       .not("vitrine_slug", "is", null)
       .neq("vitrine_slug", "");
 
@@ -47,6 +47,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     const vitrines: MetadataRoute.Sitemap = [];
     for (const g of garagens) {
       if (!g.vitrine_slug || slugByUser.has(g.user_id)) continue;
+      // Loja com domínio próprio: o canonical é o domínio dela, que tem sitemap
+      // próprio (app/vitrine/[tenant]/sitemap.xml). Listar /vitrine/<slug> aqui
+      // mandava pro Google a cópia não-canônica.
+      if (String(g.dominio_custom ?? "").trim()) continue;
       slugByUser.set(g.user_id, g.vitrine_slug);
       vitrines.push({
         url: `${BASE}/vitrine/${g.vitrine_slug}`,

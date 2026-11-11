@@ -429,6 +429,11 @@ export async function proxy(request: NextRequest) {
     return response;
   }
 
+  // robots.txt / sitemap.xml do AutoZap: passam direto, sem tocar no Auth.
+  // Saíram do matcher-exclusão em 11/11/2026 pra que no DOMÍNIO PRÓPRIO o
+  // bloco 1b acima os reescreva pra /vitrine/{slug}/robots.txt|sitemap.xml.
+  if (pathname === "/robots.txt" || pathname === "/sitemap.xml") return NextResponse.next();
+
   // ── 2. Auth Supabase (somente para domínio principal) ─────────────────────
   // Injeta x-pathname nos headers da request para que Server Layouts possam lê-lo
   // (necessário para proteger rotas de vendedores no MainLayout)
@@ -547,6 +552,8 @@ export async function proxy(request: NextRequest) {
 // Exclui arquivos estáticos e imagens otimizadas do Next.js
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|sw.js|manifest.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    // robots.txt e sitemap.xml NÃO ficam de fora: no domínio próprio da loja o
+    // proxy precisa reescrevê-los pra vitrine (senão sai o do AutoZap).
+    "/((?!_next/static|_next/image|favicon.ico|sw.js|manifest.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };
