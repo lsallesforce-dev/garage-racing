@@ -13,6 +13,7 @@
 
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { ARQUIVO_GOOGLE_RE } from "@/lib/verificacao-google";
 
 // Landing pages de SEO do portal (app/(portal)/<slug>). Lista fixa aqui pra não
 // puxar o texto de lib/portal/landings pro bundle do proxy — landing nova entra
@@ -420,11 +421,16 @@ export async function proxy(request: NextRequest) {
     const rewriteUrl = request.nextUrl.clone();
     // /sitemap.xml da loja mora em /vitrine/{slug}/mapa-do-site: uma pasta
     // "sitemap.xml" dentro de [tenant] vira sitemap aninhado do Next e quebra.
+    // /google<código>.html = arquivo de verificação do Search Console da loja
+    // (lista fechada em lib/verificacao-google.ts, checada na rota).
+    const arquivoGoogle = pathname.match(ARQUIVO_GOOGLE_RE)?.[1];
     rewriteUrl.pathname = jaPrefixado
       ? pathname
       : pathname === "/sitemap.xml"
         ? `${base}/mapa-do-site`
-        : `${base}${pathname === "/" ? "" : pathname}`;
+        : arquivoGoogle
+          ? `${base}/verificacao-google/${arquivoGoogle}`
+          : `${base}${pathname === "/" ? "" : pathname}`;
 
     const response = NextResponse.rewrite(rewriteUrl, {
       request: { headers: comMetodo(request) },
