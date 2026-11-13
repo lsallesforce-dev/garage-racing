@@ -681,8 +681,16 @@ function ConfiguracoesConteudo() {
       if (apiErr) { setMetaAdsError(apiErr); return; }
       setMetaPaginas(paginas ?? []);
       setMetaAdAccounts(adAccounts ?? []);
-      if (paginas?.length) setSelectedPageId(paginas[0].id);
-      if (adAccounts?.length) setSelectedAdAccountId(adAccounts[0].id);
+      // Reconectar não pode trocar o que a loja já escolheu: a lista da Meta traz
+      // todas as Páginas e contas do usuário, e a primeira pode ser de outro
+      // cliente (tenant de teste, 12/11: veio a conta da APROVE pré-selecionada).
+      const salva = salvas?.[0];
+      const paginaSalva = paginas?.find((p: any) => p.id === salva?.page_id);
+      const contaSalva = adAccounts?.find((a: any) => a.id === salva?.ad_account_id);
+      if (paginas?.length) setSelectedPageId(paginaSalva?.id ?? paginas[0].id);
+      if (contaSalva) setSelectedAdAccountId(contaSalva.id);
+      else if (adAccounts?.length === 1) setSelectedAdAccountId(adAccounts[0].id);
+      else setSelectedAdAccountId("");
       // Restaura página salva no banco caso metaPaginaSalva ainda não esteja preenchido
       if (salvas?.length) {
         setMetaPaginaSalva({ name: salvas[0].page_name, adAccountId: salvas[0].ad_account_id });
