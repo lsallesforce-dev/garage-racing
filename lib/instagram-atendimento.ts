@@ -134,14 +134,23 @@ async function tratarEco(t: TenantIg, ev: any): Promise<void> {
  * Quem comentou num post e recebeu a resposta privada ainda não é lead: ele só
  * vira quando responde no direct. Aqui a conversa nasce já sabendo de qual carro
  * se trata e com a mensagem que a loja mandou no histórico.
+ *
+ * Lead que JÁ existe também passa por aqui: se o comentário respondido é mais
+ * novo que a última mensagem da conversa, o carro do post vira o carro em foco
+ * e a resposta privada entra no histórico. Sem isso a IA seguia no carro da
+ * conversa antiga (teste de 12/11: comentou no Corolla, IA respondeu do HB20).
+ * A própria mensagem inserida fica mais nova que o comentário, então o mesmo
+ * comentário não é aplicado duas vezes.
  */
-async function semearLeadDoComentario(t: TenantIg, igsid: string, username: string | null): Promise<void> {
+async function semearLeadDoComentario(
+  t: TenantIg, igsid: string, username: string | null, leadIdExistente: string | null = null,
+): Promise<void> {
   const desde = new Date(Date.now() - 8 * 86_400_000).toISOString();
   const filtros = [`autor_id.eq.${igsid}`];
   if (username && /^[\w.]+$/.test(username)) filtros.push(`autor_username.eq.${username}`);
   const { data: coms } = await supabaseAdmin
     .from("ig_comentarios")
-    .select("veiculo_id, texto, detalhe")
+    .select("veiculo_id, texto, detalhe, created_at")
     .eq("user_id", t.userId).eq("canal", t.rede).eq("acao", "respondido")
     .gte("created_at", desde)
     .or(filtros.join(","))
@@ -149,6 +158,25 @@ async function semearLeadDoComentario(t: TenantIg, igsid: string, username: stri
     .limit(1);
   const c = coms?.[0];
   if (!c) return;
+
+  if (leadIdExistente) {
+    const { data: ultimas } = await supabaseAdmin
+      .from("mensagens").select("created_at")
+      .eq("lead_id", leadIdExistente)
+      .order("created_at", { ascending: false }).limit(1);
+    const ultima = ultimas?.[0]?.created_at;
+    if (ultima && new Date(ultima).getTime() >= new Date(c.created_at).getTime()) return;
+    await supabaseAdmin.from("leads").update({
+      ...(c.veiculo_id ? { veiculo_id: c.veiculo_id } : {}),
+      origem_mensagem: `Comentou no post: "${String(c.texto ?? "").slice(0, 120)}"`,
+      updated_at: new Date().toISOString(),
+    }).eq("id", leadIdExistente);
+    if (c.detalhe) {
+      await supabaseAdmin.from("mensagens").insert({ lead_id: leadIdExistente, content: c.detalhe, remetente: "agente" });
+    }
+    console.log(`🔁 [${t.rede}] lead ${leadIdExistente} comentou de novo — carro em foco ${c.veiculo_id ?? "—"}`);
+    return;
+  }
 
   const { data: novo } = await supabaseAdmin
     .from("leads")
@@ -197,7 +225,7 @@ async function tratarMensagem(t: TenantIg, ev: any): Promise<void> {
     ? await perfilIg(igsid, t.creds, t.rede)
     : { nome: leadExistente.nome, username: leadExistente.ig_username };
 
-  if (!leadExistente) await semearLeadDoComentario(t, igsid, igPerfil.username);
+  await semearLeadDoComentario(t, igsid, igPerfil.username, leadExistente?.id ?? null);
 
   // IA desligada (interruptor do direct, que vale pro Messenger também, ou agente pausado): a mensagem entra
   // no Chat pro vendedor responder, e o agente não gera resposta.
