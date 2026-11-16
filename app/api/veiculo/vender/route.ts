@@ -4,7 +4,7 @@ import { sendAvisaMessage } from "@/lib/avisa";
 import { buscarLeadsOrfaos } from "@/lib/leads";
 import { requireVehicleOwner } from "@/lib/api-auth";
 import { pausarCampanhasDoVeiculo } from "@/lib/meta-campanhas";
-import { removerPostsDoVeiculo } from "@/lib/veiculo-vendido";
+import { removerPostsDoVeiculo, fecharAnuncioMLDoVeiculo } from "@/lib/veiculo-vendido";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
@@ -78,6 +78,10 @@ export async function POST(req: NextRequest) {
     // reportado na resposta com o link, pro gerente apagar na mão.
     const postagens = await removerPostsDoVeiculo(id, veiculo.user_id);
 
+    // 2e. Fecha o anúncio do Mercado Livre. Faltava: a APROVE chegou a ter 10
+    // vendidos com anúncio ativo lá (16/11/2026). Nunca bloqueia a venda.
+    const ml = await fecharAnuncioMLDoVeiculo(id, veiculo.user_id);
+
     // 3. Registrar no histórico de vendas (vendas_concluidas)
     // ANTES isto rodava só `if (veiculo.vendedor_responsavel_id)` — e como
     // nenhum tenant preenche vendedor responsável (0 de 33 veículos na APROVE),
@@ -134,6 +138,8 @@ export async function POST(req: NextRequest) {
       // O que não deu pra apagar volta com o link (token antigo sem
       // `instagram_manage_contents`, post que virou anúncio, Meta fora do ar).
       postsPendentes: postagens.pendentes,
+      mlFechado: ml.fechado,
+      mlPendente: ml.motivo ?? null,
     });
   } catch (error: any) {
     console.error("Venda API Error:", error);

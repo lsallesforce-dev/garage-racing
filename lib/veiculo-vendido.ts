@@ -9,6 +9,7 @@
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { pausarCampanhasDoVeiculo } from "@/lib/meta-campanhas";
 import { apagarPost, resolverPaginaParaPostar } from "@/lib/meta-organico";
+import { getMLToken, mlHeaders, ML_API } from "@/lib/mercadolivre";
 
 export interface PostPendente {
   destino: string;
@@ -73,8 +74,59 @@ export async function removerPostsDoVeiculo(
 }
 
 /**
- * Para anúncio pago e tira os posts orgânicos. Usado pelo PATCH quando o status
- * passa pra VENDIDO. Nunca lança.
+ * Fecha o anúncio do Mercado Livre do carro vendido.
+ *
+ * Faltava nos dois caminhos de venda: em 16/11/2026 a APROVE tinha 10 carros
+ * VENDIDOS com anúncio ATIVO no ML (a S10 LTZ entre eles), recebendo contato de
+ * carro que não existe mais. NUNCA lança — a baixa não depende do ML estar de pé.
+ * Se o ML recusar, o ml_item_id fica no banco pra tentar de novo / fechar na mão.
+ */
+export async function fecharAnuncioMLDoVeiculo(
+  veiculoId: string,
+  userId: string,
+): Promise<{ fechado: boolean; motivo?: string }> {
+  try {
+    const { data: rows } = await supabaseAdmin
+      .from("veiculos").select("ml_item_id").eq("id", veiculoId).limit(1);
+    const itemId = rows?.[0]?.ml_item_id as string | null | undefined;
+    if (!itemId) return { fechado: false };
+
+    const token = await getMLToken(userId);
+    if (!token) return { fechado: false, motivo: "Mercado Livre desconectado" };
+
+    const resp = await fetch(`${ML_API}/items/${itemId}`, {
+      method: "PUT",
+      headers: mlHeaders(token),
+      body: JSON.stringify({ status: "closed" }),
+    });
+    // Já fechado/apagado no painel do ML conta como resolvido.
+    let jaFechado = false;
+    if (!resp.ok) {
+      const atual: any = await fetch(`${ML_API}/items/${itemId}`, { headers: mlHeaders(token) })
+        .then((r) => r.json()).catch(() => null);
+      jaFechado = atual?.status === "closed";
+      if (!jaFechado) {
+        const err: any = await resp.json().catch(() => ({}));
+        console.error(`❌ [veiculo-vendido] fechar ML ${itemId}:`, resp.status, err?.message ?? "");
+        return { fechado: false, motivo: `ML ${resp.status}: ${err?.message ?? ""}`.trim() };
+      }
+    }
+
+    await supabaseAdmin.from("veiculos").update({ status_ml: "removido", ml_item_id: null }).eq("id", veiculoId);
+    await supabaseAdmin.from("anuncios")
+      .update({ status: "removido", atualizado_em: new Date().toISOString() })
+      .eq("veiculo_id", veiculoId).eq("portal", "mercadolivre");
+    console.log(`🗑️ [veiculo-vendido] ML ${itemId} fechado — veículo ${veiculoId} vendido`);
+    return { fechado: true };
+  } catch (e: any) {
+    console.error("❌ [veiculo-vendido] fechar ML:", e?.message ?? e);
+    return { fechado: false, motivo: e?.message ?? "falhou" };
+  }
+}
+
+/**
+ * Para anúncio pago, tira os posts orgânicos e fecha o anúncio do Mercado
+ * Livre. Usado pelo PATCH quando o status passa pra VENDIDO. Nunca lança.
  */
 export async function tirarCarroVendidoDoAr(veiculoId: string, userId: string) {
   let pausadas = 0;
@@ -85,5 +137,6 @@ export async function tirarCarroVendidoDoAr(veiculoId: string, userId: string) {
     console.error("❌ [veiculo-vendido] pausar campanhas:", e?.message ?? e);
   }
   const postagens = await removerPostsDoVeiculo(veiculoId, userId);
-  return { pausadas, falhas, ...postagens };
+  const ml = await fecharAnuncioMLDoVeiculo(veiculoId, userId);
+  return { pausadas, falhas, ...postagens, mlFechado: ml.fechado, mlPendente: ml.motivo ?? null };
 }
