@@ -54,6 +54,11 @@ export async function GET(req: NextRequest) {
   const inicioSemana = new Date(agora.getTime() - 7 * 24 * 60 * 60 * 1000);
   const inicioDia    = inicioDiaBRT(agora);
   const ontemInicio  = new Date(inicioDia.getTime() - 24 * 60 * 60 * 1000);
+  // Janelas da agenda (mesmo recorte do calendário: semana segunda→domingo, BRT)
+  const fimDia          = new Date(inicioDia.getTime() + 24 * 60 * 60 * 1000);
+  const segundaSemana   = new Date(inicioDia.getTime() - ((pAgora.dow + 6) % 7) * 24 * 60 * 60 * 1000);
+  const segundaProxima  = new Date(segundaSemana.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const inicioProxMes   = deBRT(pAgora.ano, pAgora.mes + 1, 1);
   const limite48h    = new Date(agora.getTime() - 48 * 60 * 60 * 1000);
   const limite6m     = new Date(agora.getTime() - 180 * 24 * 60 * 60 * 1000);
 
@@ -130,21 +135,24 @@ export async function GET(req: NextRequest) {
       .eq("user_id", userId)
       .gte("created_at", inicioMes.toISOString()),
 
-    // Contadores de agenda por período
+    // Contadores de agenda por período — janela FECHADA (início e fim) e sem
+    // cancelados. Antes era só `>= início`: "Hoje" somava todas as visitas
+    // futuras, os três cards davam quase o mesmo número e não batiam com o
+    // calendário logo abaixo (semana = segunda a domingo, em BRT).
     supabaseAdmin.from("agenda")
       .select("*", { count: "exact", head: true })
-      .eq("user_id", userId)
-      .gte("data_hora", inicioDia.toISOString()),
+      .eq("user_id", userId).neq("status", "cancelado")
+      .gte("data_hora", inicioDia.toISOString()).lt("data_hora", fimDia.toISOString()),
 
     supabaseAdmin.from("agenda")
       .select("*", { count: "exact", head: true })
-      .eq("user_id", userId)
-      .gte("data_hora", inicioSemana.toISOString()),
+      .eq("user_id", userId).neq("status", "cancelado")
+      .gte("data_hora", segundaSemana.toISOString()).lt("data_hora", segundaProxima.toISOString()),
 
     supabaseAdmin.from("agenda")
       .select("*", { count: "exact", head: true })
-      .eq("user_id", userId)
-      .gte("data_hora", inicioMes.toISOString()),
+      .eq("user_id", userId).neq("status", "cancelado")
+      .gte("data_hora", inicioMes.toISOString()).lt("data_hora", inicioProxMes.toISOString()),
 
     // Chats em atendimento humano ativo
     supabaseAdmin.from("leads")
