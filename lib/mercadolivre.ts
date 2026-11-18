@@ -124,7 +124,7 @@ function mapAttr(map: Record<string, MLValor>, value: string, fallback: MLValor)
 
 // Marca no formato FIPE ("VW - VolksWagen", "GM - Chevrolet") não casa com a lista
 // BRAND do ML e sai feia no título → fica só o nome depois do " - ".
-function marcaML(marca: string | null | undefined): string {
+export function marcaML(marca: string | null | undefined): string {
   const m = (marca ?? "").trim();
   const nome = m.includes(" - ") ? m.split(" - ").pop()!.trim() : m;
   if (nome === nome.toUpperCase()) return nome; // sigla: KTM, BMW, JAC

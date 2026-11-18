@@ -4,7 +4,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireVehicleOwner, getEffectiveUserId } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { getMLToken, buildMLPayload, descricaoML, mlHeaders, ML_API, ML_MAX_FOTOS } from "@/lib/mercadolivre";
+import { getMLToken, buildMLPayload, descricaoML, mlHeaders, ML_API, ML_MAX_FOTOS, marcaML, tituloML } from "@/lib/mercadolivre";
+import { resolverCatalogoML, atributosCatalogo } from "@/lib/mercadolivre-catalogo";
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -78,10 +79,26 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { payload, titulo } = buildMLPayload(v, {
+  const built = buildMLPayload(v, {
     zipCode: cfg.nf_cep, city: cfg.cidade, state: cfg.estado,
     whatsapp: cfg.whatsapp_agente, telefone: cfg.telefone_loja,
   });
+  const payload = built.payload;
+  let titulo = built.titulo;
+
+  // Marca/modelo/ano/versão com o id do catálogo do ML — é o que entra no filtro de busca
+  // (Chevrolet → S10 → versão). O que não casar fica no texto do estoque, como antes.
+  const cat = await resolverCatalogoML(token, { marca: marcaML(v.marca), modelo: v.modelo, versao: v.versao, ano: v.ano_modelo ?? v.ano })
+    .catch(() => null);
+  if (cat) {
+    const doCatalogo = atributosCatalogo(cat);
+    const ids = new Set(doCatalogo.map(a => a.id));
+    payload.attributes = [...(payload.attributes as any[]).filter(a => !ids.has(a.id)), ...doCatalogo];
+    if (cat.brand && cat.model && cat.trim) {
+      titulo = tituloML(cat.brand.name, cat.model.name, cat.trim.name, v.ano_modelo ?? v.ano);
+      payload.title = titulo;
+    }
+  }
 
   console.log(`📤 [ML publicar] ${veiculoId} — ${titulo}`);
 
