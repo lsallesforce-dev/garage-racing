@@ -1,69 +1,56 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { CheckCircle2, X, Zap, ArrowRight, Star, FileText } from "lucide-react";
+import { CheckCircle2, X, Zap, ArrowRight, Star, Phone } from "lucide-react";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { PLANOS, FEATURES_INCLUSAS, labelKits } from "@/lib/planos";
 
-const planos = [
+const tudoIncluso = FEATURES_INCLUSAS.map((text) => ({ ok: true, text }));
+const precoTxt = (v: number) => v.toLocaleString("pt-BR");
+
+// Todos os planos têm TODAS as features — o que muda é a cota de Kits de Postagem e o suporte.
+const planos: Array<{
+  id: string; nome: string; preco: string; destaque: boolean; badge?: string; desc: string;
+  itens: { ok: boolean; text: string }[]; cta: string; ctaHref: string;
+}> = [
   {
     id: "starter",
-    nome: "Starter",
-    preco: "1.150",
+    nome: PLANOS.starter.nome,
+    preco: precoTxt(PLANOS.starter.mensal),
     destaque: false,
-    desc: "Para quem está começando e quer a IA trabalhando no WhatsApp desde o primeiro dia.",
+    desc: "Tudo do AutoZap liberado, com 5 kits de postagem por mês pra divulgar seus carros.",
     itens: [
-      { ok: true,  text: "Até 30 veículos no pátio"        },
-      { ok: true,  text: "1 vendedor (você mesmo)"         },
-      { ok: true,  text: "IA de atendimento no WhatsApp"   },
-      { ok: true,  text: "Vitrine digital por veículo"     },
-      { ok: true,  text: "15 vídeos de marketing IA/mês"   },
-      { ok: true,  text: "Trial de 15 dias grátis"         },
-      { ok: false, text: "Multi-vendedor"                  },
-      { ok: false, text: "Financeiro completo + comissões" },
-      { ok: false, text: "Emissão de NF-e"                 },
+      { ok: true, text: labelKits(PLANOS.starter.kitsMes) },
+      ...tudoIncluso,
+      { ok: true, text: `Suporte por ${PLANOS.starter.suporte.toLowerCase()}` },
     ],
     cta: "Começar trial grátis",
     ctaHref: "/onboarding?plano=starter",
   },
   {
     id: "pro",
-    nome: "Pro",
-    preco: "1.500",
-    destaque: false,
-    desc: "Para revendas que já rodam e querem controle total: equipe, financeiro e marketing.",
+    nome: PLANOS.pro.nome,
+    preco: precoTxt(PLANOS.pro.mensal),
+    destaque: true,
+    badge: "Kits ilimitados",
+    desc: "Pra quem anuncia todo carro que entra: kits de postagem sem limite, todo mês.",
     itens: [
-      { ok: true,  text: "Veículos ilimitados"                   },
-      { ok: true,  text: "Até 5 vendedores com acesso individual" },
-      { ok: true,  text: "IA de atendimento no WhatsApp"          },
-      { ok: true,  text: "Vitrine digital por veículo"            },
-      { ok: true,  text: "30 vídeos de marketing IA/mês"          },
-      { ok: true,  text: "Financeiro completo + comissões"        },
-      { ok: true,  text: "Relatório mensal em PDF"                },
-      { ok: true,  text: "Multi-vendedor com controle de acesso"  },
-      { ok: true,  text: "Trial de 15 dias grátis"                },
-      { ok: false, text: "Emissão de NF-e"                        },
+      { ok: true, text: labelKits(PLANOS.pro.kitsMes) },
+      ...tudoIncluso,
+      { ok: true, text: `Suporte por ${PLANOS.pro.suporte.toLowerCase()}` },
     ],
     cta: "Começar trial grátis",
     ctaHref: "/onboarding?plano=pro",
   },
   {
     id: "premium",
-    nome: "Premium",
-    preco: "2.135",
-    preco12x: "1.935",
-    destaque: true,
-    badge: "NF-e inclusa",
-    desc: "Tudo do Pro mais emissão de nota fiscal diretamente pelo sistema. 50 NFs por mês.",
+    nome: PLANOS.premium.nome,
+    preco: precoTxt(PLANOS.premium.mensal),
+    destaque: false,
+    desc: "Tudo do Pro com atendimento prioritário direto no WhatsApp do time AutoZap.",
     itens: [
-      { ok: true, text: "Veículos ilimitados"                          },
-      { ok: true, text: "Vendedores ilimitados com acesso individual"  },
-      { ok: true, text: "IA de atendimento no WhatsApp"                },
-      { ok: true, text: "Vitrine digital por veículo"                  },
-      { ok: true, text: "50 vídeos de marketing IA/mês"               },
-      { ok: true, text: "Financeiro completo + comissões + contrato"  },
-      { ok: true, text: "Relatório mensal em PDF"                      },
-      { ok: true, text: "Multi-vendedor com controle de acesso"        },
-      { ok: true, text: "Trial de 15 dias grátis"                      },
-      { ok: true, text: "Emissão de NF-e (50/mês)"                    },
+      { ok: true, text: labelKits(PLANOS.premium.kitsMes) },
+      ...tudoIncluso,
+      { ok: true, text: `Suporte ${PLANOS.premium.suporte}` },
     ],
     cta: "Começar trial grátis",
     ctaHref: "/onboarding?plano=premium",
@@ -89,7 +76,7 @@ const faq = [
   },
   {
     q: "Posso mudar de plano depois?",
-    a: "Sim, a qualquer momento. Upgrade aplicado na hora. Downgrade entra no próximo ciclo.",
+    a: "Sim, a qualquer momento. Todos os planos têm todas as funcionalidades — o upgrade pro Pro libera kits de postagem ilimitados na hora.",
   },
   {
     q: "Os meus dados ficam seguros?",
@@ -136,7 +123,7 @@ export default async function PlanosPage() {
               {p.badge && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 whitespace-nowrap">
                   <span className="bg-purple-600 text-white text-[9px] font-black uppercase tracking-widest px-4 py-1.5 rounded-full flex items-center gap-1">
-                    <FileText size={9} /> {p.badge}
+                    <Star size={9} /> {p.badge}
                   </span>
                 </div>
               )}
@@ -237,17 +224,10 @@ export default async function PlanosPage() {
             </thead>
             <tbody className="divide-y divide-gray-50">
               {[
-                ["Veículos",                  "Até 30",     "Ilimitados",  "Ilimitados"   ],
-                ["Vendedores",                "1",          "Até 5",       "Até 5"        ],
-                ["IA no WhatsApp",            "✓",          "✓",           "✓"            ],
-                ["Vitrine digital",           "✓",          "✓",           "✓"            ],
-                ["Vídeos de marketing IA",    "15/mês",     "30/mês",      "30/mês"       ],
-                ["Financeiro + Comissões",    "—",          "✓",           "✓"            ],
-                ["Relatório mensal PDF",      "—",          "✓",           "✓"            ],
-                ["Multi-vendedor",            "—",          "✓",           "✓"            ],
-                ["Emissão de NF-e",           "—",          "—",           "50/mês"       ],
-                ["Suporte",                   "Email",      "Email",       "WhatsApp"     ],
-                ["Trial",                     "15 dias",    "15 dias",     "15 dias"      ],
+                ["Kits de postagem",          "5/mês",      "Ilimitados",  "Ilimitados"   ],
+                ...FEATURES_INCLUSAS.map((f) => [f, "✓", "✓", "✓"]),
+                ["Suporte",                   "E-mail",     "E-mail",      "WhatsApp prioritário"],
+                ["Trial (tudo liberado, 5 kits)", "15 dias", "15 dias",    "15 dias"      ],
               ].map(([recurso, starter, pro, premium]) => (
                 <tr key={recurso} className="hover:bg-gray-50/50 transition-colors">
                   <td className="py-4 px-6 font-bold text-gray-700">{recurso}</td>

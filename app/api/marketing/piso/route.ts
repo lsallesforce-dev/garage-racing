@@ -15,6 +15,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireVehicleOwner } from "@/lib/api-auth";
+import { gateKit } from "@/lib/kit-cota";
 import { restaurarPiso } from "@/lib/marketing-piso";
 import type { MarketingCapturas, PisoRegistro } from "@/lib/marketing-shotlist";
 
@@ -54,6 +55,11 @@ export async function POST(req: NextRequest) {
 
     const { error: authError } = await requireVehicleOwner(veiculoId);
     if (authError) return authError;
+    // Cota mensal de kits — "reverter" só desfaz, não consome.
+    if (acao !== "reverter") {
+      const gate = await gateKit(veiculoId);
+      if (gate) return gate;
+    }
 
     const { data: v } = await supabaseAdmin
       .from("veiculos")

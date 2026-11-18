@@ -1723,8 +1723,8 @@ function ConfiguracoesConteudo() {
 
         {activeTab === "fiscal" && <>
 
-        {/* ── Nota Fiscal Eletrônica (Premium) ── */}
-        {plano === "premium" ? (
+        {/* ── Nota Fiscal Eletrônica (todos os planos) ── */}
+        {plano !== null ? (
           <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-8">
             <div className="flex items-center gap-3 mb-1">
               <FileText size={18} className="text-purple-600" />
@@ -1878,14 +1878,6 @@ function ConfiguracoesConteudo() {
                   <><ShieldCheck size={14} /> Habilitar emissão de NF-e</>
                 )}
               </button>
-            </div>
-          </div>
-        ) : plano !== null ? (
-          <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-8 flex items-center gap-4 opacity-70">
-            <FileText size={20} className="text-gray-300 shrink-0" />
-            <div>
-              <p className="text-[11px] font-black uppercase tracking-widest text-gray-400">Nota Fiscal Eletrônica</p>
-              <p className="text-[10px] text-gray-400 mt-0.5">Disponível apenas no plano <strong className="text-purple-600">Premium</strong>. Faça upgrade para habilitar.</p>
             </div>
           </div>
         ) : null}

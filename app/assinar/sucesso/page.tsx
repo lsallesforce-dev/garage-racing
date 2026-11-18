@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { CheckCircle2, Zap, ArrowRight } from "lucide-react";
 
-const PLANOS: Record<string, string> = { starter: "Starter", pro: "Pro" };
+const PLANOS: Record<string, string> = { starter: "Starter", pro: "Pro", premium: "Premium", teste: "Teste" };
 
 function SucessoContent() {
   const params  = useSearchParams();

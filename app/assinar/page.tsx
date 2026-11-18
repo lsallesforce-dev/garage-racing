@@ -7,16 +7,21 @@ import {
   ChevronRight, Tag, Building2, Shield, Zap,
 } from "lucide-react";
 import Image from "next/image";
+import { PLANOS as PLANOS_DEF, precoAnual, labelKits } from "@/lib/planos";
+
+// Gateway de recebimento: NEXT_PUBLIC_GATEWAY=pagbank liga o PagBank (default: pagarme legado
+// até o PAGBANK_TOKEN estar configurado na Vercel).
+const GATEWAY = process.env.NEXT_PUBLIC_GATEWAY === "pagbank" ? "pagbank" : "pagarme";
 
 // ─── Preços ────────────────────────────────────────────────────────────────────
 
-const PLANOS: Record<string, { nome: string; mensal: number; anual12x: number; parcela12x: number; destaque?: string }> = {
-  // Plano oculto de teste (R$ 1) — acessível só via /assinar?plano=teste, não aparece nos botões
-  teste:   { nome: "Teste",    mensal: 1,     anual12x: 12,     parcela12x: 1 },
-  starter: { nome: "Starter",  mensal: 1150,  anual12x: 12420,  parcela12x: 1035 },
-  pro:     { nome: "Pro",      mensal: 1500,  anual12x: 16200,  parcela12x: 1350 },
-  premium: { nome: "Premium",  mensal: 2135,  anual12x: 23220,  parcela12x: 1935, destaque: "50 NFs/mês incluídas" },
-};
+const PLANOS: Record<string, { nome: string; mensal: number; anual12x: number; parcela12x: number; destaque?: string }> =
+  Object.fromEntries(
+    Object.values(PLANOS_DEF).map((p) => {
+      const anual = precoAnual(p.mensal);
+      return [p.id, { nome: p.nome, mensal: p.mensal, anual12x: anual, parcela12x: Math.round(anual / 12), destaque: p.destaque ?? labelKits(p.kitsMes) }];
+    }),
+  );
 
 function fmt(v: number) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -147,7 +152,7 @@ function AssinarContent() {
     try {
       // ?t= = prova de posse do pagador anônimo do link de cobrança (sem sessão)
       const res  = await fetch(
-        `/api/pagarme/status/${orderId}${cobrancaToken ? `?t=${encodeURIComponent(cobrancaToken)}` : ""}`
+        `/api/${GATEWAY}/status/${orderId}${cobrancaToken ? `?t=${encodeURIComponent(cobrancaToken)}` : ""}`
       );
       const data = await res.json();
       if (data.status === "paid" || data.status === "pago") {
@@ -168,7 +173,7 @@ function AssinarContent() {
     setError("");
     setLoading(true);
     try {
-      const res  = await fetch("/api/pagarme/checkout", {
+      const res  = await fetch(`/api/${GATEWAY}/checkout`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -374,9 +379,9 @@ function AssinarContent() {
             <div className="grid grid-cols-3 gap-2 mt-2">
               {(["starter", "pro", "premium"] as const).map(id => {
                 const p = PLANOS[id];
-                const badge = id === "pro"     ? { label: "Popular",    cls: "bg-amber-100 text-amber-700" }
-                            : id === "premium" ? { label: "NF-e",       cls: "bg-purple-100 text-purple-700" }
-                            : null;
+                const badge = id === "pro"     ? { label: "Kits ∞",     cls: "bg-amber-100 text-amber-700" }
+                            : id === "premium" ? { label: "Suporte VIP", cls: "bg-purple-100 text-purple-700" }
+                            : { label: "5 kits/mês", cls: "bg-gray-200 text-gray-600" };
                 return (
                   <button key={id} type="button" onClick={() => setPlanoId(id)}
                     className={`flex flex-col items-start gap-1 p-3 rounded-2xl border-2 transition ${
@@ -593,7 +598,7 @@ function AssinarContent() {
           <div className="flex items-center justify-center gap-4 text-[10px] text-gray-400 font-bold uppercase tracking-widest">
             <span className="flex items-center gap-1"><Shield size={10} /> SSL</span>
             <span>·</span>
-            <span className="flex items-center gap-1"><Zap size={10} /> PagarMe</span>
+            <span className="flex items-center gap-1"><Zap size={10} /> {GATEWAY === "pagbank" ? "PagBank" : "PagarMe"}</span>
             <span>·</span>
             <span className="flex items-center gap-1"><CheckCircle2 size={10} /> Trial 15 dias</span>
           </div>

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { assinaturaAtiva } from "@/lib/assinatura";
 import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { registrarEmpresa, type EmpresaFocus } from "@/lib/focusnfe";
@@ -9,17 +10,15 @@ export async function POST(req: NextRequest) {
 
   const userId = getEffectiveUserId(user!);
 
-  // Só Premium pode configurar NF
+  // NF-e liberada em todos os planos e no trial — só exige assinatura ativa.
   const { data: cfg } = await supabaseAdmin
     .from("config_garage")
-    .select("plano, plano_ativo, plano_vence_em, cnpj, nome_empresa, cidade, estado")
+    .select("plano, plano_ativo, plano_vence_em, trial_ends_at, bloqueado, cnpj, nome_empresa, cidade, estado")
     .eq("user_id", userId)
     .single();
 
-  const agora = new Date();
-  const planoValido = cfg?.plano_ativo && cfg?.plano_vence_em && new Date(cfg.plano_vence_em) > agora;
-  if (!planoValido || cfg?.plano !== "premium") {
-    return NextResponse.json({ error: "Recurso disponível apenas no plano Premium" }, { status: 403 });
+  if (!cfg || !assinaturaAtiva(cfg)) {
+    return NextResponse.json({ error: "Assinatura inativa — renove o plano para configurar a NF-e" }, { status: 403 });
   }
 
   const body = await req.json() as {

@@ -4,14 +4,17 @@ import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { lerOrigemVisita } from "@/lib/origem-visita";
+import { PLANOS_VISIVEIS, fmtBRL, labelKits } from "@/lib/planos";
 import { CheckCircle2, Loader2, ArrowRight, Eye, EyeOff } from "lucide-react";
 
 type Step = 0 | 1 | 2 | 3;
 
-const PLANO_INFO: Record<string, { nome: string; preco: string; desc: string }> = {
-  starter: { nome: "Starter", preco: "R$ 1.150/mês", desc: "IA no WhatsApp + Vitrine + 15 vídeos/mês" },
-  pro:     { nome: "Pro",     preco: "R$ 1.500/mês", desc: "Tudo do Starter + Financeiro + Multi-vendedor" },
-};
+const PLANO_INFO: Record<string, { nome: string; preco: string; desc: string }> = Object.fromEntries(
+  PLANOS_VISIVEIS.map((p) => [
+    p.id,
+    { nome: p.nome, preco: `${fmtBRL(p.mensal).replace(",00", "")}/mês`, desc: `Tudo incluso + ${labelKits(p.kitsMes).toLowerCase()}` },
+  ]),
+);
 
 const stepLabels = ["Sua conta", "Identidade", "Integração"];
 

@@ -528,7 +528,12 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith("/assinar") ||
     pathname.startsWith("/api/assinar") ||
     pathname.startsWith("/api/pagarme/checkout") ||
-    pathname.startsWith("/api/pagarme/status");
+    pathname.startsWith("/api/pagarme/status") ||
+    // PagBank (substitui o Pagar.me): webhook valida assinatura + re-consulta;
+    // checkout/status se auto-protegem igual aos do Pagar.me.
+    pathname.startsWith("/api/pagbank/webhook") ||
+    pathname.startsWith("/api/pagbank/checkout") ||
+    pathname.startsWith("/api/pagbank/status");
 
   if (!user && !isPublic) {
     const loginUrl = request.nextUrl.clone();

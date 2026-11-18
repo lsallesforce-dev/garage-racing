@@ -4,6 +4,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireVehicleOwner } from "@/lib/api-auth";
+import { gateKit } from "@/lib/kit-cota";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { Client } from "@upstash/qstash";
 
@@ -55,6 +56,9 @@ export async function POST(req: NextRequest) {
 
   const { error: authError } = await requireVehicleOwner(veiculoId);
   if (authError) return authError;
+  // Cota mensal de kits (1 veículo/mês; regenerar o mesmo carro não consome).
+  const gate = await gateKit(veiculoId);
+  if (gate) return gate;
 
   const { data: veiculo } = await supabaseAdmin
     .from("veiculos")

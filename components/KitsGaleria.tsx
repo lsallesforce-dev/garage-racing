@@ -16,6 +16,7 @@ import { supabase } from "@/lib/supabase";
 import { useUserRole } from "@/components/SidebarWrapper";
 import CapturaGuiada from "@/components/CapturaGuiada";
 import PisoRestauro from "@/components/PisoRestauro";
+import { useCotaKits, KitCotaBanner, UpgradeKitsModal } from "@/components/KitCota";
 import ReelEditor from "@/components/ReelEditor";
 import PublicarMetaButton from "@/components/PublicarMetaButton";
 import SlidesTextoEditor from "@/components/SlidesTextoEditor";
@@ -133,6 +134,9 @@ export default function KitsGaleria() {
   const [salvando, setSalvando] = useState<Record<string, "salvando" | "ok">>({});
   const [copiado, setCopiado] = useState<string | null>(null);
   const [erro, setErro] = useState<Record<string, string>>({});
+  const { cota, recarregar: recarregarCota } = useCotaKits();
+  const [upgradeAberto, setUpgradeAberto] = useState(false);
+  const cotaEstourou = useRef(false);
   const [gerandoTodos, setGerandoTodos] = useState<{ atual: number; total: number } | null>(null);
   const [reelBusy, setReelBusy] = useState<Record<string, boolean>>({});
   const [baixando, setBaixando] = useState<Record<string, "capa" | "story" | "carrossel" | "reel">>({});
@@ -330,7 +334,14 @@ export default function KitsGaleria() {
         body: JSON.stringify({ veiculoId: id, somenteCapa }),
       });
       const d = await res.json();
+      if (res.status === 402 && d.codigo === "cota_kits") {
+        cotaEstourou.current = true;
+        setUpgradeAberto(true);
+        recarregarCota();
+        throw new Error(d.error);
+      }
       if (!res.ok) throw new Error(d.error ?? `HTTP ${res.status}`);
+      recarregarCota();
       patchCarro(id, {
         marketing_capa_url: `${d.capaUrl}`,
         marketing_story_url: d.storyUrl ?? null,
@@ -346,12 +357,19 @@ export default function KitsGaleria() {
     }
   }
 
+  function cotaEsgotada() {
+    return cotaEstourou.current;
+  }
+
   async function gerarTodos() {
     const fila = carros.filter((c) => !c.marketing_capa_url && (c.fotos?.length ?? 0) > 0).map((c) => c.id);
+    cotaEstourou.current = false;
     setGerandoTodos({ atual: 0, total: fila.length });
     for (let i = 0; i < fila.length; i++) {
       setGerandoTodos({ atual: i + 1, total: fila.length });
-      await gerar(fila[i]);
+      const ok = await gerar(fila[i]);
+      // Estourou a cota no meio do lote → para (o modal de upgrade já abriu).
+      if (!ok && cotaEsgotada()) break;
     }
     setGerandoTodos(null);
   }
@@ -529,6 +547,10 @@ export default function KitsGaleria() {
         body: JSON.stringify({ veiculoId: id }),
       });
       const d = await res.json();
+      if (res.status === 402 && d.codigo === "cota_kits") {
+        setUpgradeAberto(true);
+        recarregarCota();
+      }
       if (!res.ok && res.status !== 202) throw new Error(d.error ?? `HTTP ${res.status}`);
       patchCarro(id, { marketing_reel_status: "processando" });
     } catch (e: any) {
@@ -565,6 +587,8 @@ export default function KitsGaleria() {
 
   return (
     <div className="flex flex-col gap-5">
+      {upgradeAberto && <UpgradeKitsModal cota={cota} onClose={() => setUpgradeAberto(false)} />}
+      <KitCotaBanner cota={cota} onUpgrade={() => setUpgradeAberto(true)} />
       {/* Barra de ações da loja */}
       <div className="flex flex-wrap items-center gap-2">
         <button

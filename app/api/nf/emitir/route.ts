@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { assinaturaAtiva } from "@/lib/assinatura";
 import { requireVehicleOwner } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { emitirNFe, determinarNCM, type DestinatarioNFe, type EmpresaFocus, type VeiculoNFe } from "@/lib/focusnfe";
@@ -29,14 +30,13 @@ export async function POST(req: NextRequest) {
 
   const { data: cfg } = await supabaseAdmin
     .from("config_garage")
-    .select("cnpj, nome_empresa, plano, plano_ativo, plano_vence_em, nf_habilitado, nf_regime_tributario, nf_inscricao_estadual, nf_cep, nf_logradouro, nf_numero_end, nf_bairro, nf_municipio, nf_uf")
+    .select("cnpj, nome_empresa, plano, plano_ativo, plano_vence_em, trial_ends_at, bloqueado, nf_habilitado, nf_regime_tributario, nf_inscricao_estadual, nf_cep, nf_logradouro, nf_numero_end, nf_bairro, nf_municipio, nf_uf")
     .eq("user_id", veiculo.user_id)
     .single();
 
-  const agora = new Date();
-  const planoValido = cfg?.plano_ativo && cfg?.plano_vence_em && new Date(cfg.plano_vence_em) > agora;
-  if (!planoValido || cfg?.plano !== "premium") {
-    return NextResponse.json({ error: "Recurso disponível apenas no plano Premium" }, { status: 403 });
+  // NF-e liberada em todos os planos e no trial (nov/2026) — só exige assinatura ativa.
+  if (!cfg || !assinaturaAtiva(cfg)) {
+    return NextResponse.json({ error: "Assinatura inativa — renove o plano para emitir NF-e" }, { status: 403 });
   }
   if (!cfg?.nf_habilitado) {
     return NextResponse.json({ error: "Configure a Nota Fiscal nas Configurações antes de emitir" }, { status: 400 });

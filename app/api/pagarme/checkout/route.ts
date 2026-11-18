@@ -8,20 +8,19 @@ import {
   type PagarmeCustomer,
 } from "@/lib/pagarme";
 import { calcularDescontoIndicacao } from "@/lib/indicacao";
+import { PLANOS } from "@/lib/planos";
 
 // Preços em centavos
 // "teste" (R$ 1,00) é um plano oculto para validar o fluxo de pagamento ponta a ponta
 // (checkout → PIX → webhook → ativa plano). Não aparece nos botões da tela de assinatura;
 // só é acessível via /assinar?plano=teste.
-const VALORES: Record<string, number> = { teste: 100, starter: 115000, pro: 150000, premium: 213500 };
+const VALORES: Record<string, number> = Object.fromEntries(
+  Object.values(PLANOS).map((p) => [p.id, Math.round(p.mensal * 100)]),
+);
 
-// R$ X por mês → desc string
-const DESCRICOES: Record<string, string> = {
-  teste: "AutoZap Teste",
-  starter: "AutoZap Starter",
-  pro: "AutoZap Pro",
-  premium: "AutoZap Premium",
-};
+const DESCRICOES: Record<string, string> = Object.fromEntries(
+  Object.values(PLANOS).map((p) => [p.id, `AutoZap ${p.nome}`]),
+);
 
 // descontoMes = desconto negociado em R$/mês (0 = valor de tabela). Abatido do mensal
 // ANTES de aplicar a lógica anual; piso de R$1 (mínimo do gateway).

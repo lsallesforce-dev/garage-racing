@@ -13,11 +13,16 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendAvisaMessage } from "@/lib/avisa";
 import { calcularDescontoIndicacao } from "@/lib/indicacao";
 import { logEventoAdmin } from "@/lib/admin-eventos";
+import { PLANOS } from "@/lib/planos";
 
 export const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.autozap.digital";
 
-// Preço mensal por plano (R$) — espelha VALORES de lib/pagarme (em reais, p/ exibição).
-export const PRECO_MENSAL: Record<string, number> = { starter: 1150, pro: 1500, premium: 2135 };
+// Preço mensal por plano (R$) — fonte única em lib/planos.
+export const PRECO_MENSAL: Record<string, number> = {
+  starter: PLANOS.starter.mensal,
+  pro: PLANOS.pro.mensal,
+  premium: PLANOS.premium.mensal,
+};
 
 export const fmtBRL = (v: number) =>
   v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });

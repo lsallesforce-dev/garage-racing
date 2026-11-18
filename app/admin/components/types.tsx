@@ -5,6 +5,7 @@
 // Obs.: é .tsx (não .ts) porque PlanoBadge/StatusPagBadge/etc. têm JSX.
 
 import { Lock } from "lucide-react";
+import { PLANOS } from "@/lib/planos";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -102,7 +103,11 @@ export interface EventoAdmin {
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
-export const PRECOS = { starter: 1150, pro: 1500, premium: 2135 };
+export const PRECOS = {
+  starter: PLANOS.starter.mensal,
+  pro: PLANOS.pro.mensal,
+  premium: PLANOS.premium.mensal,
+};
 export const APP_URL = "https://www.autozap.digital";
 
 // Link de pagamento/renovação do tenant (página pública /assinar)

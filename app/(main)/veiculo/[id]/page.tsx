@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { assinaturaAtiva } from "@/lib/assinatura";
 import { supabase } from "@/lib/supabase";
 import { useParams, useRouter } from "next/navigation";
 import { PhotoGallery } from "@/components/PhotoGallery";
@@ -751,15 +752,14 @@ export default function DetalheVeiculo() {
       if (!user) return;
       supabase
         .from("config_garage")
-        .select("logo_url, nf_habilitado, plano, plano_ativo, plano_vence_em, vitrine_slug")
+        .select("logo_url, nf_habilitado, plano, plano_ativo, plano_vence_em, trial_ends_at, bloqueado, vitrine_slug")
         .eq("user_id", user.id)
         .single()
         .then(({ data }) => {
           if (data?.logo_url) setLogoUrl(data.logo_url);
           if (data?.vitrine_slug) setVitrineSite(data.vitrine_slug);
-          const agora = new Date();
-          const premium = data?.plano === "premium" && data?.plano_ativo && data?.plano_vence_em && new Date(data.plano_vence_em) > agora;
-          if (premium && data?.nf_habilitado) setNfHabilitado(true);
+          // NF-e liberada em todos os planos e no trial — só exige assinatura ativa.
+          if (data && assinaturaAtiva(data) && data.nf_habilitado) setNfHabilitado(true);
         });
     });
   }, []);
