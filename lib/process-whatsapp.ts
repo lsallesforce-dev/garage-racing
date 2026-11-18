@@ -1230,6 +1230,19 @@ function palavrasDoModeloNoTexto(modelo: string | null | undefined, texto: strin
  *  Freedom 2022 prata" -> as fotos têm que ser da prata, não da branca que está
  *  em foco (APROVE 21/09, Osmar). */
 const MARCA_FOTO_CLIENTE = "[Cliente enviou foto(s) do veículo]";
+
+// "Bom dia", "boa noite, Deus abençoe", "amém 🙏" — mensagem que só cumprimenta,
+// sem pergunta nem assunto. Usada pra não transformar o turno em alerta.
+export function ehSoCumprimento(texto: string | null | undefined): boolean {
+  const t = String(texto ?? "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+    .replace(/[\p{Extended_Pictographic}\p{Emoji_Modifier}\uFE0F\u200D]/gu, " ")
+    .replace(/[!.,;:~*_\-]+/g, " ").replace(/\s+/g, " ").trim()
+    .replace(/([a-z])\1+/g, "$1"); // "bom diaaa", "oiee"
+  if (!t || t.length > 80 || t.includes("?")) return false;
+  const pedaco = "(bom dia|boa tarde|boa noite|bom domingo|bom sabado|boa semana|otima semana|bom final de semana|bom fim de semana|que as?im seja|feliz (?:domingo|sabado|segunda|sexta|semana|natal|ano novo)|ola|oi|oie|amem|gloria a deus|gracas a deus|deus (?:te |lhe |nos |vos )?abencoe|deus abencoe|fique com deus|fica com deus|que deus (?:te |lhe |nos )?abencoe|abencoado dia|dia abencoado|pra voce tambem|pra vc tambem|igualmente|tudo bem|tudo bom|amigo|amiga|irmao|meu querido|minha querida|e ai)";
+  return new RegExp(`^${pedaco}(?: ${pedaco})*$`).test(t);
+}
 const RADICAIS_COR = ["branc", "pret", "prat", "cinz", "vermelh", "azul", "verde", "amarel", "marrom", "bege", "dourad", "laranj", "roxo", "vinho"];
 function corNoTexto(texto: string | null | undefined): string | null {
   const t = (texto ?? "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
@@ -2116,6 +2129,12 @@ Responda apenas com o JSON, sem markdown.`;
   // Carro que a visao reconheceu na foto do cliente ("Honda Civic"), pro alerta
   // do gerente dizer QUAL carro veio na troca em vez de "fotos do veiculo".
   let carroDaFotoDoCliente: string | null = null;
+  // Imagem de "bom dia"/mensagem religiosa sem legenda: a IA responde o
+  // cumprimento, mas o turno não pode virar alerta pro gerente nem mexer na
+  // pendência. Caso real (Bonitão 13 e 16/11, cliente do Palio): cada "bom dia"
+  // com flores gerava "AGENTE PRECISA DE INSTRUÇÃO: cliente aguarda avaliação do
+  // Palio", que o gerente lia como mais um carro na troca.
+  let turnoSoSaudacao = false;
   // Foto original do cliente em base64 (Avisa: decriptada; Meta: baixada pela
   // Graph API). Fora do bloco porque o passo 10c decide a pré-avaliação por ela.
   let fotoBase64: string | null = null;
@@ -2177,6 +2196,11 @@ Responda apenas com o JSON, sem markdown.`;
             `[Cliente mandou um PRINT de anuncio${alvo ? `: ${alvo}` : ""}` +
             `${leitura.texto ? ` — texto na imagem: "${leitura.texto}"` : ""}]` +
             (legenda ? `\n${legenda}` : "");
+        } else if (leitura.tipo === "saudacao") {
+          const legenda = userMessage === MARCA_FOTO_CLIENTE ? "" : userMessage;
+          userMessage = `[Cliente mandou uma imagem de cumprimento (${leitura.resumo || "mensagem de bom dia"}) — só responda o cumprimento, curto]` + (legenda ? `\n${legenda}` : "");
+          printDeAnuncio = true; // não é carro de troca
+          if (!legenda || ehSoCumprimento(legenda)) turnoSoSaudacao = true;
         } else if (leitura.tipo === "documento" || leitura.tipo === "outro") {
           // Nao e carro de troca: nao inventa "vou avaliar seu carro". Deixa o
           // contexto explicito e o agente responde o que der.
@@ -4469,7 +4493,14 @@ Responda apenas com o JSON, sem markdown.`;
         }
 
         // Instrução pendente: agente sinalizou dúvida → alerta o gerente
-        const precisaInstrucao = parsed.precisa_instrucao;
+        // Cumprimento puro (imagem de bom dia ou "bom dia" escrito) não gera
+        // alerta nem mexe na pendência: o gerente já foi avisado do que está
+        // pendente, e limpar aqui apagaria a avaliação de troca em aberto.
+        const cumprimentoPuro = turnoSoSaudacao || ehSoCumprimento(userMessage);
+        if (cumprimentoPuro && parsed.precisa_instrucao && String(parsed.precisa_instrucao).toLowerCase() !== "null") {
+          console.log(`🙏 [Cumprimento] ${phone} — precisa_instrucao ignorado (${String(parsed.precisa_instrucao).slice(0, 80)})`);
+        }
+        const precisaInstrucao = cumprimentoPuro ? null : parsed.precisa_instrucao;
         if (precisaInstrucao && typeof precisaInstrucao === "string" && precisaInstrucao.toLowerCase() !== "null" && lead) {
           console.log(`❓ Agente precisa de instrução: ${precisaInstrucao}`);
           // Pedido de financiamento ainda aberto: a dúvida nova NÃO pode apagar
@@ -4509,7 +4540,7 @@ Responda apenas com o JSON, sem markdown.`;
         }
 
         // Se havia instrução pendente e foi usada, limpa
-        if ((lead as any)?.instrucao_pendente && !precisaInstrucao) {
+        if ((lead as any)?.instrucao_pendente && !precisaInstrucao && !cumprimentoPuro) {
           await supabaseAdmin
             .from("leads")
             .update({ instrucao_pendente: null, instrucao_pendente_desde: null })

@@ -19,6 +19,7 @@ export type TipoImagem =
   | "print_anuncio"    // captura de anúncio/post/vitrine — o cliente quer ESTE carro
   | "carro_do_cliente" // foto de carro para avaliação de troca
   | "documento"        // CRLV, CNH, comprovante
+  | "saudacao"         // "bom dia", mensagem religiosa/motivacional, corrente, figurinha
   | "outro";
 
 export interface LeituraImagem {
@@ -35,13 +36,14 @@ Classifique em "tipo":
 - "print_anuncio": é uma CAPTURA DE TELA de anúncio, post de rede social, site, vitrine ou conversa mostrando um carro à venda. Sinais: interface de app (Instagram, Facebook, OLX, WhatsApp), barra de status do celular, botões, texto sobreposto com preço, selo "DISPONÍVEL".
 - "carro_do_cliente": FOTOGRAFIA real de um carro, tirada pela pessoa (rua, garagem, quintal). Sem interface de app. É o carro dele, para avaliação de troca.
 - "documento": CRLV, CNH, comprovante, contrato, tabela FIPE.
+- "saudacao": imagem de cumprimento ou mensagem pronta de corrente — "bom dia", "boa tarde", "boa noite", "feliz domingo", mensagem religiosa (Deus, Jesus, bênção, versículo), motivacional, flores/paisagem com frase, meme, figurinha. Vale MESMO que apareça um carro decorativo: se o assunto da imagem é a frase de cumprimento, é "saudacao".
 - "outro": qualquer outra coisa.
 
 ATENÇÃO: foto de carro DENTRO de um print de anúncio é "print_anuncio", não "carro_do_cliente". O que decide é ter interface/texto de anúncio na tela.
 
 Devolva SÓ este JSON, sem markdown:
 {
-  "tipo": "print_anuncio" | "carro_do_cliente" | "documento" | "outro",
+  "tipo": "print_anuncio" | "carro_do_cliente" | "documento" | "saudacao" | "outro",
   "carro": "marca modelo versão ano que aparece escrito, ou null",
   "preco": "preço que aparece escrito, ou null",
   "texto": "o texto legível na imagem, ou null. Em documento, boleto, bilhete escrito à mão ou print de conversa: TRANSCREVA nomes completos, CPF, datas e números EXATAMENTE como aparecem (não resuma nem arredonde números), até 400 caracteres. Nos outros tipos, resuma em até 200 caracteres.",
@@ -67,7 +69,7 @@ export async function lerImagemDoCliente(
       // parseGeminiJson e obrigatorio aqui: o modelo deixa control char cru
       // dentro das strings e o JSON.parse puro rejeita (ver lib/gemini.ts).
       const j = parseGeminiJson(bruto);
-      const tipo: TipoImagem = ["print_anuncio", "carro_do_cliente", "documento", "outro"].includes(j?.tipo)
+      const tipo: TipoImagem = ["print_anuncio", "carro_do_cliente", "documento", "saudacao", "outro"].includes(j?.tipo)
         ? j.tipo
         : "outro";
       return {
