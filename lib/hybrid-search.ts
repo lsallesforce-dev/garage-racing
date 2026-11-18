@@ -628,7 +628,15 @@ export async function hybridVehicleSearch(
       while (i !== -1) {
         achou = true;
         const janela = msg.slice(Math.max(0, i - 30), i);
-        const posse = /\b(tenho|meu|minha|meus|minhas|possuo|dou|entrego|troco|trocar|trocam|troca)\b/.test(janela);
+        // "tô pagando um Gol", "tô com um Onix", "ando de Palio", "tinha um
+        // Celta" também são o carro dele. Caso real (Bonitão 18/11, Marcos):
+        // veio do anúncio do Sentra, disse "tô pagando um Gol ainda, 2016" e o
+        // foco foi pro Gol do pátio — a pergunta seguinte ("é completo?") saiu
+        // com os itens do Gol e virou "precisa de instrução" pro gerente.
+        // Esses verbos só valem COLADOS no carro ("pagando um Gol"), senão
+        // "tô com interesse no Gol" viraria carro do cliente.
+        const posse = /\b(tenho|meu|minha|meus|minhas|possuo|dou|entrego|troco|trocar|trocam|troca)\b/.test(janela)
+          || /\b(pagando|quitando|quitei|vendi|ando de|ando com|estou com|to com|uso)\s+(?:(?:um|uma|o|a|meu|minha)\s+)?$/.test(janela);
         if (!posse || /\bpor\b/.test(janela)) return false;
         i = msg.indexOf(w, i + w.length);
       }
