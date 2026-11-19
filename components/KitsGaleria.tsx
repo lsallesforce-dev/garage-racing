@@ -178,6 +178,15 @@ export default function KitsGaleria() {
       .then(({ data }) => {
         setCarros((data as CarroKit[]) ?? []);
         setLoading(false);
+        // Quem apagou o post à mão no Insta/Face: tira o selo "no feed" (segundo plano).
+        fetch("/api/marketing/conferir-posts", { method: "POST" })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((d) => {
+            const mudados: Record<string, PostPublicado[]> = d?.atualizados ?? {};
+            if (!Object.keys(mudados).length) return;
+            setCarros((prev) => prev.map((c) => (mudados[c.id] ? { ...c, marketing_posts: mudados[c.id] } : c)));
+          })
+          .catch(() => {});
       });
   }, [effectiveUserId]);
 

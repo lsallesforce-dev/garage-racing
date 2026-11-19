@@ -369,3 +369,43 @@ export async function postarNoInstagram(p: {
   const r = await publicarNoInstagram(p.igUserId, p.pageToken, pai.id);
   return { mediaId: r.id, permalink: await linkDaMidia(r.id, p.pageToken) };
 }
+
+/**
+ * Posts que EXISTEM de fato no perfil — usado pra limpar do sistema o que o
+ * lojista apagou à mão no app (o selo "no feed" não percebia).
+ *
+ * Por que listar em vez de perguntar por id: id inexistente e id sem permissão
+ * devolvem o MESMO erro na Meta, então um GET no id não diz se o post sumiu.
+ * Listando o que existe, "ausente da lista" é prova — desde que a lista cubra a
+ * data do post (`maisAntigo`); o que é mais velho que a lista não se conclui.
+ */
+export async function listarPostsExistentes(
+  p: { pageId: string; pageToken: string; igUserId: string | null },
+  destino: DestinoPost,
+): Promise<{ ids: Set<string>; maisAntigo: Date | null } | null> {
+  const ids = new Set<string>();
+  let maisAntigo: Date | null = null;
+  try {
+    let url: string | null =
+      destino === "instagram"
+        ? (p.igUserId ? `${GRAPH}/${p.igUserId}/media?fields=id,timestamp&limit=100` : null)
+        : `${GRAPH}/${p.pageId}/published_posts?fields=id,created_time&limit=100`;
+    if (!url) return null;
+    for (let pag = 0; url && pag < 3; pag++) {
+      const sep = url.includes("?") ? "&" : "?";
+      const r: any = await fetch(`${url}${sep}access_token=${encodeURIComponent(p.pageToken)}`).then((x) => x.json());
+      if (r.error) return null; // sem leitura confiável: não conclui nada
+      for (const m of r.data ?? []) {
+        ids.add(m.id);
+        const t = new Date(m.timestamp ?? m.created_time);
+        if (!isNaN(t.getTime()) && (!maisAntigo || t < maisAntigo)) maisAntigo = t;
+      }
+      url = r.paging?.next ?? null;
+      // chegou ao fim da lista: ela cobre tudo, não há "mais antigo" a respeitar
+      if (!url) maisAntigo = new Date(0);
+    }
+  } catch {
+    return null;
+  }
+  return { ids, maisAntigo };
+}
