@@ -16,7 +16,6 @@ import {
   resolverPaginaParaPostar, postarNoFacebook, postarNoInstagram,
   usaVideo, type DestinoPost, type FormatoPost,
 } from "@/lib/meta-organico";
-import { linkWhatsOrigem } from "@/lib/origem-link";
 
 export const dynamic = "force-dynamic";
 // 10 imagens pra subir + a espera do Instagram processar cada container (o
@@ -176,19 +175,16 @@ export async function POST(req: NextRequest) {
       .limit(1);
     const token = garagens?.[0]?.meta_ads_token || garagens?.[0]?.meta_access_token;
 
-    // Rastreio de origem (lib/origem-link.ts): sem isso o lead que vinha do post
-    // caía como "WhatsApp Direto". Face aceita link clicável na legenda → link
-    // com a frase "vi no Facebook". No Insta link de legenda não clica, então
-    // manda pro link da bio (que o lojista configura com linkWhatsOrigem). Não
-    // repete se a legenda já traz um wa.me.
+    // Rastreio de origem (lib/origem-link.ts). No Insta o link de legenda não
+    // clica, então manda pro link da bio. No Face NÃO cola mais o wa.me na
+    // legenda (19/11/2026): a URL com a frase codificada vira um "textão" de
+    // %20 que assusta quem ia clicar (pedido do Lucas). O telefone e o site já
+    // estão na legenda do kit. Custo: o lead do post orgânico do Face perde o
+    // carimbo "vi no Facebook" da mensagem pronta (cai no detector de frase /
+    // WhatsApp Direto). Se voltar, usar link CURTO do domínio da loja, não wa.me.
     const numeroLoja = garagens?.[0]?.whatsapp_agente;
-    const loja = garagens?.[0]?.nome_fantasia || garagens?.[0]?.nome_empresa || "loja";
-    const carro = [veiculo.marca, String(veiculo.modelo ?? "").split(/\s+/).slice(0, 2).join(" "), veiculo.ano_modelo]
-      .filter(Boolean).join(" ").trim();
     const jaTemLink = /wa\.me|api\.whatsapp\.com/i.test(legenda);
-    const legendaFacebook = numeroLoja && !jaTemLink
-      ? `${legenda}\n\n📲 Chama no WhatsApp: ${linkWhatsOrigem(numeroLoja, "facebook", loja, carro)}`
-      : legenda;
+    const legendaFacebook = legenda;
     const legendaInstagram = numeroLoja && !jaTemLink && !/link\s+(da|na)\s+bio/i.test(legenda)
       ? `${legenda}\n\n📲 Chama no WhatsApp pelo link da bio`
       : legenda;
