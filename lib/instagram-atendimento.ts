@@ -572,7 +572,12 @@ export async function varrerComentarios(): Promise<{ tenants: number; posts: num
     const limite = Date.now() - 14 * 86_400_000;
     const midias = (vs ?? [])
       .flatMap((v: any) => (Array.isArray(v.marketing_posts) ? v.marketing_posts : []))
-      .filter((m: any) => m?.destino === "instagram" && m?.post_id && !m.removido_em && new Date(m.em ?? 0).getTime() > limite)
+      // Story (arte ou vídeo) NÃO entra: expira em 24h e não tem comentários pra ler.
+      // Antes cada varredura (a cada 5 min) tentava os stories dos últimos 14 dias e
+      // gerava ~66 erros "Object does not exist" por rodada nos logs (19/11/2026).
+      .filter((m: any) => m?.destino === "instagram" && m?.post_id && !m.removido_em
+        && m.formato !== "story" && m.formato !== "story_video"
+        && new Date(m.em ?? 0).getTime() > limite)
       .map((m: any) => String(m.post_id))
       .slice(0, 40);
 
