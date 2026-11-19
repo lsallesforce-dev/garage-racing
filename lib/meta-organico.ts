@@ -230,7 +230,18 @@ export async function resolverPaginaParaPostar(
   const paginas: any[] = data.data ?? [];
   if (!paginas.length) throw new Error("Nenhuma Página do Facebook conectada nesta conta.");
 
-  const escolhida = (pageIdPreferida && paginas.find((p) => p.id === pageIdPreferida)) || paginas[0];
+  // Página que o tenant salvou NÃO pode cair na "primeira da lista": em 19/11/2026
+  // o login do Facebook da APROVE passou a enxergar só a Página "AutoZap", e o
+  // fallback postou o Corolla da loja no Face e no Insta do AutoZap (e deixou o
+  // post antigo da APROVE sem apagar na venda, por token de outra Página).
+  // Sem preferida (tenant que nunca salvou Página), segue pegando a primeira.
+  const preferida = pageIdPreferida ? paginas.find((p) => p.id === pageIdPreferida) : null;
+  if (pageIdPreferida && !preferida) {
+    throw new Error(
+      "A Página salva desta loja não está acessível pelo login do Facebook conectado — reconecte o Facebook em Configurações e marque a Página da loja (e o Instagram dela).",
+    );
+  }
+  const escolhida = preferida || paginas[0];
   if (!escolhida.access_token) {
     throw new Error("A Meta não devolveu o token da Página — reconecte o Facebook em Configurações.");
   }
