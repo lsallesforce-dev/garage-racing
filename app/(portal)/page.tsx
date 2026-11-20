@@ -47,7 +47,7 @@ const jsonLd = {
       url: SITE_URL,
       logo: `${SITE_URL}/favicon.svg`,
       description:
-        "Plataforma de IA para revendas de veículos: atendimento no WhatsApp 24/7, vídeos e vitrine do estoque, anúncios em portais e gestão financeira.",
+        "O time comercial de IA da revenda de veículos: cria os posts e anúncios do estoque, responde cada lead no WhatsApp em segundos e passa o cliente quente ao gerente.",
     },
     {
       // Nome do site no resultado da busca de marca ("autozap", "auto zap").
@@ -66,7 +66,7 @@ const jsonLd = {
       operatingSystem: "Web",
       url: SITE_URL,
       description:
-        "IA que qualifica leads no WhatsApp, gera vídeos para Instagram, publica anúncios em Webmotors/OLX/Meta e fecha o financeiro da revenda.",
+        "Cria posts, reels e anúncios do estoque, atende e qualifica leads no WhatsApp com IA, publica em Webmotors e OLX e organiza o financeiro da revenda.",
       offers: {
         "@type": "Offer",
         priceCurrency: "BRL",
@@ -169,7 +169,7 @@ function Hero() {
       <div className="relative max-w-[1400px] mx-auto px-6 pt-14 pb-10">
         {/* meta bar */}
         <div className="flex items-center justify-between text-[11px] font-mono uppercase tracking-[0.22em] text-white/50 mb-10">
-          <span>/ INTELIGÊNCIA ARTIFICIAL P/ REVENDAS</span>
+          <span>/ O TIME COMERCIAL DE IA DA REVENDA</span>
           <span className="hidden md:flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-[#22c55e]" />
             Marketing + vendas num sistema só
@@ -181,22 +181,22 @@ function Hero() {
           <div className="lg:col-span-7">
             <div className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-white/80 bg-white/5 rounded-full px-3 py-1.5 mb-7 ring-1 ring-inset ring-white/10">
               <span className="w-1 h-1 rounded-full bg-[#ef4444]" />
-              Novo · Lucas IA 2.0 entende áudio
+              Sua IA atende com o nome que você escolher
             </div>
 
             <h1
               className="font-bold tracking-[-0.03em] leading-[0.98]"
-              style={{ fontSize: "clamp(48px, 7.2vw, 108px)" }}
+              style={{ fontSize: "clamp(44px, 6.2vw, 96px)" }}
             >
-              Sua revenda no
+              Seu estoque anunciado.
               <br />
-              <span className="text-[#ef4444]">piloto automático.</span>
+              <span className="text-[#ef4444]">Cada cliente respondido.</span>
             </h1>
 
             <p className="mt-7 max-w-[560px] text-white/70 text-[17px] leading-relaxed">
-              O sistema de marketing e vendas da sua revenda: posts, reels e anúncios do
-              estoque prontos em minutos, e a IA atendendo cada lead no WhatsApp na hora —
-              inclusive à noite e no domingo.
+              O AutoZap cria os posts e anúncios de cada carro, responde todo lead no
+              WhatsApp em segundos (às 22h, no domingo) e te chama quando o cliente
+              esquenta, com o histórico da conversa pronto.
             </p>
 
             <div className="mt-9 flex flex-wrap items-center gap-3">
@@ -207,7 +207,7 @@ function Hero() {
                 rel="noopener noreferrer"
                 className="group inline-flex items-center gap-3 bg-[#ef4444] hover:bg-[#dc2626] text-white pl-6 pr-2 py-2.5 rounded-full text-[15px] font-semibold transition-colors"
               >
-                Falar no WhatsApp
+                Converse com a Mari
                 <span className="w-9 h-9 rounded-full bg-white/15 grid place-items-center transition-transform group-hover:translate-x-1">
                   <ArrowRight className="w-4 h-4" strokeWidth={2.5} />
                 </span>
@@ -222,6 +222,9 @@ function Hero() {
                 15 dias grátis · sem cartão
               </span>
             </div>
+            <p className="mt-4 text-[13px] text-white/50 max-w-[520px]">
+              A Mari é a IA do AutoZap. É assim que o seu cliente vai ser atendido.
+            </p>
           </div>
 
           {/* VISUAL */}
@@ -281,7 +284,7 @@ function Hero() {
 
         {/* bottom strip */}
         <div className="mt-16 grid md:grid-cols-3 gap-x-10 gap-y-5 border-t border-white/10 pt-7">
-          <BottomStrip kicker="/ 24 horas" copy="Lucas atende cada lead em segundos, todos os dias, mesmo às 3 da manhã." />
+          <BottomStrip kicker="/ Noite e domingo" copy="A IA responde cada lead em segundos, inclusive fora do horário da loja." />
           <BottomStrip kicker="/ 5 minutos" copy="Você grava os takes no pátio, a IA monta o vídeo com narração e legenda." />
           <BottomStrip kicker="/ Lucro real" copy="Cada veículo com despesa, comissão e margem líquida — sem planilha." />
         </div>
@@ -318,11 +321,11 @@ function PhoneMock() {
         {/* whatsapp header */}
         <div className="flex items-center gap-3 px-4 py-3 bg-[#0b1417] border-b border-white/5">
           <div className="w-9 h-9 rounded-full bg-[#ef4444] grid place-items-center text-white font-black text-sm">
-            L
+            B
           </div>
           <div className="flex-1">
             <div className="text-white text-[13px] font-semibold flex items-center gap-1.5">
-              Lucas — Sua Revenda
+              Bia — Sua Revenda
               <span className="text-[10px] font-black uppercase tracking-[0.18em] px-1.5 py-0.5 rounded bg-[#ef4444]/20 text-[#ef4444]">
                 IA
               </span>
@@ -469,7 +472,7 @@ function Funil() {
       n: "02",
       title: "IA assume em",
       titleAccent: "segundos.",
-      copy: "Lucas responde 24h, 7 dias por semana — em texto, áudio ou foto.",
+      copy: "A IA da loja responde a qualquer hora, inclusive à noite e no domingo — em texto, áudio ou foto.",
       Icon: MessageSquare,
     },
     {
@@ -486,8 +489,8 @@ function Funil() {
     },
     {
       n: "05",
-      title: "Você só fecha.",
-      copy: "Alerta de lead quente com histórico completo. Apertou a mão, vendeu.",
+      title: "Você entra quando o cliente esquenta.",
+      copy: "Alerta de lead quente com o histórico completo. Você assume a conversa e conduz o fechamento.",
       Icon: BadgeCheck,
       red: true,
     },
@@ -512,7 +515,7 @@ function Funil() {
           </div>
           <div className="md:col-span-5 md:pb-3">
             <p className="text-gray-600 text-[16px] leading-relaxed max-w-md">
-              O cliente nem percebe que está conversando com IA. Quando o lead esquenta,
+              Conversa natural, com o nome e o jeito da sua loja. Quando o lead esquenta,
               o sistema te chama com o histórico inteiro pronto pro fechamento.
             </p>
           </div>
@@ -615,7 +618,7 @@ function Features() {
                     / FEATURE PRINCIPAL
                   </span>
                   <span className="text-[10px] font-black uppercase tracking-[0.18em] text-white/60">
-                    24/7 AUTOMÁTICO
+                    RESPOSTA EM SEGUNDOS
                   </span>
                 </div>
                 <ArrowUpRight className="w-6 h-6 text-white/70" />
@@ -625,12 +628,12 @@ function Features() {
                 style={{ fontSize: "clamp(40px, 4.4vw, 56px)" }}
               >
                 IA no WhatsApp{" "}
-                <em className="italic font-semibold text-[#ef4444]">que não dorme.</em>
+                <em className="italic font-semibold text-[#ef4444]">que responde na hora.</em>
               </h3>
               <p className="mt-5 text-white/70 max-w-[480px] text-[15px] leading-relaxed">
-                Lucas qualifica leads em texto, áudio (Whisper) e foto. Avalia trocas,
-                simula financiamento, agenda visita — e te chama só na hora do
-                fechamento.
+                A IA da sua loja qualifica leads em texto, áudio e foto. Avalia trocas,
+                simula financiamento, agenda visita — e te chama quando o cliente
+                esquenta.
               </p>
             </div>
             <div className="relative grid grid-cols-3 gap-3 mt-8">
@@ -640,9 +643,9 @@ function Features() {
             </div>
             <div className="relative mt-6 flex items-center gap-4 text-[11px] font-mono uppercase tracking-[0.18em] text-white/40 flex-wrap">
               <span>/ integra com</span>
-              <span className="text-white/70">Avisa</span>·
-              <span className="text-white/70">Meta WhatsApp Business API</span>·
-              <span className="text-white/70">Evolution API</span>
+              <span className="text-white/70">API oficial do WhatsApp (Meta)</span>·
+              <span className="text-white/70">Instagram</span>·
+              <span className="text-white/70">Messenger</span>
             </div>
           </div>
 
@@ -989,7 +992,7 @@ function Offer() {
               <span className="text-[#ef4444]">Você só acompanha.</span>
             </h2>
             <p className="mt-6 text-gray-600 max-w-[520px] text-[16px] leading-relaxed">
-              Nossa equipe configura tudo com você: número do WhatsApp, estoque, IA
+              Nossa equipe configura tudo com você, à distância: número do WhatsApp, estoque, IA
               treinada com seus carros, vitrine e anúncios. Planos a partir de R$ 1.150/mês.
             </p>
 
@@ -1081,8 +1084,7 @@ function FinalCTA() {
           className="font-bold tracking-[-0.03em] leading-[0.98] max-w-[1100px] mx-auto"
           style={{ fontSize: "clamp(48px, 7.4vw, 120px)" }}
         >
-          Deixa o <span className="text-[#ef4444]">Lucas</span> cuidar do{" "}
-          <em className="italic font-semibold">zap.</em>
+          Nenhum cliente <span className="text-[#ef4444]">sem resposta.</span>
         </h2>
         <p className="mt-7 text-white/70 text-lg max-w-[560px] mx-auto">
           15 dias grátis. Implantação feita pela nossa equipe. Sem cartão, sem fidelidade —
@@ -1096,7 +1098,7 @@ function FinalCTA() {
             rel="noopener noreferrer"
             className="group inline-flex items-center gap-3 bg-[#ef4444] hover:bg-[#dc2626] text-white pl-7 pr-2 py-3 rounded-full text-[16px] font-semibold transition-colors"
           >
-            Falar no WhatsApp
+            Converse com a Mari
             <span className="w-10 h-10 rounded-full bg-white/15 grid place-items-center transition-transform group-hover:translate-x-1">
               <ArrowRight className="w-4 h-4" strokeWidth={2.5} />
             </span>
@@ -1113,7 +1115,7 @@ function FinalCTA() {
           <span>·</span>
           <span>Suporte humano no WhatsApp</span>
           <span>·</span>
-          <span>LGPD compliant</span>
+          <span>Seus dados são seus</span>
         </div>
       </div>
     </section>

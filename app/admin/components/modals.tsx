@@ -39,8 +39,8 @@ export function NovoTenantModal({ secret, onClose, onSuccess }: { secret: string
           {[
             { name: "email", label: "E-mail *", type: "email", required: true, placeholder: "garagem@email.com" },
             { name: "senha", label: "Senha *", type: "password", required: true, placeholder: "••••••••" },
-            { name: "nome_empresa", label: "Nome da Empresa *", type: "text", required: true, placeholder: "Garage Racing" },
-            { name: "nome_agente", label: "Nome do Agente IA", type: "text", required: false, placeholder: "Lucas" },
+            { name: "nome_empresa", label: "Nome da Empresa *", type: "text", required: true, placeholder: "Prime Multimarcas" },
+            { name: "nome_agente", label: "Nome do Agente IA", type: "text", required: false, placeholder: "Ana" },
             { name: "whatsapp", label: "WhatsApp (com DDI)", type: "text", required: false, placeholder: "5511999999999" },
             { name: "webhook_token", label: "Token do Webhook *", type: "text", required: true, placeholder: "garageracing" },
           ].map(({ name, label, type, required, placeholder }) => (

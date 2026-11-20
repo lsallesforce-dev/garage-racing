@@ -35,8 +35,8 @@ const valores = [
 const stack = [
   { name: "Next.js",      desc: "Interface web ultra-rápida"               },
   { name: "Supabase",     desc: "Banco de dados e autenticação"            },
-  { name: "Gemini 2.5",   desc: "Análise e geração de conteúdo com IA"    },
-  { name: "OpenAI TTS",   desc: "Narração realista para vídeos"            },
+  { name: "IA generativa", desc: "Atendimento, análise e geração de conteúdo" },
+  { name: "Voz neural",   desc: "Narração realista para vídeos"            },
   { name: "Cloudflare R2", desc: "Armazenamento de vídeos em escala global"   },
   { name: "FFmpeg",       desc: "Montagem e edição de vídeos"              },
 ];
@@ -85,10 +85,10 @@ export default function SobrePage() {
           </div>
           <div className="grid grid-cols-2 gap-4">
             {[
-              { n: "4h",   l: "por dia em atendimento WhatsApp"      },
-              { n: "2h",   l: "para editar um vídeo de 1 minuto"     },
-              { n: "62%",  l: "dos leads abandonados sem follow-up"  },
-              { n: "0%",   l: "de controle financeiro por veículo"   },
+              { n: "43,8%", l: "dos leads chegam fora do expediente (Leadster 2026, todos os setores)" },
+              { n: "17,6%", l: "chegam no fim de semana (Leadster 2026, todos os setores)" },
+              { n: "47%",  l: "chamaram fora do horário na APROVE (30 dias até 19/10/2026)" },
+              { n: "8,8s", l: "mediana da 1ª resposta da IA na APROVE" },
             ].map(s => (
               <div key={s.n} className="bg-gray-50 rounded-2xl p-6 text-center border border-gray-100">
                 <p className="text-3xl font-black italic text-red-600 tracking-tighter">{s.n}</p>

@@ -20,8 +20,10 @@ export interface PlanoDef {
 export const PLANOS: Record<PlanoId, PlanoDef> = {
   // Plano oculto (R$ 1) — só via /assinar?plano=teste, valida o fluxo de pagamento ponta a ponta.
   teste: { id: "teste", nome: "Teste", mensal: 1, kitsMes: 5, suporte: "—", oculto: true },
-  starter: { id: "starter", nome: "Starter", mensal: 1150, kitsMes: 5, suporte: "E-mail" },
-  pro: { id: "pro", nome: "Pro", mensal: 1500, kitsMes: null, suporte: "E-mail", destaque: "Kits ilimitados" },
+  // Suporte por WhatsApp é padrão em todos os planos (a home promete "suporte humano
+  // no WhatsApp"); o Premium tem fila prioritária.
+  starter: { id: "starter", nome: "Starter", mensal: 1150, kitsMes: 5, suporte: "WhatsApp" },
+  pro: { id: "pro", nome: "Pro", mensal: 1500, kitsMes: null, suporte: "WhatsApp", destaque: "Kits ilimitados" },
   premium: { id: "premium", nome: "Premium", mensal: 2135, kitsMes: null, suporte: "WhatsApp prioritário" },
 };
 
@@ -32,14 +34,15 @@ export const KITS_TRIAL = 5;
 
 // Features incluídas em TODOS os planos (página de preços / onboarding).
 export const FEATURES_INCLUSAS = [
-  "IA de atendimento no WhatsApp 24h",
+  // Só o que está no ar pra todos os tenants: repasse saiu do menu (09/11) e o
+  // Mercado Livre está bloqueado (402) — voltam pra lista quando liberarem.
+  "IA de atendimento no WhatsApp",
   "Vitrine online com domínio próprio",
   "CRM de leads e follow-up automático",
   "Instagram e Facebook integrados",
-  "Repasse e transmissão para grupos",
   "Financeiro, comissões e contratos",
   "Emissão de NF-e",
-  "Publicação em portais (Webmotors, Mercado Livre)",
+  "Publicação em portais (Webmotors e OLX)",
 ];
 
 export const ANUAL_DESCONTO = 0.1; // 10% off no anual 12x

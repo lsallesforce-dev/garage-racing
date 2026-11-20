@@ -235,7 +235,7 @@ function OnboardingInner() {
                 <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">Seu nome *</label>
                 <input required type="text" value={account.nome}
                   onChange={e => setAcc("nome", e.target.value)}
-                  placeholder="Ex: Lucas Salles"
+                  placeholder="Ex: João Silva"
                   className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
                 />
               </div>
@@ -325,7 +325,7 @@ function OnboardingInner() {
                 <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">Nome da Empresa *</label>
                 <input required type="text" value={form.nome_empresa}
                   onChange={e => setF("nome_empresa", e.target.value)}
-                  placeholder="Ex: Garage Racing"
+                  placeholder="Ex: Prime Multimarcas"
                   className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
                 />
               </div>
@@ -334,7 +334,7 @@ function OnboardingInner() {
                 <label className="text-[10px] font-black uppercase tracking-widest text-gray-500">Nome do Agente IA</label>
                 <input type="text" value={form.nome_agente}
                   onChange={e => setF("nome_agente", e.target.value)}
-                  placeholder="Ex: Lucas, Ana, Mia..."
+                  placeholder="Ex: Ana, Rafa, Mia..."
                   className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
                 />
                 <p className="text-[10px] text-gray-400">Como o agente se apresenta aos clientes no WhatsApp.</p>

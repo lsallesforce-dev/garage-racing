@@ -7,7 +7,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "Loja não encontrada | Garage Racing",
+  title: "Loja não encontrada | AutoZap",
   description: "O endereço de loja que você acessou não existe ou foi desativado.",
   robots: { index: false, follow: false },
 };

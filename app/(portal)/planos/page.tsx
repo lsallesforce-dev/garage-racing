@@ -1,7 +1,5 @@
-import { redirect } from "next/navigation";
 import Link from "next/link";
 import { CheckCircle2, X, Zap, ArrowRight, Star, Phone } from "lucide-react";
-import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { PLANOS, FEATURES_INCLUSAS, labelKits } from "@/lib/planos";
 
 const tudoIncluso = FEATURES_INCLUSAS.map((text) => ({ ok: true, text }));
@@ -21,7 +19,7 @@ const planos: Array<{
     itens: [
       { ok: true, text: labelKits(PLANOS.starter.kitsMes) },
       ...tudoIncluso,
-      { ok: true, text: `Suporte por ${PLANOS.starter.suporte.toLowerCase()}` },
+      { ok: true, text: `Suporte por ${PLANOS.starter.suporte}` },
     ],
     cta: "Começar trial grátis",
     ctaHref: "/onboarding?plano=starter",
@@ -36,7 +34,7 @@ const planos: Array<{
     itens: [
       { ok: true, text: labelKits(PLANOS.pro.kitsMes) },
       ...tudoIncluso,
-      { ok: true, text: `Suporte por ${PLANOS.pro.suporte.toLowerCase()}` },
+      { ok: true, text: `Suporte por ${PLANOS.pro.suporte}` },
     ],
     cta: "Começar trial grátis",
     ctaHref: "/onboarding?plano=pro",
@@ -60,7 +58,7 @@ const planos: Array<{
 const faq = [
   {
     q: "Como funciona o trial de 15 dias?",
-    a: "Um de nossos consultores agenda uma visita para configurar o sistema na sua revenda. Você usa por 15 dias sem pagar nada. Se gostar, assina. Se não gostar, não tem custo.",
+    a: "Nossa equipe configura o sistema com você, à distância: WhatsApp, estoque e IA. Você usa por 15 dias sem pagar nada. Se gostar, assina. Se não gostar, não tem custo.",
   },
   {
     q: "Como funciona a IA no WhatsApp?",
@@ -80,15 +78,13 @@ const faq = [
   },
   {
     q: "Os meus dados ficam seguros?",
-    a: "Sim. Cada revenda tem seus dados completamente isolados. Utilizamos Supabase com Row Level Security e criptografia em trânsito e em repouso. Estamos em conformidade com a LGPD.",
+    a: "Sim. Cada revenda tem seus dados isolados das outras contas, e nada dos seus clientes, veículos ou negociações é vendido ou compartilhado. Seus dados são seus.",
   },
 ];
 
-export default async function PlanosPage() {
-  const supabase = await createSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/onboarding");
-
+// Página pública (sem login): home e JSON-LD anunciam "a partir de R$ 1.150",
+// e o visitante precisa conseguir ver a tabela antes de criar conta.
+export default function PlanosPage() {
   return (
     <>
       {/* Hero */}
@@ -102,7 +98,7 @@ export default async function PlanosPage() {
             <span className="text-red-500">Sem cartão.</span>
           </h1>
           <p className="text-gray-400 text-lg max-w-xl mx-auto">
-            Um consultor vai até sua revenda, configura tudo e você vê a IA funcionando antes de pagar qualquer coisa.
+            Nossa equipe configura tudo com você, à distância, e você vê a IA funcionando antes de pagar qualquer coisa.
           </p>
         </div>
       </section>
@@ -181,6 +177,13 @@ export default async function PlanosPage() {
           ))}
         </div>
 
+        {/* Preço fixo — sem cobrança por conversa */}
+        <p className="text-center text-gray-500 text-sm mt-8 max-w-2xl mx-auto leading-relaxed">
+          <strong className="text-gray-800">Preço fixo por loja</strong>, sem cobrança por conversa ou por lead.
+          Na API oficial do WhatsApp, as mensagens de modelo (template) são cobradas pela Meta direto no
+          cartão da conta WhatsApp da sua loja.
+        </p>
+
         {/* Link para quem já tem conta */}
         <p className="text-center text-gray-400 text-sm mt-8">
           Já tem uma conta?{" "}
@@ -196,8 +199,8 @@ export default async function PlanosPage() {
               <Zap size={20} className="text-white" fill="white" />
             </div>
             <div>
-              <p className="font-black text-white uppercase italic tracking-tight">Um consultor vai até você</p>
-              <p className="text-gray-400 text-sm mt-0.5">Configuramos tudo na sua revenda. 15 dias para testar. Zero custo.</p>
+              <p className="font-black text-white uppercase italic tracking-tight">Implantação feita por nós</p>
+              <p className="text-gray-400 text-sm mt-0.5">Configuramos tudo com você, à distância. 15 dias para testar. Zero custo.</p>
             </div>
           </div>
           <Link href="/onboarding"
@@ -226,7 +229,7 @@ export default async function PlanosPage() {
               {[
                 ["Kits de postagem",          "5/mês",      "Ilimitados",  "Ilimitados"   ],
                 ...FEATURES_INCLUSAS.map((f) => [f, "✓", "✓", "✓"]),
-                ["Suporte",                   "E-mail",     "E-mail",      "WhatsApp prioritário"],
+                ["Suporte",                   PLANOS.starter.suporte, PLANOS.pro.suporte, PLANOS.premium.suporte],
                 ["Trial (tudo liberado, 5 kits)", "15 dias", "15 dias",    "15 dias"      ],
               ].map(([recurso, starter, pro, premium]) => (
                 <tr key={recurso} className="hover:bg-gray-50/50 transition-colors">
@@ -250,7 +253,7 @@ export default async function PlanosPage() {
             <span className="text-red-500">já paga o sistema.</span>
           </h2>
           <p className="text-gray-400 text-lg mb-10">
-            A margem média de um carro usado é R$ 2.000 a R$ 5.000. Se a IA fechar um lead que você perderia respondendo tarde, o AutoZap já se pagou — e sobrou.
+            Se a IA segurar um cliente que você perderia respondendo tarde, a margem desse carro já paga o AutoZap — e sobra.
           </p>
           <Link href="/onboarding"
             className="inline-flex items-center gap-2 px-8 py-4 bg-red-600 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest hover:bg-red-500 transition-colors">

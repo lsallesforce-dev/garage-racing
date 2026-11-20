@@ -16,7 +16,7 @@ const inter = Inter({
 const SITE_URL = (process.env.NEXT_PUBLIC_APP_URL || 'https://www.autozap.digital').replace(/\/+$/, '');
 
 const DESCRICAO =
-  'Plataforma com IA que atende seus leads no WhatsApp 24/7, gera vídeos e vitrine do estoque, anuncia em Webmotors, OLX e Meta e organiza o financeiro da sua revenda de veículos.';
+  'O time comercial de IA da revenda: cria posts e anúncios do estoque, responde cada lead no WhatsApp em segundos, anuncia em Webmotors, OLX e Meta e passa o cliente quente ao gerente.';
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),

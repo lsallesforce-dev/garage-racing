@@ -1421,7 +1421,7 @@ function ConfiguracoesConteudo() {
                   type="text"
                   value={config.nome_agente}
                   onChange={e => setConfig(c => ({ ...c, nome_agente: e.target.value }))}
-                  placeholder="Ex: Lucas"
+                  placeholder="Ex: Ana"
                   className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
                 />
               </div>
@@ -1568,7 +1568,7 @@ function ConfiguracoesConteudo() {
                 type="text"
                 value={config.nome_usuario || ""}
                 onChange={e => setConfig(c => ({ ...c, nome_usuario: e.target.value }))}
-                placeholder="Ex: Lucas Salles"
+                placeholder="Ex: João Silva"
                 className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
               />
             </div>
