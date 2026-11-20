@@ -3089,7 +3089,12 @@ Responda apenas com o JSON, sem markdown.`;
     .replace(/\b(nunca|n[ãa]o)\s+(me\s+)?deu\s+(nenhum\s+)?problemas?/g, " ")
     // "não liga"/"não pega" são prefixo de "não ligar"/"não pegar" ("mandar
     // mensagem, não ligar"): só valem como palavra inteira.
-    .replace(/n[ãa]o\s+(liga|pega)(?=[a-zà-ú])/g, " ");
+    .replace(/n[ãa]o\s+(liga|pega)(?=[a-zà-ú])/g, " ")
+    // Defeito do CELULAR do cliente não é do carro: "não dá pra ver no anúncio
+    // que o celular quebrou a tela" virou pós-venda e a IA saiu da conversa
+    // (Bonitão 19/11, lead do Sentra que só perguntava a cidade).
+    .replace(/\b(celular|telefone|aparelho|smartphone|iphone|zap|whats(app)?)\b(?:(?!carro|motor|c[aâ]mbio|ve[ií]culo|freio|pneu)[^.?!\n]){0,25}\b(quebr\w*|defeito|n[ãa]o\s+liga|travou|deu\s+problema)\b/g, " ")
+    .replace(/\bquebr\w*\s+(?:a\s+tela\s+d[oa]\s+|o\s+|a\s+|meu\s+|minha\s+)*(celular|telefone|aparelho|smartphone|iphone)\b/g, " ");
   const temDefeito = gatilhosDefeito.some((g) => textoDefeito.includes(g));
 
   // "garantia"/"oficina"/"concessionária" são ambíguos: pergunta de compra
@@ -3919,23 +3924,34 @@ Responda apenas com o JSON, sem markdown.`;
 
       // Busca quais fotos JÁ FORAM ENVIADAS pra esse lead/veículo (evita repetir)
       let fotosJaEnviadas = new Set<string>();
+      let ultimoEnvioFotoMs = 0;
       if (lead?.id && !pedindoFotosMultiplos) {
         const { data: msgsComMidia } = await supabaseAdmin
           .from("mensagens")
-          .select("media_url")
+          .select("media_url, created_at")
           .eq("lead_id", lead.id)
           .eq("remetente", "agente")
           .eq("media_tipo", "foto")
           .not("media_url", "is", null);
         fotosJaEnviadas = new Set((msgsComMidia ?? []).map((m: any) => m.media_url).filter(Boolean));
+        for (const m of msgsComMidia ?? []) {
+          if (!todasFotosRaw.includes((m as any).media_url)) continue;
+          const t = new Date((m as any).created_at).getTime();
+          if (t > ultimoEnvioFotoMs) ultimoEnvioFotoMs = t;
+        }
       }
 
       // "Manda tudo" é tudo mesmo, na ordem original — MAS se o lead já recebeu
       // o pacote inteiro desse carro, não repete: era isso que fazia cada
       // pergunta seguinte virar outro despejo de fotos. Sem fotos novas, o
       // Gemini responde em texto (que é o que ele queria).
+      // Só vale pra pedido logo em seguida: horas depois, "manda foto dele" é o
+      // cliente voltando à conversa e as fotos já sumiram lá em cima. Sem isso a
+      // IA respondia "vou confirmar as fotos com o pátio" e avisava o gerente à
+      // toa (Bonitão 20/11, Sentra: pacote enviado às 20:57, pedido de novo às 08:26).
       const fotosNaoEnviadas = todasFotosRaw.filter(f => !fotosJaEnviadas.has(f));
-      if (fotosNaoEnviadas.length === 0 && fotosJaEnviadas.size > 0) {
+      const envioRecente = Date.now() - ultimoEnvioFotoMs < 2 * 3600_000;
+      if (fotosNaoEnviadas.length === 0 && fotosJaEnviadas.size > 0 && envioRecente) {
         console.log(`📷 [foto] ${v.marca} ${v.modelo}: pacote completo já enviado a esse lead — não repete.`);
         continue;
       }
