@@ -292,3 +292,36 @@ export function decidirTurno(p: {
     ? { acao: "escalar", coleta, falta, pergunta }
     : { acao: "responder", coleta, resposta, falta, pergunta };
 }
+
+/**
+ * A mensagem que entrou na coleta de financiamento também pergunta OUTRA coisa?
+ * ("tem Palio?", "é automático?", "manda foto", "endereço"). Devolve essa parte
+ * em poucas palavras, ou null. O 10d responde a coleta e o Gemini do
+ * atendimento responde isto em seguida — antes a pergunta sumia (Bonitão
+ * 19-20/11: "tem Palio ou Astra 2010, sem entrada?" → só "Anotei a entrada").
+ *
+ * Chamada separada e sem "thinking" de propósito: pôr esse campo no prompt do
+ * entenderFinanciamento deixou a leitura 3s mais lenta e estourava o timeout de
+ * 9s. Roda em paralelo com ele. Falhou/demorou → null (comportamento antigo).
+ */
+export async function outroAssuntoDaMensagem(mensagem: string): Promise<string | null> {
+  const prompt = `Mensagem de um cliente de loja de carros no WhatsApp: ${JSON.stringify(mensagem.slice(0, 800))}
+
+Além de financiamento (entrada, parcela, CPF, nascimento, simulação, banco), a mensagem PERGUNTA ou PEDE outra coisa? Exemplos de outra coisa: outro carro ("tem Palio?"), detalhe do carro ("é automático?", "é econômico?", "quantos km?"), fotos, endereço, horário.
+NÃO contam: cumprimento, "ok", comentário solto, dado pessoal, assunto de financiamento, e o próprio carro que ele quer financiar ("simulação no Onix 2015 automático" é só financiamento).
+
+Devolva só o JSON: {"outro_assunto": "TODAS as outras perguntas, copiadas com as palavras do cliente (ex.: \"tem um Palio bom ou um Astra 2010?\")" ou null}`;
+  try {
+    const texto = await Promise.race([
+      geminiFlashSales.generateContent({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: { responseMimeType: "application/json", temperature: 0, thinkingConfig: { thinkingBudget: 0 } } as any,
+      }).then((r) => r.response.text()),
+      new Promise<never>((_, rej) => setTimeout(() => rej(new Error("timeout 5s")), 5000)),
+    ]);
+    const v = parseGeminiJson(texto)?.outro_assunto;
+    return typeof v === "string" && v.trim() && v.trim().toLowerCase() !== "null" ? v.trim().slice(0, 200) : null;
+  } catch {
+    return null;
+  }
+}

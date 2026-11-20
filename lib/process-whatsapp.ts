@@ -9,9 +9,9 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendMetaMessage, sendMetaImage, sendMetaVideo, sendMetaAudio, sendMetaCtaButton, markMetaRead, baixarMidiaMeta, sendMetaAlertaTemplate, sendMetaTemplate } from "@/lib/meta";
 import {
   falaDeFinanciamento, recusaFinanciamento, extrairDadosFinanciamento,
-  TEXTO_COLETA_COMPLETA, TEXTO_COLETA_ESCALADA, PEDIDO_NOME_FINAL, lerColeta, salvarColeta, encerrarColeta,
+  TEXTO_COLETA_COMPLETA, TEXTO_COLETA_ESCALADA, PEDIDO_NOME_FINAL, lerColeta, salvarColeta, encerrarColeta, faltando,
 } from "@/lib/financiamento-coleta";
-import { entenderFinanciamento, decidirTurno } from "@/lib/financiamento-entender";
+import { entenderFinanciamento, decidirTurno, outroAssuntoDaMensagem } from "@/lib/financiamento-entender";
 import { simulacaoDisponivel } from "@/lib/financiamento-simulacao";
 import { perguntarAoGerente, responderAcao } from "@/lib/gerente-acoes";
 import { atenderGerente, type Equipe } from "@/lib/gerente-assistente";
@@ -3254,8 +3254,14 @@ Responda apenas com o JSON, sem markdown.`;
     // Caso real: APROVE 09/11, Paulo do Civic mandou 3 imagens com o CPF da
     // esposa e a IA pediu "digite o CPF" quatro vezes.
     let dadosDaImagem = "";
+    // Print da CNH digital: o próprio app esconde nome e CPF com asteriscos
+    // ("CPF 422.***.***-35"). O cliente acha que mandou tudo ("Tá tudo aqui") e a
+    // IA só repetia a lista de dados (Bonitão 19/11) — e o Gemini chegou a
+    // devolver o nome mascarado pro cliente. Avisa que não dá pra ler.
+    let imagemMascarada = false;
     if (coletaAtual) {
       const textoImagem = [...mensagemClientePura.matchAll(/texto na imagem: "([^"]*)"/g)].map((m) => m[1]).join(" ");
+      imagemMascarada = /\d{3}\.\*{2,}\.\*{2,}-?\d{0,2}|[A-Za-zÀ-ú]\*{4,}/.test(textoImagem);
       if (textoImagem) {
         const lido = extrairDadosFinanciamento(textoImagem, {});
         const nasc = /nasc|anivers/i.test(textoImagem) ? lido.nascimento : undefined;
@@ -3265,6 +3271,24 @@ Responda apenas com o JSON, sem markdown.`;
     }
     const textoFin = `${mensagemClientePura.replace(/\[[^\]]*\]/g, " ")} ${dadosDaImagem}`.replace(/\s+/g, " ").trim();
     const gatilhoFin = !!textoFin && falaDeFinanciamento(textoFin);
+    const AVISO_MASCARA = "Esse print da CNH digital esconde o nome e o CPF (aparecem com asteriscos), então não consigo ler daqui. 🙈 ";
+    const pedirMascarado = imagemMascarada && !!coletaAtual && !dadosDaImagem;
+
+    // Só o print, sem texto: responde aqui mesmo, pedindo o que falta digitado.
+    if (pedirMascarado && !textoFin && coletaAtual) {
+      const rotuloM: Record<string, string> = {
+        entrada: "💰 quanto pretende dar de *entrada*", nome: "👤 o *nome completo*",
+        cpf: "📄 o *CPF*", nascimento: "🎂 a *data de nascimento*",
+      };
+      const faltaM = faltando(coletaAtual).map((k) => rotuloM[k] ?? k);
+      const respM = AVISO_MASCARA + `Me manda digitado aqui, por favor:\n${faltaM.join("\n")}`;
+      await sendText(phone, respM);
+      await supabaseAdmin.from("mensagens").insert({ lead_id: lead.id, content: respM, remetente: "agente" });
+      await invalidateHistory(tenantUserId, lead.id).catch(() => {});
+      await releaseLeadLock(tenantUserId, lead.id).catch(() => {});
+      console.log(`💳 [Financiamento] ${phone} — print com dados mascarados, pedi digitado`);
+      return;
+    }
 
     if (textoFin && (coletaAtual || gatilhoFin)) {
       const ultimaAgenteFin: string =
@@ -3277,11 +3301,14 @@ Responda apenas com o JSON, sem markdown.`;
         // Só com a coleta aberta: fora dela, "Paulo Adamantina" é nome + cidade.
         faltaNome: !!coletaAtual && !coletaAtual.nome,
       });
-      const entendimento = await entenderFinanciamento({
-        mensagem: textoFin,
-        ultimaMsgAgente: ultimaAgenteFin,
-        coleta: coletaAtual,
-      });
+      const [entendimento, outroAssuntoLido] = await Promise.all([
+        entenderFinanciamento({
+          mensagem: textoFin,
+          ultimaMsgAgente: ultimaAgenteFin,
+          coleta: coletaAtual,
+        }),
+        outroAssuntoDaMensagem(textoFin),
+      ]);
       const decisao = decidirTurno({
         textoFin,
         coletaAtual,
@@ -3302,6 +3329,7 @@ Responda apenas com o JSON, sem markdown.`;
           ? `${veiculoPrincipal.marca} ${veiculoPrincipal.modelo}${veiculoPrincipal.ano ? ` ${veiculoPrincipal.ano}` : ""}`
           : null;
         let respFin: string;
+        let outroAssuntoFin: string | null = null;
 
         // Nome completo da coleta vale mais que o primeiro nome que a IA anotou.
         const nomeClienteFin = coleta.nome || lead.nome || "Cliente";
@@ -3401,7 +3429,12 @@ Responda apenas com o JSON, sem markdown.`;
             }
             console.log(`💳 [Financiamento] ${phone} — coleta travou (semProgresso=${coleta.semProgresso}, pergunta=${perguntaFin ?? "-"}), passou pro gerente`);
           } else {
-            respFin = decisao.resposta;
+            respFin = (pedirMascarado ? AVISO_MASCARA : "") + decisao.resposta;
+            // A mesma mensagem perguntou outra coisa ("tem Palio?", "é automático?"):
+            // a coleta responde a parte dela e o Gemini responde o resto logo em
+            // seguida. Antes a pergunta sumia (Bonitão 19-20/11: "tem Palio ou
+            // Astra 2010, sem entrada?" → só "Anotei a entrada").
+            outroAssuntoFin = outroAssuntoLido;
             await salvarColeta(tenantUserId, lead.id, coleta);
             console.log(`💳 [Financiamento] ${phone} — coleta ${coletaAtual ? "em andamento" : "iniciada"}, falta: ${falta.join(", ")}${perguntaFin ? `, pergunta=${perguntaFin}` : ""}`);
           }
@@ -3412,8 +3445,15 @@ Responda apenas com o JSON, sem markdown.`;
           lead_id: lead.id, content: respFin, remetente: "agente",
         });
         await invalidateHistory(tenantUserId, lead.id).catch(() => {});
-        await releaseLeadLock(tenantUserId, lead.id).catch(() => {});
-        return;
+        if (outroAssuntoFin) {
+          console.log(`💳 [Financiamento] ${phone} — coleta respondida; segue pro Gemini com o outro assunto: "${outroAssuntoFin}"`);
+          userMessage = `${userMessage}
+[SISTEMA: a parte de financiamento desta mensagem JÁ foi respondida na mensagem anterior. Responda SÓ isto, curto: ${outroAssuntoFin}. Não fale de financiamento, entrada, CPF, simulação nem peça dados.]`;
+          historico.push({ role: "model", parts: [{ text: respFin }] });
+        } else {
+          await releaseLeadLock(tenantUserId, lead.id).catch(() => {});
+          return;
+        }
       }
     }
   }
