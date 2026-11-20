@@ -18,6 +18,16 @@ export default function GtagLeadTracker() {
       const a = target?.closest?.("a");
       if (!a) return;
       const href = a.getAttribute("href") || "";
+      // Link com data-conv (ex.: CTA B2B da home → WhatsApp da Mari) dispara o
+      // evento próprio e NÃO conta como generate_lead (conversão de carro).
+      const conv = a.getAttribute("data-conv");
+      if (conv) {
+        window.gtag?.("event", conv, {
+          event_category: "whatsapp_click",
+          event_label: window.location.pathname,
+        });
+        return;
+      }
       if (href.startsWith("https://wa.me/")) {
         window.gtag?.("event", "generate_lead", {
           event_category: "whatsapp_click",

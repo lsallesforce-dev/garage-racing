@@ -9,7 +9,6 @@ import {
   Users,
   ArrowRight,
   ArrowUpRight,
-  Star,
   TrendingUp,
   Brain,
   Instagram,
@@ -22,6 +21,14 @@ import CarroCard from "@/app/carros/CarroCard";
 const SITE_URL = (process.env.NEXT_PUBLIC_APP_URL || "https://www.autozap.digital").replace(/\/+$/, "");
 
 export const metadata: Metadata = { alternates: { canonical: "/" } };
+
+// CTA principal: conversa no WhatsApp da Mari (agente de vendas do AutoZap).
+// Número desconhecido vira prospect sozinho no /api/webhook/prospeccao.
+// `data-conv` faz o GtagLeadTracker disparar `contato_b2b` em vez do
+// `generate_lead` (que é a conversão de CARRO das vitrines).
+const WA_B2B =
+  "https://wa.me/5517991108025?text=" +
+  encodeURIComponent("Olá! Tenho uma revenda e quero conhecer o AutoZap.");
 
 // Estoque dos parceiros muda pouco — ISR 5 min (a faixa /carros espelhada na home).
 export const revalidate = 300;
@@ -78,15 +85,16 @@ export default function Page() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }}
       />
-      <VitrineParceiros />
       <Hero />
       <Stats />
-      <Marquee />
       <Funil />
       <Features />
-      <Testimonials />
+      <CaseAprove />
       <Offer />
       <FinalCTA />
+      {/* Vitrine de carros no fim: a home vende o AutoZap pra revenda; o
+          link pro /carros fica pro SEO e pra quem veio procurar carro. */}
+      <VitrineParceiros />
     </div>
   );
 }
@@ -164,7 +172,7 @@ function Hero() {
           <span>/ INTELIGÊNCIA ARTIFICIAL P/ REVENDAS</span>
           <span className="hidden md:flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-[#22c55e]" />
-            Lucas online · 142 conversas em andamento
+            Marketing + vendas num sistema só
           </span>
         </div>
 
@@ -186,26 +194,29 @@ function Hero() {
             </h1>
 
             <p className="mt-7 max-w-[560px] text-white/70 text-[17px] leading-relaxed">
-              A IA qualifica leads no WhatsApp, gera vídeos para Instagram e fecha o
-              financeiro do mês — enquanto você dorme, almoça ou atende o cliente que já
-              está no pátio.
+              O sistema de marketing e vendas da sua revenda: posts, reels e anúncios do
+              estoque prontos em minutos, e a IA atendendo cada lead no WhatsApp na hora —
+              inclusive à noite e no domingo.
             </p>
 
             <div className="mt-9 flex flex-wrap items-center gap-3">
-              <Link
-                href="/onboarding"
+              <a
+                href={WA_B2B}
+                data-conv="contato_b2b"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="group inline-flex items-center gap-3 bg-[#ef4444] hover:bg-[#dc2626] text-white pl-6 pr-2 py-2.5 rounded-full text-[15px] font-semibold transition-colors"
               >
-                Quero uma demonstração
+                Falar no WhatsApp
                 <span className="w-9 h-9 rounded-full bg-white/15 grid place-items-center transition-transform group-hover:translate-x-1">
                   <ArrowRight className="w-4 h-4" strokeWidth={2.5} />
                 </span>
-              </Link>
+              </a>
               <Link
-                href="/login"
+                href="/onboarding"
                 className="inline-flex items-center gap-2.5 bg-white/10 hover:bg-white/15 text-white pl-5 pr-5 py-2.5 rounded-full text-[15px] font-medium ring-1 ring-inset ring-white/10 transition-colors"
               >
-                Já tenho conta
+                Criar conta grátis
               </Link>
               <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-white/40 ml-2">
                 15 dias grátis · sem cartão
@@ -311,7 +322,7 @@ function PhoneMock() {
           </div>
           <div className="flex-1">
             <div className="text-white text-[13px] font-semibold flex items-center gap-1.5">
-              Lucas — RM Multimarcas
+              Lucas — Sua Revenda
               <span className="text-[10px] font-black uppercase tracking-[0.18em] px-1.5 py-0.5 rounded bg-[#ef4444]/20 text-[#ef4444]">
                 IA
               </span>
@@ -399,10 +410,13 @@ function Stats() {
   return (
     <section className="bg-[#161616] text-white border-t border-white/5">
       <div className="max-w-[1400px] mx-auto px-6 py-14 grid grid-cols-2 lg:grid-cols-4 gap-y-10">
-        <StatItem big="2.4" suffix="×" caption="mais leads qualificados em 30 dias" />
-        <StatItem big="5" suffix="min" caption="para gerar um vídeo pronto p/ Instagram" />
-        <StatItem big="0" suffix="h" caption="de atendimento de madrugada na sua agenda" />
-        <StatItem big="100" suffix="%" caption="dos seus dados sob seu controle" accent />
+        <StatItem big="373" suffix="" caption="leads novos atendidos pela IA em 30 dias" />
+        <StatItem big="47" suffix="%" caption="chamaram fora do horário comercial" />
+        <StatItem big="8,8" suffix="s" caption="mediana da primeira resposta" />
+        <StatItem big="1.422" suffix="" caption="fotos e vídeos enviados aos clientes" accent />
+      </div>
+      <div className="max-w-[1400px] mx-auto px-6 pb-10 -mt-4 font-mono text-[11px] uppercase tracking-[0.2em] text-white/35">
+        Dados reais da APROVE Multimarcas · 19/09 a 19/10/2026
       </div>
     </section>
   );
@@ -437,45 +451,6 @@ function StatItem({
       </div>
       <div className="mt-3 text-sm text-white/60 max-w-[200px]">{caption}</div>
     </div>
-  );
-}
-
-/* ============================================================== */
-/*  MARQUEE                                                        */
-/* ============================================================== */
-function Marquee() {
-  const items = [
-    "RM Multimarcas",
-    "CS Veículos",
-    "PF Motors",
-    "Auto Lima",
-    "Garage 47",
-    "Bandeira Veículos",
-    "Único Multimarcas",
-    "Perfil Auto",
-    "Strada Cars",
-  ];
-  const row = (
-    <div className="flex items-center gap-10 px-5">
-      {items.map((it) => (
-        <span key={it} className="flex items-center gap-10">
-          <span>{it}</span>
-          <span className="text-[#ef4444]">→</span>
-        </span>
-      ))}
-    </div>
-  );
-  return (
-    <section className="bg-[#0d0d0d] text-white/40 py-5 overflow-hidden border-y border-white/5">
-      <style>{`@keyframes marquee-scroll { from { transform: translateX(0) } to { transform: translateX(-50%) } }`}</style>
-      <div
-        className="flex whitespace-nowrap font-mono text-[12px] uppercase tracking-[0.25em]"
-        style={{ animation: "marquee-scroll 38s linear infinite" }}
-      >
-        {row}
-        {row}
-      </div>
-    </section>
   );
 }
 
@@ -595,9 +570,9 @@ function Funil() {
 
         <div className="hidden lg:flex items-center gap-3 mt-8 font-mono text-[11px] uppercase tracking-[0.2em] text-gray-400">
           <span className="w-1.5 h-1.5 rounded-full bg-[#ef4444]" />
-          <span>tempo médio anúncio → lead quente: 14 min</span>
+          <span>334 dos 373 leads da APROVE vieram de anúncio no Meta</span>
           <div className="flex-1 border-t border-dashed border-gray-300" />
-          <span>fonte: dados internos · 1.200 revendas · 2025</span>
+          <span>fonte: banco do AutoZap · 30 dias até 19/10/2026</span>
         </div>
       </div>
     </section>
@@ -659,8 +634,8 @@ function Features() {
               </p>
             </div>
             <div className="relative grid grid-cols-3 gap-3 mt-8">
-              <MiniStat label="CONVERSAS HOJE" value="142" />
-              <MiniStat label="RESPOSTA MÉDIA" value="38" suffix="s" />
+              <MiniStat label="CONVERSAS HOJE" value="12" />
+              <MiniStat label="RESPOSTA MÉDIA" value="9" suffix="s" />
               <MiniStat label="LEADS QUENTES" value="7" red />
             </div>
             <div className="relative mt-6 flex items-center gap-4 text-[11px] font-mono uppercase tracking-[0.18em] text-white/40 flex-wrap">
@@ -899,9 +874,9 @@ function UserRow({
 }
 
 /* ============================================================== */
-/*  TESTIMONIALS                                                   */
+/*  CASE REAL — APROVE Multimarcas (uso autorizado, números do banco) */
 /* ============================================================== */
-function Testimonials() {
+function CaseAprove() {
   return (
     <section id="cases" className="bg-[#161616] text-white relative overflow-hidden">
       <div
@@ -917,123 +892,79 @@ function Testimonials() {
         <div className="grid md:grid-cols-12 gap-8 items-end mb-14">
           <div className="md:col-span-8">
             <div className="text-[10px] font-black uppercase tracking-[0.18em] text-white/50 mb-4">
-              / QUEM JÁ DEIXOU O ZAP NO AUTOMÁTICO
+              / CASE REAL · APROVE MULTIMARCAS
             </div>
             <h2
               className="font-bold tracking-[-0.03em] leading-[0.98]"
               style={{ fontSize: "clamp(36px, 4.6vw, 68px)" }}
             >
-              Eles dormem.
-              <br />O <span className="text-[#ef4444]">AutoZap</span> vende.
+              O cliente chamou às 22h.
+              <br />
+              Foi respondido em <span className="text-[#ef4444]">9 segundos.</span>
             </h2>
           </div>
           <div className="md:col-span-4 font-mono text-[11px] uppercase tracking-[0.2em] text-white/50">
-            / 03 cases · NPS 78 · ★★★★★
+            / 30 dias · 19/09 a 19/10/2026 · dados do sistema
           </div>
         </div>
 
         <div className="grid md:grid-cols-3 gap-4">
-          <Testimonial
-            ini="RM"
-            quote={
-              <>
-                &ldquo;Em 2 semanas o WhatsApp parou de me{" "}
-                <span className="text-[#ef4444]">acordar de madrugada.</span> A IA
-                responde tudo e manda pra mim só o cliente que quer fechar.&rdquo;
-              </>
-            }
-            name="Ricardo Mendes"
-            sub="RM Multimarcas · São José/SC · 32 carros"
+          <CaseCard
+            big="373"
+            titulo="leads novos em 30 dias"
+            texto="334 vieram de anúncios no Facebook e Instagram criados pelo próprio AutoZap, com o estoque da loja."
           />
-          <Testimonial
-            ini="CS"
-            initBg="bg-white/15"
-            quote={
-              <>
-                &ldquo;Antes perdia 3h por dia fazendo vídeo pro Instagram. Hoje gravo os
-                takes no pátio e em{" "}
-                <span className="text-[#ef4444]">5 minutos tá pronto</span> com narração
-                e tudo.&rdquo;
-              </>
-            }
-            name="Carla Souza"
-            sub="CS Veículos · Curitiba/PR · 18 carros"
+          <CaseCard
+            big="47%"
+            titulo="chamaram fora do horário"
+            texto="Antes das 8h, depois das 18h ou no domingo. Todos foram atendidos na hora, com foto e vídeo do carro."
           />
-          <Testimonial
+          <CaseCard
             red
-            ini="PF"
-            quote={
-              <>
-                &ldquo;O relatório do mês mostrou que eu{" "}
-                <span className="bg-[#161616] px-1.5 rounded">
-                  estava perdendo dinheiro
-                </span>{" "}
-                em comissões. Ajustei na hora. Valeu cada centavo.&rdquo;
-              </>
-            }
-            name="Paulo Ferreira"
-            sub="PF Motors · Belo Horizonte/MG · 47 carros"
+            big="8,8 s"
+            titulo="mediana da 1ª resposta"
+            texto="90% dos clientes receberam resposta em até 21,6 segundos. O vendedor entra quando o lead esquenta."
           />
+        </div>
+
+        <div className="mt-10 flex flex-wrap items-center gap-3">
+          <a
+            href="https://www.aprovemultimarcas.com.br"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group inline-flex items-center gap-2.5 bg-white/10 hover:bg-white/15 text-white pl-5 pr-4 py-2.5 rounded-full text-[15px] font-medium ring-1 ring-inset ring-white/10 transition-colors"
+          >
+            Ver a vitrine da APROVE, feita no AutoZap
+            <ArrowUpRight className="w-4 h-4" />
+          </a>
         </div>
       </div>
     </section>
   );
 }
 
-function Testimonial({
+function CaseCard({
   red,
-  ini,
-  initBg,
-  quote,
-  name,
-  sub,
+  big,
+  titulo,
+  texto,
 }: {
   red?: boolean;
-  ini: string;
-  initBg?: string;
-  quote: ReactNode;
-  name: string;
-  sub: string;
+  big: string;
+  titulo: string;
+  texto: string;
 }) {
   return (
     <article
       className={`rounded-[1.75rem] p-7 flex flex-col ${
-        red
-          ? "bg-[#ef4444]"
-          : "bg-white/5 ring-1 ring-inset ring-white/10 backdrop-blur"
+        red ? "bg-[#ef4444]" : "bg-white/5 ring-1 ring-inset ring-white/10 backdrop-blur"
       }`}
     >
-      <div
-        className={`flex items-center gap-1 mb-5 ${
-          red ? "text-white" : "text-[#ef4444]"
-        }`}
-      >
-        {[...Array(5)].map((_, i) => (
-          <Star key={i} className="w-4 h-4" fill="currentColor" />
-        ))}
-      </div>
-      <blockquote className="text-[19px] leading-[1.4] flex-1 text-white font-medium tracking-[-0.01em]">
-        {quote}
-      </blockquote>
-      <div
-        className={`mt-7 pt-5 flex items-center gap-3 border-t ${
-          red ? "border-white/20" : "border-white/10"
-        }`}
-      >
-        <div
-          className={`w-11 h-11 rounded-full grid place-items-center font-black ${
-            initBg ? initBg : red ? "bg-[#161616]" : "bg-[#ef4444]"
-          }`}
-        >
-          {ini}
-        </div>
-        <div>
-          <div className="text-sm font-semibold">{name}</div>
-          <div className={`text-xs ${red ? "text-white/80" : "text-white/50"}`}>
-            {sub}
-          </div>
-        </div>
-      </div>
+      <div className="font-bold tracking-[-0.03em] text-[56px] leading-none">{big}</div>
+      <div className="mt-3 text-[17px] font-semibold">{titulo}</div>
+      <p className={`mt-4 text-[15px] leading-relaxed ${red ? "text-white/85" : "text-white/60"}`}>
+        {texto}
+      </p>
     </article>
   );
 }
@@ -1054,19 +985,18 @@ function Offer() {
               className="font-bold tracking-[-0.03em] leading-[0.98] text-[#161616]"
               style={{ fontSize: "clamp(36px, 4.4vw, 64px)" }}
             >
-              Um consultor vai até a sua revenda.{" "}
-              <span className="text-[#ef4444]">De graça.</span>
+              A gente coloca sua revenda no ar.{" "}
+              <span className="text-[#ef4444]">Você só acompanha.</span>
             </h2>
             <p className="mt-6 text-gray-600 max-w-[520px] text-[16px] leading-relaxed">
-              A gente configura tudo: número do WhatsApp, treino do Lucas com seu
-              estoque, domínio da vitrine e integração com seu time. Você só assiste
-              rodar.
+              Nossa equipe configura tudo com você: número do WhatsApp, estoque, IA
+              treinada com seus carros, vitrine e anúncios. Planos a partir de R$ 1.150/mês.
             </p>
 
             <div className="mt-8 grid grid-cols-2 gap-4 max-w-[520px]">
               <OfferCard big="15 dias" sub="teste grátis" />
               <OfferCard big="0 fidelidade" sub="cancele quando quiser" />
-              <OfferCard big="in-loco" sub="implantação no pátio" />
+              <OfferCard big="implantação" sub="feita pela nossa equipe" />
               <OfferCard big="whatsapp" sub="suporte humano" />
             </div>
           </div>
@@ -1076,17 +1006,27 @@ function Offer() {
               <div className="absolute -top-20 -right-20 w-[300px] h-[300px] rounded-full bg-[#ef4444]/30 blur-[120px]" />
               <div className="relative">
                 <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#ef4444] mb-2">
-                  / AGENDA
+                  / COMO FUNCIONA
                 </div>
                 <div className="font-semibold tracking-[-0.025em] text-2xl mb-6">
-                  Próximas visitas técnicas
+                  Do primeiro oi ao primeiro lead
                 </div>
                 <ul className="divide-y divide-white/10">
-                  <VisitRow day="SEG 12" city="São Paulo · ABC" tag="2 vagas" />
-                  <VisitRow day="TER 13" city="Curitiba · CIC" tag="3 vagas" />
-                  <VisitRow day="QUI 15" city="Belo Horizonte" tag="1 vaga" warn />
-                  <VisitRow day="SEX 16" city="Florianópolis" tag="4 vagas" />
+                  <PassoRow n="01" texto="Você chama a gente no WhatsApp" />
+                  <PassoRow n="02" texto="Conectamos seu WhatsApp e subimos o estoque" />
+                  <PassoRow n="03" texto="Primeiros posts e anúncios saem com você" />
+                  <PassoRow n="04" texto="15 dias rodando. Aí você decide." />
                 </ul>
+                <a
+                  href={WA_B2B}
+                  data-conv="contato_b2b"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-8 inline-flex items-center gap-2.5 bg-[#ef4444] hover:bg-[#dc2626] text-white pl-5 pr-4 py-2.5 rounded-full text-[15px] font-semibold transition-colors"
+                >
+                  Começar pelo WhatsApp
+                  <ArrowRight className="w-4 h-4" strokeWidth={2.5} />
+                </a>
               </div>
             </div>
           </div>
@@ -1107,30 +1047,11 @@ function OfferCard({ big, sub }: { big: string; sub: string }) {
   );
 }
 
-function VisitRow({
-  day,
-  city,
-  tag,
-  warn,
-}: {
-  day: string;
-  city: string;
-  tag: string;
-  warn?: boolean;
-}) {
+function PassoRow({ n, texto }: { n: string; texto: string }) {
   return (
-    <li className="flex items-center justify-between py-3 text-sm">
-      <div>
-        <span className="font-mono text-white/50 mr-3">{day}</span>
-        {city}
-      </div>
-      <span
-        className={`text-[10px] font-black uppercase tracking-[0.18em] ${
-          warn ? "text-yellow-400" : "text-[#22c55e]"
-        }`}
-      >
-        {tag}
-      </span>
+    <li className="flex items-center gap-4 py-3 text-sm">
+      <span className="font-mono text-[#ef4444]">{n}</span>
+      {texto}
     </li>
   );
 }
@@ -1164,32 +1085,33 @@ function FinalCTA() {
           <em className="italic font-semibold">zap.</em>
         </h2>
         <p className="mt-7 text-white/70 text-lg max-w-[560px] mx-auto">
-          15 dias grátis. Implantação no seu pátio. Sem cartão, sem fidelidade — cancele
-          com uma mensagem.
+          15 dias grátis. Implantação feita pela nossa equipe. Sem cartão, sem fidelidade —
+          cancele com uma mensagem.
         </p>
         <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
-          <Link
-            href="/onboarding"
+          <a
+            href={WA_B2B}
+            data-conv="contato_b2b"
+            target="_blank"
+            rel="noopener noreferrer"
             className="group inline-flex items-center gap-3 bg-[#ef4444] hover:bg-[#dc2626] text-white pl-7 pr-2 py-3 rounded-full text-[16px] font-semibold transition-colors"
           >
-            Quero uma demonstração
+            Falar no WhatsApp
             <span className="w-10 h-10 rounded-full bg-white/15 grid place-items-center transition-transform group-hover:translate-x-1">
               <ArrowRight className="w-4 h-4" strokeWidth={2.5} />
             </span>
-          </Link>
+          </a>
           <Link
-            href="/login"
+            href="/onboarding"
             className="inline-flex items-center gap-2.5 bg-white/10 hover:bg-white/15 text-white pl-6 pr-6 py-3 rounded-full text-[16px] font-medium ring-1 ring-inset ring-white/10 transition-colors"
           >
-            Já tenho conta
+            Criar conta grátis
           </Link>
         </div>
         <div className="mt-12 flex items-center justify-center gap-8 font-mono text-[11px] uppercase tracking-[0.2em] text-white/40 flex-wrap">
-          <span className="flex items-center gap-1">
-            <Star className="w-3 h-3 fill-current" /> 4.9 / 5 · 312 reviews
-          </span>
+          <span>Feito para revendas de carros</span>
           <span>·</span>
-          <span>1.200+ revendas ativas</span>
+          <span>Suporte humano no WhatsApp</span>
           <span>·</span>
           <span>LGPD compliant</span>
         </div>
