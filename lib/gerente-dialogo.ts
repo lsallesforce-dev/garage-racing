@@ -24,7 +24,13 @@ import { geminiFlashSales, parseGeminiJson } from "@/lib/gemini";
 import { getGerenteFoco, setGerenteFoco, invalidateHistory } from "@/lib/redis";
 import { dentroJanela24h } from "@/lib/meta";
 
-type Intencao = "ja_passou" | "reprovado" | "aprovado" | "adiado" | "instrucao" | "outro";
+type Intencao = "ja_passou" | "reprovado" | "aprovado" | "adiado" | "instrucao" | "parar_ia" | "outro";
+
+// "Não responder mais esse cliente", "deixa comigo", "eu assumo": tira a IA
+// da conversa. Antes caía como "instrucao" e o update devolvia o lead pra IA —
+// Bonitão 13/11: gerente pediu pra parar às 07:19 e a IA mandou 10 fotos às
+// 08:04. A regex vale mais que a leitura do Gemini.
+const PARAR_IA = /\bn[aã]o\s+(responda|responder|responde|fala|fale|falar|mande|manda|mandar|atenda|atender)\b|\b(para|pare|parar)\s+de\s+(responder|falar|atender|mandar)|\bdeixa\s+comigo\b|\beu\s+(assumo|atendo|respondo|cuido)\b|\bsem\s+responder\b/i;
 
 type Leitura = {
   cliente: number | null;
@@ -76,7 +82,7 @@ Mensagem do gerente: "${texto}"
 Responda SÓ com JSON:
 {
   "cliente": número do cliente da lista de quem ele fala, ou null se não der pra saber (se ele não citar ninguém e houver "último aviso", use esse),
-  "intencao": "ja_passou" (já mandou/ligou/passou a simulação ou já resolveu com o cliente) | "reprovado" (ficha ruim, não aprovou, score baixo, banco recusou) | "aprovado" (aprovou, passou condições) | "adiado" (ainda não teve tempo, vai fazer depois, amanhã, à tarde) | "instrucao" (manda a Júlia dizer/fazer algo pro cliente: desconto, valor, documento, horário) | "outro" (cumprimento, assunto que não é de cliente nenhum),
+  "intencao": "ja_passou" (já mandou/ligou/passou a simulação ou já resolveu com o cliente) | "reprovado" (ficha ruim, não aprovou, score baixo, banco recusou) | "aprovado" (aprovou, passou condições) | "adiado" (ainda não teve tempo, vai fazer depois, amanhã, à tarde) | "instrucao" (manda a Júlia dizer/fazer algo pro cliente: desconto, valor, documento, horário) | "parar_ia" (pede pra Júlia NÃO responder mais esse cliente, que ele assume a conversa) | "outro" (cumprimento, assunto que não é de cliente nenhum),
   "prazo": se "adiado" e ele disse quando, ISO8601 com -03:00 (à tarde = 14:00, fim do dia = 17:00, amanhã sem hora = 10:00 do dia seguinte); senão null,
   "mensagem_cliente": texto CURTO (máx. 2 frases) que a Júlia vai mandar ao cliente, em português informal e educado, SÓ para "reprovado", "aprovado", "adiado" ou "instrucao"; senão null
 }
@@ -93,7 +99,7 @@ REGRAS da mensagem_cliente:
       generationConfig: { responseMimeType: "application/json", temperature: 0.2 },
     });
     const j = parseGeminiJson(r.response.text());
-    const intencoes: Intencao[] = ["ja_passou", "reprovado", "aprovado", "adiado", "instrucao", "outro"];
+    const intencoes: Intencao[] = ["ja_passou", "reprovado", "aprovado", "adiado", "instrucao", "parar_ia", "outro"];
     if (!intencoes.includes(j?.intencao)) return null;
     const idx = Number.isInteger(j.cliente) && j.cliente >= 0 && j.cliente < candidatos.length ? j.cliente : null;
     return {
@@ -149,6 +155,11 @@ export async function tratarMensagemDoGerente(p: {
   const focoIdx = foco ? candidatos.findIndex((c) => String(c.wa_id).replace(/\D/g, "") === foco) : -1;
 
   const leitura = await lerMensagemDoGerente(texto, candidatos, focoIdx >= 0 ? focoIdx : null);
+  if (leitura && PARAR_IA.test(texto)) {
+    leitura.intencao = "parar_ia";
+    if (leitura.cliente == null && focoIdx >= 0) leitura.cliente = focoIdx;
+  }
+  if (leitura?.intencao === "parar_ia") leitura.mensagem_cliente = null;
   if (!leitura || leitura.intencao === "outro") return false;
 
   if (leitura.cliente == null) {
@@ -189,7 +200,7 @@ export async function tratarMensagemDoGerente(p: {
   // Atualiza a pendência. O cron de cobrança só olha instrução que começa com
   // "Financiamento" — trocar o texto encerra a cobrança; "adiado" mantém e
   // empurra o relógio pro prazo que o gerente deu.
-  const update: Record<string, any> = { em_atendimento_humano: false };
+  const update: Record<string, any> = { em_atendimento_humano: leitura.intencao === "parar_ia" };
   if (leitura.intencao === "adiado") {
     const prazo = leitura.prazo ? new Date(leitura.prazo) : null;
     const prazoValido = prazo && !isNaN(prazo.getTime()) && prazo.getTime() > Date.now()
@@ -205,6 +216,7 @@ export async function tratarMensagemDoGerente(p: {
       reprovado: "Gerente: financiamento não aprovado.",
       aprovado: "Gerente: financiamento aprovado.",
       instrucao: "Gerente: passou instrução para o cliente.",
+      parar_ia: "Gerente: assumiu a conversa, IA não responde mais esse cliente.",
     };
     update.instrucao_pendente = `${resumo[leitura.intencao]} ${hBRT(agora)}: "${texto.slice(0, 200)}"`;
     update.instrucao_pendente_desde = agora;
@@ -223,6 +235,7 @@ export async function tratarMensagemDoGerente(p: {
     aprovado: `✅ Anotado: financiamento do ${quem} aprovado.`,
     adiado: `✅ Combinado. Volto a te lembrar do ${quem} depois do prazo.`,
     instrucao: `✅ Anotado pro ${quem}.`,
+    parar_ia: `✅ Combinado: não respondo mais o ${quem}. A conversa fica com você — pra eu voltar, use "Devolver pra IA" no painel ou me peça "chama o ${quem} de novo".`,
   };
   const linhaCliente = avisouCliente
     ? `\n\nAvisei o cliente: "${leitura.mensagem_cliente}"`
