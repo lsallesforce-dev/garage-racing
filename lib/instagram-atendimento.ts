@@ -279,11 +279,31 @@ Responda APENAS JSON: {"interessado": true|false, "confianca": 0.0-1.0}
 
 COMENTÁRIO: `;
 
-async function comentarioDeComprador(texto: string): Promise<boolean> {
+// Página da própria AutoZap: os posts de carro (Corolla DEMO) são o ensaio do
+// App Review e seguem o fluxo normal. Os posts do PRODUTO (reels do sistema)
+// não têm carro: quem comenta ali é lojista, não comprador — vai pra Mari.
+const TENANT_AUTOZAP = "9e80d6e1-7ad9-4578-a848-1dd61fc36c9a";
+
+const PROMPT_COMENTARIO_B2B = `Você lê um comentário feito num post do AutoZap, um sistema de marketing e vendas para revendas de carros.
+Responda se quem comentou parece INTERESSADO no sistema ou quer INFORMAÇÃO sobre ele.
+
+É interessado (true): pergunta preço, valor, plano, mensalidade, como funciona, se serve pra loja dele, pede teste,
+demonstração ou contato, "quero", "tenho interesse", "tenho uma revenda/loja", "me chama", "manda no direct".
+
+NÃO é (false): elogio solto ("top", "show", só emoji), marcação de amigo sem pergunta, piada, crítica, spam,
+propaganda, comentário do próprio dono.
+
+Na dúvida, false.
+
+Responda APENAS JSON: {"interessado": true|false, "confianca": 0.0-1.0}
+
+COMENTÁRIO: `;
+
+async function comentarioDeComprador(texto: string, prompt = PROMPT_COMENTARIO): Promise<boolean> {
   const t = texto.trim().slice(0, 400);
   if (!t) return false;
   const chamar = async (model: typeof geminiFlashSales) => {
-    const r = await model.generateContent(PROMPT_COMENTARIO + JSON.stringify(t));
+    const r = await model.generateContent(prompt + JSON.stringify(t));
     const parsed = parseGeminiJson(r.response.text().replace(/```json|```/g, "").trim());
     return parsed?.interessado === true && (Number(parsed?.confianca) || 0) >= 0.7;
   };
@@ -401,6 +421,26 @@ async function carroPelaLegenda(t: TenantIg, mediaId: string): Promise<any | nul
   return pontuados[0].v;
 }
 
+/** Carro do post: marketing_posts (postado pelo AutoZap) ou, se não achar, pela legenda. */
+async function carroDoPost(t: TenantIg, mediaId: string): Promise<any | null> {
+  // A postagem orgânica grava o id da mídia em marketing_posts.
+  // ⚠️ O filtro vai como STRING de JSON. Passando o array direto, o supabase-js
+  // monta um literal de array do Postgres ("{[object Object]}"), a consulta
+  // falha calada e a resposta saía genérica mesmo com o post cadastrado
+  // (APROVE, 11/10: "Qual a quilometragem?" no post do Compass).
+  const { data: vs, error: erroVeiculo } = await supabaseAdmin
+    .from("veiculos")
+    .select("id, marca, modelo, ano, ano_modelo, preco_sugerido, quilometragem_estimada, status_venda")
+    .eq("user_id", t.userId)
+    .contains("marketing_posts", JSON.stringify([{ post_id: mediaId }]))
+    .limit(1);
+  if (erroVeiculo) console.error(`❌ [${t.rede}] carro do post ${mediaId}: ${erroVeiculo.message}`);
+  // Post feito fora do AutoZap (reel postado pelo app do Instagram, por
+  // exemplo) não está em marketing_posts: acha o carro pela legenda.
+  return (vs?.[0] && vs[0].status_venda !== "VENDIDO" ? vs[0] : null)
+    ?? await carroPelaLegenda(t, mediaId);
+}
+
 /** Processa UM comentário. Idempotente: a chave primária de ig_comentarios barra a repetição. */
 export async function tratarComentario(t: TenantIg, c: IgComentario & { parentId?: string | null }): Promise<string> {
   if (t.config.ig_comentarios_ia !== true) return "desligado";
@@ -431,24 +471,33 @@ export async function tratarComentario(t: TenantIg, c: IgComentario & { parentId
   // Resposta privada só vale até 7 dias do comentário.
   if (c.criadoEm && Date.now() - new Date(c.criadoEm).getTime() > 6.5 * 86_400_000) return fechar("ignorado", { detalhe: "comentário antigo" });
 
+  // Página da AutoZap: post sem carro é post do produto → resposta de venda do
+  // sistema, mandando pro WhatsApp da Mari (whatsapp_agente do tenant). Não
+  // convida pro direct: lá quem responde é o agente de carro da loja de teste.
+  const ehAutozap = t.userId === TENANT_AUTOZAP;
+  const carroAutozap = ehAutozap ? await carroDoPost(t, c.mediaId) : null;
+  if (ehAutozap && !carroAutozap) {
+    if (!(await comentarioDeComprador(c.texto, PROMPT_COMENTARIO_B2B))) return fechar("ignorado", { detalhe: "post do produto" });
+    const wa = telefoneWhatsApp(t.config);
+    const textoB2b = `Oi! Aqui é a Mari, do AutoZap 😊 Vi seu comentário. ` +
+      (wa
+        ? `Me chama no WhatsApp ${wa} que eu te mostro o sistema funcionando com o estoque da sua revenda.`
+        : `Dá uma olhada em autozap.digital que lá tem o nosso WhatsApp.`) +
+      ` Planos a partir de R$ 1.150/mês, com 15 dias grátis.`;
+    const erroB2b: { message?: string } = {};
+    if (!(await sendIgPrivateReply(c.id, textoB2b, t.creds, erroB2b))) {
+      return fechar("falhou", { detalhe: erroB2b.message ?? "Meta recusou a resposta privada" });
+    }
+    if (t.rede === "facebook") await replyFbComment(c.id, "Te mandei uma mensagem 😉", t.creds);
+    else await replyIgComment(c.id, "Te mandei no direct 😉", t.creds);
+    console.log(`💬 [${t.rede}] comentário ${c.id} no post do produto → Mari (B2B)`);
+    // Ação própria: semearLeadDoComentario só lê "respondido" (carro).
+    return fechar("respondido_b2b", { detalhe: textoB2b });
+  }
+
   if (!(await comentarioDeComprador(c.texto))) return fechar("ignorado");
 
-  // Carro do post: a postagem orgânica grava o id da mídia em marketing_posts.
-  // ⚠️ O filtro vai como STRING de JSON. Passando o array direto, o supabase-js
-  // monta um literal de array do Postgres ("{[object Object]}"), a consulta
-  // falha calada e a resposta saía genérica mesmo com o post cadastrado
-  // (APROVE, 11/10: "Qual a quilometragem?" no post do Compass).
-  const { data: vs, error: erroVeiculo } = await supabaseAdmin
-    .from("veiculos")
-    .select("id, marca, modelo, ano, ano_modelo, preco_sugerido, quilometragem_estimada, status_venda")
-    .eq("user_id", t.userId)
-    .contains("marketing_posts", JSON.stringify([{ post_id: c.mediaId }]))
-    .limit(1);
-  if (erroVeiculo) console.error(`❌ [${t.rede}] carro do post ${c.mediaId}: ${erroVeiculo.message}`);
-  // Post feito fora do AutoZap (reel postado pelo app do Instagram, por
-  // exemplo) não está em marketing_posts: acha o carro pela legenda.
-  const v = (vs?.[0] && vs[0].status_venda !== "VENDIDO" ? vs[0] : null)
-    ?? await carroPelaLegenda(t, c.mediaId);
+  const v = ehAutozap ? carroAutozap : await carroDoPost(t, c.mediaId);
 
   const texto = textoDaRespostaPrivada(t.config, v, t.userId);
   const erro: { message?: string } = {};
