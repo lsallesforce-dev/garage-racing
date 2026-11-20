@@ -1349,7 +1349,42 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
     }).catch(() => {});
   };
 
+  // ── Takeover in-flight ──────────────────────────────────────────────────────
+  // O stand-by (passo 4) só é avaliado no início, e o pipeline leva 10-60s
+  // (lock + Gemini + digitação). Se o gerente escreve pro cliente NESSA janela,
+  // a IA respondia por cima dele (banco, 30 dias até 20/11: ~25 casos, de 0,5s
+  // a 60s depois da fala do gerente — Carmatti e Bonitão).
+  //
+  // O critério é "existe fala HUMANA neste lead gravada depois que este job
+  // começou" — e não o flag em_atendimento_humano, porque o próprio pipeline
+  // liga o flag e depois manda a última mensagem (escalada do financiamento,
+  // Gemini fora do ar). Toda fala humana passa por enviado_por_humano=true:
+  // webhook Avisa/Meta (celular), Inbox (/api/chat/send) e Instagram.
+  // Uma vez verdadeiro, fica verdadeiro até o fim do job.
+  const inicioJobIso = new Date().toISOString();
+  let leadIdTakeover: string | null = null;
+  let gerenteAssumiuCache = false;
+  const gerenteAssumiuNoMeio = async (): Promise<boolean> => {
+    if (gerenteAssumiuCache) return true;
+    if (!leadIdTakeover) return false;
+    const { data } = await supabaseAdmin
+      .from("mensagens")
+      .select("id")
+      .eq("lead_id", leadIdTakeover)
+      .eq("enviado_por_humano", true)
+      .gt("created_at", inicioJobIso)
+      .limit(1);
+    if (data && data.length > 0) {
+      gerenteAssumiuCache = true;
+      console.log(`🛑 [Takeover in-flight] Gerente escreveu pra ${phone} durante o processamento — IA não envia mais nada neste turno`);
+    }
+    return gerenteAssumiuCache;
+  };
+  // Só bloqueia o que vai pro CLIENTE; alerta pro gerente segue normal.
+  const bloqueadoPorTakeover = async (to: string) => to === phone && (await gerenteAssumiuNoMeio());
+
   const sendText = async (to: string, text: string): Promise<boolean> => {
+    if (await bloqueadoPorTakeover(to)) return false;
     const errorRef: { message?: string } = {};
     const r = paraIg(to)
       ? await sendIgMessage(idSocialDoLead(to), text, igCreds!, undefined, errorRef)
@@ -1450,6 +1485,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   // (era o mesmo bug do vídeo, corrigido em 10/08 dez linhas abaixo — a foto
   // tinha ficado de fora.)
   const sendImage = async (to: string, url: string, caption?: string): Promise<boolean> => {
+    if (await bloqueadoPorTakeover(to)) return false;
     const errorRef: { message?: string } = {};
     const r = paraIg(to)
       ? await sendIgImage(idSocialDoLead(to), url, caption, igCreds!, errorRef)
@@ -1466,6 +1502,7 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   // "enviado" e gravava a mídia em `mensagens`: o painel mostrava um vídeo que
   // o WhatsApp nunca recebeu (relato do Marcos 08/08). Mesma regra do sendAudio.
   const sendVideo = async (to: string, url: string, caption?: string): Promise<boolean> => {
+    if (await bloqueadoPorTakeover(to)) return false;
     const errorRef: { message?: string } = {};
     const r = paraIg(to)
       ? await sendIgVideo(idSocialDoLead(to), url, caption, igCreds!, errorRef)
@@ -1481,12 +1518,14 @@ export async function processWhatsAppMessage(job: WhatsAppJobPayload): Promise<v
   // chamador poder cair pra texto — voz nunca pode fazer o cliente ficar sem resposta.
   // Instagram não aceita o ogg/opus do WhatsApp: devolve false e o chamador cai
   // pra texto, que é o comportamento já previsto pra voz que não entrega.
-  const sendAudio = (to: string, ogg: Buffer): Promise<boolean> =>
-    paraIg(to)
-      ? Promise.resolve(false)
+  const sendAudio = async (to: string, ogg: Buffer): Promise<boolean> => {
+    if (await bloqueadoPorTakeover(to)) return false;
+    return paraIg(to)
+      ? false
       : useAvisa
       ? sendAvisaAudio(to, ogg, avisaCreds)
       : sendMetaAudio(to, ogg, metaCreds);
+  };
 
   let userMessage = rawMessage;
   let audioData: { data: string; mimeType: string } | null = null;
@@ -2109,6 +2148,7 @@ Responda apenas com o JSON, sem markdown.`;
     )
     .select()
     .single();
+  leadIdTakeover = lead?.id ?? null;
 
   const veiculoIdAnterior = lead?.veiculo_id ?? null;
 
@@ -5047,6 +5087,14 @@ Responda apenas com o JSON, sem markdown.`;
       await releaseLeadLock(tenantUserId, lead.id).catch(() => {});
       return;
     }
+  }
+
+  // ── 12z. Takeover in-flight — gerente escreveu durante o Gemini ──────────────
+  // Checa ANTES de gravar: senão o painel mostraria uma resposta da IA que o
+  // cliente nunca recebeu (os wrappers de envio já barram o envio em si).
+  if (lead?.id && (await gerenteAssumiuNoMeio())) {
+    await releaseLeadLock(tenantUserId, lead.id).catch(() => {});
+    return;
   }
 
   // ── 13. Salvar resposta + atualizar lead ─────────────────────────────────────

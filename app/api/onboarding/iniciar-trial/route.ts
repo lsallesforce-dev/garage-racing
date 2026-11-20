@@ -1,9 +1,10 @@
 // app/api/onboarding/iniciar-trial/route.ts
 // Inicia o trial de 15 dias do tenant na criação da garage. Idempotente:
 // só define trial_ends_at se ainda estiver null (não estende em re-onboarding).
-// Exceção: o trigger handle_new_user (auth.users) cria a linha já com
-// created_at + 30 dias. Se o trial ainda é exatamente o do trigger (ninguém
-// estendeu pelo admin), corta pra created_at + TRIAL_DIAS.
+// O trigger handle_new_user (auth.users) cria a linha já com created_at +
+// 15 dias (migration 073, aplicada no banco só em 20/11 — até lá era 30).
+// Conta antiga ainda com os 30 dias do trigger (ninguém estendeu pelo admin)
+// é cortada pra created_at + TRIAL_DIAS quando passa por aqui.
 //
 // É também o ponto em que o onboarding TERMINA: a loja acabou de gravar nome,
 // WhatsApp e endereço. Daqui sai o aviso com o contato pro operador chamar.
