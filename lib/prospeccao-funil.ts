@@ -41,15 +41,16 @@ const PRECO_INSISTIU = "A tabela começa em R$ 1.150 por mês, mas pra sua loja 
 const JA_FALOU_PRECO = /lucas\s+acerta\s+direto|lucas\s+negocia\s+direto/i;
 const CITA_TABELA = /(?:R\$\s*)?1[.\s]?150\b/;
 
-const FALA_DO_SISTEMA = /\b(servi[çc]o|sistema|autozap|plano|planos|mensalidade|assinatura|isso\s+a[íi])\b/i;
-const PERGUNTA_VALOR = /\b(quanto\s+(custa|[ée]|fica|sai|cobra|cobram)|qual\s+(o\s+|[ée]\s+o\s+)?(valor|pre[çc]o|investimento)|valor\s+d[oe]|pre[çc]o\s+d[oe])\b/i;
+const FALA_DO_SISTEMA = /(?<!\p{L})(servi[çc]o|sistema|autozap|plano|planos|mensalidade|assinatura|isso\s+a[íi])(?!\p{L})/iu;
+const PERGUNTA_VALOR = /(?<!\p{L})(quanto\s+(custa|[ée]|fica|sai|cobra|cobram)|qual\s+(o\s+|[ée]\s+o\s+)?(valor|pre[çc]o|investimento)|valor\s+d[oe]|pre[çc]o\s+d[oe])(?!\p{L})/iu;
 const PERGUNTA_VALOR_SECA = /^\W*(e\s+)?(quanto\s+(custa|[ée]|fica|sai|cobra|cobram)|qual\s+(o\s+|[ée]\s+o\s+)?(valor|pre[çc]o|investimento)|valor|pre[çc]o)\W*$/i;
 
 const SIM_CURTO = /^\W*(sim|s|tenho|tenho\s+sim|sou|sou\s+sim|claro|isso|com\s+certeza|temos|temos\s+sim)\W*$/i;
 const DIZ_QUE_E_LOJISTA =
   /\b(sou\s+lojista|lojista|minha\s+(loja|revenda|garagem)|tenho\s+(uma\s+)?(loja|revenda|garagem)|meu\s+p[áa]tio|meu\s+estoque|trabalho\s+com\s+carros?)\b/i;
 const QTD_CARROS = /\b(\d{1,3})\s*(?:carros?|ve[íi]culos?)\b/i;
-const DESPEDIDA = /\b(sucesso\s+a[íi]|boa\s+sorte|[ée]\s+s[óo]\s+(me\s+)?chamar|qualquer\s+coisa\s+me\s+chama|at[ée]\s+mais)\b/i;
+// Fronteira com \p{L}: o \b do JS é ASCII e não fecha depois de "aí" nem abre antes de "é".
+const DESPEDIDA = /(?<!\p{L})(sucesso\s+a[íi]|boa\s+sorte|[ée]\s+s[óo]\s+(me\s+)?chamar|qualquer\s+coisa\s+me\s+chama|at[ée]\s+mais)(?!\p{L})/iu;
 const PEDIU_O_LUCAS =/\b(testar|teste|assinar|contratar|fechar|quero|pode\s+chamar|me\s+chama|me\s+liga|falar\s+com|lucas)\b/i;
 
 export interface LeituraLoja {
