@@ -1069,7 +1069,8 @@ export async function POST(req: NextRequest) {
     // há nada pra adiar: basta garantir que nenhum agendamento residual sobreviva.
     // (O status sair de 'enviado' também tira o prospect da varredura das 48h.)
     patchBase.proximo_contato_at = null;
-    if (r.handoff) {
+    // Lead do anúncio já passado pro Lucas não volta pra "respondeu" no turno seguinte.
+    if (r.handoff || (prospect.fonte === "anuncio" && prospect.status === "handoff")) {
       patchBase.status = "handoff";
       // Em geral NÃO seta em_atendimento_humano: a IA continua respondendo até o
       // HUMANO assumir de fato (via /api/admin/vendas/enviar), pra não deixar o
@@ -1107,6 +1108,10 @@ export async function POST(req: NextRequest) {
     }
   }
   const mensagensEnviar = bolhasCruas.slice(0, MAX_BOLHAS_RESPOSTA);
+  // Funil do anúncio: o produto vai numa mensagem só e o próximo passo fecha o
+  // turno. Ficam fora do picador e do corte de bolhas, senão a pergunta some.
+  if (r.bloco_produto) mensagensEnviar.push(r.bloco_produto);
+  if (r.pergunta_final) mensagensEnviar.push(r.pergunta_final);
 
   // Lista do pátio montada pelo CÓDIGO, um carro por bolha. Deixar o modelo
   // formatar falhou duas vezes: primeiro ele mandou os 5 carros grudados num

@@ -483,7 +483,7 @@ export async function tratarComentario(t: TenantIg, c: IgComentario & { parentId
       (wa
         ? `Me chama no WhatsApp ${wa} que eu te mostro o sistema funcionando com o estoque da sua revenda.`
         : `Dá uma olhada em autozap.digital que lá tem o nosso WhatsApp.`) +
-      ` Planos a partir de R$ 1.150/mês, com 15 dias grátis.`;
+      ` Dá pra testar 15 dias grátis.`;
     const erroB2b: { message?: string } = {};
     if (!(await sendIgPrivateReply(c.id, textoB2b, t.creds, erroB2b))) {
       return fechar("falhou", { detalhe: erroB2b.message ?? "Meta recusou a resposta privada" });
