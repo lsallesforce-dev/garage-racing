@@ -85,6 +85,11 @@ export function rotaLiberada(plano: string | null | undefined, pathname: string)
   return ROTAS_ESSENCIAL.some((r) => pathname === r || pathname.startsWith(r + "/"));
 }
 
+/** Consulta automática nos bancos (CredPro). No Essencial o gerente simula por fora. */
+export function simulacaoNoPlano(plano: string | null | undefined): boolean {
+  return plano !== "essencial";
+}
+
 export function labelKits(n: number | null): string {
   return n === null ? "Kits de postagem ilimitados" : `${n} kits de postagem/mês`;
 }

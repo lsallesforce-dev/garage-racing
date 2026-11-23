@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { Upload, CheckCircle2, Loader2, ImageIcon, Trash2, Sparkles, FileImage, Save, Copy, Eye, EyeOff, FileText, ShieldCheck, PauseCircle, PlayCircle, Palette, Globe, ExternalLink, Mic, Play, QrCode } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { FinanciamentoConfig } from "@/components/FinanciamentoConfig";
+import { simulacaoNoPlano } from "@/lib/planos";
 import { TravaConfiguracoes } from "@/components/TravaConfiguracoes";
 
 declare global {
@@ -1324,7 +1325,7 @@ function ConfiguracoesConteudo() {
 
       {/* Tabs */}
       <div className="flex gap-1 bg-white rounded-2xl p-1 border border-gray-100 shadow-sm mb-8 max-w-2xl overflow-x-auto">
-        {(["loja","whatsapp","portais","financiamento","fiscal"] as const).map((tab) => (
+        {(["loja","whatsapp","portais","financiamento","fiscal"] as const).filter((tab) => tab !== "financiamento" || simulacaoNoPlano(plano)).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -1719,7 +1720,9 @@ function ConfiguracoesConteudo() {
 
         {/* ══ ABA: FISCAL ══════════════════════════════════════════════════════ */}
         {/* ══ ABA: FINANCIAMENTO ══════════════════════════════════════════════ */}
-        {activeTab === "financiamento" && <FinanciamentoConfig />}
+        {activeTab === "financiamento" && (simulacaoNoPlano(plano)
+          ? <FinanciamentoConfig />
+          : <p className="text-sm text-gray-500">A consulta nos bancos não faz parte do plano Essencial.</p>)}
 
         {activeTab === "fiscal" && <>
 

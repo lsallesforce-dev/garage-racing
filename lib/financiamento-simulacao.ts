@@ -18,6 +18,7 @@
 // `ok:false` e o 10d segue o fluxo antigo (pedido vai pro gerente).
 
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { simulacaoNoPlano } from "@/lib/planos";
 import { qstash } from "@/lib/qstash";
 import { decifrar } from "@/lib/segredo";
 import {
@@ -89,11 +90,12 @@ export async function bancosAtivos(tenant: string) {
 export async function financiamentoAutoLigado(tenant: string): Promise<boolean> {
   const { data, error } = await supabaseAdmin
     .from("config_garage")
-    .select("financiamento_auto")
+    .select("financiamento_auto, plano")
     .eq("user_id", tenant)
     .order("created_at", { ascending: false })
     .limit(1);
-  return !error && data?.[0]?.financiamento_auto === true;
+  // Fora do plano = desligado: o 10d cai no fluxo antigo (dados crus pro gerente).
+  return !error && data?.[0]?.financiamento_auto === true && simulacaoNoPlano(data[0].plano);
 }
 
 export type InicioSimulacao = { ok: true; simId: string } | { ok: false; motivo: string };
@@ -171,6 +173,16 @@ export async function dispararSimulacao(p: {
   criadoPor?: string | null;
 }): Promise<InicioSimulacao> {
   if (!credproConfigurada()) return { ok: false, motivo: "Serviço de simulação não configurado" };
+  // Última trava antes de gastar crédito: vale pra IA, painel e pergunta antiga ao gerente.
+  const { data: cfgPlano } = await supabaseAdmin
+    .from("config_garage")
+    .select("plano")
+    .eq("user_id", p.tenant)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (!simulacaoNoPlano(cfgPlano?.[0]?.plano)) {
+    return { ok: false, motivo: "a consulta nos bancos não faz parte do plano Essencial" };
+  }
   const cpf = soDigitos(p.cpf);
   const celular = soDigitos(p.celular);
   if (cpf.length !== 11) return { ok: false, motivo: "CPF precisa ter 11 dígitos" };
