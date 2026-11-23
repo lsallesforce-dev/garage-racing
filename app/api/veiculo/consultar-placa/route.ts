@@ -3,7 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
 import { gateLimiteCarros } from "@/lib/plano-servidor";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { cambioDoNomeFipe } from "@/lib/cambio";
+import { cambioDoNomeFipe, textoConformeCambio } from "@/lib/cambio";
 import { getClient } from "@/lib/redis";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
@@ -182,8 +182,8 @@ export async function POST(req: NextRequest) {
   //
   // A mesma placa pode trazer várias versões FIPE (Onix LT Mec., LT Aut., Premier...)
   // e a primeira nem sempre é a certa (Bonitão 13/11: Onix automático gravado "Mec.").
-  // Carro novo com mais de uma versão: devolve a lista ANTES de criar, e a tela
-  // de cadastro pergunta qual é.
+  // Com mais de uma versão, devolve a lista ANTES de gravar e a tela pergunta
+  // qual é (no cadastro novo e no "Preencher via Placa" do carro já cadastrado).
   const listaFipe: any[] = apiData?.data?.data ?? apiData?.data?.resultados ?? [];
   const chaveFipe = (f: any) => `${f?.codigoFipe ?? f?.codigo_fipe ?? ""}|${f?.MODELO ?? f?.modelo ?? ""}`;
   const chavesVistas = new Set<string>();
@@ -199,7 +199,7 @@ export async function POST(req: NextRequest) {
     return [{ chave, modelo, codigo: (f?.codigoFipe ?? f?.codigo_fipe ?? null) as string | null, valor, cambio: cambioDoNomeFipe(modelo) }];
   });
   const versaoEscolhida: string | null = typeof body.versaoFipe === "string" ? body.versaoFipe : null;
-  if (!veiculoId && !versaoEscolhida && versoesFipe.length > 1) {
+  if (!versaoEscolhida && versoesFipe.length > 1) {
     return NextResponse.json({ precisaEscolher: true, versoes: versoesFipe });
   }
   const fipeEscolhido = versaoEscolhida ? listaFipe.find((f) => chaveFipe(f) === versaoEscolhida) : null;
@@ -364,9 +364,29 @@ export async function POST(req: NextRequest) {
     // Com várias versões, só atualiza a FIPE se uma delas for a deste carro:
     // a primeira da lista pode ser de outra versão.
     const nomeCarro = String(existing.modelo ?? "").trim().toLowerCase();
-    const versaoDoCarro = versoesFipe.length > 1
-      ? versoesFipe.find((v) => v.modelo.trim().toLowerCase() === nomeCarro) ?? null
-      : { valor: valorFipe, codigo: codigoFipe };
+    const versaoDoCarro = fipeEscolhido || versoesFipe.length <= 1
+      ? { valor: valorFipe, codigo: codigoFipe }
+      : versoesFipe.find((v) => v.modelo.trim().toLowerCase() === nomeCarro) ?? null;
+    // Versão escolhida pelo lojista: modelo e câmbio passam a ser os dela e a
+    // descrição acompanha. O resto continua só preenchendo o que estiver vazio,
+    // pra não apagar o que ele digitou.
+    if (fipeEscolhido) {
+      if (modeloRaw !== existing.modelo) updates.modelo = modeloRaw;
+      const cambioVersao = cambioDoNomeFipe(modeloRaw);
+      if (cambioVersao) {
+        if (cambioVersao !== existing.cambio) updates.cambio = cambioVersao;
+        const detalhes = updates.detalhes_inspecao ?? existing.detalhes_inspecao;
+        if (detalhes) {
+          const corrigido = textoConformeCambio(detalhes, cambioVersao);
+          if (corrigido !== detalhes) updates.detalhes_inspecao = corrigido;
+        }
+        const pontos = updates.pontos_fortes_venda ?? existing.pontos_fortes_venda;
+        if (Array.isArray(pontos)) {
+          const corrigidos = pontos.map((p: string) => textoConformeCambio(p, cambioVersao));
+          if (corrigidos.some((p: string, i: number) => p !== pontos[i])) updates.pontos_fortes_venda = corrigidos;
+        }
+      }
+    }
     if (versaoDoCarro?.valor) updates.valor_fipe = versaoDoCarro.valor;
     if (versaoDoCarro?.codigo) updates.codigo_fipe = versaoDoCarro.codigo;
     if (ipvaValor) updates.ipva_valor = ipvaValor;

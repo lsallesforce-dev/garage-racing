@@ -10,6 +10,7 @@ import {
   ChevronDown, ChevronUp, Instagram, Download, Loader2,
   ScanLine, FileCheck, Upload, AlertCircle, Trash2,
   FileText, Eye, EyeOff, Tag, Printer,
+  Search,
 } from "lucide-react";
 import { ArquivarDocumentos } from "@/components/ArquivarDocumentos";
 import dynamic from "next/dynamic";
@@ -640,24 +641,37 @@ export default function DetalheVeiculo() {
   const [placaStep, setPlacaStep] = useState<"idle" | "consultando" | "ok" | "erro">("idle");
   const [placaMsg, setPlacaMsg] = useState("");
 
-  const handleEnriquecerPlaca = async () => {
+  // A placa trouxe mais de uma versão FIPE: abre a lista logo abaixo do campo.
+  const [versoesPlaca, setVersoesPlaca] = useState<{ chave: string; modelo: string; codigo: string | null; valor: number | null; cambio: string | null }[]>([]);
+  const [versaoSalvando, setVersaoSalvando] = useState<string | null>(null);
+
+  const handleEnriquecerPlaca = async (versaoFipe?: string) => {
     const p = placaConsulta.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
     if (p.length < 7) { setPlacaMsg("Placa inválida"); setPlacaStep("erro"); return; }
     setPlacaStep("consultando"); setPlacaMsg("");
+    if (versaoFipe) setVersaoSalvando(versaoFipe);
     try {
       const res = await fetch("/api/veiculo/consultar-placa", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ placa: p, veiculoId: params.id }),
+        body: JSON.stringify({ placa: p, veiculoId: params.id, ...(versaoFipe ? { versaoFipe } : {}) }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Erro");
+      if (data.precisaEscolher) {
+        setVersoesPlaca(data.versoes ?? []);
+        setPlacaStep("idle");
+        return;
+      }
+      setVersoesPlaca([]);
+      setVersaoSalvando(null);
       const campos = (data.updatedFields as string[]) ?? [];
       setPlacaMsg(campos.length > 0 ? `${campos.length} campos preenchidos` : "Nenhum campo novo — tudo já preenchido");
       setPlacaStep("ok");
       // Recarrega a página para refletir os novos dados
       if (campos.length > 0) setTimeout(() => window.location.reload(), 1200);
     } catch (e: any) {
+      setVersaoSalvando(null);
       setPlacaMsg(e.message); setPlacaStep("erro");
     }
   };
@@ -1412,6 +1426,87 @@ export default function DetalheVeiculo() {
               )}
             </div>
 
+            {/* ── PREENCHER VIA PLACA ── */}
+            <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-sm p-8">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 rounded-2xl bg-gray-900 flex items-center justify-center">
+                  <Search size={18} className="text-white" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black uppercase italic tracking-tight text-gray-900">
+                    Preencher via Placa
+                  </h3>
+                  <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">
+                    Acerta a versão FIPE e completa os campos vazios
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <input
+                  type="text"
+                  value={placaConsulta}
+                  onChange={e => { setPlacaConsulta(e.target.value.toUpperCase()); setPlacaStep("idle"); setPlacaMsg(""); setVersoesPlaca([]); }}
+                  onKeyDown={e => e.key === "Enter" && handleEnriquecerPlaca()}
+                  placeholder="ABC1D23"
+                  maxLength={8}
+                  disabled={placaStep === "consultando"}
+                  className="min-w-0 flex-1 bg-gray-50 rounded-2xl border border-gray-100 px-5 py-3 text-sm font-bold text-gray-900 placeholder:text-gray-300 outline-none focus:border-red-300 focus:ring-2 focus:ring-red-500/10 transition-all uppercase tracking-widest disabled:opacity-50"
+                />
+                <button
+                  onClick={() => handleEnriquecerPlaca()}
+                  disabled={placaStep === "consultando" || !placaConsulta.trim()}
+                  className="flex items-center gap-2 px-6 py-3 bg-gray-900 text-white text-[10px] font-black uppercase rounded-2xl hover:bg-red-600 transition-all shadow-lg disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {placaStep === "consultando" && !versaoSalvando ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+                  {placaStep === "consultando" && !versaoSalvando ? "Buscando..." : "Buscar"}
+                </button>
+              </div>
+
+              {versoesPlaca.length > 1 && (
+                <div className="mt-3 overflow-hidden rounded-2xl border border-gray-200">
+                  <p className="border-b border-gray-100 bg-gray-50 px-4 py-2.5 text-xs font-bold text-gray-700">
+                    {versoesPlaca.length} versões na FIPE. Qual é a deste carro?
+                  </p>
+                  <div className="max-h-72 divide-y divide-gray-100 overflow-y-auto">
+                    {versoesPlaca.map((v) => {
+                      const atual = v.modelo.trim().toLowerCase() === String(veiculo.modelo ?? "").trim().toLowerCase();
+                      return (
+                        <button
+                          key={v.chave}
+                          type="button"
+                          disabled={!!versaoSalvando}
+                          onClick={() => handleEnriquecerPlaca(v.chave)}
+                          className={`flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 ${atual ? "bg-gray-50" : "bg-white"}`}
+                        >
+                          <span className="min-w-0">
+                            <span className="block text-sm font-bold text-gray-900">{v.modelo}</span>
+                            <span className="mt-0.5 block text-xs text-gray-500">
+                              {v.valor ? `FIPE ${v.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}` : "FIPE não informada"}
+                              {atual ? " · versão atual" : ""}
+                            </span>
+                          </span>
+                          {versaoSalvando === v.chave ? (
+                            <Loader2 size={16} className="shrink-0 animate-spin text-gray-500" />
+                          ) : v.cambio ? (
+                            <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${v.cambio === "Automático" ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-700"}`}>
+                              {v.cambio}
+                            </span>
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {placaMsg && (
+                <p className={`mt-3 text-[10px] font-black uppercase tracking-widest ${placaStep === "ok" ? "text-green-600" : "text-red-600"}`}>
+                  {placaMsg}
+                </p>
+              )}
+            </div>
+
             {/* ── PAINEL DE EDIÇÃO ESTRUTURADO ── */}
 
             {/* Pontos Fortes de Venda */}
@@ -1586,35 +1681,6 @@ export default function DetalheVeiculo() {
                     />
                   </div>
                 ))}
-
-                {/* Consulta de Placa */}
-                <div className="col-span-full pt-4 border-t border-gray-100">
-                  <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-2">Preencher via Placa</p>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={placaConsulta}
-                      onChange={e => { setPlacaConsulta(e.target.value.toUpperCase()); setPlacaStep("idle"); setPlacaMsg(""); }}
-                      onKeyDown={e => e.key === "Enter" && handleEnriquecerPlaca()}
-                      placeholder="ABC1D23"
-                      maxLength={8}
-                      disabled={placaStep === "consultando"}
-                      className="flex-1 text-[11px] font-bold text-gray-700 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-red-500/10 focus:border-red-300 transition-all uppercase tracking-widest disabled:opacity-50"
-                    />
-                    <button
-                      onClick={handleEnriquecerPlaca}
-                      disabled={placaStep === "consultando" || !placaConsulta.trim()}
-                      className="px-4 py-2 bg-gray-900 text-white text-[9px] font-black uppercase tracking-widest rounded-xl hover:bg-red-600 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      {placaStep === "consultando" ? "..." : "Buscar"}
-                    </button>
-                  </div>
-                  {placaMsg && (
-                    <p className={`mt-1.5 text-[9px] font-bold uppercase tracking-widest ${placaStep === "ok" ? "text-green-600" : "text-red-500"}`}>
-                      {placaMsg}
-                    </p>
-                  )}
-                </div>
 
                 {/* Opcionais */}
                 <div className="col-span-full pt-4 border-t border-gray-100">
