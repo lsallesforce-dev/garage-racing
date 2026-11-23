@@ -8,13 +8,13 @@ import {
   type PagarmeCustomer,
 } from "@/lib/pagarme";
 import { calcularDescontoIndicacao } from "@/lib/indicacao";
-import { PLANOS, type PlanoId } from "@/lib/planos";
+import { PLANOS, podeUsarPlanoTeste, type PlanoId } from "@/lib/planos";
 import { planoLiberadoParaTenant, precoCobranca } from "@/lib/plano-servidor";
 
 // Preços em centavos
 // "teste" (R$ 1,00) é um plano oculto para validar o fluxo de pagamento ponta a ponta
 // (checkout → PIX → webhook → ativa plano). Não aparece nos botões da tela de assinatura;
-// só é acessível via /assinar?plano=teste.
+// só admin ou a conta da AutoZap compram (podeUsarPlanoTeste).
 const VALORES: Record<string, number> = Object.fromEntries(
   Object.values(PLANOS).map((p) => [p.id, Math.round(p.mensal * 100)]),
 );
@@ -67,6 +67,7 @@ export async function POST(req: NextRequest) {
   //     do tenant efetivo. Sempre lido do banco, nunca do cliente.
   let tenantUserId: string;
   let descontoNegMes: number;
+  let sessao: { id: string; app_metadata?: Record<string, unknown> } | null = null;
 
   if (cobranca_token) {
     if (!UUID_RE.test(String(cobranca_token))) {
@@ -88,6 +89,7 @@ export async function POST(req: NextRequest) {
     const { user, error: authError } = await requireAuth();
     if (authError) return authError;
     tenantUserId = user!.id;
+    sessao = user;
     const { data: cfgRows } = await supabaseAdmin
       .from("config_garage")
       .select("plano_desconto")
@@ -97,6 +99,9 @@ export async function POST(req: NextRequest) {
     descontoNegMes = Math.max(0, Number(cfgRows?.[0]?.plano_desconto) || 0);
   }
 
+  if (plano === "teste" && !podeUsarPlanoTeste(sessao)) {
+    return NextResponse.json({ error: "Plano indisponível" }, { status: 403 });
+  }
   if (!(await planoLiberadoParaTenant(tenantUserId, plano))) {
     return NextResponse.json({ error: "Plano indisponível" }, { status: 403 });
   }

@@ -22,7 +22,8 @@ export interface PlanoDef {
 }
 
 export const PLANOS: Record<PlanoId, PlanoDef> = {
-  // Plano oculto (R$ 1) — só via /assinar?plano=teste, valida o fluxo de pagamento ponta a ponta.
+  // Plano oculto (R$ 1) — valida o fluxo de pagamento ponta a ponta. Só admin ou a
+  // conta da própria AutoZap: pagar isto dá +30 dias de plano ativo (podeUsarPlanoTeste).
   teste: { id: "teste", nome: "Teste", mensal: 1, kitsMes: 5, suporte: "—", oculto: true },
   // Plano de entrada (23/11/2026): até 10 carros, painel + estoque + chat + vitrine +
   // marketing completo (5 kits/mês, Meta Ads e portais; a verba é da loja), na Cloud API. 15 dias de teste, R$ 650 na 1ª cobrança e R$ 350 depois. Vendido
@@ -88,6 +89,16 @@ export function rotaLiberada(plano: string | null | undefined, pathname: string)
 /** Consulta automática nos bancos (CredPro). No Essencial o gerente simula por fora. */
 export function simulacaoNoPlano(plano: string | null | undefined): boolean {
   return plano !== "essencial";
+}
+
+const CONTA_AUTOZAP = "9e80d6e1-7ad9-4578-a848-1dd61fc36c9a";
+
+/** Quem pode comprar o plano de R$ 1. Link de cobrança (sem sessão) nunca pode. */
+export function podeUsarPlanoTeste(
+  usuario: { id: string; app_metadata?: Record<string, unknown> } | null | undefined,
+): boolean {
+  if (!usuario) return false;
+  return usuario.app_metadata?.is_admin === true || usuario.id === CONTA_AUTOZAP;
 }
 
 export function labelKits(n: number | null): string {

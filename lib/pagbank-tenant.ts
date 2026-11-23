@@ -9,7 +9,7 @@ export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 
 export async function resolverTenant(
   token?: string | null,
-): Promise<{ userId: string; descontoMes: number; error?: undefined } | { error: NextResponse }> {
+): Promise<{ userId: string; descontoMes: number; sessao: { id: string; app_metadata?: Record<string, unknown> } | null; error?: undefined } | { error: NextResponse }> {
   if (token) {
     if (!UUID_RE.test(String(token))) return { error: NextResponse.json({ error: "Link de cobrança inválido" }, { status: 404 }) };
     const { data: rows } = await supabaseAdmin
@@ -20,7 +20,7 @@ export async function resolverTenant(
       .limit(1);
     const row = rows?.[0];
     if (!row) return { error: NextResponse.json({ error: "Link de cobrança inválido" }, { status: 404 }) };
-    return { userId: row.user_id, descontoMes: Math.max(0, Number(row.plano_desconto) || 0) };
+    return { userId: row.user_id, descontoMes: Math.max(0, Number(row.plano_desconto) || 0), sessao: null };
   }
   const { user, error } = await requireAuth();
   if (error) return { error };
@@ -31,5 +31,5 @@ export async function resolverTenant(
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(1);
-  return { userId, descontoMes: Math.max(0, Number(rows?.[0]?.plano_desconto) || 0) };
+  return { userId, descontoMes: Math.max(0, Number(rows?.[0]?.plano_desconto) || 0), sessao: user };
 }

@@ -7,7 +7,7 @@ import {
   ChevronRight, Tag, Building2, Shield, Zap,
 } from "lucide-react";
 import Image from "next/image";
-import { PLANOS as PLANOS_DEF, precoAnual, labelKits } from "@/lib/planos";
+import { PLANOS as PLANOS_DEF, precoAnual, labelKits, podeUsarPlanoTeste } from "@/lib/planos";
 
 // Gateway de recebimento: NEXT_PUBLIC_GATEWAY=pagbank liga o PagBank (default: pagarme legado
 // até o PAGBANK_TOKEN estar configurado na Vercel).
@@ -56,9 +56,9 @@ function AssinarContent() {
   const params = useSearchParams();
   const router = useRouter();
 
-  // Essencial é escondido: o link sozinho não abre o plano. Só entra quando o
-  // tenant logado (ou o link de cobrança dele) já está nele — ver efeitos abaixo.
-  const [planoId,      setPlanoId]      = useState(params.get("plano") === "essencial" ? "pro" : params.get("plano") ?? "pro");
+  // Essencial e Teste (R$ 1) são escondidos: o link sozinho não abre o plano. Só
+  // entram para quem tem direito — ver o efeito da sessão e o do link de cobrança.
+  const [planoId,      setPlanoId]      = useState(["essencial", "teste"].includes(params.get("plano") ?? "") ? "pro" : params.get("plano") ?? "pro");
   const plano = PLANOS[planoId] ?? PLANOS.pro;
 
   // Plano com 1ª cobrança diferente (Essencial: R$ 650 e depois R$ 350). O servidor
@@ -106,6 +106,7 @@ function AssinarContent() {
         // Com link tokenizado, plano/desconto vêm do token (efeito abaixo) — a
         // sessão logada não pode sobrescrever com dados de OUTRO tenant.
         if (cobrancaToken) return;
+        if (params.get("plano") === "teste" && podeUsarPlanoTeste(data.user)) setPlanoId("teste");
         // Plano contratado + desconto negociado do tenant
         supabase
           .from("config_garage")

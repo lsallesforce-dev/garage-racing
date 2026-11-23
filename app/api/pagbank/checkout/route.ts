@@ -9,7 +9,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { createPixOrder, createBoletoOrder, createCardCheckout, type PagbankCustomer } from "@/lib/pagbank";
 import { resolverTenant } from "@/lib/pagbank-tenant";
 import { calcularDescontoIndicacao } from "@/lib/indicacao";
-import { PLANOS, isPlanoId, ANUAL_DESCONTO } from "@/lib/planos";
+import { PLANOS, isPlanoId, podeUsarPlanoTeste, ANUAL_DESCONTO } from "@/lib/planos";
 import { planoLiberadoParaTenant, precoCobranca } from "@/lib/plano-servidor";
 
 export const dynamic = "force-dynamic";
@@ -35,7 +35,10 @@ export async function POST(req: NextRequest) {
 
   const t = await resolverTenant(cobranca_token);
   if (t.error) return t.error;
-  const { userId, descontoMes } = t;
+  const { userId, descontoMes, sessao } = t;
+  if (plano === "teste" && !podeUsarPlanoTeste(sessao)) {
+    return NextResponse.json({ error: "Plano indisponível" }, { status: 403 });
+  }
   if (!(await planoLiberadoParaTenant(userId, plano))) {
     return NextResponse.json({ error: "Plano indisponível" }, { status: 403 });
   }
