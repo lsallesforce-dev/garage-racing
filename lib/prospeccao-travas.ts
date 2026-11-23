@@ -18,6 +18,9 @@
 //      confirma justamente o mal-entendido (Gio).
 //   5. Disse "caí no atendimento automático" e seguiu conversando com o robô
 //      da loja por mais 20 mensagens (Interior). A frase agora CALA de verdade.
+//   6. Plano de entrada escondido (23/11/2026) — no replay ela citou a condição
+//      na 1ª pergunta de preço e disse o corte ("lojas acima de 10 carros") em
+//      ~10% das respostas, mesmo com a regra no prompt.
 // =============================================================================
 
 export interface ContextoTravas {
@@ -27,6 +30,8 @@ export interface ContextoTravas {
   cidadeLoja: string | null;
   /** Última mensagem do prospect, a que esta resposta responde. */
   ultimaDoProspect: string;
+  /** O agente ou o Lucas já responderam sobre preço nesta conversa. */
+  jaFalouDePreco?: boolean;
 }
 
 export interface ResultadoTravas {
@@ -64,6 +69,27 @@ const CONFUSAO_DE_PAPEL = /\b(?:achei|pensei|entendi)\s+que\s+(?:voc[êe]|vc|tu)
 const CONFIRMA_NO_INICIO = /^(?:exato|exatamente|isso\s+mesmo|isso|sim)\s*[!.,]+\s*/iu;
 
 export const FRASE_DE_ROBO = /\bca[íi]\s+no\s+atendimento\s+autom[áa]tico\b/iu;
+
+export const JA_FALOU_DE_PRECO = /depende\s+do\s+tamanho|tabela\s+come[çc]a|condi[çc][ãa]o\s+(?:especial\s+)?de\s+entrada|R\$\s*1\.150/iu;
+const PEDIU_MAIS_BARATO = /\b(?:t[áa]|muito|bem|mei[oa]|achei|fica|ficou|mais)\s+car[oa]\b|barat|desconto/iu;
+const OFERTA_ENTRADA = /condi[çc][ãa]o\s+(?:especial\s+)?de\s+entrada/iu;
+const CORTE_PEQUENO = /\b(?:para|pra)\s+(?:as\s+|uma\s+)?(?:lojas?|revendas?)\s+(?:com\s+|de\s+)?(?:at[ée]|menos\s+de)\s+10\s+carros(?:\s+como\s+a\s+sua)?/giu;
+const CORTE_GRANDE = /,?\s*\b(?:para|pra)\s+(?:as\s+|uma\s+)?(?:lojas?|revendas?)\s+(?:com\s+|de\s+)?(?:acima\s+de|mais\s+de)\s+10\s+carros,?/giu;
+const CORTE_SOLTO = /(?:at[ée]|acima\s+de|mais\s+de|menos\s+de)\s+10\s+carros/iu;
+const FALA_DE_PRECO = /tabela|valor|pre[çc]o|condi[çc][ãa]o|mensalidade|R\$/iu;
+
+/** Tira o corte de tamanho da frase de preço; "carrossel com até 10 carros" fica. */
+function semCorteDeTamanho(f: string): string {
+  if (!FALA_DE_PRECO.test(f)) return f;
+  const out = f
+    .replace(CORTE_PEQUENO, (m) => (m.trimStart().startsWith("P") ? "Pra loja do seu tamanho" : "pra loja do seu tamanho"))
+    .replace(CORTE_GRANDE, " ")
+    .replace(/\s+([.,!?])/g, "$1")
+    .replace(/\s{2,}/g, " ")
+    .replace(/^[\s,]+/, "");
+  if (CORTE_SOLTO.test(out)) return "";
+  return out.charAt(0).toUpperCase() + out.slice(1);
+}
 
 function frases(texto: string): string[] {
   return texto.split(/(?<=[.!?])\s+/).filter((f) => f.trim());
@@ -138,6 +164,23 @@ export function aplicarTravasMari(resposta: string, ctx: ContextoTravas): Result
         .join(" "),
     );
   }
+
+  // 6. Plano de entrada escondido: só aparece depois de falar de preço, e nunca com o corte.
+  const podeOferecerEntrada = ctx.jaFalouDePreco === true || PEDIU_MAIS_BARATO.test(ctx.ultimaDoProspect || "");
+  bolhas = bolhas.map((b) =>
+    frases(b)
+      .map((f) => {
+        if (!podeOferecerEntrada && OFERTA_ENTRADA.test(f)) {
+          ajustes.push("cortou condição de entrada antes da hora");
+          return "";
+        }
+        const limpa = semCorteDeTamanho(f);
+        if (limpa !== f) ajustes.push("tirou o corte de 10 carros");
+        return limpa;
+      })
+      .filter(Boolean)
+      .join(" "),
+  );
 
   bolhas = bolhas.map((b) => b.trim()).filter((b) => /[\p{L}\p{N}]/u.test(b));
   // Se tudo era reapresentação, é melhor mandar a resposta crua do que nada.

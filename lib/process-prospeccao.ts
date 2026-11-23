@@ -16,7 +16,7 @@ import { geminiFlashSales, geminiFlashFallback, parseGeminiJson } from "@/lib/ge
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import type { Prospect, ProspectMensagem } from "@/lib/prospeccao-types";
 import { aplicarFunilAnuncio, semPrecoFrio } from "@/lib/prospeccao-funil";
-import { aplicarTravasMari, JA_SE_APRESENTOU } from "@/lib/prospeccao-travas";
+import { aplicarTravasMari, JA_FALOU_DE_PRECO, JA_SE_APRESENTOU } from "@/lib/prospeccao-travas";
 
 // ─── Pátio de demonstração ────────────────────────────────────────────────────
 // A abertura convida o lojista a "perguntar de um carro como se fosse cliente",
@@ -566,7 +566,13 @@ COMO FALAR DO PRODUTO:
 
 PREÇO (decisão do Lucas, 22/11/2026): o valor é negociado DIRETO com o Lucas, conforme o tamanho da loja. Quem ouviu um número antes de entender o produto foi embora.
 Quando perguntarem quanto custa, diga: "o valor depende do tamanho da loja, e o Lucas acerta direto com você. dá pra testar 15 dias grátis antes de pagar." e marque handoff=true.
-NÃO cite valor, faixa, desconto nem condição. Se a pessoa INSISTIR no número depois disso, aí pode dizer que a tabela começa em R$ 1.150 por mês e que pra loja dela o Lucas negocia direto. Nunca invente outro número nem outra promoção além dos 15 dias grátis.
+NÃO cite valor, faixa, desconto nem condição. Na PRIMEIRA vez que perguntarem o preço, use só a frase acima, mesmo que a loja seja pequena.
+Só se a pessoa INSISTIR no número, disser que está caro ou pedir algo mais barato:
+- LOJA COM MAIS DE 10 CARROS: pode dizer que a tabela começa em R$ 1.150 por mês e que o Lucas negocia direto com ela. Não insinue que existe preço diferente pra loja menor.
+- LOJA COM ATÉ 10 CARROS: NÃO fale em R$ 1.150. Diga "pra loja do seu tamanho o Lucas tem uma condição de entrada, ele te passa o valor certinho" e marque handoff=true.
+- AINDA NÃO SABE O TAMANHO: antes de falar de tabela, pergunte mais ou menos quantos carros ela tem no pátio.
+NUNCA diga em voz alta o corte de tamanho ("até 10 carros", "acima de 10 carros", "lojas pequenas pagam menos"). Você não sabe o nome nem o valor da condição de entrada: é o Lucas quem passa. Nunca invente número, plano ou promoção além dos 15 dias grátis.
+Em todo handoff de loja com até 10 carros, comece o motivo_handoff com "[ATÉ 10 CARROS]". Isso é só pro Lucas: nunca escreva essa marca na "resposta".
 Não puxe preço por conta própria.
 PRAZO DE IMPLANTAÇÃO: você não passa. Diga que o Lucas combina isso com ele.
 
@@ -904,6 +910,7 @@ export async function gerarRespostaProspeccao({
       // Mesmo fallback do prompt ("Fica em ..."): a trava corrige pra cidade que o prompt afirmou.
       cidadeLoja: lojaDemo.cidade ?? "São José do Rio Preto",
       ultimaDoProspect: textoUltima,
+      jaFalouDePreco: mensagens.some((m) => m.remetente !== "prospect" && JA_FALOU_DE_PRECO.test(m.content ?? "")),
     });
     if (t.ajustes.length) console.log(`🔒 [prospeccao] Travas: ${t.ajustes.join(" | ")}`);
     if (!t.caiuEmRobo) return modoAnuncio ? funil({ ...r, resposta: t.resposta }) : { ...r, resposta: semPrecoFrio(t.resposta, mensagens) };
