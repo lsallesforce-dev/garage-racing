@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
 import { gateLimiteCarros } from "@/lib/plano-servidor";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { cambioDoNomeFipe } from "@/lib/cambio";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
@@ -173,6 +174,24 @@ export async function POST(req: NextRequest) {
 
   const trunc = (s: string, n: number) => (s ?? "").slice(0, n);
 
+  // A consulta pode devolver mais de uma versão FIPE pra mesma placa e o código
+  // sempre gravava a primeira. Se houver versões com câmbio diferente, a tela
+  // pergunta qual é a certa (Bonitão 13/11: Onix LT automático gravado "Mec.").
+  const listaFipe: any[] = apiData?.data?.data ?? apiData?.data?.resultados ?? [];
+  const versoesVistas = new Set<string>();
+  const versoesFipe = listaFipe.flatMap((f) => {
+    const modelo = trunc(f?.MODELO ?? f?.modelo ?? "", 100);
+    const codigo: string | null = f?.codigoFipe ?? f?.codigo_fipe ?? null;
+    const chave = `${codigo ?? ""}|${modelo}`;
+    if (!modelo || versoesVistas.has(chave)) return [];
+    versoesVistas.add(chave);
+    const bruto = f?.VALOR ?? f?.valor ?? f?.valorFipe ?? f?.valor_fipe ?? null;
+    const valor = bruto == null ? null : typeof bruto === "number" ? bruto : Number(String(bruto).replace(/[^0-9,]/g, "").replace(",", ".")) || null;
+    return [{ modelo, codigo, valor, cambio: cambioDoNomeFipe(modelo) }];
+  });
+  const opcoesCambio = new Set(versoesFipe.map((v) => v.cambio).filter(Boolean));
+  const versoesParaEscolher = opcoesCambio.size > 1 ? versoesFipe : [];
+
   // A FIPE às vezes devolve VERSAO/SUBMODELO como quase-cópia do MODELO (ex.:
   // modelo="Frontier S CD 4x4 2.3 TB Diesel Mec.", versao="S CD 4x4 2.3 TB
   // Diesel Mec.") — sem essa checagem o texto do anúncio saía duplicado (ver
@@ -303,7 +322,7 @@ export async function POST(req: NextRequest) {
     if (!existing.cor && corRaw)      updates.cor = corRaw.toLowerCase();
     // Combustível: DETRAN > Gemini (fallback)
     if (!existing.combustivel && combustivelFinal) updates.combustivel = combustivelFinal;
-    if (!existing.cambio && geminiData.cambio)     updates.cambio = geminiData.cambio;
+    if (!existing.cambio && (cambioDoNomeFipe(existing.modelo || modeloRaw) ?? geminiData.cambio)) updates.cambio = cambioDoNomeFipe(existing.modelo || modeloRaw) ?? geminiData.cambio;
     // motor: prefere o do Gemini (mais rico, com versão "Turbo"), senão usa inferido pela API
     if (!existing.motor && (geminiData.motor || motorInferido)) updates.motor = geminiData.motor || motorInferido;
     if (!existing.placa)              updates.placa = placa;
@@ -338,7 +357,7 @@ export async function POST(req: NextRequest) {
     }
 
     console.log(`[consultar-placa] Enriqueceu veículo ${veiculoId} com ${Object.keys(updates).length} campos`);
-    return NextResponse.json({ id: veiculoId, marca: existing.marca || marcaRaw, modelo: existing.modelo || modeloRaw, versao: existing.versao || updates.versao || "", enriched: true, updatedFields: Object.keys(updates) });
+    return NextResponse.json({ id: veiculoId, marca: existing.marca || marcaRaw, modelo: existing.modelo || modeloRaw, versao: existing.versao || updates.versao || "", enriched: true, updatedFields: Object.keys(updates), versoesFipe: versoesParaEscolher });
   }
 
   // 3b. Criar veículo novo
@@ -359,7 +378,9 @@ export async function POST(req: NextRequest) {
   if (corRaw) insertPayload.cor = corRaw.toLowerCase();
   // Combustível: DETRAN > Gemini (fallback)
   if (combustivelFinal) insertPayload.combustivel = combustivelFinal;
-  if (geminiData.cambio) insertPayload.cambio = geminiData.cambio;
+  // O "Mec."/"Aut." do nome FIPE é dado; o câmbio da IA é palpite.
+  const cambioFinal = cambioDoNomeFipe(modeloRaw) ?? geminiData.cambio;
+  if (cambioFinal) insertPayload.cambio = cambioFinal;
   // motor: prefere Gemini (mais rico), senão usa inferido pela API (cilindradas + combustível + cv)
   if (geminiData.motor || motorInferido) insertPayload.motor = geminiData.motor || motorInferido;
   if (geminiData.opcionais?.length) insertPayload.opcionais = geminiData.opcionais;
@@ -389,5 +410,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ id: data.id, marca: marcaRaw, modelo: modeloRaw, versao: geminiData.versao });
+  return NextResponse.json({ id: data.id, marca: marcaRaw, modelo: modeloRaw, versao: geminiData.versao, versoesFipe: versoesParaEscolher });
 }

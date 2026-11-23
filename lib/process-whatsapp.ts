@@ -33,6 +33,7 @@ import { tratarMensagemDoGerente } from "@/lib/gerente-dialogo";
 import { setGerenteFoco } from "@/lib/redis";
 import { chaveVideoWhatsApp, agendarVideoWhatsApp } from "@/lib/video-whatsapp";
 import { lerImagemDoCliente } from "@/lib/visao-imagem";
+import { modeloConformeCambio, textoConformeCambio } from "@/lib/cambio";
 import { urlVitrine } from "@/lib/repasse";
 import { logWebhookError } from "@/lib/error-log";
 import { lerAcoes, compararDecisoes, registrarShadow } from "@/lib/shadow-acoes";
@@ -795,6 +796,7 @@ function formatVehicleCard(v: Vehicle): string {
       v.roteiro_pitch,
     ]
       .filter(Boolean)
+      .map((t) => textoConformeCambio(t as string, (v as any).cambio))
       .join(" | ") || "Sem detalhes adicionais.";
 
   // Opcionais — lista autoritativa: se está aqui o carro TEM, se não está NÃO TEM
@@ -805,11 +807,14 @@ function formatVehicleCard(v: Vehicle): string {
 
   // Pontos fortes separados — o agente deve usá-los como estão, sem reescrever
   const pontosFortes = v.pontos_fortes_venda?.length
-    ? `  ⚡ Pontos fortes (USE EXATAMENTE ASSIM, sem expandir): ${v.pontos_fortes_venda.join(" | ")}\n`
+    ? `  ⚡ Pontos fortes (USE EXATAMENTE ASSIM, sem expandir): ${v.pontos_fortes_venda.map((p) => textoConformeCambio(p, (v as any).cambio)).join(" | ")}\n`
     : "";
 
   const ficha = [
     v.motor && `Motor: ${v.motor}`,
+    // O câmbio do cadastro é a verdade: o lojista corrige aqui quando a FIPE
+    // traz a versão errada. Antes este campo nem chegava ao agente.
+    (v as any).cambio && `Câmbio: ${(v as any).cambio} (dado oficial do cadastro, vale acima de qualquer outro texto)`,
     v.combustivel && `Combustível: ${v.combustivel}`,
     (v as any).categoria && `Categoria: ${(v as any).categoria}`,
     (v as any).condicao && `Condição: ${(v as any).condicao}`,
@@ -857,7 +862,7 @@ function formatVehicleCard(v: Vehicle): string {
     : "";
 
   return (
-    `[ID:${v.id}] ${v.marca} ${v.modelo}${versao} (${ano}) | Cor: ${cor} | KM: ${km} | Preço: ${preco} | Foto: ${temFoto} | Vídeo: ${temVideo}\n` +
+    `[ID:${v.id}] ${v.marca} ${modeloConformeCambio(v.modelo, (v as any).cambio)}${versao} (${ano}) | Cor: ${cor} | KM: ${km} | Preço: ${preco} | Foto: ${temFoto} | Vídeo: ${temVideo}\n` +
     (ficha ? `  Ficha: ${ficha}\n` : "") +
     opcionaisStr +
     pontosFortes +
@@ -880,7 +885,7 @@ async function buildInventoryIndex(tenantUserId: string): Promise<string> {
   // existe. Por isso o `error` agora é lido e logado alto (ver abaixo).
   const { data, error } = await supabaseAdmin
     .from("veiculos")
-    .select("id, marca, modelo, ano, ano_modelo, cor, preco_sugerido, categoria")
+    .select("id, marca, modelo, ano, ano_modelo, cor, preco_sugerido, categoria, cambio")
     .eq("status_venda", "DISPONIVEL")
     .eq("user_id", tenantUserId)
     .order("marca", { ascending: true })
@@ -894,7 +899,7 @@ async function buildInventoryIndex(tenantUserId: string): Promise<string> {
   }
   if (!data || data.length === 0) return "";
 
-  type LinhaIndice = { id: string; marca: string | null; modelo: string | null; ano: number | null; ano_modelo: number | null; cor: string | null; preco_sugerido: number | null; categoria: string | null };
+  type LinhaIndice = { id: string; marca: string | null; modelo: string | null; ano: number | null; ano_modelo: number | null; cor: string | null; preco_sugerido: number | null; categoria: string | null; cambio: string | null };
   const linha = (v: LinhaIndice) => {
     const ano = v.ano_modelo || v.ano || "";
     const anoStr = ano ? ` ${ano}` : "";
@@ -902,7 +907,8 @@ async function buildInventoryIndex(tenantUserId: string): Promise<string> {
     const precoStr = v.preco_sugerido
       ? ` • R$ ${Number(v.preco_sugerido).toLocaleString("pt-BR")}`
       : "";
-    return `- ${v.marca ?? ""} ${v.modelo ?? ""}${anoStr}${corStr}${precoStr} [ID:${v.id}]`;
+    const cambioStr = v.cambio ? ` • ${v.cambio}` : "";
+    return `- ${v.marca ?? ""} ${modeloConformeCambio(v.modelo, v.cambio)}${anoStr}${corStr}${cambioStr}${precoStr} [ID:${v.id}]`;
   };
 
   // Moto fica FORA da lista de carros. Caso real (APROVE, 09/10): cliente do
@@ -2618,7 +2624,11 @@ Responda apenas com o JSON, sem markdown.`;
         .eq("remetente", "usuario");
       const isPrimeiraMensagem = (clientMsgCount ?? 0) <= 1;
 
-      if (isPrimeiraMensagem) {
+      // Carro resolvido pelo próprio anúncio NESTE turno não é vínculo velho. O
+      // título costuma ser genérico ("Converse conosco"), não bate com nada, e o
+      // lead caía no primeiro carro parecido do estoque (Bonitão 23/11: anúncio
+      // do Onix LT 2023 automático virou Onix Joy 2018 manual).
+      if (isPrimeiraMensagem && adVeiculoId !== veiculoPrincipal.id) {
         const origemMsg: string = (lead as any).origem_mensagem ?? "";
         const origemMatch = origemMsg.match(/Lead do an[úu]ncio:\s*(.+)/i);
         if (origemMatch) {

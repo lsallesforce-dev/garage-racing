@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireVehicleOwner } from "@/lib/api-auth";
 import { tirarCarroVendidoDoAr } from "@/lib/veiculo-vendido";
+import { tipoCambio, modeloConformeCambio, textoConformeCambio } from "@/lib/cambio";
 
 // Campos permitidos para edição via painel
 const ALLOWED_FIELDS = new Set([
@@ -58,6 +59,26 @@ export async function PATCH(req: NextRequest) {
     const v = (versaoFinal || "").trim();
     if (v && (modeloFinal || "").toUpperCase().includes(v.toUpperCase())) {
       safeFields.versao = "";
+    }
+  }
+
+  // Lojista CORRIGIU o câmbio: nome e descrição acompanham. Só na mudança real
+  // (a tela reenvia o câmbio a cada salvar), senão um cadastro antigo com câmbio
+  // errado teria o nome reescrito sem ninguém ter pedido.
+  if (typeof safeFields.cambio === "string" && tipoCambio(safeFields.cambio)) {
+    const { data: atual } = await supabaseAdmin
+      .from("veiculos")
+      .select("cambio, modelo, detalhes_inspecao, pontos_fortes_venda")
+      .eq("id", veiculoId)
+      .limit(1);
+    const a = atual?.[0];
+    if (a && tipoCambio(a.cambio) !== tipoCambio(safeFields.cambio as string)) {
+      const novo = safeFields.cambio as string;
+      safeFields.modelo = modeloConformeCambio((safeFields.modelo as string | undefined) ?? a.modelo, novo);
+      const det = (safeFields.detalhes_inspecao as string | undefined) ?? a.detalhes_inspecao;
+      if (det) safeFields.detalhes_inspecao = textoConformeCambio(det, novo);
+      const pf = (safeFields.pontos_fortes_venda as string[] | undefined) ?? a.pontos_fortes_venda;
+      if (Array.isArray(pf)) safeFields.pontos_fortes_venda = pf.map((p) => textoConformeCambio(p, novo));
     }
   }
 

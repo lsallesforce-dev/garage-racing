@@ -88,6 +88,10 @@ export default function UploadPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Erro ao consultar placa");
+      // Mais de uma versão FIPE com câmbio diferente: a tela do carro pergunta qual é.
+      if (data.versoesFipe?.length > 1) {
+        try { sessionStorage.setItem(`versoes_fipe:${data.id}`, JSON.stringify(data.versoesFipe)); } catch {}
+      }
       router.push(`/veiculo/${data.id}`);
     } catch (e: any) {
       setPlacaErro(e.message);
