@@ -639,40 +639,6 @@ export default function DetalheVeiculo() {
   const [placaConsulta, setPlacaConsulta] = useState("");
   const [placaStep, setPlacaStep] = useState<"idle" | "consultando" | "ok" | "erro">("idle");
   const [placaMsg, setPlacaMsg] = useState("");
-  // A placa trouxe versões FIPE com câmbio diferente: o lojista escolhe a certa.
-  const [versoesFipe, setVersoesFipe] = useState<{ modelo: string; codigo: string | null; valor: number | null; cambio: string | null }[]>([]);
-  const [salvandoVersao, setSalvandoVersao] = useState(false);
-  useEffect(() => {
-    try {
-      const salvo = sessionStorage.getItem(`versoes_fipe:${params.id}`);
-      if (salvo) setVersoesFipe(JSON.parse(salvo));
-    } catch {}
-  }, [params.id]);
-  const fecharVersoes = () => {
-    setVersoesFipe([]);
-    try { sessionStorage.removeItem(`versoes_fipe:${params.id}`); } catch {}
-  };
-  const escolherVersao = async (v: { modelo: string; codigo: string | null; valor: number | null; cambio: string | null }) => {
-    setSalvandoVersao(true);
-    try {
-      const fields: Record<string, unknown> = { modelo: v.modelo };
-      if (v.cambio) fields.cambio = v.cambio;
-      if (v.codigo) fields.codigo_fipe = v.codigo;
-      if (v.valor) fields.valor_fipe = v.valor;
-      const res = await fetch("/api/veiculo/patch", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ veiculoId: params.id, fields }),
-      });
-      if (!res.ok) throw new Error("Não foi possível salvar a versão");
-      fecharVersoes();
-      window.location.reload();
-    } catch (e: any) {
-      alert(e.message);
-    } finally {
-      setSalvandoVersao(false);
-    }
-  };
 
   const handleEnriquecerPlaca = async () => {
     const p = placaConsulta.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -687,10 +653,6 @@ export default function DetalheVeiculo() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Erro");
       const campos = (data.updatedFields as string[]) ?? [];
-      if (data.versoesFipe?.length > 1) {
-        setVersoesFipe(data.versoesFipe);
-        try { sessionStorage.setItem(`versoes_fipe:${params.id}`, JSON.stringify(data.versoesFipe)); } catch {}
-      }
       setPlacaMsg(campos.length > 0 ? `${campos.length} campos preenchidos` : "Nenhum campo novo — tudo já preenchido");
       setPlacaStep("ok");
       // Recarrega a página para refletir os novos dados
@@ -1987,25 +1949,6 @@ export default function DetalheVeiculo() {
                 </div>
                 <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
                   <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest mb-2">Câmbio</p>
-                  {versoesFipe.length > 1 && (
-                    <div className="mb-3 rounded-xl border border-amber-300 bg-amber-50 p-3">
-                      <p className="text-xs font-bold text-amber-900 mb-2">A placa trouxe mais de uma versão. Qual é a deste carro?</p>
-                      <div className="flex flex-col gap-1.5">
-                        {versoesFipe.map((v) => (
-                          <button
-                            key={`${v.codigo}-${v.modelo}`}
-                            type="button"
-                            disabled={salvandoVersao}
-                            onClick={() => escolherVersao(v)}
-                            className="rounded-lg border border-amber-200 bg-white px-2 py-1.5 text-left text-xs font-semibold text-gray-900 hover:bg-amber-100 disabled:opacity-50"
-                          >
-                            {v.modelo}{v.cambio ? ` (${v.cambio})` : ""}
-                          </button>
-                        ))}
-                      </div>
-                      <button type="button" onClick={fecharVersoes} className="mt-2 text-[11px] font-semibold text-amber-800 underline">Manter como está</button>
-                    </div>
-                  )}
                   <select
                     value={normCambio(veiculo.cambio)}
                     onChange={(e) => setVeiculo({ ...veiculo, cambio: e.target.value || null })}

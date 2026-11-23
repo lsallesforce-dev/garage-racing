@@ -12,6 +12,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 type InputMode = "dispositivo" | "instagram";
+type VersaoFipe = { chave: string; modelo: string; codigo: string | null; valor: number | null; cambio: string | null };
 
 export default function UploadPage() {
   const router = useRouter();
@@ -32,6 +33,9 @@ export default function UploadPage() {
   const [placa, setPlaca] = useState("");
   const [placaStep, setPlacaStep] = useState<"idle" | "consultando" | "erro">("idle");
   const [placaErro, setPlacaErro] = useState("");
+  // A placa trouxe mais de uma versão FIPE: o popup pergunta qual é antes de criar o carro.
+  const [versoesPlaca, setVersoesPlaca] = useState<VersaoFipe[]>([]);
+  const [versaoSalvando, setVersaoSalvando] = useState<string | null>(null);
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -72,7 +76,7 @@ export default function UploadPage() {
 
   // ── Consulta por Placa ────────────────────────────────────────────────────
 
-  const handleConsultarPlaca = async () => {
+  const handleConsultarPlaca = async (versaoFipe?: string) => {
     const placaLimpa = placa.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
     if (placaLimpa.length < 7) {
       setPlacaErro("Digite uma placa válida (ex: ABC1234 ou ABC1D23)");
@@ -80,20 +84,24 @@ export default function UploadPage() {
     }
     setPlacaStep("consultando");
     setPlacaErro("");
+    if (versaoFipe) setVersaoSalvando(versaoFipe);
     try {
       const res = await fetch("/api/veiculo/consultar-placa", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ placa: placaLimpa }),
+        body: JSON.stringify({ placa: placaLimpa, ...(versaoFipe ? { versaoFipe } : {}) }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Erro ao consultar placa");
-      // Mais de uma versão FIPE com câmbio diferente: a tela do carro pergunta qual é.
-      if (data.versoesFipe?.length > 1) {
-        try { sessionStorage.setItem(`versoes_fipe:${data.id}`, JSON.stringify(data.versoesFipe)); } catch {}
+      if (data.precisaEscolher) {
+        setVersoesPlaca(data.versoes ?? []);
+        setPlacaStep("idle");
+        return;
       }
       router.push(`/veiculo/${data.id}`);
     } catch (e: any) {
+      setVersoesPlaca([]);
+      setVersaoSalvando(null);
       setPlacaErro(e.message);
       setPlacaStep("erro");
     }
@@ -470,7 +478,7 @@ export default function UploadPage() {
                         className="flex-1 bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm font-black uppercase tracking-widest text-gray-900 placeholder:text-gray-300 outline-none focus:border-red-400 focus:ring-2 focus:ring-red-400/10 transition-all disabled:opacity-50"
                       />
                       <button
-                        onClick={handleConsultarPlaca}
+                        onClick={() => handleConsultarPlaca()}
                         disabled={placaStep === "consultando" || isLoading || !placa.trim()}
                         className="px-5 py-3 bg-gray-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-red-600 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
                       >
@@ -631,6 +639,65 @@ export default function UploadPage() {
           </div>
         </div>
       </div>
+
+      {versoesPlaca.length > 1 && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-4 sm:items-center"
+          onClick={() => { if (!versaoSalvando) setVersoesPlaca([]); }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="titulo-versao-fipe"
+            className="flex max-h-[85vh] w-full max-w-xl flex-col rounded-[2rem] bg-white p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="titulo-versao-fipe" className="text-xl font-black italic tracking-tight text-gray-900">
+              Qual é a versão deste carro?
+            </h2>
+            <p className="mt-1 text-sm text-gray-500">
+              A placa {placa.trim().toUpperCase()} tem {versoesPlaca.length} versões na FIPE. Escolha a certa pra ficha e o câmbio saírem corretos.
+            </p>
+
+            <div className="mt-4 flex min-h-0 flex-col gap-2 overflow-y-auto pr-1">
+              {versoesPlaca.map((v) => (
+                <button
+                  key={v.chave}
+                  type="button"
+                  disabled={!!versaoSalvando}
+                  onClick={() => handleConsultarPlaca(v.chave)}
+                  className="flex w-full items-center justify-between gap-3 rounded-2xl border border-gray-200 px-4 py-3 text-left transition-colors hover:border-gray-900 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <span className="min-w-0">
+                    <span className="block text-sm font-bold text-gray-900">{v.modelo}</span>
+                    {v.valor ? (
+                      <span className="mt-0.5 block text-xs text-gray-500">
+                        FIPE {v.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}
+                      </span>
+                    ) : null}
+                  </span>
+                  {versaoSalvando === v.chave ? (
+                    <Loader2 className="h-4 w-4 shrink-0 animate-spin text-gray-500" />
+                  ) : v.cambio ? (
+                    <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${v.cambio === "Automático" ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-700"}`}>
+                      {v.cambio}
+                    </span>
+                  ) : null}
+                </button>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              disabled={!!versaoSalvando}
+              onClick={() => setVersoesPlaca([])}
+              className="mt-4 self-center px-4 py-2 text-sm font-semibold text-gray-500 hover:text-gray-900 disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

@@ -4,6 +4,7 @@ import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
 import { gateLimiteCarros } from "@/lib/plano-servidor";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { cambioDoNomeFipe } from "@/lib/cambio";
+import { getClient } from "@/lib/redis";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
@@ -71,6 +72,19 @@ async function consultarApiBrasil(placa: string) {
     throw new Error("A consulta de placa (serviço externo) está instável agora. Tente novamente em alguns minutos ou cadastre o veículo manualmente.");
   }
   throw new Error(lastMsg ? lastMsg.slice(0, 180) : `Falha na consulta de placa (HTTP ${lastStatus}). Tente novamente ou cadastre manualmente.`);
+}
+
+// A escolha da versão faz duas chamadas a esta rota. Guarda a resposta por 15 min
+// pra segunda não gastar outro crédito da apibrasil.
+async function consultarComCache(userId: string, placa: string) {
+  const chave = `placa_consulta:${userId}:${placa}`;
+  try {
+    const salvo = await getClient().get(chave);
+    if (salvo) return typeof salvo === "string" ? JSON.parse(salvo) : salvo;
+  } catch { /* sem Redis: consulta direto */ }
+  const dados = await consultarApiBrasil(placa);
+  try { await getClient().set(chave, JSON.stringify(dados), { ex: 900 }); } catch {}
+  return dados;
 }
 
 async function enriquecerComGemini(dadosPlaca: {
@@ -152,7 +166,7 @@ export async function POST(req: NextRequest) {
   // 1. Consulta apibrasil.io
   let apiData: any;
   try {
-    apiData = await consultarApiBrasil(placa);
+    apiData = await consultarComCache(userId, placa);
   } catch (err: any) {
     console.error("[consultar-placa] apibrasil erro:", err.message);
     // err.message já vem amigável de consultarApiBrasil — sem prefixo redundante
@@ -165,7 +179,35 @@ export async function POST(req: NextRequest) {
   //
   // Estrutura antiga (fipe-chassi, descontinuado): apiData.data.resultados[0] com campos MAIÚSCULOS
   // Mantemos fallback pra estrutura antiga caso a apibrasil restaure ou plano use outro tipo.
-  const fipeInfo = apiData?.data?.data?.[0] ?? apiData?.data?.resultados?.[0] ?? apiData?.data ?? apiData;
+  //
+  // A mesma placa pode trazer várias versões FIPE (Onix LT Mec., LT Aut., Premier...)
+  // e a primeira nem sempre é a certa (Bonitão 13/11: Onix automático gravado "Mec.").
+  // Carro novo com mais de uma versão: devolve a lista ANTES de criar, e a tela
+  // de cadastro pergunta qual é.
+  const listaFipe: any[] = apiData?.data?.data ?? apiData?.data?.resultados ?? [];
+  const chaveFipe = (f: any) => `${f?.codigoFipe ?? f?.codigo_fipe ?? ""}|${f?.MODELO ?? f?.modelo ?? ""}`;
+  const chavesVistas = new Set<string>();
+  const versoesFipe = listaFipe.flatMap((f) => {
+    const modelo = String(f?.MODELO ?? f?.modelo ?? "").slice(0, 100);
+    const chave = chaveFipe(f);
+    if (!modelo || chavesVistas.has(chave)) return [];
+    chavesVistas.add(chave);
+    const bruto = f?.VALOR ?? f?.valor ?? f?.valorFipe ?? f?.valor_fipe ?? null;
+    const valor: number | null = bruto == null ? null
+      : typeof bruto === "number" ? bruto
+      : Number(String(bruto).replace(/[^0-9,]/g, "").replace(",", ".")) || null;
+    return [{ chave, modelo, codigo: (f?.codigoFipe ?? f?.codigo_fipe ?? null) as string | null, valor, cambio: cambioDoNomeFipe(modelo) }];
+  });
+  const versaoEscolhida: string | null = typeof body.versaoFipe === "string" ? body.versaoFipe : null;
+  if (!veiculoId && !versaoEscolhida && versoesFipe.length > 1) {
+    return NextResponse.json({ precisaEscolher: true, versoes: versoesFipe });
+  }
+  const fipeEscolhido = versaoEscolhida ? listaFipe.find((f) => chaveFipe(f) === versaoEscolhida) : null;
+  if (versaoEscolhida && !fipeEscolhido) {
+    return NextResponse.json({ error: "Versão não encontrada. Busque a placa de novo." }, { status: 409 });
+  }
+
+  const fipeInfo = fipeEscolhido ?? apiData?.data?.data?.[0] ?? apiData?.data?.resultados?.[0] ?? apiData?.data ?? apiData;
   const veiculoInfo = apiData?.data?.veiculo ?? {};
 
   if (!fipeInfo) {
@@ -173,24 +215,6 @@ export async function POST(req: NextRequest) {
   }
 
   const trunc = (s: string, n: number) => (s ?? "").slice(0, n);
-
-  // A consulta pode devolver mais de uma versão FIPE pra mesma placa e o código
-  // sempre gravava a primeira. Se houver versões com câmbio diferente, a tela
-  // pergunta qual é a certa (Bonitão 13/11: Onix LT automático gravado "Mec.").
-  const listaFipe: any[] = apiData?.data?.data ?? apiData?.data?.resultados ?? [];
-  const versoesVistas = new Set<string>();
-  const versoesFipe = listaFipe.flatMap((f) => {
-    const modelo = trunc(f?.MODELO ?? f?.modelo ?? "", 100);
-    const codigo: string | null = f?.codigoFipe ?? f?.codigo_fipe ?? null;
-    const chave = `${codigo ?? ""}|${modelo}`;
-    if (!modelo || versoesVistas.has(chave)) return [];
-    versoesVistas.add(chave);
-    const bruto = f?.VALOR ?? f?.valor ?? f?.valorFipe ?? f?.valor_fipe ?? null;
-    const valor = bruto == null ? null : typeof bruto === "number" ? bruto : Number(String(bruto).replace(/[^0-9,]/g, "").replace(",", ".")) || null;
-    return [{ modelo, codigo, valor, cambio: cambioDoNomeFipe(modelo) }];
-  });
-  const opcoesCambio = new Set(versoesFipe.map((v) => v.cambio).filter(Boolean));
-  const versoesParaEscolher = opcoesCambio.size > 1 ? versoesFipe : [];
 
   // A FIPE às vezes devolve VERSAO/SUBMODELO como quase-cópia do MODELO (ex.:
   // modelo="Frontier S CD 4x4 2.3 TB Diesel Mec.", versao="S CD 4x4 2.3 TB
@@ -337,8 +361,14 @@ export async function POST(req: NextRequest) {
     if (!existing.detalhes_inspecao && geminiData.detalhes)
       updates.detalhes_inspecao = geminiData.detalhes;
     // Dados FIPE/DETRAN — sempre atualiza se vier (são fontes oficiais, dados frescos)
-    if (valorFipe) updates.valor_fipe = valorFipe;
-    if (codigoFipe) updates.codigo_fipe = codigoFipe;
+    // Com várias versões, só atualiza a FIPE se uma delas for a deste carro:
+    // a primeira da lista pode ser de outra versão.
+    const nomeCarro = String(existing.modelo ?? "").trim().toLowerCase();
+    const versaoDoCarro = versoesFipe.length > 1
+      ? versoesFipe.find((v) => v.modelo.trim().toLowerCase() === nomeCarro) ?? null
+      : { valor: valorFipe, codigo: codigoFipe };
+    if (versaoDoCarro?.valor) updates.valor_fipe = versaoDoCarro.valor;
+    if (versaoDoCarro?.codigo) updates.codigo_fipe = versaoDoCarro.codigo;
     if (ipvaValor) updates.ipva_valor = ipvaValor;
     if (cilindradas) updates.cilindradas = cilindradas;
     if (potenciaCv) updates.potencia_cv = potenciaCv;
@@ -357,7 +387,7 @@ export async function POST(req: NextRequest) {
     }
 
     console.log(`[consultar-placa] Enriqueceu veículo ${veiculoId} com ${Object.keys(updates).length} campos`);
-    return NextResponse.json({ id: veiculoId, marca: existing.marca || marcaRaw, modelo: existing.modelo || modeloRaw, versao: existing.versao || updates.versao || "", enriched: true, updatedFields: Object.keys(updates), versoesFipe: versoesParaEscolher });
+    return NextResponse.json({ id: veiculoId, marca: existing.marca || marcaRaw, modelo: existing.modelo || modeloRaw, versao: existing.versao || updates.versao || "", enriched: true, updatedFields: Object.keys(updates) });
   }
 
   // 3b. Criar veículo novo
@@ -410,5 +440,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ id: data.id, marca: marcaRaw, modelo: modeloRaw, versao: geminiData.versao, versoesFipe: versoesParaEscolher });
+  return NextResponse.json({ id: data.id, marca: marcaRaw, modelo: modeloRaw, versao: geminiData.versao });
 }
