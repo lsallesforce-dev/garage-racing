@@ -10,11 +10,12 @@ import { createPixOrder, createBoletoOrder, createCardCheckout, type PagbankCust
 import { resolverTenant } from "@/lib/pagbank-tenant";
 import { calcularDescontoIndicacao } from "@/lib/indicacao";
 import { PLANOS, isPlanoId, ANUAL_DESCONTO } from "@/lib/planos";
+import { precoCobranca } from "@/lib/plano-servidor";
 
 export const dynamic = "force-dynamic";
 
-function calcAmount(plano: keyof typeof PLANOS, parcelamento: "mensal" | "anual12x", descontoMes = 0) {
-  const base = Math.max(100, Math.round(PLANOS[plano].mensal * 100) - Math.round(descontoMes * 100)); // centavos
+function calcAmount(plano: keyof typeof PLANOS, parcelamento: "mensal" | "anual12x", descontoMes = 0, precoReais = PLANOS[plano].mensal) {
+  const base = Math.max(100, Math.round(precoReais * 100) - Math.round(descontoMes * 100)); // centavos
   return parcelamento === "anual12x" ? Math.round(base * 12 * (1 - ANUAL_DESCONTO)) : base;
 }
 
@@ -29,13 +30,14 @@ export async function POST(req: NextRequest) {
 
   if (!isPlanoId(plano) || !["pix", "boleto", "cartao"].includes(metodo) || !customer?.documento || !customer?.email)
     return NextResponse.json({ error: "Parâmetros inválidos" }, { status: 400 });
-  const parc: "mensal" | "anual12x" = parcelamento === "anual12x" && metodo === "cartao" ? "anual12x" : "mensal";
+  // Plano com 1ª cobrança diferente (Essencial) não tem anual.
+  const parc: "mensal" | "anual12x" = parcelamento === "anual12x" && metodo === "cartao" && !PLANOS[plano].primeiroMes ? "anual12x" : "mensal";
 
   const t = await resolverTenant(cobranca_token);
   if (t.error) return t.error;
   const { userId, descontoMes } = t;
 
-  const amountBruto = calcAmount(plano, parc, descontoMes);
+  const amountBruto = calcAmount(plano, parc, descontoMes, await precoCobranca(userId, plano));
   const amountReais = amountBruto / 100;
   let descontoReais = await calcularDescontoIndicacao(userId, amountReais);
   descontoReais = Math.round(Math.min(descontoReais, Math.max(0, amountReais - 1)) * 100) / 100;

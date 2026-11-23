@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { SidebarWrapper } from "@/components/SidebarWrapper";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { rotaLiberada } from "@/lib/planos";
 
 // App instalável (PWA) só no painel: o manifest NÃO vai no layout raiz porque
 // as vitrines dos tenants (domínio próprio) também passam por ele, e o cliente
@@ -43,10 +44,11 @@ export default async function MainLayout({ children }: { children: React.ReactNo
     // Busca dados do vendedor + config do dono em paralelo — server-side, zero roundtrip no cliente
     const [{ data: vendedor }, { data: ownerConfigRows }] = await Promise.all([
       supabase.from("vendedores").select("nome, especialidade").eq("auth_user_id", user.id).maybeSingle(),
-      supabase.from("config_garage").select("nome_empresa, nome_fantasia, vitrine_slug").eq("user_id", effectiveUserId).limit(1),
+      supabase.from("config_garage").select("nome_empresa, nome_fantasia, vitrine_slug, plano").eq("user_id", effectiveUserId).limit(1),
     ]);
 
     const ownerConfig = ownerConfigRows?.[0];
+    if (pathname && !rotaLiberada(ownerConfig?.plano, pathname)) redirect("/estoque");
     const paginasPermitidas = appMeta?.paginas_permitidas ?? userMeta?.paginas_permitidas;
 
     return (
@@ -61,6 +63,7 @@ export default async function MainLayout({ children }: { children: React.ReactNo
           // /api/webhook/avisa, e usá-lo como URL pública da vitrine publicava
           // o segredo em todo link que a loja manda pro cliente.
           vitrineSlug:  ownerConfig?.vitrine_slug || null,
+          plano:        ownerConfig?.plano ?? null,
         }}
         paginasPermitidas={Array.isArray(paginasPermitidas) ? paginasPermitidas : undefined}
       >
@@ -73,7 +76,7 @@ export default async function MainLayout({ children }: { children: React.ReactNo
   // Uma única query traz tudo que o sidebar + verificação de plano precisam
   const { data: config } = await supabase
     .from("config_garage")
-    .select("nome_empresa, nome_fantasia, nome_usuario, cargo_usuario, vitrine_slug, plano_ativo, trial_ends_at, plano_vence_em")
+    .select("nome_empresa, nome_fantasia, nome_usuario, cargo_usuario, vitrine_slug, plano, plano_ativo, trial_ends_at, plano_vence_em")
     .eq("user_id", user.id)
     .maybeSingle();
 
@@ -86,6 +89,11 @@ export default async function MainLayout({ children }: { children: React.ReactNo
 
   if (trialConfigurado && !trialValido && !planoValido) redirect("/assinar");
 
+  // Tela fora do plano (Essencial) volta pro painel, mesmo digitando a URL.
+  const { headers } = await import("next/headers");
+  const pathname = (await headers()).get("x-pathname") ?? "";
+  if (pathname && !rotaLiberada(config.plano, pathname)) redirect("/dashboard");
+
   return (
     <SidebarWrapper
       isVendedor={false}
@@ -95,6 +103,7 @@ export default async function MainLayout({ children }: { children: React.ReactNo
         nomeUsuario:  config.nome_usuario || "",
         cargoUsuario: config.cargo_usuario || "",
         vitrineSlug:  config.vitrine_slug || null,   // nunca o webhook_token — ver comentário acima
+        plano:        config.plano ?? null,
       }}
     >
       {children}

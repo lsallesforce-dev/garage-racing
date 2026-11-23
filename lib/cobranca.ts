@@ -14,11 +14,13 @@ import { sendAvisaMessage } from "@/lib/avisa";
 import { calcularDescontoIndicacao } from "@/lib/indicacao";
 import { logEventoAdmin } from "@/lib/admin-eventos";
 import { PLANOS } from "@/lib/planos";
+import { precoCobranca } from "@/lib/plano-servidor";
 
 export const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.autozap.digital";
 
 // Preço mensal por plano (R$) — fonte única em lib/planos.
 export const PRECO_MENSAL: Record<string, number> = {
+  essencial: PLANOS.essencial.mensal,
   starter: PLANOS.starter.mensal,
   pro: PLANOS.pro.mensal,
   premium: PLANOS.premium.mensal,
@@ -83,7 +85,10 @@ export async function calcularValorCobranca(
   plano: string | null,
   planoDesconto: number | null | undefined,
 ): Promise<{ preco: number; descontoNegociado: number; descontoIndicacao: number; valor: number }> {
-  const preco = PRECO_MENSAL[plano ?? ""] ?? PRECO_MENSAL.starter;
+  // Essencial: R$ 650 até o 1º pagamento confirmado, R$ 350 depois.
+  const preco = plano === "essencial"
+    ? await precoCobranca(userId, plano)
+    : PRECO_MENSAL[plano ?? ""] ?? PRECO_MENSAL.starter;
   const descontoNegociado = Math.max(0, Number(planoDesconto) || 0);
   const baseNeg = Math.max(1, preco - descontoNegociado);
   // Créditos de indicação abatem o líquido do desconto negociado, respeitando o piso.

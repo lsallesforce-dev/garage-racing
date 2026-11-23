@@ -88,7 +88,7 @@ export async function ativarPagamento(
       plano_ativo: true,
       plano_vence_em: planoVenceEm,
       // Grava o plano pago (upgrade Starter -> Pro passa a valer). "teste" (R$1) não troca o plano.
-      ...(PLANOS_VISIVEIS.some((p) => p.id === pagamento.plano) ? { plano: pagamento.plano } : {}),
+      ...(pagamento.plano === "essencial" || PLANOS_VISIVEIS.some((p) => p.id === pagamento.plano) ? { plano: pagamento.plano } : {}),
     })
     .eq("user_id", pagamento.user_id);
 

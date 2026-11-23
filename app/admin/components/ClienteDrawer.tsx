@@ -185,8 +185,8 @@ export default function ClienteDrawer({
             {/* Plano */}
             <div className="mb-5">
               <p className={`${lblCls} mb-2.5`}>Plano</p>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {["starter", "pro", "premium", "demo"].map(p => (
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                {["essencial", "starter", "pro", "premium", "demo"].map(p => (
                   <button key={p}
                     onClick={() => acao(t.user_id, p === "demo" ? "demo" : "mudar_plano", p === "demo" ? undefined : p)}
                     disabled={acaoLoading === `${t.user_id}-${p === "demo" ? "demo" : "mudar_plano"}`}

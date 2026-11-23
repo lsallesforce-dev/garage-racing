@@ -7,6 +7,8 @@ import { agendarVideoWhatsApp } from "@/lib/video-whatsapp";
 
 // Vercel Pro: 300s | Hobby: 60s
 // Análise de vídeo com Gemini Vision pode levar 2-5 min para vídeos grandes
+import { gateLimiteCarros } from "@/lib/plano-servidor";
+
 export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
@@ -37,6 +39,12 @@ export async function POST(req: NextRequest) {
         { error: "Muitas requisições. Aguarde antes de analisar outro vídeo." },
         { status: 429 }
       );
+    }
+
+    // Carro novo: checa o limite do plano ANTES de gastar Gemini com o vídeo.
+    if (!veiculoId) {
+      const limite = await gateLimiteCarros(userId);
+      if (limite) return limite;
     }
 
     // 1. Fetch video from URL — valida host para evitar SSRF

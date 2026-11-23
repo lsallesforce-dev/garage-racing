@@ -31,11 +31,33 @@ export async function POST(req: NextRequest) {
       // (config_garage pode ter múltiplas linhas por user_id — pega a mais recente)
       const { data: planoRows } = await supabaseAdmin
         .from("config_garage")
-        .select("plano_ativo, plano_vence_em")
+        .select("plano, plano_ativo, plano_vence_em, trial_ends_at")
         .eq("user_id", user_id)
         .order("created_at", { ascending: false })
         .limit(1);
       const planoAtual = planoRows?.[0];
+
+      // Essencial começa em TESTE de 15 dias: não ganha os 30 dias ativos abaixo,
+      // senão a loja nunca chegaria na 1ª cobrança de R$ 650. Quem já tem plano
+      // pago em dia só troca de plano e mantém o vencimento.
+      if (valor === "essencial") {
+        const agora = Date.now();
+        const pagoEmDia = planoAtual?.plano_ativo === true && !!planoAtual?.plano_vence_em
+          && new Date(planoAtual.plano_vence_em).getTime() > agora;
+        const trialAtual = planoAtual?.trial_ends_at ? new Date(planoAtual.trial_ends_at).getTime() : 0;
+        // Clicar de novo com o teste correndo não renova os 15 dias.
+        const testeCorrendo = planoAtual?.plano === "essencial" && trialAtual > agora;
+        const fimTeste = testeCorrendo ? trialAtual : Math.max(trialAtual, agora + 15 * 86400000);
+        update = pagoEmDia
+          ? { plano: valor }
+          : { plano: valor, plano_ativo: false, trial_ends_at: new Date(fimTeste).toISOString() };
+        evento = {
+          tipo: "mudar_plano",
+          descricao: pagoEmDia ? "Plano alterado para essencial" : `Plano essencial em teste até ${dataBR(new Date(fimTeste).toISOString())}`,
+          meta: { plano: valor },
+        };
+        break;
+      }
       const venceEm = planoAtual?.plano_vence_em && new Date(planoAtual.plano_vence_em) > new Date()
         ? planoAtual.plano_vence_em
         : new Date(Date.now() + 30 * 86400000).toISOString();

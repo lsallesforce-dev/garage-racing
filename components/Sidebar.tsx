@@ -7,6 +7,7 @@ import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import type { GarageConfig } from "./SidebarWrapper";
 import { InstallAppButton } from "./InstallAppButton";
+import { rotaLiberada } from "@/lib/planos";
 
 const adminMenuItems = [
   { icon: LayoutDashboard, label: "Pátio Digital",       href: "/dashboard" },
@@ -151,7 +152,7 @@ export const Sidebar = ({
       </div>
 
       <nav className="flex-1 space-y-0.5 overflow-y-auto">
-        {menuItems.map((item) => {
+        {menuItems.filter((i) => rotaLiberada(garageConfig?.plano, i.href)).map((item) => {
           const ativo = pathname === item.href;
           const classe = `flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all w-full text-left ${
             ativo ? "bg-white text-red-600 shadow-sm" : "text-gray-600 hover:bg-white/50"

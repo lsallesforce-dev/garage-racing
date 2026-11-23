@@ -59,6 +59,13 @@ function AssinarContent() {
   const [planoId,      setPlanoId]      = useState(params.get("plano") ?? "pro");
   const plano = PLANOS[planoId] ?? PLANOS.pro;
 
+  // Plano com 1ª cobrança diferente (Essencial: R$ 650 e depois R$ 350). O servidor
+  // é quem decide o valor; isto só mostra o mesmo número na tela.
+  const primeiroMes = PLANOS_DEF[planoId as keyof typeof PLANOS_DEF]?.primeiroMes ?? null;
+  const [jaPagouPlano, setJaPagouPlano] = useState(false);
+  const ehPrimeiraCobranca = !!primeiroMes && !jaPagouPlano;
+  const precoAtual = ehPrimeiraCobranca ? primeiroMes! : plano.mensal;
+
   // Renovação de cliente fechado: mostra só o plano dele + desconto negociado.
   const renovacao = params.get("renovacao") === "1";
   const [descNegMes, setDescNegMes] = useState(0); // desconto negociado em R$/mês (lido do tenant)
@@ -130,6 +137,21 @@ function AssinarContent() {
       .catch(() => { /* silencioso — sem info, a página segue no modo padrão */ });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cobrancaToken]);
+
+  // Essencial: confere no servidor se esta é a 1ª cobrança. Não tem anual.
+  useEffect(() => {
+    if (!primeiroMes) return;
+    setParcelamento("mensal");
+    if (!cobrancaToken && !emailLogado) return;
+    const q = cobrancaToken ? `t=${encodeURIComponent(cobrancaToken)}` : `plano=${planoId}`;
+    fetch(`/api/assinar/info?${q}`)
+      .then(r => r.json())
+      .then(d => {
+        const v = Number(d?.valor_cobranca);
+        if (v > 0) setJaPagouPlano(v < primeiroMes);
+      })
+      .catch(() => { /* sem resposta, a tela fica no valor da 1ª cobrança */ });
+  }, [planoId, primeiroMes, emailLogado, cobrancaToken]);
 
   async function fetchCep(cep: string) {
     const digits = cep.replace(/\D/g, "");
@@ -232,7 +254,7 @@ function AssinarContent() {
                 <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">AutoZap · Plano {plano.nome}</span>
               </div>
               <p className="text-2xl font-black text-gray-900 mb-6">
-                {fmt(metodo === "cartao" && parcelamento === "anual12x" ? plano.parcela12x : plano.mensal)}
+                {fmt(metodo === "cartao" && parcelamento === "anual12x" ? plano.parcela12x : precoAtual)}
                 <span className="text-sm font-normal text-gray-400">/mês</span>
               </p>
               <div className="bg-gray-50 rounded-2xl p-4 mb-4 flex items-center justify-center">
@@ -303,7 +325,7 @@ function AssinarContent() {
   // ── Formulário ────────────────────────────────────────────────────────────────
   // Valores com desconto negociado (R$/mês) abatido — espelham o cálculo do servidor.
   const temDesconto  = descNegMes > 0;
-  const mensalLiq    = Math.max(1, plano.mensal - descNegMes);
+  const mensalLiq    = Math.max(1, precoAtual - descNegMes);
   const anualLiq     = Math.round(mensalLiq * 12 * 0.9);
   const parcelaLiq   = Math.round(anualLiq / 12);
   const valorExibido = metodo === "cartao" && parcelamento === "anual12x" ? parcelaLiq : mensalLiq;
@@ -348,22 +370,22 @@ function AssinarContent() {
         <form onSubmit={handleSubmit} className="flex flex-col gap-5">
 
           {/* Seletor de plano — na renovação/link de cobrança, fica travado no plano do cliente */}
-          {modoTravado ? (
+          {modoTravado || primeiroMes ? (
             <div className="bg-white rounded-[2rem] border border-gray-100 shadow-sm p-6">
               <p className={labelCls}>Seu plano</p>
               <div className="mt-2 flex items-center justify-between p-4 rounded-2xl border-2 border-gray-900 bg-gray-900 text-white">
                 <div>
                   <p className="text-sm font-black uppercase tracking-widest">{plano.nome}</p>
-                  <p className="text-[11px] text-white/60 mt-0.5">{empresaCobranca ?? "Plano contratado"}</p>
+                  <p className="text-[11px] text-white/60 mt-0.5">{empresaCobranca ?? (primeiroMes ? "Até 10 carros · estoque, painel, chat e vitrine" : "Plano contratado")}</p>
                 </div>
                 <div className="text-right">
                   {temDesconto ? (
                     <>
-                      <p className="text-xs text-white/40 line-through">{fmt(plano.mensal)}/mês</p>
-                      <p className="text-lg font-black italic">{fmt(mensalLiq)}<span className="text-[10px] font-normal text-white/50">/mês</span></p>
+                      <p className="text-xs text-white/40 line-through">{fmt(precoAtual)}</p>
+                      <p className="text-lg font-black italic">{fmt(mensalLiq)}<span className="text-[10px] font-normal text-white/50">{ehPrimeiraCobranca ? " no 1º mês" : "/mês"}</span></p>
                     </>
                   ) : (
-                    <p className="text-lg font-black italic">{fmt(plano.mensal)}<span className="text-[10px] font-normal text-white/50">/mês</span></p>
+                    <p className="text-lg font-black italic">{fmt(precoAtual)}<span className="text-[10px] font-normal text-white/50">{ehPrimeiraCobranca ? " no 1º mês" : "/mês"}</span></p>
                   )}
                 </div>
               </div>
@@ -414,7 +436,7 @@ function AssinarContent() {
               {([
                 { id: "pix",    icon: <QrCode size={18} />,     label: "PIX",    sub: "Instantâneo" },
                 { id: "boleto", icon: <FileText size={18} />,   label: "Boleto", sub: "3 dias úteis" },
-                { id: "cartao", icon: <CreditCard size={18} />, label: "Cartão", sub: "Parcelado" },
+                { id: "cartao", icon: <CreditCard size={18} />, label: "Cartão", sub: primeiroMes ? "À vista" : "Parcelado" },
               ] as const).map(({ id, icon, label, sub }) => (
                 <button key={id} type="button" onClick={() => setMetodo(id)}
                   className={`flex flex-col items-center gap-1.5 py-4 rounded-2xl border-2 transition ${
@@ -428,7 +450,7 @@ function AssinarContent() {
             </div>
 
             {/* Toggle mensal / anual — só cartão */}
-            {metodo === "cartao" && (
+            {metodo === "cartao" && !primeiroMes && (
               <div className="mt-4 flex gap-2">
                 {([
                   { id: "mensal",   label: `Mensal`,        sub: fmt(mensalLiq) + "/mês",   tag: null },
@@ -462,7 +484,9 @@ function AssinarContent() {
               <p className="text-[11px] text-white/40 mt-0.5">
                 {metodo === "cartao" && parcelamento === "anual12x"
                   ? `12x · Total ${fmt(anualLiq)} · economia de ${fmt(mensalLiq * 12 - anualLiq)}`
-                  : "Renovação mensal · cancele quando quiser"}
+                  : ehPrimeiraCobranca
+                    ? `1º mês com implantação · depois ${fmt(plano.mensal)}/mês`
+                    : "Renovação mensal · cancele quando quiser"}
               </p>
               {temDesconto && (
                 <p className="text-[11px] text-emerald-400 font-black mt-1 flex items-center gap-1">
@@ -472,10 +496,10 @@ function AssinarContent() {
             </div>
             <div className="text-right">
               {temDesconto && metodo !== "cartao" && (
-                <p className="text-xs text-white/30 line-through">{fmt(plano.mensal)}</p>
+                <p className="text-xs text-white/30 line-through">{fmt(precoAtual)}</p>
               )}
               <p className="text-2xl font-black text-white italic">{fmt(valorExibido)}</p>
-              <p className="text-[10px] text-white/40">/mês</p>
+              <p className="text-[10px] text-white/40">{ehPrimeiraCobranca ? "no 1º mês" : "/mês"}</p>
             </div>
           </div>
 

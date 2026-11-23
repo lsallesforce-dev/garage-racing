@@ -104,6 +104,7 @@ export interface EventoAdmin {
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
 export const PRECOS = {
+  essencial: PLANOS.essencial.mensal,
   starter: PLANOS.starter.mensal,
   pro: PLANOS.pro.mensal,
   premium: PLANOS.premium.mensal,

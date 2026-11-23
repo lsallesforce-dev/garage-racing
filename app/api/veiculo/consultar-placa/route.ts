@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
+import { gateLimiteCarros } from "@/lib/plano-servidor";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
@@ -139,6 +140,12 @@ export async function POST(req: NextRequest) {
 
   if (!process.env.APIBRASIL_TOKEN) {
     return NextResponse.json({ error: "APIBRASIL_TOKEN não configurado" }, { status: 500 });
+  }
+
+  // Carro novo: checa o limite do plano ANTES de gastar crédito da apibrasil.
+  if (!veiculoId) {
+    const limite = await gateLimiteCarros(userId);
+    if (limite) return limite;
   }
 
   // 1. Consulta apibrasil.io

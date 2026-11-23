@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
+import { gateLimiteCarros } from "@/lib/plano-servidor";
 
 export async function POST() {
   const { user, error: authError } = await requireAuth();
@@ -8,6 +9,9 @@ export async function POST() {
 
   const userId = getEffectiveUserId(user!);
   const vendedorId = user!.id;
+
+  const limite = await gateLimiteCarros(userId);
+  if (limite) return limite;
 
   const { data, error } = await supabaseAdmin
     .from("veiculos")

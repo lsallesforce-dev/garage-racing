@@ -8,7 +8,8 @@ import {
   type PagarmeCustomer,
 } from "@/lib/pagarme";
 import { calcularDescontoIndicacao } from "@/lib/indicacao";
-import { PLANOS } from "@/lib/planos";
+import { PLANOS, type PlanoId } from "@/lib/planos";
+import { precoCobranca } from "@/lib/plano-servidor";
 
 // Preços em centavos
 // "teste" (R$ 1,00) é um plano oculto para validar o fluxo de pagamento ponta a ponta
@@ -24,8 +25,8 @@ const DESCRICOES: Record<string, string> = Object.fromEntries(
 
 // descontoMes = desconto negociado em R$/mês (0 = valor de tabela). Abatido do mensal
 // ANTES de aplicar a lógica anual; piso de R$1 (mínimo do gateway).
-function calcAmount(plano: string, parcelamento: "mensal" | "anual12x", descontoMes = 0) {
-  const base = Math.max(100, VALORES[plano] - Math.round(descontoMes * 100)); // centavos
+function calcAmount(plano: string, parcelamento: "mensal" | "anual12x", descontoMes = 0, precoCentavos?: number) {
+  const base = Math.max(100, (precoCentavos ?? VALORES[plano]) - Math.round(descontoMes * 100)); // centavos
   if (parcelamento === "anual12x") {
     // 12 meses com 10% de desconto, cobrado de uma vez — dividido em 12x no cartão
     return Math.round(base * 12 * 0.9);
@@ -39,7 +40,7 @@ export async function POST(req: NextRequest) {
   const {
     plano,
     metodo,
-    parcelamento = "mensal",
+    parcelamento: parcelamentoPedido = "mensal",
     customer,
     cobranca_token,
   }: {
@@ -52,6 +53,10 @@ export async function POST(req: NextRequest) {
 
   if (!plano || !metodo || !customer)
     return NextResponse.json({ error: "Parâmetros inválidos" }, { status: 400 });
+
+  // Plano com 1ª cobrança diferente (Essencial) não tem anual.
+  const temPrimeiroMes = !!PLANOS[plano as PlanoId]?.primeiroMes;
+  const parcelamento = temPrimeiroMes ? "mensal" : parcelamentoPedido;
 
   // ── Tenant + desconto negociado ────────────────────────────────────────────
   // Dois caminhos:
@@ -92,7 +97,8 @@ export async function POST(req: NextRequest) {
     descontoNegMes = Math.max(0, Number(cfgRows?.[0]?.plano_desconto) || 0);
   }
 
-  const amountBruto = calcAmount(plano, parcelamento as "mensal" | "anual12x", descontoNegMes);
+  const precoCentavos = temPrimeiroMes ? Math.round((await precoCobranca(tenantUserId, plano)) * 100) : undefined;
+  const amountBruto = calcAmount(plano, parcelamento as "mensal" | "anual12x", descontoNegMes, precoCentavos);
 
   // ── Desconto de indicação ──────────────────────────────────────────────────
   // Abate créditos disponíveis do tenant, garantindo cobrança mínima de R$1.

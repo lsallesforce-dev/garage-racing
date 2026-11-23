@@ -5,7 +5,7 @@
 // O que diferencia é a cota mensal de Kits de Postagem (1 kit = 1 veículo/mês).
 // null = ilimitado.
 
-export type PlanoId = "teste" | "starter" | "pro" | "premium";
+export type PlanoId = "teste" | "essencial" | "starter" | "pro" | "premium";
 
 export interface PlanoDef {
   id: PlanoId;
@@ -14,12 +14,20 @@ export interface PlanoDef {
   kitsMes: number | null; // null = ilimitado
   suporte: string;
   oculto?: boolean;
+  /** Valor da 1ª cobrança (com implantação). Depois vale `mensal`. */
+  primeiroMes?: number;
+  /** Teto de carros não vendidos no estoque. Sem valor = sem limite. */
+  maxCarros?: number;
   destaque?: string;
 }
 
 export const PLANOS: Record<PlanoId, PlanoDef> = {
   // Plano oculto (R$ 1) — só via /assinar?plano=teste, valida o fluxo de pagamento ponta a ponta.
   teste: { id: "teste", nome: "Teste", mensal: 1, kitsMes: 5, suporte: "—", oculto: true },
+  // Plano de entrada (23/11/2026): até 10 carros, só painel + estoque + chat + vitrine,
+  // na Cloud API. 15 dias de teste, R$ 650 na 1ª cobrança e R$ 350 depois. Vendido
+  // pelo Lucas (botão no /admin): fora da página de preços por enquanto.
+  essencial: { id: "essencial", nome: "Essencial", mensal: 350, primeiroMes: 650, maxCarros: 10, kitsMes: 0, suporte: "WhatsApp", oculto: true, destaque: "Até 10 carros" },
   // Suporte por WhatsApp é padrão em todos os planos (a home promete "suporte humano
   // no WhatsApp"); o Premium tem fila prioritária.
   starter: { id: "starter", nome: "Starter", mensal: 1150, kitsMes: 5, suporte: "WhatsApp" },
@@ -65,6 +73,16 @@ export function kitsDoPlano(plano: string | null | undefined): number | null {
   if (plano === "demo") return null;
   if (isPlanoId(plano)) return PLANOS[plano].kitsMes;
   return KITS_TRIAL;
+}
+
+// Telas do plano Essencial. Configurações e Minha Conta entram porque sem elas a
+// loja não conecta o WhatsApp nem paga; /veiculo e /upload são o cadastro do estoque.
+const ROTAS_ESSENCIAL = ["/dashboard", "/estoque", "/chat", "/veiculo", "/upload", "/configuracoes", "/minha-conta", "/erros"];
+
+/** A tela está no plano? Só o Essencial restringe; os demais seguem com tudo. */
+export function rotaLiberada(plano: string | null | undefined, pathname: string): boolean {
+  if (plano !== "essencial") return true;
+  return ROTAS_ESSENCIAL.some((r) => pathname === r || pathname.startsWith(r + "/"));
 }
 
 export function labelKits(n: number | null): string {

@@ -113,6 +113,7 @@ export function NovoPagamentoModal({ secret, tenants, onClose, onSuccess }: {
               <label className="text-[9px] font-black uppercase tracking-widest text-gray-400">Plano</label>
               <select value={form.plano} onChange={e => setForm(f => ({ ...f, plano: e.target.value }))}
                 className="bg-[#f5f5f3] border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-red-500 transition">
+                <option value="essencial">Essencial · R$350 (1º mês R$650)</option>
                 <option value="starter">Starter · R$1.150</option>
                 <option value="pro">Pro · R$1.500</option>
                 <option value="premium">Premium · R$2.135</option>
@@ -208,6 +209,7 @@ export function EditarPagamentoModal({ secret, pagamento, onClose, onSuccess }: 
             <div className="flex flex-col gap-1">
               <label className={lblCls}>Plano</label>
               <select value={form.plano} onChange={e => setForm(f => ({ ...f, plano: e.target.value }))} className={fieldCls}>
+                <option value="essencial">Essencial</option>
                 <option value="starter">Starter</option>
                 <option value="pro">Pro</option>
                 <option value="premium">Premium</option>

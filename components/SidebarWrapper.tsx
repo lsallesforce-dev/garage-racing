@@ -45,6 +45,7 @@ export interface GarageConfig {
   nomeUsuario:  string;
   cargoUsuario: string;
   vitrineSlug:  string | null;
+  plano?:       string | null;
 }
 
 interface SidebarWrapperProps {

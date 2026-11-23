@@ -6,17 +6,30 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
+import { isPlanoId } from "@/lib/planos";
+import { precoCobranca } from "@/lib/plano-servidor";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function GET(req: NextRequest) {
   const t = req.nextUrl.searchParams.get("t") ?? "";
+
+  // Sem token: lojista logado perguntando o valor da próxima cobrança do plano.
+  if (!t) {
+    const plano = req.nextUrl.searchParams.get("plano") ?? "";
+    if (!isPlanoId(plano)) return NextResponse.json({ ok: false }, { status: 400 });
+    const { user, error } = await requireAuth();
+    if (error) return error;
+    return NextResponse.json({ ok: true, valor_cobranca: await precoCobranca(getEffectiveUserId(user!), plano) });
+  }
+
   // Valida o formato antes de consultar — uuid inválido derrubaria a query (22P02)
   if (!UUID_RE.test(t)) return NextResponse.json({ ok: false }, { status: 404 });
 
   const { data } = await supabaseAdmin
     .from("config_garage")
-    .select("nome_empresa, nome_fantasia, plano, plano_desconto")
+    .select("user_id, nome_empresa, nome_fantasia, plano, plano_desconto")
     .eq("cobranca_token", t)
     .limit(1);
 
@@ -28,5 +41,6 @@ export async function GET(req: NextRequest) {
     nome_empresa: row.nome_fantasia || row.nome_empresa || null,
     plano: row.plano ?? null,
     desconto_mes: Math.max(0, Number(row.plano_desconto) || 0),
+    valor_cobranca: isPlanoId(row.plano) ? await precoCobranca(row.user_id, row.plano) : null,
   });
 }
