@@ -56,7 +56,9 @@ function AssinarContent() {
   const params = useSearchParams();
   const router = useRouter();
 
-  const [planoId,      setPlanoId]      = useState(params.get("plano") ?? "pro");
+  // Essencial é escondido: o link sozinho não abre o plano. Só entra quando o
+  // tenant logado (ou o link de cobrança dele) já está nele — ver efeitos abaixo.
+  const [planoId,      setPlanoId]      = useState(params.get("plano") === "essencial" ? "pro" : params.get("plano") ?? "pro");
   const plano = PLANOS[planoId] ?? PLANOS.pro;
 
   // Plano com 1ª cobrança diferente (Essencial: R$ 650 e depois R$ 350). O servidor
@@ -115,6 +117,7 @@ function AssinarContent() {
             const row = rows?.[0];
             if (!row) return;
             if (row.plano && PLANOS[row.plano] && !params.get("plano")) setPlanoId(row.plano);
+            if (row.plano === "essencial" && params.get("plano") === "essencial") setPlanoId("essencial");
             if (renovacao && row.plano && PLANOS[row.plano]) setPlanoId(row.plano);
             setDescNegMes(Math.max(0, Number(row.plano_desconto) || 0));
           });

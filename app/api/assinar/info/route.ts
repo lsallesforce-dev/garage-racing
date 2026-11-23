@@ -8,7 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
 import { isPlanoId } from "@/lib/planos";
-import { precoCobranca } from "@/lib/plano-servidor";
+import { planoLiberadoParaTenant, precoCobranca } from "@/lib/plano-servidor";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -21,7 +21,9 @@ export async function GET(req: NextRequest) {
     if (!isPlanoId(plano)) return NextResponse.json({ ok: false }, { status: 400 });
     const { user, error } = await requireAuth();
     if (error) return error;
-    return NextResponse.json({ ok: true, valor_cobranca: await precoCobranca(getEffectiveUserId(user!), plano) });
+    const tenant = getEffectiveUserId(user!);
+    if (!(await planoLiberadoParaTenant(tenant, plano))) return NextResponse.json({ ok: false }, { status: 403 });
+    return NextResponse.json({ ok: true, valor_cobranca: await precoCobranca(tenant, plano) });
   }
 
   // Valida o formato antes de consultar — uuid inválido derrubaria a query (22P02)

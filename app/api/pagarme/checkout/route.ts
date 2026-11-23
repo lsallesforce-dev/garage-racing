@@ -9,7 +9,7 @@ import {
 } from "@/lib/pagarme";
 import { calcularDescontoIndicacao } from "@/lib/indicacao";
 import { PLANOS, type PlanoId } from "@/lib/planos";
-import { precoCobranca } from "@/lib/plano-servidor";
+import { planoLiberadoParaTenant, precoCobranca } from "@/lib/plano-servidor";
 
 // Preços em centavos
 // "teste" (R$ 1,00) é um plano oculto para validar o fluxo de pagamento ponta a ponta
@@ -95,6 +95,10 @@ export async function POST(req: NextRequest) {
       .order("created_at", { ascending: false })
       .limit(1);
     descontoNegMes = Math.max(0, Number(cfgRows?.[0]?.plano_desconto) || 0);
+  }
+
+  if (!(await planoLiberadoParaTenant(tenantUserId, plano))) {
+    return NextResponse.json({ error: "Plano indisponível" }, { status: 403 });
   }
 
   const precoCentavos = temPrimeiroMes ? Math.round((await precoCobranca(tenantUserId, plano)) * 100) : undefined;

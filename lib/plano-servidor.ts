@@ -31,6 +31,22 @@ export async function precoCobranca(userId: string, plano: string): Promise<numb
 }
 
 /**
+ * O Essencial é um plano ESCONDIDO: só compra quem o Lucas colocou nele pelo
+ * /admin. Sem isso, um cliente do Starter (R$ 1.150) que descobrisse o link
+ * /assinar?plano=essencial trocaria sozinho para R$ 350. Na dúvida, nega.
+ */
+export async function planoLiberadoParaTenant(userId: string, plano: string): Promise<boolean> {
+  if (plano !== "essencial") return true;
+  const { data, error } = await supabaseAdmin
+    .from("config_garage")
+    .select("plano")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  return !error && data?.[0]?.plano === "essencial";
+}
+
+/**
  * Trava de carros do plano. Chamar ANTES de criar veículo novo. Devolve a
  * resposta 402 ou null se pode seguir. Vendido não conta. Erro de consulta
  * libera (fail-open, como a cota de kits): limite é monetização, não segurança.

@@ -10,7 +10,7 @@ import { createPixOrder, createBoletoOrder, createCardCheckout, type PagbankCust
 import { resolverTenant } from "@/lib/pagbank-tenant";
 import { calcularDescontoIndicacao } from "@/lib/indicacao";
 import { PLANOS, isPlanoId, ANUAL_DESCONTO } from "@/lib/planos";
-import { precoCobranca } from "@/lib/plano-servidor";
+import { planoLiberadoParaTenant, precoCobranca } from "@/lib/plano-servidor";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +36,9 @@ export async function POST(req: NextRequest) {
   const t = await resolverTenant(cobranca_token);
   if (t.error) return t.error;
   const { userId, descontoMes } = t;
+  if (!(await planoLiberadoParaTenant(userId, plano))) {
+    return NextResponse.json({ error: "Plano indisponível" }, { status: 403 });
+  }
 
   const amountBruto = calcAmount(plano, parc, descontoMes, await precoCobranca(userId, plano));
   const amountReais = amountBruto / 100;
