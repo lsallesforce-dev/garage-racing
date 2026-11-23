@@ -10,7 +10,6 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
-import { gateAnuncioPago } from "@/lib/plano-servidor";
 import { publicarAnuncio, salvarRascunho } from "@/lib/meta-publicar";
 
 // Reel = upload de vídeo pra Meta dentro do request; o teto evita que um
@@ -27,8 +26,6 @@ export async function POST(req: NextRequest) {
   const { user, error } = await requireAuth();
   if (error) return error;
   const userId = getEffectiveUserId(user!);
-  const foraDoPlano = await gateAnuncioPago(userId);
-  if (foraDoPlano) return foraDoPlano;
 
   // Posse do veículo é conferida lá dentro (404/403), junto das outras validações.
   const r = body.rascunho === true

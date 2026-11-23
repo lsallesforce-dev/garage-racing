@@ -25,7 +25,7 @@ export const PLANOS: Record<PlanoId, PlanoDef> = {
   // Plano oculto (R$ 1) — só via /assinar?plano=teste, valida o fluxo de pagamento ponta a ponta.
   teste: { id: "teste", nome: "Teste", mensal: 1, kitsMes: 5, suporte: "—", oculto: true },
   // Plano de entrada (23/11/2026): até 10 carros, painel + estoque + chat + vitrine +
-  // 5 kits de postagem por mês (postar é grátis; anúncio pago fica de fora), na Cloud API. 15 dias de teste, R$ 650 na 1ª cobrança e R$ 350 depois. Vendido
+  // marketing completo (5 kits/mês, Meta Ads e portais; a verba é da loja), na Cloud API. 15 dias de teste, R$ 650 na 1ª cobrança e R$ 350 depois. Vendido
   // pelo Lucas (botão no /admin): fora da página de preços por enquanto.
   essencial: { id: "essencial", nome: "Essencial", mensal: 350, primeiroMes: 650, maxCarros: 10, kitsMes: 5, suporte: "WhatsApp", oculto: true, destaque: "Até 10 carros" },
   // Suporte por WhatsApp é padrão em todos os planos (a home promete "suporte humano
@@ -77,19 +77,12 @@ export function kitsDoPlano(plano: string | null | undefined): number | null {
 
 // Telas do plano Essencial. Configurações e Minha Conta entram porque sem elas a
 // loja não conecta o WhatsApp nem paga; /veiculo e /upload são o cadastro do estoque.
-const ROTAS_ESSENCIAL = ["/dashboard", "/estoque", "/chat", "/veiculo", "/upload", "/configuracoes", "/minha-conta", "/erros"];
+const ROTAS_ESSENCIAL = ["/dashboard", "/estoque", "/chat", "/marketing", "/veiculo", "/upload", "/configuracoes", "/minha-conta", "/erros"];
 
 /** A tela está no plano? Só o Essencial restringe; os demais seguem com tudo. */
 export function rotaLiberada(plano: string | null | undefined, pathname: string): boolean {
   if (plano !== "essencial") return true;
-  // Só a tela de Kits: /marketing/anuncios e /marketing/planejamento são anúncio pago.
-  if (pathname === "/marketing") return true;
   return ROTAS_ESSENCIAL.some((r) => pathname === r || pathname.startsWith(r + "/"));
-}
-
-/** Anúncio pago (Meta Ads) e portais. No Essencial a loja só POSTA o kit, de graça. */
-export function anuncioNoPlano(plano: string | null | undefined): boolean {
-  return plano !== "essencial";
 }
 
 /** Consulta automática nos bancos (CredPro). No Essencial o gerente simula por fora. */
