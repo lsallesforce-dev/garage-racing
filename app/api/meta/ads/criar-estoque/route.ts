@@ -13,6 +13,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
+import { gateAnuncioPago } from "@/lib/plano-servidor";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { criarCampanhaCarrosselEstoque } from "@/lib/meta-ads";
 import { midiaDoVeiculo, COLUNAS_MIDIA, CARROSSEL_MAX } from "@/lib/veiculo-midia";
@@ -60,6 +61,8 @@ export async function POST(req: NextRequest) {
   const { user, error } = await requireAuth();
   if (error) return error;
   const userId = getEffectiveUserId(user!);
+  const foraDoPlano = await gateAnuncioPago(userId);
+  if (foraDoPlano) return foraDoPlano;
 
   // Posse + disponibilidade numa query só. requireVehicleOwner em loop seriam
   // 10 idas ao banco pra checar a mesma coisa.

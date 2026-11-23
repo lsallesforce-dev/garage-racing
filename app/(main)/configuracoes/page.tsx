@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { Upload, CheckCircle2, Loader2, ImageIcon, Trash2, Sparkles, FileImage, Save, Copy, Eye, EyeOff, FileText, ShieldCheck, PauseCircle, PlayCircle, Palette, Globe, ExternalLink, Mic, Play, QrCode } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { FinanciamentoConfig } from "@/components/FinanciamentoConfig";
-import { simulacaoNoPlano } from "@/lib/planos";
+import { anuncioNoPlano, simulacaoNoPlano } from "@/lib/planos";
 import { TravaConfiguracoes } from "@/components/TravaConfiguracoes";
 
 declare global {
@@ -1335,7 +1335,7 @@ function ConfiguracoesConteudo() {
                 : "text-gray-400 hover:text-gray-700"
             }`}
           >
-            {{ loja: "Minha Loja", whatsapp: "WhatsApp", portais: "Portais de Anúncio", financiamento: "Financiamento", fiscal: "Fiscal" }[tab]}
+            {{ loja: "Minha Loja", whatsapp: "WhatsApp", portais: anuncioNoPlano(plano) ? "Portais de Anúncio" : "Face e Insta", financiamento: "Financiamento", fiscal: "Fiscal" }[tab]}
           </button>
         ))}
       </div>
@@ -2682,6 +2682,8 @@ function ConfiguracoesConteudo() {
         {/* ══ ABA: PORTAIS ═════════════════════════════════════════════════════ */}
         {activeTab === "portais" && <>
 
+        {/* Essencial: nesta aba fica só a conexão do Face e Insta, pra postar o kit. */}
+        {anuncioNoPlano(plano) && <>
         {/* ── Integração OLX (OAuth) ─────────────────────────────────────────── */}
         <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-sm">
           <div className="flex items-center justify-between">
@@ -2940,6 +2942,7 @@ function ConfiguracoesConteudo() {
           </div>
         </div>
 
+        </>}
         {/* ── Facebook / Instagram Ads ──────────────────────────────────────── */}
         {searchParams.get("meta_ads_ok") === "1" && (
           <div className="bg-green-50 border border-green-200 rounded-2xl px-4 py-3 text-[11px] text-green-700 font-bold">

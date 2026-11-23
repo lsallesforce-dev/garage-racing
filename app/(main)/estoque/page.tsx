@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import { useUserRole } from "@/components/SidebarWrapper";
+import { anuncioNoPlano } from "@/lib/planos";
 import PublicarMetaButton from "@/components/PublicarMetaButton";
 import { COLUNAS_MIDIA, midiaDoVeiculo, melhorFormato } from "@/lib/veiculo-midia";
 import { Car, Check, Download, Loader2, Megaphone, Plus, RotateCcw, Store, Trash2, X, Zap } from "lucide-react";
@@ -86,7 +87,7 @@ const COLUNAS_LISTA =
   "preco_venda_final, data_venda, status_venda, created_at, " + COLUNAS_MIDIA;
 
 export default function ListaEstoque() {
-  const { effectiveUserId, isVendedor } = useUserRole();
+  const { effectiveUserId, isVendedor, plano } = useUserRole();
   const [carros, setCarros] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [confirmandoId, setConfirmandoId] = useState<string | null>(null);
@@ -430,7 +431,7 @@ export default function ListaEstoque() {
                         )}
                         {/* Anunciar direto do estoque — antes a página só listava
                             e editava; toda publicação vivia em /marketing. */}
-                        {carro.status_venda !== "VENDIDO" && (
+                        {carro.status_venda !== "VENDIDO" && anuncioNoPlano(plano) && (
                           <AnunciarEstoque carro={carro} />
                         )}
                         <Link

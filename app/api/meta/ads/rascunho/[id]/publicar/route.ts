@@ -7,6 +7,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, getEffectiveUserId } from "@/lib/api-auth";
+import { gateAnuncioPago } from "@/lib/plano-servidor";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { publicarAnuncio } from "@/lib/meta-publicar";
 
@@ -18,6 +19,8 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   const { user, error } = await requireAuth();
   if (error) return error;
   const userId = getEffectiveUserId(user!);
+  const foraDoPlano = await gateAnuncioPago(userId);
+  if (foraDoPlano) return foraDoPlano;
 
   const { data: rows } = await supabaseAdmin
     .from("meta_campanhas")

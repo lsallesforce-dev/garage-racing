@@ -11,6 +11,7 @@ import PublicarPortaisModal, { publicadoNoPortal, type Portal } from "@/componen
 import KitsGaleria from "@/components/KitsGaleria";
 import CarrosselEstoqueModal from "@/components/CarrosselEstoqueModal";
 import { midiaDoVeiculo, melhorFormato, miniatura, miniaturaFalhou, COLUNAS_MIDIA } from "@/lib/veiculo-midia";
+import { anuncioNoPlano } from "@/lib/planos";
 
 // ─── Ícones de plataforma ─────────────────────────────────────────────────────
 
@@ -209,12 +210,14 @@ function VeiculoMarketingCard({ carro, conexoes, metaAtivas }: { carro: any; con
 // ─── Página ───────────────────────────────────────────────────────────────────
 
 function MarketingPageInner() {
-  const { effectiveUserId } = useUserRole();
+  const { effectiveUserId, plano } = useUserRole();
+  // Essencial: só a aba de Kits, sem anúncio pago nem portais.
+  const soKits = !anuncioNoPlano(plano);
   const searchParams = useSearchParams();
   const [carros, setCarros] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtro, setFiltro] = useState<"todos" | "disponiveis">("disponiveis");
-  const [aba, setAba] = useState<"portais" | "kits">(
+  const [abaEscolhida, setAba] = useState<"portais" | "kits">(
     searchParams.get("tab") === "kits" ? "kits" : "portais"
   );
   const [carrosselOpen, setCarrosselOpen] = useState(false);
@@ -270,6 +273,8 @@ function MarketingPageInner() {
     }
   }, [searchParams]);
 
+  const aba = soKits ? "kits" : abaEscolhida;
+
   const carrosFiltrados = filtro === "disponiveis"
     ? carros.filter((c) => c.status_venda !== "VENDIDO")
     : carros;
@@ -291,11 +296,11 @@ function MarketingPageInner() {
               Marketing
             </h1>
             <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-gray-400">
-              Postar é grátis (seu Face e Insta) · Anunciar é pago (Meta Ads e portais)
+              {soKits ? "Gere o kit do carro e poste de graça no seu Face e Insta" : "Postar é grátis (seu Face e Insta) · Anunciar é pago (Meta Ads e portais)"}
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          {!soKits && <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setCarrosselOpen(true)}
               className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-wider hover:bg-indigo-700 transition-all"
@@ -314,11 +319,11 @@ function MarketingPageInner() {
             >
               <CalendarDays size={14} /> Planejamento
             </Link>
-          </div>
+          </div>}
         </div>
 
         {/* Abas: Portais | Kits de Postagem  +  filtro (só Portais) */}
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-8">
+        {!soKits && <div className="flex flex-wrap items-center justify-between gap-3 mb-8">
           <div className="flex items-center gap-1 bg-white rounded-2xl p-1 border border-gray-100 shadow-sm w-fit">
             {([["portais", "Portais"], ["kits", "Kits de Postagem"]] as const).map(([id, label]) => (
               <button
@@ -348,7 +353,7 @@ function MarketingPageInner() {
               ))}
             </div>
           )}
-        </div>
+        </div>}
 
         {aba === "kits" && <KitsGaleria />}
 

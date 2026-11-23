@@ -42,8 +42,6 @@ function planoEfetivo(cfg: CfgCota, agora = new Date()): string | null {
   const planoValido =
     cfg.plano_ativo === true && !!cfg.plano_vence_em && new Date(cfg.plano_vence_em) > agora;
   if (cfg.plano === "demo") return "demo";
-  // Essencial não tem kit nem durante os 15 dias de teste.
-  if (cfg.plano === "essencial") return "essencial";
   return planoValido ? cfg.plano ?? null : "trial";
 }
 

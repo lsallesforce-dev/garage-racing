@@ -12,6 +12,7 @@ import { supabase } from "@/lib/supabase";
 interface UserRoleContextValue {
   effectiveUserId: string;
   isVendedor: boolean;
+  plano: string | null;
 }
 
 const UserRoleContext = createContext<UserRoleContextValue | null>(null);
@@ -88,7 +89,7 @@ export function SidebarWrapper({
   const meio        = Math.ceil(nomeEmpresa.length / 2);
 
   return (
-    <UserRoleContext.Provider value={{ effectiveUserId, isVendedor }}>
+    <UserRoleContext.Provider value={{ effectiveUserId, isVendedor, plano: garageConfig?.plano ?? null }}>
       <Suspense fallback={null}>
         <AdminSessionDetector effectiveUserId={effectiveUserId} />
       </Suspense>

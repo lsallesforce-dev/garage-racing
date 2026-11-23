@@ -4,7 +4,7 @@
 
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { PLANOS, isPlanoId, precoMensal } from "@/lib/planos";
+import { PLANOS, anuncioNoPlano, isPlanoId, precoMensal } from "@/lib/planos";
 
 /**
  * Valor de tabela da PRÓXIMA cobrança do tenant nesse plano. Plano com
@@ -28,6 +28,25 @@ export async function precoCobranca(userId: string, plano: string): Promise<numb
     return mensal;
   }
   return (count ?? 0) > 0 ? mensal : primeiroMes;
+}
+
+/**
+ * Anúncio pago fora do plano (Essencial). Chamar antes de criar campanha na Meta:
+ * esconder o botão não basta quando a ação gasta o dinheiro da loja.
+ * Erro de consulta libera, para não derrubar anúncio de cliente de outro plano.
+ */
+export async function gateAnuncioPago(userId: string): Promise<NextResponse | null> {
+  const { data } = await supabaseAdmin
+    .from("config_garage")
+    .select("plano")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (anuncioNoPlano(data?.[0]?.plano)) return null;
+  return NextResponse.json(
+    { error: "Anúncio pago não faz parte do plano Essencial. Fale com a gente para mudar de plano.", codigo: "fora_do_plano" },
+    { status: 403 },
+  );
 }
 
 /**

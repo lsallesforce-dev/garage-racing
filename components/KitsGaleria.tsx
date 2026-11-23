@@ -19,6 +19,7 @@ import PisoRestauro from "@/components/PisoRestauro";
 import { useCotaKits, KitCotaBanner, UpgradeKitsModal } from "@/components/KitCota";
 import ReelEditor from "@/components/ReelEditor";
 import PublicarMetaButton from "@/components/PublicarMetaButton";
+import { anuncioNoPlano } from "@/lib/planos";
 import SlidesTextoEditor from "@/components/SlidesTextoEditor";
 import PostarDireto from "@/components/PostarDireto";
 import type { MarketingCapturas } from "@/lib/marketing-shotlist";
@@ -88,7 +89,9 @@ function reelToProxy(url: string): string {
  * tem arte pra publicar (reel > carrossel > foto).
  */
 function PublicarKit({ carro }: { carro: CarroKit }) {
+  const { plano } = useUserRole();
   const [aberto, setAberto] = useState(false);
+  if (!anuncioNoPlano(plano)) return null; // Essencial: só post grátis
   const midia = midiaDoVeiculo(carro as any);
   const semArte = midia.formatosDisponiveis.length === 0;
 
