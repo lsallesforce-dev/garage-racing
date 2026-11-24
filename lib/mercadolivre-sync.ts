@@ -74,11 +74,14 @@ export async function syncAnunciosML(userId: string): Promise<{ sincronizados: n
   const itens: any[] = [];
   for (let i = 0; i < ids.length; i += 20) {
     const lote = ids.slice(i, i + 20).join(",");
-    const r = await fetch(
-      `${ML_API}/items?ids=${lote}&attributes=id,title,price,status,health,date_created,pictures,attributes,permalink,video_id`,
-      { headers: mlHeaders(token) },
-    );
-    if (!r.ok) continue;
+    const url = `${ML_API}/items?ids=${lote}&attributes=id,title,price,status,health,date_created,pictures,attributes,permalink,video_id`;
+    // Lote que falha some da atualização sem aviso (24/11: 20 de 38 ficaram parados) — tenta de novo
+    let r = await fetch(url, { headers: mlHeaders(token) }).catch(() => null);
+    if (!r?.ok) {
+      await new Promise(res => setTimeout(res, 1500));
+      r = await fetch(url, { headers: mlHeaders(token) }).catch(() => null);
+    }
+    if (!r?.ok) { console.error(`❌ ML sync: multiget falhou (${r?.status ?? "rede"}) — ${lote.split(",").length} itens sem atualizar`); continue; }
     for (const x of await r.json()) if (x.code === 200) itens.push(x.body);
   }
 
