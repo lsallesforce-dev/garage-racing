@@ -8,7 +8,7 @@
 import { ImageResponse } from "next/og";
 import { promises as fs } from "fs";
 import path from "path";
-import { linhaSpecs, precoFormatado, tituloVeiculo, type MarketingCfg } from "@/lib/marketing-kit";
+import { linhaSpecs, ofertaDoVeiculo, precoFormatado, tituloVeiculo, type MarketingCfg } from "@/lib/marketing-kit";
 
 // Formatos de saída: feed 4:5 (post/carrossel) e story 9:16 (Stories/status).
 // FOTO_H = área exclusiva da foto; o restante é o painel de infos.
@@ -146,6 +146,9 @@ function areaFoto(p: {
   /** Altura do enquadramento no "cover" (0% = topo). 62% come céu no 4:5; na
    *  janela baixa do quadrado cortava o teto do carro, lá usa menos. */
   fotoY?: string;
+  /** Texto do selo do canto. Padrão "DISPONÍVEL"; na campanha de ofertas vira o
+   *  selo da loja ("MÊS DE OFERTAS"). */
+  selo?: string;
   W: number;
   FOTO_H: number;
   GRAD_TOPO: number;
@@ -268,7 +271,7 @@ function areaFoto(p: {
           letterSpacing: 3,
         }}
       >
-        DISPONÍVEL
+        {p.selo ?? "DISPONÍVEL"}
       </div>
 
       {/* Transição suave foto → painel */}
@@ -309,6 +312,10 @@ export function renderCapa(opts: {
   const subtitulo = [veiculo?.versao, anoStr].filter(Boolean).join(" • ").toUpperCase();
   const specs = linhaSpecs(veiculo).split(" | ").filter(Boolean).slice(0, 4);
   const preco = cfg.mostrarPreco ? precoFormatado(veiculo) : null;
+  const oferta = ofertaDoVeiculo(veiculo, cfg);
+  // Na oferta o bloco de preço ganha a linha "DE" em cima; os chips caem pra 3
+  // pra não estourar o painel quando quebram em duas linhas (quadrado é o justo).
+  const specsVisiveis = oferta ? specs.slice(0, 3) : specs;
 
   return new ImageResponse(
     (
@@ -323,7 +330,7 @@ export function renderCapa(opts: {
           position: "relative",
         }}
       >
-        {areaFoto({ foto, logoUri, logoFundo: opts.logoFundo, cfg, cor, mostraBranding, W, FOTO_H, GRAD_TOPO, GRAD_BASE, fotoY: opts.formato === "quadrado" ? "30%" : undefined })}
+        {areaFoto({ foto, logoUri, logoFundo: opts.logoFundo, cfg, cor, mostraBranding, W, FOTO_H, GRAD_TOPO, GRAD_BASE, fotoY: opts.formato === "quadrado" ? "30%" : undefined, selo: oferta ? cfg.ofertaSelo! : undefined })}
 
         {/* ── Painel de informações (base sólida — nunca cobre o carro) ── */}
         <div
@@ -364,9 +371,9 @@ export function renderCapa(opts: {
             </div>
           ) : null}
 
-          {specs.length ? (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 24 }}>
-              {specs.map((s) => (
+          {specsVisiveis.length ? (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: oferta ? 18 : 24 }}>
+              {specsVisiveis.map((s) => (
                 <div
                   key={s}
                   style={{
@@ -386,8 +393,46 @@ export function renderCapa(opts: {
             </div>
           ) : null}
 
-          <div style={{ display: "flex", alignItems: "center", gap: 28, marginTop: 28 }}>
-            {preco ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 28, marginTop: oferta ? 20 : 28 }}>
+            {oferta ? (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
+                <div style={{ display: "flex", alignItems: "center", marginBottom: 6 }}>
+                  <div style={{ display: "flex", fontSize: 26, color: "rgba(255,255,255,0.7)", letterSpacing: 2, marginRight: 12 }}>
+                    DE
+                  </div>
+                  {/* Risco desenhado à mão: textDecoration no Satori sai fino demais
+                      e some no story comprimido do IG. */}
+                  <div style={{ display: "flex", position: "relative", fontSize: 34, color: "rgba(255,255,255,0.7)" }}>
+                    {oferta.de}
+                    <div
+                      style={{
+                        position: "absolute",
+                        left: -4,
+                        right: -4,
+                        top: "50%",
+                        height: 4,
+                        backgroundColor: "rgba(255,255,255,0.85)",
+                        transform: "rotate(-6deg)",
+                      }}
+                    />
+                  </div>
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "baseline",
+                    backgroundColor: cor,
+                    color: "#FFFFFF",
+                    padding: "10px 32px",
+                    borderRadius: 18,
+                    fontWeight: 900,
+                  }}
+                >
+                  <div style={{ display: "flex", fontSize: 30, marginRight: 14, letterSpacing: 2 }}>POR</div>
+                  <div style={{ display: "flex", fontSize: 54 }}>{oferta.por}</div>
+                </div>
+              </div>
+            ) : preco ? (
               <div
                 style={{
                   display: "flex",
@@ -481,7 +526,8 @@ export function renderSlide(opts: {
   const temOpcionais = itens.length > 0;
   const nomeCurto =
     [veiculo?.marca, veiculo?.modelo].filter(Boolean).join(" ").toUpperCase() || tituloVeiculo(veiculo);
-  const preco = cfg.mostrarPreco ? precoFormatado(veiculo) : null;
+  const oferta = ofertaDoVeiculo(veiculo, cfg);
+  const preco = oferta ? `POR ${oferta.por}` : cfg.mostrarPreco ? precoFormatado(veiculo) : null;
   // O painel tem ~438px úteis. Item longo quebra em 2 linhas, então a fonte cai
   // pra não estourar quando o slide leva 3 itens compridos.
   const maisLongo = itens.reduce((m, o) => Math.max(m, o.length), 0);
@@ -500,7 +546,7 @@ export function renderSlide(opts: {
           position: "relative",
         }}
       >
-        {areaFoto({ foto, logoUri, cfg, cor, mostraBranding, W, FOTO_H, GRAD_TOPO, GRAD_BASE, brilhoFundo: 0.45 })}
+        {areaFoto({ foto, logoUri, cfg, cor, mostraBranding, W, FOTO_H, GRAD_TOPO, GRAD_BASE, brilhoFundo: 0.45, selo: oferta ? cfg.ofertaSelo! : undefined })}
 
         <div
           style={{

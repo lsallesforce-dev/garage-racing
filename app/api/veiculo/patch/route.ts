@@ -14,7 +14,7 @@ const ALLOWED_FIELDS = new Set([
   "ia_verificada", "status_venda", "cambio", "vistoriado", "abaixo_fipe", "de_repasse",
   "repasse_texto", "repasse_pausado",
   "vendedor_responsavel_id",
-  "preco_compra", "valor_fipe", "placa", "preco_venda_final", "data_venda", "vendedor_id",
+  "preco_de", "preco_compra", "valor_fipe", "placa", "preco_venda_final", "data_venda", "vendedor_id",
   "renavam", "chassi",
   "qtd_proprietarios", "procedencia", "restricoes_veiculo",
   "historico_sinistros", "historico_manutencao", "observacoes_vistoria",
@@ -95,6 +95,24 @@ export async function PATCH(req: NextRequest) {
   // A tela de Estoque ordena os vendidos por data_venda: sem ela a venda caía no
   // fim da fila. Só preenche se quem chamou não mandou uma data própria.
   if (viraVendido && !safeFields.data_venda) safeFields.data_venda = new Date().toISOString();
+
+  // Campanha de ofertas (config_garage.marketing_oferta_selo): baixou o preço e
+  // o carro ainda não tem "preço de" → guarda o preço antigo, pra capa sair "DE
+  // X POR Y" sem o lojista digitar nada. Baixou de novo depois → o "de" continua
+  // o original. select("*") de propósito: sem a migration 078 a coluna não vem
+  // e nada acontece (em vez do update quebrar).
+  if (safeFields.preco_sugerido != null && !("preco_de" in safeFields)) {
+    const { data: antes } = await supabaseAdmin.from("veiculos").select("*").eq("id", veiculoId).limit(1);
+    const a = antes?.[0];
+    const antigo = Number(a?.preco_sugerido ?? 0);
+    const novo = Number(safeFields.preco_sugerido);
+    if (a && "preco_de" in a && a.preco_de == null && antigo > 0 && novo > 0 && novo < antigo) {
+      const { data: cfg } = await supabaseAdmin
+        .from("config_garage").select("*").eq("user_id", a.user_id)
+        .order("created_at", { ascending: false }).limit(1);
+      if (cfg?.[0]?.marketing_oferta_selo) safeFields.preco_de = antigo;
+    }
+  }
 
   const { error } = await supabaseAdmin
     .from("veiculos")

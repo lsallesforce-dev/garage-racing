@@ -22,6 +22,10 @@ export interface MarketingCfg {
   fotoComMarca: boolean; // fotos já têm marca d'água da loja → não sobrepor logo
   /** Legenda no formato próprio da loja (migration 067). Ver gerarLegendaDoModelo. */
   legendaModelo: string | null;
+  /** Campanha de ofertas ligada (migration 078): texto do selo da capa, ex.
+   *  "MÊS DE OFERTAS". Com ele preenchido, carro com preco_de > preço sai na
+   *  capa/legenda como "DE R$ X POR R$ Y". NULL = campanha desligada. */
+  ofertaSelo: string | null;
 }
 
 // Monta o MarketingCfg a partir da row de config_garage (mais recente do tenant).
@@ -52,7 +56,23 @@ export function cfgFromRow(row: any): MarketingCfg {
     legendaModelo: typeof row?.marketing_legenda_modelo === "string" && row.marketing_legenda_modelo.trim()
       ? row.marketing_legenda_modelo
       : null,
+    ofertaSelo: typeof row?.marketing_oferta_selo === "string" && row.marketing_oferta_selo.trim()
+      ? row.marketing_oferta_selo.trim().toUpperCase()
+      : null,
   };
+}
+
+const reais = (n: number) => `R$ ${n.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+
+// "De R$ X por R$ Y": só com a campanha de ofertas ligada na loja, preço à mostra
+// e preco_de (preço antes da baixa, em REAIS) maior que o preço atual. Preço que
+// subiu ou igual não vira oferta.
+export function ofertaDoVeiculo(v: any, cfg: MarketingCfg): { de: string; por: string } | null {
+  if (!cfg.ofertaSelo || !cfg.mostrarPreco) return null;
+  const por = Number(v?.preco_sugerido ?? 0);
+  const de = Number(v?.preco_de ?? 0);
+  if (!(por > 0) || !(de > por)) return null;
+  return { de: reais(de), por: reais(por) };
 }
 
 export function formatFone(raw: string | null | undefined): string | null {
@@ -200,8 +220,10 @@ export async function gerarLegenda(v: any, cfg: MarketingCfg): Promise<string> {
   const { hashtags } = await gerarHookEHashtags(v, cfg);
 
   const linhas: string[] = [];
+  const oferta = ofertaDoVeiculo(v, cfg);
+  if (oferta) linhas.push(`🔥 ${cfg.ofertaSelo} 🔥`, "");
   linhas.push(`🚘 ${tituloVeiculo(v)}`, "");
-  const preco = cfg.mostrarPreco ? precoFormatado(v) : null;
+  const preco = oferta ? `De ${oferta.de} por ${oferta.por}` : cfg.mostrarPreco ? precoFormatado(v) : null;
   const specs = [v?.cambio, inicialMaiuscula(v?.combustivel), inicialMaiuscula(v?.cor)].filter(Boolean).join(" | ");
   // Ficha e preço na MESMA linha. Sem ficha cadastrada, o preço vai sozinho —
   // "⚙️ 💰 R$ 35.990" ficaria com cara de erro.
@@ -322,9 +344,12 @@ export async function gerarLegendaDoModelo(v: any, cfg: MarketingCfg, modelo: st
 
   const ano = v?.ano_modelo ?? v?.ano ?? null;
   const valor = Number(v?.preco_sugerido ?? 0);
-  const preco = cfg.mostrarPreco && valor > 0
-    ? `R$ ${valor.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-    : "Sob consulta";
+  const oferta = ofertaDoVeiculo(v, cfg);
+  const preco = oferta
+    ? `De ${oferta.de} por ${oferta.por}`
+    : cfg.mostrarPreco && valor > 0
+      ? `R$ ${valor.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+      : "Sob consulta";
 
   const campos: Record<string, string> = {
     titulo,

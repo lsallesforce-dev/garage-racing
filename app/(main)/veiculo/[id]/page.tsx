@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { assinaturaAtiva } from "@/lib/assinatura";
 import { supabase } from "@/lib/supabase";
 import { useParams, useRouter } from "next/navigation";
@@ -721,6 +721,7 @@ export default function DetalheVeiculo() {
   // Tag Pátio
   const [showTagPatio, setShowTagPatio] = useState(false);
   const [showSalvoPopup, setShowSalvoPopup] = useState(false);
+  const precoDeEditado = useRef(false);
   const [vitrineSite, setVitrineSite] = useState("");
 
   // ── Carrega veículo ──────────────────────────────────────────────────────
@@ -903,7 +904,11 @@ export default function DetalheVeiculo() {
         abaixo_fipe: veiculo.abaixo_fipe,
         de_repasse: veiculo.de_repasse,
         valor_fipe: veiculo.valor_fipe || null,
+        // Só manda o "de" quando foi mexido à mão: mandar sempre (null) impedia
+        // o servidor de guardar sozinho o preço antigo quando o preço baixa.
+        ...(precoDeEditado.current ? { preco_de: veiculo.preco_de || null } : {}),
       });
+      precoDeEditado.current = false;
       setShowSalvoPopup(true);
     } catch {}
     setIsSaving(false);
@@ -1942,6 +1947,27 @@ export default function DetalheVeiculo() {
                     className="w-32 bg-transparent text-sm font-mono font-bold text-gray-500 border-b border-gray-100 focus:border-red-600 outline-none pb-0.5 transition-all"
                   />
                 </div>
+                {/* "De" da oferta (migration 078). Na campanha de ofertas é
+                    preenchido sozinho quando o preço baixa; aqui só pra corrigir
+                    ou limpar. Maior que o preço de venda → kit sai "DE X POR Y". */}
+                {"preco_de" in veiculo && (
+                  <div className="mt-2 flex items-center gap-2" title="Preço antes da oferta. Com a campanha de ofertas ligada, a capa do kit sai 'DE este valor POR o preço de venda'. Deixe vazio para não mostrar oferta.">
+                    <span className="text-[10px] font-black text-gray-300 uppercase tracking-widest">De (oferta)</span>
+                    <span className="text-gray-300 font-mono font-bold text-sm">R$</span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={veiculo.preco_de ? new Intl.NumberFormat("pt-BR").format(Math.round(Number(veiculo.preco_de))) : ""}
+                      onChange={(e) => {
+                        const raw = e.target.value.replace(/\D/g, "");
+                        precoDeEditado.current = true;
+                        setVeiculo({ ...veiculo, preco_de: raw === "" ? null : Number(raw) });
+                      }}
+                      placeholder="—"
+                      className="w-32 bg-transparent text-sm font-mono font-bold text-gray-500 border-b border-gray-100 focus:border-red-600 outline-none pb-0.5 transition-all"
+                    />
+                  </div>
+                )}
               </div>
 
               {/* Quilometragem */}
