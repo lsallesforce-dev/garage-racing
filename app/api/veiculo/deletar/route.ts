@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { S3Client, DeleteObjectsCommand } from "@aws-sdk/client-s3";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { requireVehicleOwner } from "@/lib/api-auth";
-import { pausarCampanhasDoVeiculo } from "@/lib/meta-campanhas";
+import { requireVehicleOwner, getEffectiveUserId } from "@/lib/api-auth";
+import { tirarCarroVendidoDoAr } from "@/lib/veiculo-vendido";
 
 const r2 = new S3Client({
   region: "auto",
@@ -41,8 +41,9 @@ export async function DELETE(req: NextRequest) {
   const { veiculoId } = await req.json();
   if (!veiculoId) return NextResponse.json({ error: "veiculoId obrigatório" }, { status: 400 });
 
-  const { error: authError } = await requireVehicleOwner(veiculoId);
+  const { user, error: authError } = await requireVehicleOwner(veiculoId);
   if (authError) return authError;
+  const userId = getEffectiveUserId(user!);
 
   // Busca as URLs de R2 antes de deletar o registro
   const { data: veiculo } = await supabaseAdmin
@@ -58,12 +59,14 @@ export async function DELETE(req: NextRequest) {
     if (key) r2Keys.push(key);
   }
 
-  // Pausa o anúncio pago ANTES do delete: a FK meta_campanhas_veiculo_id_fkey
-  // é ON DELETE SET NULL, então depois do delete o vínculo some e não dá mais
-  // pra saber qual campanha era deste carro — ela ficaria órfã e no ar.
-  const { pausadas, falhas } = await pausarCampanhasDoVeiculo(veiculoId, "veículo deletado");
-  if (pausadas || falhas) {
-    console.log(`⏸️ [deletar] Meta Ads do veículo ${veiculoId}: ${pausadas} pausada(s), ${falhas} falha(s)`);
+  // Tira o carro do ar ANTES do delete, igual à venda: pausa o anúncio pago, apaga os
+  // posts e fecha o Mercado Livre. Depois do delete o vínculo some (FK de meta_campanhas é
+  // ON DELETE SET NULL; ml_item_id vive na própria linha) e o anúncio ficaria no ar sozinho.
+  // A Carmatti APAGA carro vendido em vez de marcar VENDIDO: o Ka 1.5 seguiu ativo no ML
+  // sem carro no estoque até ser fechado à mão (25/11/2026).
+  const fora = await tirarCarroVendidoDoAr(veiculoId, userId);
+  if (fora.pausadas || fora.falhas || fora.mlFechado || fora.mlPendente || fora.pendentes?.length) {
+    console.log(`🗑️ [deletar] veículo ${veiculoId} tirado do ar:`, JSON.stringify(fora));
   }
 
   // Desvíncula referências em outras tabelas, apaga o registro e limpa o R2

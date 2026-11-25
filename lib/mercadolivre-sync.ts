@@ -74,7 +74,7 @@ export async function syncAnunciosML(userId: string): Promise<{ sincronizados: n
   const itens: any[] = [];
   for (let i = 0; i < ids.length; i += 20) {
     const lote = ids.slice(i, i + 20).join(",");
-    const url = `${ML_API}/items?ids=${lote}&attributes=id,title,price,status,health,date_created,pictures,attributes,permalink,video_id,category_id`;
+    const url = `${ML_API}/items?ids=${lote}&attributes=id,title,price,status,health,date_created,pictures,attributes,permalink,video_id,category_id,seller_custom_field`;
     // Lote que falha some da atualização sem aviso (24/11: 20 de 38 ficaram parados) — tenta de novo
     let r = await fetch(url, { headers: mlHeaders(token) }).catch(() => null);
     if (!r?.ok) {
@@ -102,7 +102,7 @@ export async function syncAnunciosML(userId: string): Promise<{ sincronizados: n
   for (let i = 0; i < fora.length; i += 20) {
     const lote = fora.slice(i, i + 20);
     const r = await fetch(
-      `${ML_API}/items?ids=${lote.join(",")}&attributes=id,title,price,status,health,date_created,pictures,attributes,permalink,video_id,category_id`,
+      `${ML_API}/items?ids=${lote.join(",")}&attributes=id,title,price,status,health,date_created,pictures,attributes,permalink,video_id,category_id,seller_custom_field`,
       { headers: mlHeaders(token) },
     );
     if (!r.ok) continue; // na dúvida, não mexe
@@ -129,10 +129,19 @@ export async function syncAnunciosML(userId: string): Promise<{ sincronizados: n
   // 4. Casa com o estoque: ml_item_id primeiro, depois placa
   const { data: veiculos } = await supabaseAdmin
     .from("veiculos")
-    .select("id, placa, ml_item_id, relatorio_ia, detalhes_inspecao, fotos")
+    .select("id, placa, ml_item_id, relatorio_ia, detalhes_inspecao, fotos, status_venda")
     .eq("user_id", userId);
   const porItem  = new Map((veiculos ?? []).filter(v => v.ml_item_id).map(v => [v.ml_item_id as string, v]));
   const porPlaca = new Map((veiculos ?? []).filter(v => soPlaca(v.placa)).map(v => [soPlaca(v.placa), v]));
+  const idsEstoque = new Set((veiculos ?? []).map(v => v.id as string));
+
+  // Fecha no ML. Nunca lança: o sync não pode parar por causa de um item.
+  const fechar = async (it: any, motivo: string) => {
+    const r = await fetch(`${ML_API}/items/${it.id}`, { method: "PUT", headers: mlHeaders(token), body: JSON.stringify({ status: "closed" }) }).catch(() => null);
+    if (r?.ok) { it.status = "closed"; console.log(`🗑️ ML sync ${userId}: ${it.id} "${it.title}" fechado — ${motivo}`); }
+    else console.error(`❌ ML sync ${userId}: fechar ${it.id} (${motivo}) falhou`, r?.status);
+    return !!r?.ok;
+  };
 
   const existente = new Map((existentes ?? []).map(a => [a.veiculo_id, a]));
 
@@ -143,7 +152,21 @@ export async function syncAnunciosML(userId: string): Promise<{ sincronizados: n
   for (const it of itens) {
     const placa = soPlaca(it.attributes?.find((a: any) => a.id === "LICENSE_PLATE")?.value_name);
     const v = porItem.get(it.id) ?? (placa ? porPlaca.get(placa) : undefined);
-    if (!v) { semVeiculo.push(`${it.id} ${it.title}`); continue; }
+    const noAr = it.status === "active" || it.status === "paused";
+    // seller_custom_field = id do carro, gravado pelo AutoZap ao publicar (ou abaixo, quando casa).
+    // Só anúncio com essa marca é fechado sem carro: criado à mão no painel do ML não entra.
+    const marcaAutoZap = /^[0-9a-f-]{36}$/i.test(it.seller_custom_field ?? "") ? it.seller_custom_field as string : null;
+    if (!v) {
+      if (noAr && marcaAutoZap && !idsEstoque.has(marcaAutoZap)) await fechar(it, "carro apagado do estoque");
+      else semVeiculo.push(`${it.id} ${it.title}`);
+      continue;
+    }
+    // Carro vendido com anúncio no ar: a venda fecha na hora (lib/veiculo-vendido), isto pega o que escapou
+    if (noAr && v.status_venda === "VENDIDO") await fechar(it, "carro vendido");
+    if (it.seller_custom_field !== v.id) {
+      await fetch(`${ML_API}/items/${it.id}`, { method: "PUT", headers: mlHeaders(token), body: JSON.stringify({ seller_custom_field: v.id }) })
+        .catch(() => null);
+    }
 
     const status = STATUS_ML[it.status] ?? it.status;
     const antes  = existente.get(v.id);

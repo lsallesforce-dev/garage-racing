@@ -85,6 +85,8 @@ export async function POST(req: NextRequest) {
   });
   const payload = built.payload;
   let titulo = built.titulo;
+  // Marca o anúncio como do AutoZap: o sync fecha anúncio cujo carro foi apagado do estoque
+  payload.seller_custom_field = veiculoId;
 
   // Marca/modelo/ano/versão com o id do catálogo do ML — é o que entra no filtro de busca
   // (Chevrolet → S10 → versão). O que não casar fica no texto do estoque, como antes.
