@@ -264,11 +264,13 @@ function areaFoto(p: {
           display: "flex",
           backgroundColor: cor,
           color: "#FFFFFF",
-          padding: "12px 26px",
-          borderRadius: 999,
-          fontSize: 25,
+          // Selo de oferta: letra maior e tarja justa (pedido do Lucas 25/11 —
+          // o roxo sobrando em volta do texto pequeno apagava a chamada).
+          padding: p.selo ? "8px 20px" : "12px 26px",
+          borderRadius: p.selo ? 14 : 999,
+          fontSize: p.selo ? 42 : 25,
           fontWeight: 900,
-          letterSpacing: 3,
+          letterSpacing: p.selo ? 1.5 : 3,
         }}
       >
         {p.selo ?? "DISPONÍVEL"}
@@ -397,12 +399,12 @@ export function renderCapa(opts: {
             {oferta ? (
               <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
                 <div style={{ display: "flex", alignItems: "center", marginBottom: 6 }}>
-                  <div style={{ display: "flex", fontSize: 26, color: "rgba(255,255,255,0.7)", letterSpacing: 2, marginRight: 12 }}>
+                  <div style={{ display: "flex", fontSize: 34, color: "rgba(255,255,255,0.75)", letterSpacing: 2, marginRight: 14 }}>
                     DE
                   </div>
                   {/* Risco desenhado à mão: textDecoration no Satori sai fino demais
                       e some no story comprimido do IG. */}
-                  <div style={{ display: "flex", position: "relative", fontSize: 34, color: "rgba(255,255,255,0.7)" }}>
+                  <div style={{ display: "flex", position: "relative", fontSize: 48, color: "rgba(255,255,255,0.75)" }}>
                     {oferta.de}
                     <div
                       style={{
@@ -410,7 +412,7 @@ export function renderCapa(opts: {
                         left: -4,
                         right: -4,
                         top: "50%",
-                        height: 4,
+                        height: 5,
                         backgroundColor: "rgba(255,255,255,0.85)",
                         transform: "rotate(-6deg)",
                       }}
@@ -423,13 +425,13 @@ export function renderCapa(opts: {
                     alignItems: "baseline",
                     backgroundColor: cor,
                     color: "#FFFFFF",
-                    padding: "10px 32px",
+                    padding: "6px 28px",
                     borderRadius: 18,
                     fontWeight: 900,
                   }}
                 >
-                  <div style={{ display: "flex", fontSize: 30, marginRight: 14, letterSpacing: 2 }}>POR</div>
-                  <div style={{ display: "flex", fontSize: 54 }}>{oferta.por}</div>
+                  <div style={{ display: "flex", fontSize: 38, marginRight: 16, letterSpacing: 2 }}>POR</div>
+                  <div style={{ display: "flex", fontSize: 74 }}>{oferta.por}</div>
                 </div>
               </div>
             ) : preco ? (
