@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { ChevronLeft, ChevronRight, Plus, X, Phone, Users, Calendar, Tag } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, X, Phone, Users, Calendar, Tag, MessageCircle } from "lucide-react";
+import Link from "next/link";
 
 type View = "dia" | "semana" | "mes";
 type Tipo = "visita" | "ligacao" | "reuniao" | "outro";
@@ -469,6 +470,15 @@ function ModalEvento({
 
         {(evento?.created_by === "ia" || evento?.created_by === "whatsapp") && (
           <p className="text-[10px] text-blue-500 font-bold uppercase tracking-widest mb-3">⚡ Criado pela IA</p>
+        )}
+
+        {/* Compromisso ligado a um cliente: atalho pra conversa dele no chat
+            (mesmo deep link ?wa_id= do dashboard e do funil). */}
+        {evento?.leads?.wa_id && (
+          <Link href={`/chat?wa_id=${encodeURIComponent(evento.leads.wa_id)}`}
+            className="flex items-center justify-center gap-2 w-full py-2.5 mb-3 rounded-xl border border-gray-200 text-gray-700 text-[10px] font-black uppercase tracking-widest hover:bg-gray-50 transition-colors">
+            <MessageCircle size={13} /> Abrir conversa{evento.leads.nome ? ` com ${evento.leads.nome}` : ""}
+          </Link>
         )}
 
         <div className="flex gap-2">
