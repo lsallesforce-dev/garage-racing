@@ -74,7 +74,7 @@ export async function syncAnunciosML(userId: string): Promise<{ sincronizados: n
   const itens: any[] = [];
   for (let i = 0; i < ids.length; i += 20) {
     const lote = ids.slice(i, i + 20).join(",");
-    const url = `${ML_API}/items?ids=${lote}&attributes=id,title,price,status,health,date_created,pictures,attributes,permalink,video_id`;
+    const url = `${ML_API}/items?ids=${lote}&attributes=id,title,price,status,health,date_created,pictures,attributes,permalink,video_id,category_id`;
     // Lote que falha some da atualização sem aviso (24/11: 20 de 38 ficaram parados) — tenta de novo
     let r = await fetch(url, { headers: mlHeaders(token) }).catch(() => null);
     if (!r?.ok) {
@@ -102,7 +102,7 @@ export async function syncAnunciosML(userId: string): Promise<{ sincronizados: n
   for (let i = 0; i < fora.length; i += 20) {
     const lote = fora.slice(i, i + 20);
     const r = await fetch(
-      `${ML_API}/items?ids=${lote.join(",")}&attributes=id,title,price,status,health,date_created,pictures,attributes,permalink,video_id`,
+      `${ML_API}/items?ids=${lote.join(",")}&attributes=id,title,price,status,health,date_created,pictures,attributes,permalink,video_id,category_id`,
       { headers: mlHeaders(token) },
     );
     if (!r.ok) continue; // na dúvida, não mexe
@@ -162,12 +162,13 @@ export async function syncAnunciosML(userId: string): Promise<{ sincronizados: n
                       : (it.pictures ?? []).map((p: any) => p.secure_url ?? p.url).filter(Boolean)).slice(0, 25),
       snapshot: {
         listing_type: "silver",
-        category:     "MLB1744",
+        category:     it.category_id ?? "MLB1744",
         permalink:    it.permalink,
         qualidade:    it.health != null ? Math.round(Number(it.health) * 100) : null,
         visitas:      visitas[it.id] ?? null,
         ml_status:    it.status,
-        objetivos:    attrsCategoria.length ? objetivosQualidade(it, attrsCategoria) : null,
+        // Objetivos calibrados na ficha de carro (MLB1744); moto tem outra ficha
+        objetivos:    attrsCategoria.length && it.category_id === "MLB1744" ? objetivosQualidade(it, attrsCategoria) : null,
         sincronizado_em: agora,
       },
       publicado_em:  antes?.publicado_em ?? it.date_created,

@@ -4,7 +4,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireVehicleOwner, getEffectiveUserId } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { getMLToken, buildMLPayload, descricaoML, mlHeaders, ML_API, ML_MAX_FOTOS, marcaML, tituloML } from "@/lib/mercadolivre";
+import { getMLToken, buildMLPayload, descricaoML, mlHeaders, ML_API, ML_MAX_FOTOS, marcaML, tituloML, ehMotoML } from "@/lib/mercadolivre";
 import { resolverCatalogoML, atributosCatalogo } from "@/lib/mercadolivre-catalogo";
 
 export async function POST(req: NextRequest) {
@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
   const [{ data: v }, { data: cfgRows }] = await Promise.all([
     supabaseAdmin
       .from("veiculos")
-      .select("id, marca, modelo, versao, ano, ano_modelo, preco_sugerido, quilometragem_estimada, combustivel, cambio, cor, placa, fotos, relatorio_ia, detalhes_inspecao, pontos_fortes_venda, ml_item_id, opcionais, chassi, motor, categoria, qtd_proprietarios, segundo_dono")
+      .select("id, marca, modelo, versao, ano, ano_modelo, preco_sugerido, quilometragem_estimada, combustivel, cambio, cor, placa, fotos, relatorio_ia, detalhes_inspecao, pontos_fortes_venda, ml_item_id, opcionais, chassi, motor, categoria, qtd_proprietarios, segundo_dono, cilindradas")
       .eq("id", veiculoId)
       .single(),
     supabaseAdmin
@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
 
   // Marca/modelo/ano/versão com o id do catálogo do ML — é o que entra no filtro de busca
   // (Chevrolet → S10 → versão). O que não casar fica no texto do estoque, como antes.
-  const cat = await resolverCatalogoML(token, { marca: marcaML(v.marca), modelo: v.modelo, versao: v.versao, ano: v.ano_modelo ?? v.ano })
+  const cat = await resolverCatalogoML(token, { marca: marcaML(v.marca), modelo: v.modelo, versao: v.versao, ano: v.ano_modelo ?? v.ano, moto: ehMotoML(v) })
     .catch(() => null);
   if (cat) {
     const doCatalogo = atributosCatalogo(cat);
@@ -161,7 +161,7 @@ export async function POST(req: NextRequest) {
       descricao,
       preco:        Number(v.preco_sugerido ?? 0),
       fotos:        (Array.isArray(v.fotos) ? v.fotos.filter(Boolean) : []).slice(0, ML_MAX_FOTOS),
-      snapshot:     { listing_type: "silver", category: "MLB1744" },
+      snapshot:     { listing_type: "silver", category: payload.category_id },
       publicado_em:  now,
       atualizado_em: now,
     },

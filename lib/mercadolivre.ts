@@ -357,7 +357,56 @@ export function descricaoML(v: {
   return blocos.join("\n\n").slice(0, 50_000);
 }
 
-/** Monta o payload de item para publicação no ML (categoria MLB1744 — Carros usados). */
+// ─── Moto ──────────────────────────────────────────────────────────────────────
+// Moto em MLB1744 (carros) o ML bloqueia: a KTM 300 EXC da APROVE ficou "under_review /
+// forbidden" (04/11/2026). Moto vai em MLB1763 (Motos), com ficha própria.
+
+export const ML_CATEGORIA_CARRO = "MLB1744";
+export const ML_CATEGORIA_MOTO  = "MLB1763";
+
+export function ehMotoML(v: { categoria?: string | null }): boolean {
+  return /\b(moto|motocicleta|scooter|quadriciclo|triciclo)/.test(semAcento(v.categoria ?? ""));
+}
+
+// MOTO_TYPE é obrigatório. Na dúvida, "Rua".
+const TIPO_MOTO: [RegExp, MLValor][] = [
+  [/\bexc\b|enduro/,                                   { id: "381237", name: "Enduro" }],
+  [/cross|\bsx\b|\bcrf|\byz|\bkx|\brm-?z/,             { id: "381234", name: "Cross" }],
+  [/scooter|\bpcx\b|nmax|burgman|lead\b|biz\b/,        { id: "381239", name: "Scooters" }],
+  [/trail|trilha|xtz|bros|lander|tenere|tornado/,      { id: "399555", name: "Trilha" }],
+  [/custom|shadow|harley|chopper|boulevard|midnight/,  { id: "399550", name: "Custom" }],
+  [/quadriciclo/,                                      { id: "399553", name: "Quadriciclos" }],
+];
+
+export type FichaMoto = FichaVeiculo & { cilindradas?: number | null; versao?: string | null };
+
+function fichaMotoML(v: FichaMoto & { marca?: string | null; cor?: string | null; placa?: string | null; combustivel?: string | null }) {
+  const out: { id: string; value_name: string; value_id?: string }[] = [];
+  const add = (id: string, val: MLValor) => out.push({ id, value_id: val.id, value_name: val.name });
+  const texto = semAcento([v.categoria, v.modelo, v.versao, v.motor, ...(v.opcionais ?? [])].filter(Boolean).join(" ; "));
+
+  add("MOTO_TYPE", TIPO_MOTO.find(([re]) => re.test(texto))?.[1] ?? { id: "2343326", name: "Rua" });
+  if (/2 tempos|dois tempos|2t\b/.test(texto))      add("ENGINE", { id: "923584", name: "2 tempos" });
+  else if (/4 tempos|quatro tempos|4t\b/.test(texto)) add("ENGINE", { id: "923585", name: "4 tempos" });
+  if (v.cilindradas) out.push({ id: "ENGINE_DISPLACEMENT", value_name: `${v.cilindradas} cc` });
+  // Só combustível/motor decidem — "partida elétrica" nos opcionais não faz a moto elétrica
+  const motorTxt = semAcento(`${v.combustivel ?? ""} ${v.motor ?? ""}`);
+  add("FUEL_TYPE", /eletric/.test(motorTxt) ? { id: "403613", name: "Elétrico" } : { id: "64364", name: "Gasolina" });
+  add("TRANSMISSION", /scooter|automatic|cvt/.test(texto) ? { id: "370876", name: "Automática" } : { id: "370877", name: "Manual" });
+  if (/partida eletrica e pedal|eletrica e pedal|pedal de partida/.test(texto) && /eletric/.test(texto))
+    add("IGNITION_SYSTEM", { id: "381248", name: "Elétrico e pedal" });
+  else if (/partida eletrica/.test(texto)) add("IGNITION_SYSTEM", { id: "381247", name: "Elétrico" });
+  else if (/pedal de partida|partida a pedal/.test(texto)) add("IGNITION_SYSTEM", { id: "381249", name: "Pedal" });
+  if (/\babs\b/.test(texto)) add("BRAKES", { id: "381244", name: "ABS" });
+  else if (/disco dianteiro e traseiro|freios? a disco (nas duas|dianteiro e traseiro)/.test(texto))
+    add("BRAKES", { id: "1244799", name: "Disco dianteiro e traseiro" });
+  add("SINGLE_OWNER", v.qtd_proprietarios === 1 || v.segundo_dono === false ? SIM : NAO);
+  add("SALE_WITH_EXCHANGE", SIM);
+  add("WITH_NEGOTIABLE_PRICE", NAO);
+  return out;
+}
+
+/** Monta o payload de item para publicação no ML (MLB1744 carros; MLB1763 motos). */
 export function buildMLPayload(v: {
   marca?: string | null;
   modelo?: string | null;
@@ -374,7 +423,7 @@ export function buildMLPayload(v: {
   relatorio_ia?: string | null;
   detalhes_inspecao?: string | null;
   pontos_fortes_venda?: unknown;
-} & FichaVeiculo, loc?: {
+} & FichaMoto, loc?: {
   zipCode?: string | null; city?: string | null; state?: string | null;
   whatsapp?: string | null; telefone?: string | null;
 }) {
@@ -382,10 +431,18 @@ export function buildMLPayload(v: {
   const titulo = tituloML(marca, v.modelo, v.versao, v.ano_modelo ?? v.ano);
   const fotos  = (Array.isArray(v.fotos) ? v.fotos.filter(Boolean) : []).slice(0, ML_MAX_FOTOS);
 
+  const moto   = ehMotoML(v);
   const fuel   = mapAttr(FUEL_ML, v.combustivel ?? "", FUEL_ML.FLEX);
   const cambio = mapAttr(TRANSMISSION_ML, v.cambio ?? "", CAMBIO_MANUAL);
 
-  const attributes: { id: string; value_name: string; value_id?: string }[] = [
+  const attributes: { id: string; value_name: string; value_id?: string }[] = moto ? [
+    { id: "BRAND",        value_name: marca },
+    { id: "MODEL",        value_name: v.modelo ?? "" },
+    { id: "VEHICLE_YEAR", value_name: String(v.ano_modelo ?? v.ano ?? "") },
+    // KILOMETERS é obrigatório em moto também; sem km no cadastro vai 0 (moto de trilha não tem odômetro confiável)
+    { id: "KILOMETERS",   value_name: `${Number(v.quilometragem_estimada ?? 0)} km` },
+    ...fichaMotoML(v),
+  ] : [
     { id: "BRAND",        value_name: marca },
     { id: "MODEL",        value_name: v.modelo  ?? "" },
     { id: "VEHICLE_YEAR", value_name: String(v.ano_modelo ?? v.ano ?? "") },
@@ -397,14 +454,16 @@ export function buildMLPayload(v: {
   ].filter(a => a.value_name && a.value_name !== "0");
 
   if (v.cor)   attributes.push({ id: "COLOR",         value_name: v.cor });
-  // TRIM (versão) é OBRIGATÓRIO no MLB1744 — não é "VERSION". Fallback p/ não vir vazio.
-  attributes.push({ id: "TRIM", value_name: v.versao || v.modelo || "Único" });
+  if (!moto) {
+    // TRIM (versão) é OBRIGATÓRIO no MLB1744 — não é "VERSION". Fallback p/ não vir vazio.
+    attributes.push({ id: "TRIM", value_name: v.versao || v.modelo || "Único" });
+  }
   if (v.placa) attributes.push({ id: "LICENSE_PLATE", value_name: v.placa.toUpperCase() });
-  attributes.push(...fichaTecnicaML(v));
+  if (!moto) attributes.push(...fichaTecnicaML(v));
 
   const payload: Record<string, unknown> = {
     title:              titulo,
-    category_id:        "MLB1744",
+    category_id:        moto ? ML_CATEGORIA_MOTO : ML_CATEGORIA_CARRO,
     price:              Number(v.preco_sugerido ?? 0),
     currency_id:        "BRL",
     available_quantity: 1,

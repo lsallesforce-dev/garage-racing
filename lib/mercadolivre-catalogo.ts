@@ -8,7 +8,8 @@
 
 import { ML_API, mlHeaders } from "@/lib/mercadolivre";
 
-const DOMINIO = "MLB-CARS_AND_VANS";
+const DOMINIO_CARRO = "MLB-CARS_AND_VANS";
+const DOMINIO_MOTO  = "MLB-MOTORCYCLES";
 
 type Valor = { id: string; name: string };
 export type CatalogoML = {
@@ -23,8 +24,8 @@ const norm = (s: string) =>
 // Ponto só fica dentro de número ("2.7"); "Aut." e "Cab." viram "aut" e "cab"
 const tokens = (s: string) => norm(s).split(" ").map(w => w.replace(/^\.+|\.+$/g, "")).filter(Boolean);
 
-async function topValues(token: string, attr: string, known: { id: string; value_id: string }[]): Promise<Valor[]> {
-  const r = await fetch(`${ML_API}/catalog_domains/${DOMINIO}/attributes/${attr}/top_values`, {
+async function topValuesDom(token: string, attr: string, known: { id: string; value_id: string }[], dominio = DOMINIO_CARRO): Promise<Valor[]> {
+  const r = await fetch(`${ML_API}/catalog_domains/${dominio}/attributes/${attr}/top_values`, {
     method: "POST",
     headers: mlHeaders(token),
     body: JSON.stringify({ known_attributes: known }),
@@ -94,23 +95,27 @@ function casarVersao(versoes: Valor[], texto: string, modelo: string): Valor | n
 
 export async function resolverCatalogoML(
   token: string,
-  v: { marca: string; modelo?: string | null; versao?: string | null; ano?: number | null },
+  v: { marca: string; modelo?: string | null; versao?: string | null; ano?: number | null; moto?: boolean },
 ): Promise<CatalogoML> {
   const out: CatalogoML = { brand: null, model: null, year: null, trim: null };
-  const marcas = await topValues(token, "BRAND", []);
+  const dom = v.moto ? DOMINIO_MOTO : DOMINIO_CARRO;
+  const topValues = (attr: string, known: { id: string; value_id: string }[]) => topValuesDom(token, attr, known, dom);
+  if (v.moto) return resolverMoto(v);
+  const marcas = await topValues("BRAND", []);
   out.brand = marcas.find(m => norm(m.name) === norm(v.marca)) ?? null;
   if (!out.brand) return out;
 
-  const modelos = await topValues(token, "MODEL", [{ id: "BRAND", value_id: out.brand.id }]);
+  const modelos = await topValues("MODEL", [{ id: "BRAND", value_id: out.brand.id }]);
   out.model = casarModelo(modelos, v.modelo ?? "");
   if (!out.model) return out;
 
   const known = [{ id: "BRAND", value_id: out.brand.id }, { id: "MODEL", value_id: out.model.id }];
   if (v.ano) {
-    const anos = await topValues(token, "VEHICLE_YEAR", known);
+    const anos = await topValues("VEHICLE_YEAR", known);
     out.year = anos.find(a => a.name === String(v.ano)) ?? null;
   }
-  const versoes = await topValues(token, "TRIM", out.year ? [...known, { id: "VEHICLE_YEAR", value_id: out.year.id }] : known);
+  if (v.moto) return out;
+  const versoes = await topValues("TRIM", out.year ? [...known, { id: "VEHICLE_YEAR", value_id: out.year.id }] : known);
   out.trim = casarVersao(versoes, `${v.modelo ?? ""} ${v.versao ?? ""}`, out.model.name);
   return out;
 }
@@ -122,5 +127,25 @@ export function atributosCatalogo(c: CatalogoML): { id: string; value_id: string
   if (c.model) out.push({ id: "MODEL", value_id: c.model.id, value_name: c.model.name });
   if (c.year)  out.push({ id: "VEHICLE_YEAR", value_id: c.year.id, value_name: c.year.name });
   if (c.trim)  out.push({ id: "TRIM", value_id: c.trim.id, value_name: c.trim.name });
+  return out;
+}
+
+// Moto: o catálogo MLB-MOTORCYCLES não devolve nada (24/11/2026). Casa pela lista de valores
+// da própria categoria MLB1763: modelo do ML com todas as palavras do cadastro e nenhuma a mais
+// ("300 EXC" 2016 = "EXC 300"; "300 EXC Tpi" é a injetada de 2018+).
+let attrsMoto: Promise<any[]> | null = null;
+async function resolverMoto(v: { marca: string; modelo?: string | null; versao?: string | null }): Promise<CatalogoML> {
+  const out: CatalogoML = { brand: null, model: null, year: null, trim: null };
+  attrsMoto ??= fetch(`${ML_API}/categories/MLB1763/attributes`).then(r => (r.ok ? r.json() : [])).catch(() => []);
+  const attrs = await attrsMoto;
+  const vals = (id: string): Valor[] => (attrs.find((a: any) => a.id === id)?.values ?? []).map((x: any) => ({ id: String(x.id), name: String(x.name) }));
+  out.brand = vals("BRAND").find(m => norm(m.name) === norm(v.marca)) ?? null;
+  const doModelo = new Set(tokens(v.modelo ?? ""));
+  const todos = new Set([...doModelo, ...tokens(v.versao ?? "")]);
+  const cands = vals("MODEL").filter(m => {
+    const t = tokens(m.name);
+    return t.length > 0 && [...doModelo].every(w => t.includes(w)) && t.every(w => todos.has(w));
+  });
+  out.model = cands.sort((a, b) => tokens(b.name).length - tokens(a.name).length)[0] ?? null;
   return out;
 }
