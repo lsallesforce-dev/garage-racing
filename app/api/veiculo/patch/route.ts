@@ -92,6 +92,9 @@ export async function PATCH(req: NextRequest) {
       .from("veiculos").select("status_venda, user_id").eq("id", veiculoId).limit(1);
     if (antes?.[0] && antes[0].status_venda !== "VENDIDO") viraVendido = { userId: antes[0].user_id };
   }
+  // A tela de Estoque ordena os vendidos por data_venda: sem ela a venda caía no
+  // fim da fila. Só preenche se quem chamou não mandou uma data própria.
+  if (viraVendido && !safeFields.data_venda) safeFields.data_venda = new Date().toISOString();
 
   const { error } = await supabaseAdmin
     .from("veiculos")

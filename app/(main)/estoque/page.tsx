@@ -90,6 +90,10 @@ export default function ListaEstoque() {
   const [carros, setCarros] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [confirmandoId, setConfirmandoId] = useState<string | null>(null);
+  // Vendidos: data da venda e gasto em anúncio por carro (rota própria — a data
+  // mora em vendas_concluidas e o gasto vem da Meta).
+  const [infoVendidos, setInfoVendidos] = useState<Record<string, { dataVenda: string | null; estimada?: boolean; gasto: number }>>({});
+  const [infoVendidosOk, setInfoVendidosOk] = useState(false);
 
   // Filtros
   const [filtroMarca, setFiltroMarca] = useState("");
@@ -127,6 +131,14 @@ export default function ListaEstoque() {
       setLoading(false);
     };
     buscarEstoque();
+  }, [effectiveUserId]);
+
+  useEffect(() => {
+    if (!effectiveUserId) return;
+    fetch("/api/estoque/vendidos-info")
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (d?.info) { setInfoVendidos(d.info); setInfoVendidosOk(true); } })
+      .catch(() => {});
   }, [effectiveUserId]);
 
   // Baixa as fotos do carro num ZIP.
@@ -234,6 +246,19 @@ export default function ListaEstoque() {
   });
 
   const temFiltro = filtroMarca || filtroModelo || filtroAno || filtroValorMin || filtroValorMax;
+
+  // Data da venda: rota de vendidos → coluna do carro → cadastro (último recurso).
+  const dataDaVenda = (c: any): number => {
+    const d = infoVendidos[c.id]?.dataVenda || c.data_venda || c.created_at;
+    const t = d ? new Date(d).getTime() : 0;
+    return isNaN(t) ? 0 : t;
+  };
+  // Disponíveis primeiro (ordem do banco); vendidos depois, venda mais recente no topo.
+  const carrosOrdenados = [
+    ...carrosFiltrados.filter(c => c.status_venda !== "VENDIDO"),
+    ...carrosFiltrados.filter(c => c.status_venda === "VENDIDO").sort((a, b) => dataDaVenda(b) - dataDaVenda(a)),
+  ];
+  const brl = (n: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(n);
 
   return (
     <div className="p-4 md:p-10 bg-[#f4f4f2] min-h-screen font-sans overflow-y-auto w-full">
@@ -356,7 +381,7 @@ export default function ListaEstoque() {
 
         <div className="grid gap-4">
             {!loading ? (
-                carrosFiltrados.length > 0 ? carrosFiltrados.map((carro) => (
+                carrosOrdenados.length > 0 ? carrosOrdenados.map((carro) => (
                 <div key={carro.id} className="bg-white p-4 md:p-6 rounded-[2rem] md:rounded-[2.5rem] border border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shadow-sm hover:shadow-xl transition-all group">
                     <div className="flex items-center gap-4">
                     <div className="w-24 h-16 md:w-32 md:h-20 flex-shrink-0 bg-gray-100 rounded-2xl overflow-hidden relative">
@@ -384,6 +409,18 @@ export default function ListaEstoque() {
                         <p className="text-[11px] font-black text-slate-900 mt-2 tracking-tighter">
                             {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(carro.preco_sugerido || 0)}
                         </p>
+                        {carro.status_venda === 'VENDIDO' && (
+                          <p className="text-[10px] font-bold text-gray-500 mt-1 tracking-wide flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                            {dataDaVenda(carro) > 0 && (
+                              <span title={infoVendidos[carro.id]?.estimada ? "Data estimada pelo que o sistema fez na venda (post removido / anúncio pausado). Vendas novas gravam a data exata." : undefined}>
+                                Vendido {infoVendidos[carro.id]?.estimada ? "≈ " : "em "}{new Date(dataDaVenda(carro)).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}
+                              </span>
+                            )}
+                            <span title="Soma do gasto das campanhas do Meta Ads criadas pelo AutoZap para este carro. Não inclui anúncio feito direto no Gerenciador da Meta nem carrossel de vários carros.">
+                              Gasto em Anúncio: <span className="font-black text-gray-800">{infoVendidosOk ? brl(infoVendidos[carro.id]?.gasto ?? 0) : "—"}</span>
+                            </span>
+                          </p>
+                        )}
                     </div>
                     </div>
 

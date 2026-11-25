@@ -33,7 +33,9 @@ export async function POST(req: NextRequest) {
     // 2. Marcar como vendido
     const { error: updateError } = await supabaseAdmin
       .from("veiculos")
-      .update({ status_venda: "VENDIDO" })
+      // data_venda junto: a tela de estoque ordena os vendidos por ela, e este
+      // botão antes só mudava o status (a data só existia em vendas_concluidas).
+      .update({ status_venda: "VENDIDO", data_venda: new Date().toISOString() })
       .eq("id", id);
 
     if (updateError) {
